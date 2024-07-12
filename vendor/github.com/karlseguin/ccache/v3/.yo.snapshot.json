@@ -1,0 +1,37 @@
+{
+    "Version": "v3.0.3",
+    "GoVersion": "1.18",
+    "Sum": "h1:cz+3tSdTrovp00xHPP3Y6ca/YuSl5kchhYG83wUPYN0=",
+    "Packages": {
+        "github.com/karlseguin/ccache/v3": {
+            "Imports": [
+                "fmt",
+                "hash/fnv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/karlseguin/ccache/v3/assert",
+                "math",
+                "math/rand",
+                "sort",
+                "strconv",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/karlseguin/ccache/v3/assert": {
+            "Imports": [
+                "math",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

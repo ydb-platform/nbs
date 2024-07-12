@@ -1,0 +1,36 @@
+{
+    "Version": "v0.0.4",
+    "GoVersion": "1.14",
+    "Sum": "h1:NVikla9X8MN0SQAqCYzpGyXv0jY7MNl3HOWD2dkle7E=",
+    "Packages": {
+        "github.com/mattn/go-tty": {
+            "Imports": [
+                "bufio",
+                "context",
+                "errors",
+                "github.com/mattn/go-isatty",
+                "golang.org/x/sys/unix",
+                "os",
+                "os/signal",
+                "strings",
+                "syscall",
+                "unicode",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/mattn/go-tty/ttyutil": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/mattn/go-colorable",
+                "github.com/mattn/go-runewidth",
+                "github.com/mattn/go-tty",
+                "io",
+                "os",
+                "os/signal"
+            ],
+            "TestImports": null
+        }
+    }
+}

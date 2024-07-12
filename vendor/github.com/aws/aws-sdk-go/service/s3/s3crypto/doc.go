@@ -14,59 +14,59 @@ ciphers.
 
 Creating an S3 cryptography client
 
-	cmkID := "<some key ID>"
-	sess := session.Must(session.NewSession())
-	kmsClient := kms.New(sess)
-	// Create the KeyProvider
-	var matdesc s3crypto.MaterialDescription
-	handler := s3crypto.NewKMSContextKeyGenerator(kmsClient, cmkID, matdesc)
+    cmkID := "<some key ID>"
+    sess := session.Must(session.NewSession())
+    kmsClient := kms.New(sess)
+    // Create the KeyProvider
+    var matdesc s3crypto.MaterialDescription
+    handler := s3crypto.NewKMSContextKeyGenerator(kmsClient, cmkID, matdesc)
 
-	// Create an encryption and decryption client
-	// We need to pass the session here so S3 can use it. In addition, any decryption that
-	// occurs will use the KMS client.
-	svc, err := s3crypto.NewEncryptionClientV2(sess, s3crypto.AESGCMContentCipherBuilderV2(handler))
-	if err != nil {
-		panic(err) // handle error
-	}
+    // Create an encryption and decryption client
+    // We need to pass the session here so S3 can use it. In addition, any decryption that
+    // occurs will use the KMS client.
+    svc, err := s3crypto.NewEncryptionClientV2(sess, s3crypto.AESGCMContentCipherBuilderV2(handler))
+    if err != nil {
+        panic(err) // handle error
+    }
 
-	// Create a CryptoRegistry and register the algorithms you wish to use for decryption
-	cr := s3crypto.NewCryptoRegistry()
+    // Create a CryptoRegistry and register the algorithms you wish to use for decryption
+    cr := s3crypto.NewCryptoRegistry()
 
-	if err := s3crypto.RegisterAESGCMContentCipher(cr); err != nil {
-		panic(err) // handle error
-	}
+    if err := s3crypto.RegisterAESGCMContentCipher(cr); err != nil {
+        panic(err) // handle error
+    }
 
-	if err := s3crypto.RegisterKMSContextWrapWithAnyCMK(cr, kmsClient); err != nil {
-		panic(err) // handle error
-	}
+    if err := s3crypto.RegisterKMSContextWrapWithAnyCMK(cr, kmsClient); err != nil {
+        panic(err) // handle error
+    }
 
-	// Create a decryption client to decrypt artifacts
-	svc, err := s3crypto.NewDecryptionClientV2(sess, cr)
-	if err != nil {
-		panic(err) // handle error
-	}
+    // Create a decryption client to decrypt artifacts
+    svc, err := s3crypto.NewDecryptionClientV2(sess, cr)
+    if err != nil {
+        panic(err) // handle error
+    }
 
 Configuration of the S3 cryptography client
 
-	sess := session.Must(session.NewSession())
-	handler := s3crypto.NewKMSContextKeyGenerator(kms.New(sess), cmkID, s3crypto.MaterialDescription{})
-	svc, err := s3crypto.NewEncryptionClientV2(sess, s3crypto.AESGCMContentCipherBuilderV2(handler), func (o *s3crypto.EncryptionClientOptions) {
-		// Save instruction files to separate objects
-		o.SaveStrategy = NewS3SaveStrategy(sess, "")
+    sess := session.Must(session.NewSession())
+    handler := s3crypto.NewKMSContextKeyGenerator(kms.New(sess), cmkID, s3crypto.MaterialDescription{})
+    svc, err := s3crypto.NewEncryptionClientV2(sess, s3crypto.AESGCMContentCipherBuilderV2(handler), func (o *s3crypto.EncryptionClientOptions) {
+        // Save instruction files to separate objects
+        o.SaveStrategy = NewS3SaveStrategy(sess, "")
 
-		// Change instruction file suffix to .example
-		o.InstructionFileSuffix = ".example"
+        // Change instruction file suffix to .example
+        o.InstructionFileSuffix = ".example"
 
-		// Set temp folder path
-		o.TempFolderPath = "/path/to/tmp/folder/"
+        // Set temp folder path
+        o.TempFolderPath = "/path/to/tmp/folder/"
 
-		// Any content less than the minimum file size will use memory
-		// instead of writing the contents to a temp file.
-		o.MinFileSize = int64(1024 * 1024 * 1024)
-	})
-	if err != nil {
-		panic(err) // handle error
-	}
+        // Any content less than the minimum file size will use memory
+        // instead of writing the contents to a temp file.
+        o.MinFileSize = int64(1024 * 1024 * 1024)
+    })
+    if err != nil {
+        panic(err) // handle error
+    }
 
 # Object Metadata SaveStrategy
 
@@ -81,22 +81,22 @@ Registration of custom key wrapping or content encryption algorithms not provide
 security and compatibility with custom types can not be guaranteed. For example if you want to support `CustomWrap`
 key wrapping algorithm and `CustomCEK` content encryption algorithm. You can use the CryptoRegistry to register these types.
 
-	cr := s3crypto.NewCryptoRegistry()
+    cr := s3crypto.NewCryptoRegistry()
 
-	// Register a custom key wrap algorithm to the CryptoRegistry
-	if err := cr.AddWrap("CustomWrap", NewCustomWrapEntry); err != nil {
-		panic(err) // handle error
-	}
+    // Register a custom key wrap algorithm to the CryptoRegistry
+    if err := cr.AddWrap("CustomWrap", NewCustomWrapEntry); err != nil {
+        panic(err) // handle error
+    }
 
-	// Register a custom content encryption algorithm to the CryptoRegistry
-	if err := cr.AddCEK("CustomCEK", NewCustomCEKEntry); err != nil {
-		panic(err) // handle error
-	}
+    // Register a custom content encryption algorithm to the CryptoRegistry
+    if err := cr.AddCEK("CustomCEK", NewCustomCEKEntry); err != nil {
+        panic(err) // handle error
+    }
 
-	svc, err := s3crypto.NewDecryptionClientV2(sess, cr)
-	if err != nil {
-		panic(err) // handle error
-	}
+    svc, err := s3crypto.NewDecryptionClientV2(sess, cr)
+    if err != nil {
+        panic(err) // handle error
+    }
 
 We have now registered these new algorithms to the decryption client. When the client calls `GetObject` and sees
 the wrap as `CustomWrap` then it'll use that wrap algorithm. This is also true for `CustomCEK`.
@@ -104,10 +104,10 @@ the wrap as `CustomWrap` then it'll use that wrap algorithm. This is also true f
 For encryption adding a custom content cipher builder and key handler will allow for encryption of custom
 defined ciphers.
 
-	// Our wrap algorithm, CustomWrap
-	handler := NewCustomWrap(key, iv)
-	// Our content cipher builder, NewCustomCEKContentBuilder
-	svc := s3crypto.NewEncryptionClientV2(sess, NewCustomCEKContentBuilder(handler))
+    // Our wrap algorithm, CustomWrap
+    handler := NewCustomWrap(key, iv)
+    // Our content cipher builder, NewCustomCEKContentBuilder
+    svc := s3crypto.NewEncryptionClientV2(sess, NewCustomCEKContentBuilder(handler))
 
 # Maintenance Mode Notification for V1 Clients
 

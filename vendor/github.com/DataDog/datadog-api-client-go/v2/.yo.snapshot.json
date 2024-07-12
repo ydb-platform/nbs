@@ -1,0 +1,853 @@
+{
+    "Version": "v2.17.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:0jI5TotLfWgsydMg/QTHkuoqNCFKSMorjU3ki/fbVI8=",
+    "Packages": {
+        "github.com/DataDog/datadog-api-client-go/v2": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/api/datadog": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "compress/zlib",
+                "context",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2",
+                "github.com/DataDog/zstd",
+                "github.com/goccy/go-json",
+                "golang.org/x/oauth2",
+                "io",
+                "log",
+                "math",
+                "mime/multipart",
+                "net/http",
+                "net/http/httputil",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/goccy/go-json",
+                "io",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/goccy/go-json",
+                "io",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/authentication": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/aws-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/aws-logs-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/azure-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/dashboard-lists": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/dashboards": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/downtimes": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "strconv",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/events": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/gcp-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/hosts": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/ip-ranges": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/key-management": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/logs": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/logs-indexes": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/logs-pipelines": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/metrics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/monitors": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/notebooks": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/organizations": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/pagerduty-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/security-monitoring": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/service-checks": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/service-level-objective-corrections": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/service-level-objectives": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/slack-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/snapshots": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/synthetics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/tags": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/usage-metering": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/users": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v1/webhooks-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV1",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/audit": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/authn-mappings": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/ci-visibility-pipelines": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/ci-visibility-tests": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/cloud-workload-security": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/cloudflare-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/confluent-cloud": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/dashboard-lists": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/downtimes": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/events": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/fastly-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/gcp-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/incident-services": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/incident-teams": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/incidents": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/ip-allowlist": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/key-management": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/logs": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/logs-archives": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/logs-metrics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/metrics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/monitors": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/opsgenie-integration": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/organizations": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/processes": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/restriction-policies": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/roles": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/rum": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/security-monitoring": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/sensitive-data-scanner": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/service-accounts": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/service-definition": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/spans": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/spans-metrics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/synthetics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/teams": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/usage-metering": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-api-client-go/v2/examples/v2/users": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadog",
+                "github.com/DataDog/datadog-api-client-go/v2/api/datadogV2",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

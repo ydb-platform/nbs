@@ -1,0 +1,8 @@
+dependencies-stamp
+/statsd_exporter
+/.build
+/.deps
+/.release
+/.tarballs
+*~
+/vendor

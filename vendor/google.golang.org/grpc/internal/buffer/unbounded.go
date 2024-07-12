@@ -34,51 +34,51 @@ import "sync"
 // defining a new type specific implementation of this buffer is preferred. See
 // internal/transport/transport.go for an example of this.
 type Unbounded struct {
-	c       chan interface{}
-	closed  bool
-	mu      sync.Mutex
-	backlog []interface{}
+    c       chan interface{}
+    closed  bool
+    mu      sync.Mutex
+    backlog []interface{}
 }
 
 // NewUnbounded returns a new instance of Unbounded.
 func NewUnbounded() *Unbounded {
-	return &Unbounded{c: make(chan interface{}, 1)}
+    return &Unbounded{c: make(chan interface{}, 1)}
 }
 
 // Put adds t to the unbounded buffer.
 func (b *Unbounded) Put(t interface{}) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
-		return
-	}
-	if len(b.backlog) == 0 {
-		select {
-		case b.c <- t:
-			return
-		default:
-		}
-	}
-	b.backlog = append(b.backlog, t)
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    if b.closed {
+        return
+    }
+    if len(b.backlog) == 0 {
+        select {
+        case b.c <- t:
+            return
+        default:
+        }
+    }
+    b.backlog = append(b.backlog, t)
 }
 
 // Load sends the earliest buffered data, if any, onto the read channel
 // returned by Get(). Users are expected to call this every time they read a
 // value from the read channel.
 func (b *Unbounded) Load() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
-		return
-	}
-	if len(b.backlog) > 0 {
-		select {
-		case b.c <- b.backlog[0]:
-			b.backlog[0] = nil
-			b.backlog = b.backlog[1:]
-		default:
-		}
-	}
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    if b.closed {
+        return
+    }
+    if len(b.backlog) > 0 {
+        select {
+        case b.c <- b.backlog[0]:
+            b.backlog[0] = nil
+            b.backlog = b.backlog[1:]
+        default:
+        }
+    }
 }
 
 // Get returns a read channel on which values added to the buffer, via Put(),
@@ -90,16 +90,16 @@ func (b *Unbounded) Load() {
 // If the unbounded buffer is closed, the read channel returned by this method
 // is closed.
 func (b *Unbounded) Get() <-chan interface{} {
-	return b.c
+    return b.c
 }
 
 // Close closes the unbounded buffer.
 func (b *Unbounded) Close() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
-		return
-	}
-	b.closed = true
-	close(b.c)
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    if b.closed {
+        return
+    }
+    b.closed = true
+    close(b.c)
 }

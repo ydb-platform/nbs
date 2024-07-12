@@ -19,37 +19,37 @@
 package encoding
 
 import (
-	"testing"
+    "testing"
 
-	"github.com/google/go-cmp/cmp"
-	"google.golang.org/grpc/internal/grpcutil"
+    "github.com/google/go-cmp/cmp"
+    "google.golang.org/grpc/internal/grpcutil"
 )
 
 type mockNamedCompressor struct {
-	Compressor
+    Compressor
 }
 
 func (mockNamedCompressor) Name() string {
-	return "mock-compressor"
+    return "mock-compressor"
 }
 
 func TestDuplicateCompressorRegister(t *testing.T) {
-	defer func(m map[string]Compressor) { registeredCompressor = m }(registeredCompressor)
-	defer func(c []string) { grpcutil.RegisteredCompressorNames = c }(grpcutil.RegisteredCompressorNames)
-	registeredCompressor = map[string]Compressor{}
-	grpcutil.RegisteredCompressorNames = []string{}
+    defer func(m map[string]Compressor) { registeredCompressor = m }(registeredCompressor)
+    defer func(c []string) { grpcutil.RegisteredCompressorNames = c }(grpcutil.RegisteredCompressorNames)
+    registeredCompressor = map[string]Compressor{}
+    grpcutil.RegisteredCompressorNames = []string{}
 
-	RegisterCompressor(&mockNamedCompressor{})
+    RegisterCompressor(&mockNamedCompressor{})
 
-	// Register another instance of the same compressor.
-	mc := &mockNamedCompressor{}
-	RegisterCompressor(mc)
-	if got := registeredCompressor["mock-compressor"]; got != mc {
-		t.Fatalf("Unexpected compressor, got: %+v, want:%+v", got, mc)
-	}
+    // Register another instance of the same compressor.
+    mc := &mockNamedCompressor{}
+    RegisterCompressor(mc)
+    if got := registeredCompressor["mock-compressor"]; got != mc {
+        t.Fatalf("Unexpected compressor, got: %+v, want:%+v", got, mc)
+    }
 
-	wantNames := []string{"mock-compressor"}
-	if !cmp.Equal(wantNames, grpcutil.RegisteredCompressorNames) {
-		t.Fatalf("Unexpected compressor names, got: %+v, want:%+v", grpcutil.RegisteredCompressorNames, wantNames)
-	}
+    wantNames := []string{"mock-compressor"}
+    if !cmp.Equal(wantNames, grpcutil.RegisteredCompressorNames) {
+        t.Fatalf("Unexpected compressor names, got: %+v, want:%+v", grpcutil.RegisteredCompressorNames, wantNames)
+    }
 }

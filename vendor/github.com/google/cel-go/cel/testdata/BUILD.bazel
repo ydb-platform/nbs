@@ -1,0 +1,18 @@
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+genrule(
+    name = "gen_test_fds",
+    srcs = [
+        "team.proto",
+        "mutant.proto",
+    ],
+    outs = [
+        "team.fds",
+    ],
+    cmd = ("$(location @com_google_protobuf//:protoc) " +
+           "--descriptor_set_out=$@ $(SRCS)"),
+    tools = ["@com_google_protobuf//:protoc"],
+)

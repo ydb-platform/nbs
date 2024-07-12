@@ -19,7 +19,7 @@
 package balancergroup
 
 import (
-	"google.golang.org/grpc/balancer"
+    "google.golang.org/grpc/balancer"
 )
 
 // BalancerStateAggregator aggregates sub-picker and connectivity states into a
@@ -29,9 +29,9 @@ import (
 // passed directly from the parent to the aggregator implementation (instead
 // via balancer group).
 type BalancerStateAggregator interface {
-	// UpdateState updates the state of the id.
-	//
-	// It's up to the implementation whether this will trigger an update to the
-	// parent ClientConn.
-	UpdateState(id string, state balancer.State)
+    // UpdateState updates the state of the id.
+    //
+    // It's up to the implementation whether this will trigger an update to the
+    // parent ClientConn.
+    UpdateState(id string, state balancer.State)
 }

@@ -1,0 +1,28 @@
+{
+    "Version": "v1.17.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:ImOVvHnku8jijXqkwCSyYKRDt2YrnGXD4BbhcpfbfJo=",
+    "Packages": {
+        "go.opentelemetry.io/contrib/propagators/b3": {
+            "Imports": [
+                "context",
+                "errors",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/trace",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/contrib/propagators/b3",
+                "go.opentelemetry.io/otel",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/trace",
+                "net/http",
+                "testing"
+            ]
+        }
+    }
+}

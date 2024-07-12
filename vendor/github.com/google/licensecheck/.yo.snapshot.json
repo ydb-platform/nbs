@@ -1,0 +1,79 @@
+{
+    "Version": "v0.3.1",
+    "GoVersion": "1.12",
+    "Sum": "h1:QoxgoDkaeC4nFrtGN1jV7IPmDCHFNIVh54e5hSt6sPs=",
+    "Packages": {
+        "github.com/google/licensecheck": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/licensecheck/internal/match",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/google/licensecheck/internal/match",
+                "io/ioutil",
+                "math",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/licensecheck/internal/match": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/licensecheck/old": {
+            "Imports": [
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/google/licensecheck/internal/match",
+                "io/ioutil",
+                "math",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

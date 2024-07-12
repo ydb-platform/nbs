@@ -1,13 +1,19 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
-SRCS(service.go)
+SRCS(
+    service.go
+)
 
 GO_TEST_SRCS(service_test.go)
 
 IF (OS_LINUX)
-    SRCS(func_linux.go)
+    SRCS(
+        func_linux.go
+    )
 ENDIF()
 
 IF (OS_LINUX AND ARCH_X86_64)
@@ -18,13 +24,19 @@ IF (OS_LINUX AND ARCH_X86_64)
 ENDIF()
 
 IF (OS_DARWIN)
-    SRCS(func_nonlinux.go)
+    SRCS(
+        func_nonlinux.go
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(func_nonlinux.go)
+    SRCS(
+        func_nonlinux.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

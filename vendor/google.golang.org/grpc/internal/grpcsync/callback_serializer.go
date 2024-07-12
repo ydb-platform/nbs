@@ -19,10 +19,10 @@
 package grpcsync
 
 import (
-	"context"
-	"sync"
+    "context"
+    "sync"
 
-	"google.golang.org/grpc/internal/buffer"
+    "google.golang.org/grpc/internal/buffer"
 )
 
 // CallbackSerializer provides a mechanism to schedule callbacks in a
@@ -32,14 +32,14 @@ import (
 //
 // This type is safe for concurrent access.
 type CallbackSerializer struct {
-	// Done is closed once the serializer is shut down completely, i.e all
-	// scheduled callbacks are executed and the serializer has deallocated all
-	// its resources.
-	Done chan struct{}
+    // Done is closed once the serializer is shut down completely, i.e all
+    // scheduled callbacks are executed and the serializer has deallocated all
+    // its resources.
+    Done chan struct{}
 
-	callbacks *buffer.Unbounded
-	closedMu  sync.Mutex
-	closed    bool
+    callbacks *buffer.Unbounded
+    closedMu  sync.Mutex
+    closed    bool
 }
 
 // NewCallbackSerializer returns a new CallbackSerializer instance. The provided
@@ -48,12 +48,12 @@ type CallbackSerializer struct {
 // callbacks will be added once this context is canceled, and any pending un-run
 // callbacks will be executed before the serializer is shut down.
 func NewCallbackSerializer(ctx context.Context) *CallbackSerializer {
-	t := &CallbackSerializer{
-		Done:      make(chan struct{}),
-		callbacks: buffer.NewUnbounded(),
-	}
-	go t.run(ctx)
-	return t
+    t := &CallbackSerializer{
+        Done:      make(chan struct{}),
+        callbacks: buffer.NewUnbounded(),
+    }
+    go t.run(ctx)
+    return t
 }
 
 // Schedule adds a callback to be scheduled after existing callbacks are run.
@@ -65,55 +65,55 @@ func NewCallbackSerializer(ctx context.Context) *CallbackSerializer {
 // callbacks to be executed by the serializer. It is not possible to add
 // callbacks once the context passed to NewCallbackSerializer is cancelled.
 func (t *CallbackSerializer) Schedule(f func(ctx context.Context)) bool {
-	t.closedMu.Lock()
-	defer t.closedMu.Unlock()
+    t.closedMu.Lock()
+    defer t.closedMu.Unlock()
 
-	if t.closed {
-		return false
-	}
-	t.callbacks.Put(f)
-	return true
+    if t.closed {
+        return false
+    }
+    t.callbacks.Put(f)
+    return true
 }
 
 func (t *CallbackSerializer) run(ctx context.Context) {
-	var backlog []func(context.Context)
+    var backlog []func(context.Context)
 
-	defer close(t.Done)
-	for ctx.Err() == nil {
-		select {
-		case <-ctx.Done():
-			// Do nothing here. Next iteration of the for loop will not happen,
-			// since ctx.Err() would be non-nil.
-		case callback, ok := <-t.callbacks.Get():
-			if !ok {
-				return
-			}
-			t.callbacks.Load()
-			callback.(func(ctx context.Context))(ctx)
-		}
-	}
+    defer close(t.Done)
+    for ctx.Err() == nil {
+        select {
+        case <-ctx.Done():
+            // Do nothing here. Next iteration of the for loop will not happen,
+            // since ctx.Err() would be non-nil.
+        case callback, ok := <-t.callbacks.Get():
+            if !ok {
+                return
+            }
+            t.callbacks.Load()
+            callback.(func(ctx context.Context))(ctx)
+        }
+    }
 
-	// Fetch pending callbacks if any, and execute them before returning from
-	// this method and closing t.Done.
-	t.closedMu.Lock()
-	t.closed = true
-	backlog = t.fetchPendingCallbacks()
-	t.callbacks.Close()
-	t.closedMu.Unlock()
-	for _, b := range backlog {
-		b(ctx)
-	}
+    // Fetch pending callbacks if any, and execute them before returning from
+    // this method and closing t.Done.
+    t.closedMu.Lock()
+    t.closed = true
+    backlog = t.fetchPendingCallbacks()
+    t.callbacks.Close()
+    t.closedMu.Unlock()
+    for _, b := range backlog {
+        b(ctx)
+    }
 }
 
 func (t *CallbackSerializer) fetchPendingCallbacks() []func(context.Context) {
-	var backlog []func(context.Context)
-	for {
-		select {
-		case b := <-t.callbacks.Get():
-			backlog = append(backlog, b.(func(context.Context)))
-			t.callbacks.Load()
-		default:
-			return backlog
-		}
-	}
+    var backlog []func(context.Context)
+    for {
+        select {
+        case b := <-t.callbacks.Get():
+            backlog = append(backlog, b.(func(context.Context)))
+            t.callbacks.Load()
+        default:
+            return backlog
+        }
+    }
 }

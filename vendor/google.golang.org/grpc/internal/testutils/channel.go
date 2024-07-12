@@ -18,7 +18,7 @@
 package testutils
 
 import (
-	"context"
+    "context"
 )
 
 // DefaultChanBufferSize is the default buffer size of the underlying channel.
@@ -26,56 +26,56 @@ const DefaultChanBufferSize = 1
 
 // Channel wraps a generic channel and provides a timed receive operation.
 type Channel struct {
-	ch chan interface{}
+    ch chan interface{}
 }
 
 // Send sends value on the underlying channel.
 func (c *Channel) Send(value interface{}) {
-	c.ch <- value
+    c.ch <- value
 }
 
 // SendContext sends value on the underlying channel, or returns an error if
 // the context expires.
 func (c *Channel) SendContext(ctx context.Context, value interface{}) error {
-	select {
-	case c.ch <- value:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+    select {
+    case c.ch <- value:
+        return nil
+    case <-ctx.Done():
+        return ctx.Err()
+    }
 }
 
 // SendOrFail attempts to send value on the underlying channel.  Returns true
 // if successful or false if the channel was full.
 func (c *Channel) SendOrFail(value interface{}) bool {
-	select {
-	case c.ch <- value:
-		return true
-	default:
-		return false
-	}
+    select {
+    case c.ch <- value:
+        return true
+    default:
+        return false
+    }
 }
 
 // ReceiveOrFail returns the value on the underlying channel and true, or nil
 // and false if the channel was empty.
 func (c *Channel) ReceiveOrFail() (interface{}, bool) {
-	select {
-	case got := <-c.ch:
-		return got, true
-	default:
-		return nil, false
-	}
+    select {
+    case got := <-c.ch:
+        return got, true
+    default:
+        return nil, false
+    }
 }
 
 // Receive returns the value received on the underlying channel, or the error
 // returned by ctx if it is closed or cancelled.
 func (c *Channel) Receive(ctx context.Context) (interface{}, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case got := <-c.ch:
-		return got, nil
-	}
+    select {
+    case <-ctx.Done():
+        return nil, ctx.Err()
+    case got := <-c.ch:
+        return got, nil
+    }
 }
 
 // Replace clears the value on the underlying channel, and sends the new value.
@@ -84,21 +84,21 @@ func (c *Channel) Receive(ctx context.Context) (interface{}, error) {
 // up-to-date item. This method is inherently racy when invoked concurrently
 // from multiple goroutines.
 func (c *Channel) Replace(value interface{}) {
-	for {
-		select {
-		case c.ch <- value:
-			return
-		case <-c.ch:
-		}
-	}
+    for {
+        select {
+        case c.ch <- value:
+            return
+        case <-c.ch:
+        }
+    }
 }
 
 // NewChannel returns a new Channel.
 func NewChannel() *Channel {
-	return NewChannelWithSize(DefaultChanBufferSize)
+    return NewChannelWithSize(DefaultChanBufferSize)
 }
 
 // NewChannelWithSize returns a new Channel with a buffer of bufSize.
 func NewChannelWithSize(bufSize int) *Channel {
-	return &Channel{ch: make(chan interface{}, bufSize)}
+    return &Channel{ch: make(chan interface{}, bufSize)}
 }

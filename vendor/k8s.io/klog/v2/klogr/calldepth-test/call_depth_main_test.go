@@ -7,52 +7,52 @@
 package calldepth
 
 import (
-	"bytes"
-	"flag"
-	"strings"
-	"testing"
+    "bytes"
+    "flag"
+    "strings"
+    "testing"
 
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/internal/test/require"
-	"k8s.io/klog/v2/klogr"
+    "k8s.io/klog/v2"
+    "k8s.io/klog/v2/internal/test/require"
+    "k8s.io/klog/v2/klogr"
 )
 
 func TestCallDepth(t *testing.T) {
-	klog.InitFlags(nil)
-	require.NoError(t, flag.CommandLine.Set("v", "10"))
-	require.NoError(t, flag.CommandLine.Set("skip_headers", "false"))
-	require.NoError(t, flag.CommandLine.Set("logtostderr", "false"))
-	require.NoError(t, flag.CommandLine.Set("alsologtostderr", "false"))
-	require.NoError(t, flag.CommandLine.Set("stderrthreshold", "10"))
-	flag.Parse()
+    klog.InitFlags(nil)
+    require.NoError(t, flag.CommandLine.Set("v", "10"))
+    require.NoError(t, flag.CommandLine.Set("skip_headers", "false"))
+    require.NoError(t, flag.CommandLine.Set("logtostderr", "false"))
+    require.NoError(t, flag.CommandLine.Set("alsologtostderr", "false"))
+    require.NoError(t, flag.CommandLine.Set("stderrthreshold", "10"))
+    flag.Parse()
 
-	t.Run("call-depth", func(t *testing.T) {
-		logr := klogr.New()
+    t.Run("call-depth", func(t *testing.T) {
+        logr := klogr.New()
 
-		// hijack the klog output
-		tmpWriteBuffer := bytes.NewBuffer(nil)
-		klog.SetOutput(tmpWriteBuffer)
+        // hijack the klog output
+        tmpWriteBuffer := bytes.NewBuffer(nil)
+        klog.SetOutput(tmpWriteBuffer)
 
-		validate := func(t *testing.T) {
-			output := tmpWriteBuffer.String()
-			if !strings.Contains(output, "call_depth_main_test.go:") {
-				t.Fatalf("output should have contained call_depth_main_test.go, got instead: %s", output)
-			}
-		}
+        validate := func(t *testing.T) {
+            output := tmpWriteBuffer.String()
+            if !strings.Contains(output, "call_depth_main_test.go:") {
+                t.Fatalf("output should have contained call_depth_main_test.go, got instead: %s", output)
+            }
+        }
 
-		t.Run("direct", func(t *testing.T) {
-			logr.Info("hello world")
-			validate(t)
-		})
+        t.Run("direct", func(t *testing.T) {
+            logr.Info("hello world")
+            validate(t)
+        })
 
-		t.Run("indirect", func(t *testing.T) {
-			myInfo(logr, "hello world")
-			validate(t)
-		})
+        t.Run("indirect", func(t *testing.T) {
+            myInfo(logr, "hello world")
+            validate(t)
+        })
 
-		t.Run("nested", func(t *testing.T) {
-			myInfo2(logr, "hello world")
-			validate(t)
-		})
-	})
+        t.Run("nested", func(t *testing.T) {
+            myInfo2(logr, "hello world")
+            validate(t)
+        })
+    })
 }

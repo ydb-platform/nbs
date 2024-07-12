@@ -19,20 +19,20 @@
 package priority
 
 import (
-	"errors"
-	"time"
+    "errors"
+    "time"
 
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/connectivity"
+    "google.golang.org/grpc/balancer"
+    "google.golang.org/grpc/connectivity"
 )
 
 var (
-	// ErrAllPrioritiesRemoved is returned by the picker when there's no priority available.
-	ErrAllPrioritiesRemoved = errors.New("no priority is provided, all priorities are removed")
-	// DefaultPriorityInitTimeout is the timeout after which if a priority is
-	// not READY, the next will be started. It's exported to be overridden by
-	// tests.
-	DefaultPriorityInitTimeout = 10 * time.Second
+    // ErrAllPrioritiesRemoved is returned by the picker when there's no priority available.
+    ErrAllPrioritiesRemoved = errors.New("no priority is provided, all priorities are removed")
+    // DefaultPriorityInitTimeout is the timeout after which if a priority is
+    // not READY, the next will be started. It's exported to be overridden by
+    // tests.
+    DefaultPriorityInitTimeout = 10 * time.Second
 )
 
 // syncPriority handles priority after a config update or a child balancer
@@ -42,88 +42,88 @@ var (
 //
 // It's guaranteed that after this function returns:
 //
-//	If some child is READY, it is childInUse, and all lower priorities are
-//	closed.
+//    If some child is READY, it is childInUse, and all lower priorities are
+//    closed.
 //
-//	If some child is newly started(in Connecting for the first time), it is
-//	childInUse, and all lower priorities are closed.
+//    If some child is newly started(in Connecting for the first time), it is
+//    childInUse, and all lower priorities are closed.
 //
-//	Otherwise, the lowest priority is childInUse (none of the children is
-//	ready, and the overall state is not ready).
+//    Otherwise, the lowest priority is childInUse (none of the children is
+//    ready, and the overall state is not ready).
 //
 // Steps:
 //
-//	If all priorities were deleted, unset childInUse (to an empty string), and
-//	set parent ClientConn to TransientFailure
+//    If all priorities were deleted, unset childInUse (to an empty string), and
+//    set parent ClientConn to TransientFailure
 //
-//	Otherwise, Scan all children from p0, and check balancer stats:
+//    Otherwise, Scan all children from p0, and check balancer stats:
 //
-//	  For any of the following cases:
+//      For any of the following cases:
 //
-//	    If balancer is not started (not built), this is either a new child with
-//	    high priority, or a new builder for an existing child.
+//        If balancer is not started (not built), this is either a new child with
+//        high priority, or a new builder for an existing child.
 //
-//	    If balancer is Connecting and has non-nil initTimer (meaning it
-//	    transitioned from Ready or Idle to connecting, not from TF, so we
-//	    should give it init-time to connect).
+//        If balancer is Connecting and has non-nil initTimer (meaning it
+//        transitioned from Ready or Idle to connecting, not from TF, so we
+//        should give it init-time to connect).
 //
-//	    If balancer is READY or IDLE
+//        If balancer is READY or IDLE
 //
-//	    If this is the lowest priority
+//        If this is the lowest priority
 //
-//	 do the following:
+//     do the following:
 //
-//	    if this is not the old childInUse, override picker so old picker is no
-//	    longer used.
+//        if this is not the old childInUse, override picker so old picker is no
+//        longer used.
 //
-//	    switch to it (because all higher priorities are neither new or Ready)
+//        switch to it (because all higher priorities are neither new or Ready)
 //
-//	    forward the new addresses and config
+//        forward the new addresses and config
 //
 // Caller must hold b.mu.
 func (b *priorityBalancer) syncPriority(childUpdating string) {
-	if b.inhibitPickerUpdates {
-		b.logger.Debugf("Skipping update from child policy %q", childUpdating)
-		return
-	}
-	for p, name := range b.priorities {
-		child, ok := b.children[name]
-		if !ok {
-			b.logger.Warningf("Priority name %q is not found in list of child policies", name)
-			continue
-		}
+    if b.inhibitPickerUpdates {
+        b.logger.Debugf("Skipping update from child policy %q", childUpdating)
+        return
+    }
+    for p, name := range b.priorities {
+        child, ok := b.children[name]
+        if !ok {
+            b.logger.Warningf("Priority name %q is not found in list of child policies", name)
+            continue
+        }
 
-		if !child.started ||
-			child.state.ConnectivityState == connectivity.Ready ||
-			child.state.ConnectivityState == connectivity.Idle ||
-			(child.state.ConnectivityState == connectivity.Connecting && child.initTimer != nil) ||
-			p == len(b.priorities)-1 {
-			if b.childInUse != child.name || child.name == childUpdating {
-				b.logger.Debugf("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
-				// If we switch children or the child in use just updated its
-				// picker, push the child's picker to the parent.
-				b.cc.UpdateState(child.state)
-			}
-			b.logger.Debugf("Switching to (%q, %v) in syncPriority", child.name, p)
-			b.switchToChild(child, p)
-			break
-		}
-	}
+        if !child.started ||
+            child.state.ConnectivityState == connectivity.Ready ||
+            child.state.ConnectivityState == connectivity.Idle ||
+            (child.state.ConnectivityState == connectivity.Connecting && child.initTimer != nil) ||
+            p == len(b.priorities)-1 {
+            if b.childInUse != child.name || child.name == childUpdating {
+                b.logger.Debugf("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
+                // If we switch children or the child in use just updated its
+                // picker, push the child's picker to the parent.
+                b.cc.UpdateState(child.state)
+            }
+            b.logger.Debugf("Switching to (%q, %v) in syncPriority", child.name, p)
+            b.switchToChild(child, p)
+            break
+        }
+    }
 }
 
 // Stop priorities [p+1, lowest].
 //
 // Caller must hold b.mu.
 func (b *priorityBalancer) stopSubBalancersLowerThanPriority(p int) {
-	for i := p + 1; i < len(b.priorities); i++ {
-		name := b.priorities[i]
-		child, ok := b.children[name]
-		if !ok {
-			b.logger.Warningf("Priority name %q is not found in list of child policies", name)
-			continue
-		}
-		child.stop()
-	}
+    for i := p + 1; i < len(b.priorities); i++ {
+        name := b.priorities[i]
+        child, ok := b.children[name]
+        if !ok {
+            b.logger.Warningf("Priority name %q is not found in list of child policies", name)
+            continue
+        }
+        child.stop()
+    }
 }
 
 // switchToChild does the following:
@@ -144,61 +144,61 @@ func (b *priorityBalancer) stopSubBalancersLowerThanPriority(p int) {
 //
 // Caller must hold b.mu.
 func (b *priorityBalancer) switchToChild(child *childBalancer, priority int) {
-	// Stop lower priorities even if childInUse is same as this child. It's
-	// possible this child was moved from a priority to another.
-	b.stopSubBalancersLowerThanPriority(priority)
+    // Stop lower priorities even if childInUse is same as this child. It's
+    // possible this child was moved from a priority to another.
+    b.stopSubBalancersLowerThanPriority(priority)
 
-	// If this child is already in use, do nothing.
-	//
-	// This can happen:
-	// - all priorities are not READY, an config update always triggers switch
-	// to the lowest. In this case, the lowest child could still be connecting,
-	// so we don't stop the init timer.
-	// - a high priority is READY, an config update always triggers switch to
-	// it.
-	if b.childInUse == child.name && child.started {
-		return
-	}
-	b.childInUse = child.name
+    // If this child is already in use, do nothing.
+    //
+    // This can happen:
+    // - all priorities are not READY, an config update always triggers switch
+    // to the lowest. In this case, the lowest child could still be connecting,
+    // so we don't stop the init timer.
+    // - a high priority is READY, an config update always triggers switch to
+    // it.
+    if b.childInUse == child.name && child.started {
+        return
+    }
+    b.childInUse = child.name
 
-	if !child.started {
-		child.start()
-	}
+    if !child.started {
+        child.start()
+    }
 }
 
 // handleChildStateUpdate start/close priorities based on the connectivity
 // state.
 func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.State) {
-	// Update state in child. The updated picker will be sent to parent later if
-	// necessary.
-	child, ok := b.children[childName]
-	if !ok {
-		b.logger.Warningf("Child policy not found for %q", childName)
-		return
-	}
-	if !child.started {
-		b.logger.Warningf("Ignoring update from child policy %q which is not in started state: %+v", childName, s)
-		return
-	}
-	child.state = s
+    // Update state in child. The updated picker will be sent to parent later if
+    // necessary.
+    child, ok := b.children[childName]
+    if !ok {
+        b.logger.Warningf("Child policy not found for %q", childName)
+        return
+    }
+    if !child.started {
+        b.logger.Warningf("Ignoring update from child policy %q which is not in started state: %+v", childName, s)
+        return
+    }
+    child.state = s
 
-	// We start/stop the init timer of this child based on the new connectivity
-	// state. syncPriority() later will need the init timer (to check if it's
-	// nil or not) to decide which child to switch to.
-	switch s.ConnectivityState {
-	case connectivity.Ready, connectivity.Idle:
-		child.reportedTF = false
-		child.stopInitTimer()
-	case connectivity.TransientFailure:
-		child.reportedTF = true
-		child.stopInitTimer()
-	case connectivity.Connecting:
-		if !child.reportedTF {
-			child.startInitTimer()
-		}
-	default:
-		// New state is Shutdown, should never happen. Don't forward.
-	}
+    // We start/stop the init timer of this child based on the new connectivity
+    // state. syncPriority() later will need the init timer (to check if it's
+    // nil or not) to decide which child to switch to.
+    switch s.ConnectivityState {
+    case connectivity.Ready, connectivity.Idle:
+        child.reportedTF = false
+        child.stopInitTimer()
+    case connectivity.TransientFailure:
+        child.reportedTF = true
+        child.stopInitTimer()
+    case connectivity.Connecting:
+        if !child.reportedTF {
+            child.startInitTimer()
+        }
+    default:
+        // New state is Shutdown, should never happen. Don't forward.
+    }
 
-	child.parent.syncPriority(childName)
+    child.parent.syncPriority(childName)
 }

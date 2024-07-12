@@ -1,0 +1,21 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:dLEQVugN8vlakKOUE3ihGLTZJRB4j+M2cdTm/ORI65Y=",
+    "Packages": {
+        "github.com/hashicorp/logutils": {
+            "Imports": [
+                "bytes",
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "io/ioutil",
+                "log",
+                "testing"
+            ]
+        }
+    }
+}

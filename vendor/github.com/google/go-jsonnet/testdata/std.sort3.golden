@@ -1,0 +1,13 @@
+RUNTIME ERROR: foo
+-------------------------------------------------
+    testdata/std.sort3:1:16-27    thunk from <thunk from <$>>
+
+std.sort([1,2, error "foo"])
+
+-------------------------------------------------
+    testdata/std.sort3:1:1-29    $
+
+std.sort([1,2, error "foo"])
+
+-------------------------------------------------
+    During evaluation

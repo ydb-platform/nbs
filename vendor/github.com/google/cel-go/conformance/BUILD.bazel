@@ -1,0 +1,65 @@
+ALL_TESTS = [
+    "@com_google_cel_spec//tests/simple:testdata/basic.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/comparisons.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/conversions.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/dynamic.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/enums.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/fields.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/fp_math.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/integer_math.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/lists.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/logic.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/macros.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/namespace.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/parse.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/plumbing.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/proto2.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/proto3.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/string.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/timestamps.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/unknowns.textproto",
+    "@com_google_cel_spec//tests/simple:testdata/wrappers.textproto",
+]
+
+sh_test(
+    name = "ct",
+    srcs = ["@com_google_cel_spec//tests:conftest.sh"],
+    args = [
+        "$(location @com_google_cel_spec//tests/simple:simple_test)",
+        "--server=$(location //server/main:cel_server)",
+        # Tests that need to be removed as the spec has changed
+        "--skip_test=comparisons/eq_literal/eq_mixed_types_error,eq_list_elem_mixed_types_error,eq_map_value_mixed_types_error;ne_literal/ne_mixed_types_error",
+        "--skip_test=comparisons/in_list_literal/elem_in_mixed_type_list_error",
+        "--skip_test=comparisons/in_map_literal/key_in_mixed_key_type_map_error",
+        "--skip_test=macros/exists/list_elem_type_exhaustive,map_key_type_exhaustive",
+
+        # Failing conformance tests.
+        "--skip_test=fields/qualified_identifier_resolution/map_key_float,map_key_null,map_value_repeat_key",
+        "--skip_test=timestamps/duration_converters/get_milliseconds",
+
+        # Future enhancments.
+        "--skip_test=enums/strong_proto2",
+        "--skip_test=enums/strong_proto3",
+    ] + ["$(location " + test + ")" for test in ALL_TESTS],
+    data = [
+        "//server/main:cel_server",
+        "@com_google_cel_spec//tests/simple:simple_test",
+    ] + ALL_TESTS,
+)
+
+# ct_dashboard is a target for the conformance dashboard and includes all simple textproto files, including those that are broken.
+sh_test(
+    name = "ct_dashboard",
+    srcs = ["@com_google_cel_spec//tests:conftest-nofail.sh"],
+    args = [
+        "$(location @com_google_cel_spec//tests/simple:simple_test)",
+        "--server=$(location //server/main:cel_server)",
+
+        # Failing due to a GCB builder issue
+        "--skip_test=timestamps/timestamp_selectors_tz/getDate,getDayOfMonth_name_neg,getDayOfMonth_name_pos,getDayOfYear,getMinutes",
+    ] + ["$(location " + test + ")" for test in ALL_TESTS],
+    data = [
+        "//server/main:cel_server",
+        "@com_google_cel_spec//tests/simple:simple_test",
+    ] + ALL_TESTS,
+)

@@ -20,5 +20,5 @@ package logr
 // used whenever the caller is not interested in the logs.  Logger instances
 // produced by this function always compare as equal.
 func Discard() Logger {
-	return New(nil)
+    return New(nil)
 }

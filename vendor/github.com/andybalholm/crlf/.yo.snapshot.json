@@ -1,0 +1,18 @@
+{
+    "Version": "v0.0.0-20171020200849-670099aa064f",
+    "GoVersion": "",
+    "Sum": "h1:NNJE6p4LchkmNfNskDUaSbrwxZzr7t2/lj2aS+q4oF0=",
+    "Packages": {
+        "github.com/andybalholm/crlf": {
+            "Imports": [
+                "golang.org/x/text/transform",
+                "io",
+                "os"
+            ],
+            "TestImports": [
+                "golang.org/x/text/transform",
+                "testing"
+            ]
+        }
+    }
+}

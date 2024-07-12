@@ -22,11 +22,11 @@
 package zapio
 
 import (
-	"bytes"
-	"io"
+    "bytes"
+    "io"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap"
+    "go.uber.org/zap/zapcore"
 )
 
 // Writer is an io.Writer that writes to the provided Zap logger, splitting log
@@ -37,34 +37,34 @@ import (
 // and you want to log the output using your existing logger configuration. For
 // example,
 //
-//	writer := &zapio.Writer{Log: logger, Level: zap.DebugLevel}
-//	defer writer.Close()
+//    writer := &zapio.Writer{Log: logger, Level: zap.DebugLevel}
+//    defer writer.Close()
 //
-//	cmd := exec.CommandContext(ctx, ...)
-//	cmd.Stdout = writer
-//	cmd.Stderr = writer
-//	if err := cmd.Run(); err != nil {
-//	    return err
-//	}
+//    cmd := exec.CommandContext(ctx, ...)
+//    cmd.Stdout = writer
+//    cmd.Stderr = writer
+//    if err := cmd.Run(); err != nil {
+//        return err
+//    }
 //
 // Writer must be closed when finished to flush buffered data to the logger.
 type Writer struct {
-	// Log specifies the logger to which the Writer will write messages.
-	//
-	// The Writer will panic if Log is unspecified.
-	Log *zap.Logger
+    // Log specifies the logger to which the Writer will write messages.
+    //
+    // The Writer will panic if Log is unspecified.
+    Log *zap.Logger
 
-	// Log level for the messages written to the provided logger.
-	//
-	// If unspecified, defaults to Info.
-	Level zapcore.Level
+    // Log level for the messages written to the provided logger.
+    //
+    // If unspecified, defaults to Info.
+    Level zapcore.Level
 
-	buff bytes.Buffer
+    buff bytes.Buffer
 }
 
 var (
-	_ zapcore.WriteSyncer = (*Writer)(nil)
-	_ io.Closer           = (*Writer)(nil)
+    _ zapcore.WriteSyncer = (*Writer)(nil)
+    _ io.Closer           = (*Writer)(nil)
 )
 
 // Write writes the provided bytes to the underlying logger at the configured
@@ -73,46 +73,46 @@ var (
 // Write will split the input on newlines and post each line as a new log entry
 // to the logger.
 func (w *Writer) Write(bs []byte) (n int, err error) {
-	// Skip all checks if the level isn't enabled.
-	if !w.Log.Core().Enabled(w.Level) {
-		return len(bs), nil
-	}
+    // Skip all checks if the level isn't enabled.
+    if !w.Log.Core().Enabled(w.Level) {
+        return len(bs), nil
+    }
 
-	n = len(bs)
-	for len(bs) > 0 {
-		bs = w.writeLine(bs)
-	}
+    n = len(bs)
+    for len(bs) > 0 {
+        bs = w.writeLine(bs)
+    }
 
-	return n, nil
+    return n, nil
 }
 
 // writeLine writes a single line from the input, returning the remaining,
 // unconsumed bytes.
 func (w *Writer) writeLine(line []byte) (remaining []byte) {
-	idx := bytes.IndexByte(line, '\n')
-	if idx < 0 {
-		// If there are no newlines, buffer the entire string.
-		w.buff.Write(line)
-		return nil
-	}
+    idx := bytes.IndexByte(line, '\n')
+    if idx < 0 {
+        // If there are no newlines, buffer the entire string.
+        w.buff.Write(line)
+        return nil
+    }
 
-	// Split on the newline, buffer and flush the left.
-	line, remaining = line[:idx], line[idx+1:]
+    // Split on the newline, buffer and flush the left.
+    line, remaining = line[:idx], line[idx+1:]
 
-	// Fast path: if we don't have a partial message from a previous write
-	// in the buffer, skip the buffer and log directly.
-	if w.buff.Len() == 0 {
-		w.log(line)
-		return
-	}
+    // Fast path: if we don't have a partial message from a previous write
+    // in the buffer, skip the buffer and log directly.
+    if w.buff.Len() == 0 {
+        w.log(line)
+        return
+    }
 
-	w.buff.Write(line)
+    w.buff.Write(line)
 
-	// Log empty messages in the middle of the stream so that we don't lose
-	// information when the user writes "foo\n\nbar".
-	w.flush(true /* allowEmpty */)
+    // Log empty messages in the middle of the stream so that we don't lose
+    // information when the user writes "foo\n\nbar".
+    w.flush(true /* allowEmpty */)
 
-	return remaining
+    return remaining
 }
 
 // Close closes the writer, flushing any buffered data in the process.
@@ -120,30 +120,30 @@ func (w *Writer) writeLine(line []byte) (remaining []byte) {
 // Always call Close once you're done with the Writer to ensure that it flushes
 // all data.
 func (w *Writer) Close() error {
-	return w.Sync()
+    return w.Sync()
 }
 
 // Sync flushes buffered data to the logger as a new log entry even if it
 // doesn't contain a newline.
 func (w *Writer) Sync() error {
-	// Don't allow empty messages on explicit Sync calls or on Close
-	// because we don't want an extraneous empty message at the end of the
-	// stream -- it's common for files to end with a newline.
-	w.flush(false /* allowEmpty */)
-	return nil
+    // Don't allow empty messages on explicit Sync calls or on Close
+    // because we don't want an extraneous empty message at the end of the
+    // stream -- it's common for files to end with a newline.
+    w.flush(false /* allowEmpty */)
+    return nil
 }
 
 // flush flushes the buffered data to the logger, allowing empty messages only
 // if the bool is set.
 func (w *Writer) flush(allowEmpty bool) {
-	if allowEmpty || w.buff.Len() > 0 {
-		w.log(w.buff.Bytes())
-	}
-	w.buff.Reset()
+    if allowEmpty || w.buff.Len() > 0 {
+        w.log(w.buff.Bytes())
+    }
+    w.buff.Reset()
 }
 
 func (w *Writer) log(b []byte) {
-	if ce := w.Log.Check(w.Level, string(b)); ce != nil {
-		ce.Write()
-	}
+    if ce := w.Log.Check(w.Level, string(b)); ce != nil {
+        ce.Write()
+    }
 }

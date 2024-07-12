@@ -14,12 +14,13 @@
 package prometheus
 
 import (
-	"errors"
-	"math"
-	"sync/atomic"
-	"time"
+    "errors"
+    "math"
+    "sync/atomic"
+    "time"
 
-	dto "github.com/prometheus/client_model/go"
+    dto "github.com/prometheus/client_model/go"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Counter is a Metric that represents a single numerical value that only ever
@@ -32,15 +33,15 @@ import (
 //
 // To create Counter instances, use NewCounter.
 type Counter interface {
-	Metric
-	Collector
+    Metric
+    Collector
 
-	// Inc increments the counter by 1. Use Add to increment it by arbitrary
-	// non-negative values.
-	Inc()
-	// Add adds the given value to the counter. It panics if the value is <
-	// 0.
-	Add(float64)
+    // Inc increments the counter by 1. Use Add to increment it by arbitrary
+    // non-negative values.
+    Inc()
+    // Add adds the given value to the counter. It panics if the value is <
+    // 0.
+    Add(float64)
 }
 
 // ExemplarAdder is implemented by Counters that offer the option of adding a
@@ -53,7 +54,7 @@ type Counter interface {
 // of the provided labels are invalid, or if the provided labels contain more
 // than 128 runes in total.
 type ExemplarAdder interface {
-	AddWithExemplar(value float64, exemplar Labels)
+    AddWithExemplar(value float64, exemplar Labels)
 }
 
 // CounterOpts is an alias for Opts. See there for doc comments.
@@ -63,12 +64,12 @@ type CounterOpts Opts
 // It is mandatory to set CounterOpts, see there for mandatory fields. VariableLabels
 // is optional and can safely be left to its default value.
 type CounterVecOpts struct {
-	CounterOpts
+    CounterOpts
 
-	// VariableLabels are used to partition the metric vector by the given set
-	// of labels. Each label value will be constrained with the optional Contraint
-	// function, if provided.
-	VariableLabels ConstrainableLabels
+    // VariableLabels are used to partition the metric vector by the given set
+    // of labels. Each label value will be constrained with the optional Constraint
+    // function, if provided.
+    VariableLabels ConstrainableLabels
 }
 
 // NewCounter creates a new Counter based on the provided CounterOpts.
@@ -84,94 +85,99 @@ type CounterVecOpts struct {
 // Both internal tracking values are added up in the Write method. This has to
 // be taken into account when it comes to precision and overflow behavior.
 func NewCounter(opts CounterOpts) Counter {
-	desc := NewDesc(
-		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		opts.Help,
-		nil,
-		opts.ConstLabels,
-	)
-	result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: time.Now}
-	result.init(result) // Init self-collection.
-	return result
+    desc := NewDesc(
+        BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+        opts.Help,
+        nil,
+        opts.ConstLabels,
+    )
+    if opts.now == nil {
+        opts.now = time.Now
+    }
+    result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: opts.now}
+    result.init(result) // Init self-collection.
+    result.createdTs = timestamppb.New(opts.now())
+    return result
 }
 
 type counter struct {
-	// valBits contains the bits of the represented float64 value, while
-	// valInt stores values that are exact integers. Both have to go first
-	// in the struct to guarantee alignment for atomic operations.
-	// http://golang.org/pkg/sync/atomic/#pkg-note-BUG
-	valBits uint64
-	valInt  uint64
+    // valBits contains the bits of the represented float64 value, while
+    // valInt stores values that are exact integers. Both have to go first
+    // in the struct to guarantee alignment for atomic operations.
+    // http://golang.org/pkg/sync/atomic/#pkg-note-BUG
+    valBits uint64
+    valInt  uint64
 
-	selfCollector
-	desc *Desc
+    selfCollector
+    desc *Desc
 
-	labelPairs []*dto.LabelPair
-	exemplar   atomic.Value // Containing nil or a *dto.Exemplar.
+    createdTs  *timestamppb.Timestamp
+    labelPairs []*dto.LabelPair
+    exemplar   atomic.Value // Containing nil or a *dto.Exemplar.
 
-	now func() time.Time // To mock out time.Now() for testing.
+    // now is for testing purposes, by default it's time.Now.
+    now func() time.Time
 }
 
 func (c *counter) Desc() *Desc {
-	return c.desc
+    return c.desc
 }
 
 func (c *counter) Add(v float64) {
-	if v < 0 {
-		panic(errors.New("counter cannot decrease in value"))
-	}
+    if v < 0 {
+        panic(errors.New("counter cannot decrease in value"))
+    }
 
-	ival := uint64(v)
-	if float64(ival) == v {
-		atomic.AddUint64(&c.valInt, ival)
-		return
-	}
+    ival := uint64(v)
+    if float64(ival) == v {
+        atomic.AddUint64(&c.valInt, ival)
+        return
+    }
 
-	for {
-		oldBits := atomic.LoadUint64(&c.valBits)
-		newBits := math.Float64bits(math.Float64frombits(oldBits) + v)
-		if atomic.CompareAndSwapUint64(&c.valBits, oldBits, newBits) {
-			return
-		}
-	}
+    for {
+        oldBits := atomic.LoadUint64(&c.valBits)
+        newBits := math.Float64bits(math.Float64frombits(oldBits) + v)
+        if atomic.CompareAndSwapUint64(&c.valBits, oldBits, newBits) {
+            return
+        }
+    }
 }
 
 func (c *counter) AddWithExemplar(v float64, e Labels) {
-	c.Add(v)
-	c.updateExemplar(v, e)
+    c.Add(v)
+    c.updateExemplar(v, e)
 }
 
 func (c *counter) Inc() {
-	atomic.AddUint64(&c.valInt, 1)
+    atomic.AddUint64(&c.valInt, 1)
 }
 
 func (c *counter) get() float64 {
-	fval := math.Float64frombits(atomic.LoadUint64(&c.valBits))
-	ival := atomic.LoadUint64(&c.valInt)
-	return fval + float64(ival)
+    fval := math.Float64frombits(atomic.LoadUint64(&c.valBits))
+    ival := atomic.LoadUint64(&c.valInt)
+    return fval + float64(ival)
 }
 
 func (c *counter) Write(out *dto.Metric) error {
-	// Read the Exemplar first and the value second. This is to avoid a race condition
-	// where users see an exemplar for a not-yet-existing observation.
-	var exemplar *dto.Exemplar
-	if e := c.exemplar.Load(); e != nil {
-		exemplar = e.(*dto.Exemplar)
-	}
-	val := c.get()
-
-	return populateMetric(CounterValue, val, c.labelPairs, exemplar, out)
+    // Read the Exemplar first and the value second. This is to avoid a race condition
+    // where users see an exemplar for a not-yet-existing observation.
+    var exemplar *dto.Exemplar
+    if e := c.exemplar.Load(); e != nil {
+        exemplar = e.(*dto.Exemplar)
+    }
+    val := c.get()
+    return populateMetric(CounterValue, val, c.labelPairs, exemplar, out, c.createdTs)
 }
 
 func (c *counter) updateExemplar(v float64, l Labels) {
-	if l == nil {
-		return
-	}
-	e, err := newExemplar(v, c.now(), l)
-	if err != nil {
-		panic(err)
-	}
-	c.exemplar.Store(e)
+    if l == nil {
+        return
+    }
+    e, err := newExemplar(v, c.now(), l)
+    if err != nil {
+        panic(err)
+    }
+    c.exemplar.Store(e)
 }
 
 // CounterVec is a Collector that bundles a set of Counters that all share the
@@ -180,36 +186,40 @@ func (c *counter) updateExemplar(v float64, l Labels) {
 // (e.g. number of HTTP requests, partitioned by response code and
 // method). Create instances with NewCounterVec.
 type CounterVec struct {
-	*MetricVec
+    *MetricVec
 }
 
 // NewCounterVec creates a new CounterVec based on the provided CounterOpts and
 // partitioned by the given label names.
 func NewCounterVec(opts CounterOpts, labelNames []string) *CounterVec {
-	return V2.NewCounterVec(CounterVecOpts{
-		CounterOpts:    opts,
-		VariableLabels: UnconstrainedLabels(labelNames),
-	})
+    return V2.NewCounterVec(CounterVecOpts{
+        CounterOpts:    opts,
+        VariableLabels: UnconstrainedLabels(labelNames),
+    })
 }
 
 // NewCounterVec creates a new CounterVec based on the provided CounterVecOpts.
 func (v2) NewCounterVec(opts CounterVecOpts) *CounterVec {
-	desc := V2.NewDesc(
-		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		opts.Help,
-		opts.VariableLabels,
-		opts.ConstLabels,
-	)
-	return &CounterVec{
-		MetricVec: NewMetricVec(desc, func(lvs ...string) Metric {
-			if len(lvs) != len(desc.variableLabels) {
-				panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels.labelNames(), lvs))
-			}
-			result := &counter{desc: desc, labelPairs: MakeLabelPairs(desc, lvs), now: time.Now}
-			result.init(result) // Init self-collection.
-			return result
-		}),
-	}
+    desc := V2.NewDesc(
+        BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+        opts.Help,
+        opts.VariableLabels,
+        opts.ConstLabels,
+    )
+    if opts.now == nil {
+        opts.now = time.Now
+    }
+    return &CounterVec{
+        MetricVec: NewMetricVec(desc, func(lvs ...string) Metric {
+            if len(lvs) != len(desc.variableLabels.names) {
+                panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels.names, lvs))
+            }
+            result := &counter{desc: desc, labelPairs: MakeLabelPairs(desc, lvs), now: opts.now}
+            result.init(result) // Init self-collection.
+            result.createdTs = timestamppb.New(opts.now())
+            return result
+        }),
+    }
 }
 
 // GetMetricWithLabelValues returns the Counter for the given slice of label
@@ -236,11 +246,11 @@ func (v2) NewCounterVec(opts CounterVecOpts) *CounterVec {
 // with a performance overhead (for creating and processing the Labels map).
 // See also the GaugeVec example.
 func (v *CounterVec) GetMetricWithLabelValues(lvs ...string) (Counter, error) {
-	metric, err := v.MetricVec.GetMetricWithLabelValues(lvs...)
-	if metric != nil {
-		return metric.(Counter), err
-	}
-	return nil, err
+    metric, err := v.MetricVec.GetMetricWithLabelValues(lvs...)
+    if metric != nil {
+        return metric.(Counter), err
+    }
+    return nil, err
 }
 
 // GetMetricWith returns the Counter for the given Labels map (the label names
@@ -256,36 +266,36 @@ func (v *CounterVec) GetMetricWithLabelValues(lvs ...string) (Counter, error) {
 // GetMetricWithLabelValues(...string). See there for pros and cons of the two
 // methods.
 func (v *CounterVec) GetMetricWith(labels Labels) (Counter, error) {
-	metric, err := v.MetricVec.GetMetricWith(labels)
-	if metric != nil {
-		return metric.(Counter), err
-	}
-	return nil, err
+    metric, err := v.MetricVec.GetMetricWith(labels)
+    if metric != nil {
+        return metric.(Counter), err
+    }
+    return nil, err
 }
 
 // WithLabelValues works as GetMetricWithLabelValues, but panics where
 // GetMetricWithLabelValues would have returned an error. Not returning an
 // error allows shortcuts like
 //
-//	myVec.WithLabelValues("404", "GET").Add(42)
+//    myVec.WithLabelValues("404", "GET").Add(42)
 func (v *CounterVec) WithLabelValues(lvs ...string) Counter {
-	c, err := v.GetMetricWithLabelValues(lvs...)
-	if err != nil {
-		panic(err)
-	}
-	return c
+    c, err := v.GetMetricWithLabelValues(lvs...)
+    if err != nil {
+        panic(err)
+    }
+    return c
 }
 
 // With works as GetMetricWith, but panics where GetMetricWithLabels would have
 // returned an error. Not returning an error allows shortcuts like
 //
-//	myVec.With(prometheus.Labels{"code": "404", "method": "GET"}).Add(42)
+//    myVec.With(prometheus.Labels{"code": "404", "method": "GET"}).Add(42)
 func (v *CounterVec) With(labels Labels) Counter {
-	c, err := v.GetMetricWith(labels)
-	if err != nil {
-		panic(err)
-	}
-	return c
+    c, err := v.GetMetricWith(labels)
+    if err != nil {
+        panic(err)
+    }
+    return c
 }
 
 // CurryWith returns a vector curried with the provided labels, i.e. the
@@ -302,21 +312,21 @@ func (v *CounterVec) With(labels Labels) Counter {
 // registered with a given registry (usually the uncurried version). The Reset
 // method deletes all metrics, even if called on a curried vector.
 func (v *CounterVec) CurryWith(labels Labels) (*CounterVec, error) {
-	vec, err := v.MetricVec.CurryWith(labels)
-	if vec != nil {
-		return &CounterVec{vec}, err
-	}
-	return nil, err
+    vec, err := v.MetricVec.CurryWith(labels)
+    if vec != nil {
+        return &CounterVec{vec}, err
+    }
+    return nil, err
 }
 
 // MustCurryWith works as CurryWith but panics where CurryWith would have
 // returned an error.
 func (v *CounterVec) MustCurryWith(labels Labels) *CounterVec {
-	vec, err := v.CurryWith(labels)
-	if err != nil {
-		panic(err)
-	}
-	return vec
+    vec, err := v.CurryWith(labels)
+    if err != nil {
+        panic(err)
+    }
+    return vec
 }
 
 // CounterFunc is a Counter whose value is determined at collect time by calling a
@@ -324,8 +334,8 @@ func (v *CounterVec) MustCurryWith(labels Labels) *CounterVec {
 //
 // To create CounterFunc instances, use NewCounterFunc.
 type CounterFunc interface {
-	Metric
-	Collector
+    Metric
+    Collector
 }
 
 // NewCounterFunc creates a new CounterFunc based on the provided
@@ -339,10 +349,10 @@ type CounterFunc interface {
 //
 // Check out the ExampleGaugeFunc examples for the similar GaugeFunc.
 func NewCounterFunc(opts CounterOpts, function func() float64) CounterFunc {
-	return newValueFunc(NewDesc(
-		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		opts.Help,
-		nil,
-		opts.ConstLabels,
-	), CounterValue, function)
+    return newValueFunc(NewDesc(
+        BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+        opts.Help,
+        nil,
+        opts.ConstLabels,
+    ), CounterValue, function)
 }

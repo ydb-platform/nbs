@@ -15,32 +15,32 @@
 package cobra
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
+    "bytes"
+    "fmt"
+    "io"
+    "os"
 )
 
 // GenZshCompletionFile generates zsh completion file including descriptions.
 func (c *Command) GenZshCompletionFile(filename string) error {
-	return c.genZshCompletionFile(filename, true)
+    return c.genZshCompletionFile(filename, true)
 }
 
 // GenZshCompletion generates zsh completion file including descriptions
 // and writes it to the passed writer.
 func (c *Command) GenZshCompletion(w io.Writer) error {
-	return c.genZshCompletion(w, true)
+    return c.genZshCompletion(w, true)
 }
 
 // GenZshCompletionFileNoDesc generates zsh completion file without descriptions.
 func (c *Command) GenZshCompletionFileNoDesc(filename string) error {
-	return c.genZshCompletionFile(filename, false)
+    return c.genZshCompletionFile(filename, false)
 }
 
 // GenZshCompletionNoDesc generates zsh completion file without descriptions
 // and writes it to the passed writer.
 func (c *Command) GenZshCompletionNoDesc(w io.Writer) error {
-	return c.genZshCompletion(w, false)
+    return c.genZshCompletion(w, false)
 }
 
 // MarkZshCompPositionalArgumentFile only worked for zsh and its behavior was
@@ -53,7 +53,7 @@ func (c *Command) GenZshCompletionNoDesc(w io.Writer) error {
 //
 // Deprecated
 func (c *Command) MarkZshCompPositionalArgumentFile(argPosition int, patterns ...string) error {
-	return nil
+    return nil
 }
 
 // MarkZshCompPositionalArgumentWords only worked for zsh. It has therefore
@@ -64,32 +64,32 @@ func (c *Command) MarkZshCompPositionalArgumentFile(argPosition int, patterns ..
 //
 // Deprecated
 func (c *Command) MarkZshCompPositionalArgumentWords(argPosition int, words ...string) error {
-	return nil
+    return nil
 }
 
 func (c *Command) genZshCompletionFile(filename string, includeDesc bool) error {
-	outFile, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
+    outFile, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer outFile.Close()
 
-	return c.genZshCompletion(outFile, includeDesc)
+    return c.genZshCompletion(outFile, includeDesc)
 }
 
 func (c *Command) genZshCompletion(w io.Writer, includeDesc bool) error {
-	buf := new(bytes.Buffer)
-	genZshComp(buf, c.Name(), includeDesc)
-	_, err := buf.WriteTo(w)
-	return err
+    buf := new(bytes.Buffer)
+    genZshComp(buf, c.Name(), includeDesc)
+    _, err := buf.WriteTo(w)
+    return err
 }
 
 func genZshComp(buf io.StringWriter, name string, includeDesc bool) {
-	compCmd := ShellCompRequestCmd
-	if !includeDesc {
-		compCmd = ShellCompNoDescRequestCmd
-	}
-	WriteStringAndCheck(buf, fmt.Sprintf(`#compdef %[1]s
+    compCmd := ShellCompRequestCmd
+    if !includeDesc {
+        compCmd = ShellCompNoDescRequestCmd
+    }
+    WriteStringAndCheck(buf, fmt.Sprintf(`#compdef %[1]s
 compdef _%[1]s %[1]s
 
 # zsh completion for %-36[1]s -*- shell-script -*-
@@ -302,7 +302,7 @@ if [ "$funcstack[1]" = "_%[1]s" ]; then
     _%[1]s
 fi
 `, name, compCmd,
-		ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
-		ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder,
-		activeHelpMarker))
+        ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
+        ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder,
+        activeHelpMarker))
 }

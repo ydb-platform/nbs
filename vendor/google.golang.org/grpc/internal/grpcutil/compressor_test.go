@@ -19,28 +19,28 @@
 package grpcutil
 
 import (
-	"testing"
+    "testing"
 
-	"google.golang.org/grpc/internal/envconfig"
+    "google.golang.org/grpc/internal/envconfig"
 )
 
 func TestRegisteredCompressors(t *testing.T) {
-	defer func(c []string) { RegisteredCompressorNames = c }(RegisteredCompressorNames)
-	defer func(v bool) { envconfig.AdvertiseCompressors = v }(envconfig.AdvertiseCompressors)
-	RegisteredCompressorNames = []string{"gzip", "snappy"}
-	tests := []struct {
-		desc    string
-		enabled bool
-		want    string
-	}{
-		{desc: "compressor_ad_disabled", enabled: false, want: ""},
-		{desc: "compressor_ad_enabled", enabled: true, want: "gzip,snappy"},
-	}
-	for _, tt := range tests {
-		envconfig.AdvertiseCompressors = tt.enabled
-		compressors := RegisteredCompressors()
-		if compressors != tt.want {
-			t.Fatalf("Unexpected compressors got:%s, want:%s", compressors, tt.want)
-		}
-	}
+    defer func(c []string) { RegisteredCompressorNames = c }(RegisteredCompressorNames)
+    defer func(v bool) { envconfig.AdvertiseCompressors = v }(envconfig.AdvertiseCompressors)
+    RegisteredCompressorNames = []string{"gzip", "snappy"}
+    tests := []struct {
+        desc    string
+        enabled bool
+        want    string
+    }{
+        {desc: "compressor_ad_disabled", enabled: false, want: ""},
+        {desc: "compressor_ad_enabled", enabled: true, want: "gzip,snappy"},
+    }
+    for _, tt := range tests {
+        envconfig.AdvertiseCompressors = tt.enabled
+        compressors := RegisteredCompressors()
+        if compressors != tt.want {
+            t.Fatalf("Unexpected compressors got:%s, want:%s", compressors, tt.want)
+        }
+    }
 }

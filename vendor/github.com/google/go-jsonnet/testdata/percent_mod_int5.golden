@@ -1,0 +1,13 @@
+RUNTIME ERROR: Division by zero.
+-------------------------------------------------
+    <std>:247:7-23    function <anonymous>
+
+      std.modulo(a, b)
+
+-------------------------------------------------
+    testdata/percent_mod_int5:1:1-7
+
+42 % 0
+
+-------------------------------------------------
+    During evaluation

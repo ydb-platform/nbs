@@ -7,13 +7,13 @@
 package context
 
 import (
-	"context" // standard library's context, as of Go 1.7
-	"time"
+    "context" // standard library's context, as of Go 1.7
+    "time"
 )
 
 var (
-	todo       = context.TODO()
-	background = context.Background()
+    todo       = context.TODO()
+    background = context.Background()
 )
 
 // Canceled is the error returned by Context.Err when the context is canceled.
@@ -30,8 +30,8 @@ var DeadlineExceeded = context.DeadlineExceeded
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
 func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
-	ctx, f := context.WithCancel(parent)
-	return ctx, f
+    ctx, f := context.WithCancel(parent)
+    return ctx, f
 }
 
 // WithDeadline returns a copy of the parent context with the deadline adjusted
@@ -44,8 +44,8 @@ func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
 func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc) {
-	ctx, f := context.WithDeadline(parent, deadline)
-	return ctx, f
+    ctx, f := context.WithDeadline(parent, deadline)
+    return ctx, f
 }
 
 // WithTimeout returns WithDeadline(parent, time.Now().Add(timeout)).
@@ -53,13 +53,13 @@ func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc) {
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete:
 //
-//	func slowOperationWithTimeout(ctx context.Context) (Result, error) {
-//		ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-//		defer cancel()  // releases resources if slowOperation completes before timeout elapses
-//		return slowOperation(ctx)
-//	}
+//    func slowOperationWithTimeout(ctx context.Context) (Result, error) {
+//        ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+//        defer cancel()  // releases resources if slowOperation completes before timeout elapses
+//        return slowOperation(ctx)
+//    }
 func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
-	return WithDeadline(parent, time.Now().Add(timeout))
+    return WithDeadline(parent, time.Now().Add(timeout))
 }
 
 // WithValue returns a copy of parent in which the value associated with key is
@@ -68,5 +68,5 @@ func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
 // Use context Values only for request-scoped data that transits processes and
 // APIs, not for passing optional parameters to functions.
 func WithValue(parent Context, key interface{}, val interface{}) Context {
-	return context.WithValue(parent, key, val)
+    return context.WithValue(parent, key, val)
 }

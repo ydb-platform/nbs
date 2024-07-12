@@ -7,13 +7,13 @@
 package unix_test
 
 import (
-	"log"
-	"os"
+    "log"
+    "os"
 
-	"golang.org/x/sys/unix"
+    "golang.org/x/sys/unix"
 )
 
 func ExampleExec() {
-	err := unix.Exec("/bin/ls", []string{"ls", "-al"}, os.Environ())
-	log.Fatal(err)
+    err := unix.Exec("/bin/ls", []string{"ls", "-al"}, os.Environ())
+    log.Fatal(err)
 }

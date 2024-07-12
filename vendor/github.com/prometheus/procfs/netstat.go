@@ -14,69 +14,69 @@
 package procfs
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
+    "bufio"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
 )
 
 // NetStat contains statistics for all the counters from one file.
 type NetStat struct {
-	Stats    map[string][]uint64
-	Filename string
+    Stats    map[string][]uint64
+    Filename string
 }
 
 // NetStat retrieves stats from `/proc/net/stat/`.
 func (fs FS) NetStat() ([]NetStat, error) {
-	statFiles, err := filepath.Glob(fs.proc.Path("net/stat/*"))
-	if err != nil {
-		return nil, err
-	}
+    statFiles, err := filepath.Glob(fs.proc.Path("net/stat/*"))
+    if err != nil {
+        return nil, err
+    }
 
-	var netStatsTotal []NetStat
+    var netStatsTotal []NetStat
 
-	for _, filePath := range statFiles {
-		procNetstat, err := parseNetstat(filePath)
-		if err != nil {
-			return nil, err
-		}
-		procNetstat.Filename = filepath.Base(filePath)
+    for _, filePath := range statFiles {
+        procNetstat, err := parseNetstat(filePath)
+        if err != nil {
+            return nil, err
+        }
+        procNetstat.Filename = filepath.Base(filePath)
 
-		netStatsTotal = append(netStatsTotal, procNetstat)
-	}
-	return netStatsTotal, nil
+        netStatsTotal = append(netStatsTotal, procNetstat)
+    }
+    return netStatsTotal, nil
 }
 
 // parseNetstat parses the metrics from `/proc/net/stat/` file
 // and returns a NetStat structure.
 func parseNetstat(filePath string) (NetStat, error) {
-	netStat := NetStat{
-		Stats: make(map[string][]uint64),
-	}
-	file, err := os.Open(filePath)
-	if err != nil {
-		return netStat, err
-	}
-	defer file.Close()
+    netStat := NetStat{
+        Stats: make(map[string][]uint64),
+    }
+    file, err := os.Open(filePath)
+    if err != nil {
+        return netStat, err
+    }
+    defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	scanner.Scan()
+    scanner := bufio.NewScanner(file)
+    scanner.Scan()
 
-	// First string is always a header for stats
-	var headers []string
-	headers = append(headers, strings.Fields(scanner.Text())...)
+    // First string is always a header for stats
+    var headers []string
+    headers = append(headers, strings.Fields(scanner.Text())...)
 
-	// Other strings represent per-CPU counters
-	for scanner.Scan() {
-		for num, counter := range strings.Fields(scanner.Text()) {
-			value, err := strconv.ParseUint(counter, 16, 64)
-			if err != nil {
-				return NetStat{}, err
-			}
-			netStat.Stats[headers[num]] = append(netStat.Stats[headers[num]], value)
-		}
-	}
+    // Other strings represent per-CPU counters
+    for scanner.Scan() {
+        for num, counter := range strings.Fields(scanner.Text()) {
+            value, err := strconv.ParseUint(counter, 16, 64)
+            if err != nil {
+                return NetStat{}, err
+            }
+            netStat.Stats[headers[num]] = append(netStat.Stats[headers[num]], value)
+        }
+    }
 
-	return netStat, nil
+    return netStat, nil
 }

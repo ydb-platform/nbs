@@ -4,35 +4,35 @@
 package matcherv3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on HttpResponseStatusCodeMatchInput with
@@ -40,7 +40,7 @@ var (
 // are violated, the first error encountered is returned, or nil if there are
 // no violations.
 func (m *HttpResponseStatusCodeMatchInput) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HttpResponseStatusCodeMatchInput with
@@ -48,21 +48,21 @@ func (m *HttpResponseStatusCodeMatchInput) Validate() error {
 // are violated, the result is a list of violation errors wrapped in
 // HttpResponseStatusCodeMatchInputMultiError, or nil if none found.
 func (m *HttpResponseStatusCodeMatchInput) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HttpResponseStatusCodeMatchInput) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(errors) > 0 {
-		return HttpResponseStatusCodeMatchInputMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HttpResponseStatusCodeMatchInputMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HttpResponseStatusCodeMatchInputMultiError is an error wrapping multiple
@@ -73,11 +73,11 @@ type HttpResponseStatusCodeMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpResponseStatusCodeMatchInputMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -87,10 +87,10 @@ func (m HttpResponseStatusCodeMatchInputMultiError) AllErrors() []error { return
 // returned by HttpResponseStatusCodeMatchInput.Validate if the designated
 // constraints aren't met.
 type HttpResponseStatusCodeMatchInputValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -107,37 +107,37 @@ func (e HttpResponseStatusCodeMatchInputValidationError) Key() bool { return e.k
 
 // ErrorName returns error name.
 func (e HttpResponseStatusCodeMatchInputValidationError) ErrorName() string {
-	return "HttpResponseStatusCodeMatchInputValidationError"
+    return "HttpResponseStatusCodeMatchInputValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HttpResponseStatusCodeMatchInputValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHttpResponseStatusCodeMatchInput.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHttpResponseStatusCodeMatchInput.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HttpResponseStatusCodeMatchInputValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HttpResponseStatusCodeMatchInputValidationError{}
 
 // Validate checks the field values on HttpResponseStatusCodeClassMatchInput
@@ -145,7 +145,7 @@ var _ interface {
 // rules are violated, the first error encountered is returned, or nil if
 // there are no violations.
 func (m *HttpResponseStatusCodeClassMatchInput) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HttpResponseStatusCodeClassMatchInput
@@ -153,21 +153,21 @@ func (m *HttpResponseStatusCodeClassMatchInput) Validate() error {
 // rules are violated, the result is a list of violation errors wrapped in
 // HttpResponseStatusCodeClassMatchInputMultiError, or nil if none found.
 func (m *HttpResponseStatusCodeClassMatchInput) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HttpResponseStatusCodeClassMatchInput) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(errors) > 0 {
-		return HttpResponseStatusCodeClassMatchInputMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HttpResponseStatusCodeClassMatchInputMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HttpResponseStatusCodeClassMatchInputMultiError is an error wrapping
@@ -178,11 +178,11 @@ type HttpResponseStatusCodeClassMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpResponseStatusCodeClassMatchInputMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -192,10 +192,10 @@ func (m HttpResponseStatusCodeClassMatchInputMultiError) AllErrors() []error { r
 // returned by HttpResponseStatusCodeClassMatchInput.Validate if the
 // designated constraints aren't met.
 type HttpResponseStatusCodeClassMatchInputValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -212,35 +212,35 @@ func (e HttpResponseStatusCodeClassMatchInputValidationError) Key() bool { retur
 
 // ErrorName returns error name.
 func (e HttpResponseStatusCodeClassMatchInputValidationError) ErrorName() string {
-	return "HttpResponseStatusCodeClassMatchInputValidationError"
+    return "HttpResponseStatusCodeClassMatchInputValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HttpResponseStatusCodeClassMatchInputValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHttpResponseStatusCodeClassMatchInput.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHttpResponseStatusCodeClassMatchInput.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HttpResponseStatusCodeClassMatchInputValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HttpResponseStatusCodeClassMatchInputValidationError{}

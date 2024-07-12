@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+
+: "${CI=}"
+: "${GITHUB_ACTIONS=}"
+: "${GITHUB_REPOSITORY=}"
+: "${GITHUB_RUN_ID=}"
+: "${BUILDX_BUILDER=}"
+
+: "${CONTEXT=}"
+: "${CACHE_FROM=}"
+: "${CACHE_TO=}"
+
+progressFlag=""
+if [ "$CI" = "true" ]; then
+  progressFlag="--progress=plain"
+fi
+
+buildxBin=""
+builderName=""
+if docker buildx version >/dev/null 2>&1; then
+  buildxBin="docker buildx"
+elif buildx version >/dev/null 2>&1; then
+  buildxBin="buildx"
+else
+  topdir="$(realpath $(dirname "$0")/..)"
+  if [ ! -x "${topdir}/bin/buildx" ]; then
+    set -x
+    "${topdir}/hack/install-buildx"
+  fi
+  buildxBin="${topdir}/bin/buildx"
+  builderName="moby-buildkit"
+  "${topdir}/hack/bootstrap-buildx" "${builderName}"
+fi
+
+buildxCmd() {
+  (
+    set -x
+    BUILDX_NO_DEFAULT_LOAD=true BUILDX_BUILDER="${builderName:-${BUILDX_BUILDER}}" $buildxBin "$@" $progressFlag
+  )
+}
+
+buildAttestFlags() {
+  if $buildxBin build --help 2>&1 | grep -- '--attest' >/dev/null; then
+    prvattrs="mode=max"
+    if [ "$GITHUB_ACTIONS" = "true" ]; then
+      prvattrs="$prvattrs,builder-id=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+    fi
+    echo "--attest=type=sbom --attest=type=provenance,$prvattrs"
+  fi
+}
+
+currentref=""
+currentcontext="."
+cacheFromFlags=""
+cacheToFlags=""
+if [ "$GITHUB_ACTIONS" = "true" ]; then
+  currentref="https://github.com/$GITHUB_REPOSITORY.git#$GITHUB_REF"
+  if [ -n "$CACHE_FROM" ]; then
+    for cfrom in $CACHE_FROM; do
+      cacheFromFlags="${cacheFromFlags}--cache-from=$cfrom "
+    done
+  fi
+  if [ -n "$CACHE_TO" ]; then
+    for cto in $CACHE_TO; do
+      cacheToFlags="${cacheToFlags}--cache-to=$cto "
+    done
+  fi
+fi
+if [ -n "$currentref" ]; then
+  currentcontext="--build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1 $currentref"
+fi
+if [ -n "$CONTEXT" ]; then
+  currentcontext=$CONTEXT
+fi

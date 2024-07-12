@@ -1,0 +1,423 @@
+{
+    "Version": "v0.0.0-20230726121419-3b25d923346b",
+    "GoVersion": "1.18",
+    "Sum": "h1:sgn3ZU783SCgtaSJjpcVVlRqd6GSnlTLKgpAAttJvpI=",
+    "Packages": {
+        "k8s.io/utils/buffer": {
+            "Imports": null,
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/clock": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/utils/clock/testing": {
+            "Imports": [
+                "k8s.io/utils/clock",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "k8s.io/utils/clock",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/cpuset": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/diff": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "k8s.io/utils/field",
+                "reflect",
+                "sort",
+                "strings",
+                "text/tabwriter"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "k8s.io/utils/env": {
+            "Imports": [
+                "os",
+                "strconv"
+            ],
+            "TestImports": [
+                "os",
+                "strconv",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/exec": {
+            "Imports": [
+                "context",
+                "errors",
+                "io",
+                "io/fs",
+                "os/exec",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "k8s.io/utils/exec",
+                "os",
+                "os/exec",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/exec/testing": {
+            "Imports": [
+                "context",
+                "fmt",
+                "io",
+                "k8s.io/utils/exec",
+                "sync"
+            ],
+            "TestImports": [
+                "k8s.io/utils/exec",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/field": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "strconv"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "k8s.io/utils/inotify": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "os",
+                "runtime",
+                "strings",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/integer": {
+            "Imports": null,
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "k8s.io/utils/internal/third_party/forked/golang/golang-lru": {
+            "Imports": [
+                "container/list"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/utils/internal/third_party/forked/golang/net": {
+            "Imports": [
+                "net"
+            ],
+            "TestImports": [
+                "net",
+                "reflect",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/io": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/keymutex": {
+            "Imports": [
+                "hash/fnv",
+                "runtime",
+                "sync"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/lru": {
+            "Imports": [
+                "k8s.io/utils/internal/third_party/forked/golang/golang-lru",
+                "sync"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/mount": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "k8s.io/klog/v2",
+                "k8s.io/utils/exec",
+                "k8s.io/utils/io",
+                "k8s.io/utils/keymutex",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "k8s.io/utils/exec",
+                "k8s.io/utils/exec/testing",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/net": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "k8s.io/utils/internal/third_party/forked/golang/net",
+                "math",
+                "math/big",
+                "net",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "net",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/net/ebtables": {
+            "Imports": [
+                "fmt",
+                "k8s.io/utils/exec",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "k8s.io/utils/exec",
+                "k8s.io/utils/exec/testing",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/nsenter": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "k8s.io/klog/v2",
+                "k8s.io/utils/exec",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "k8s.io/utils/exec",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/path": {
+            "Imports": [
+                "errors",
+                "os"
+            ],
+            "TestImports": [
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/pointer": {
+            "Imports": [
+                "k8s.io/utils/ptr",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/utils/ptr": {
+            "Imports": [
+                "fmt",
+                "reflect"
+            ],
+            "TestImports": [
+                "fmt",
+                "k8s.io/utils/ptr",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/semantic": {
+            "Imports": [
+                "k8s.io/utils/third_party/forked/golang/reflect"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "k8s.io/utils/set": {
+            "Imports": [
+                "sort"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/strings": {
+            "Imports": [
+                "bytes",
+                "io",
+                "path",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "os",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/strings/slices": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "k8s.io/utils/net",
+                "net",
+                "reflect",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/temp": {
+            "Imports": [
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/temp/temptest": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "k8s.io/utils/temp"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "io",
+                "k8s.io/utils/temp",
+                "testing"
+            ]
+        },
+        "k8s.io/utils/third_party/forked/golang/reflect": {
+            "Imports": [
+                "fmt",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "k8s.io/utils/trace": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "k8s.io/klog/v2",
+                "math/rand",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "k8s.io/klog/v2",
+                "os",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -19,51 +19,51 @@
 package grpcutil
 
 import (
-	"testing"
+    "testing"
 )
 
 func TestParseMethod(t *testing.T) {
-	testCases := []struct {
-		methodName  string
-		wantService string
-		wantMethod  string
-		wantError   bool
-	}{
-		{methodName: "/s/m", wantService: "s", wantMethod: "m", wantError: false},
-		{methodName: "/p.s/m", wantService: "p.s", wantMethod: "m", wantError: false},
-		{methodName: "/p/s/m", wantService: "p/s", wantMethod: "m", wantError: false},
-		{methodName: "/", wantError: true},
-		{methodName: "/sm", wantError: true},
-		{methodName: "", wantError: true},
-		{methodName: "sm", wantError: true},
-	}
-	for _, tc := range testCases {
-		s, m, err := ParseMethod(tc.methodName)
-		if (err != nil) != tc.wantError || s != tc.wantService || m != tc.wantMethod {
-			t.Errorf("ParseMethod(%s) = (%s, %s, %v), want (%s, %s, %v)", tc.methodName, s, m, err, tc.wantService, tc.wantMethod, tc.wantError)
-		}
-	}
+    testCases := []struct {
+        methodName  string
+        wantService string
+        wantMethod  string
+        wantError   bool
+    }{
+        {methodName: "/s/m", wantService: "s", wantMethod: "m", wantError: false},
+        {methodName: "/p.s/m", wantService: "p.s", wantMethod: "m", wantError: false},
+        {methodName: "/p/s/m", wantService: "p/s", wantMethod: "m", wantError: false},
+        {methodName: "/", wantError: true},
+        {methodName: "/sm", wantError: true},
+        {methodName: "", wantError: true},
+        {methodName: "sm", wantError: true},
+    }
+    for _, tc := range testCases {
+        s, m, err := ParseMethod(tc.methodName)
+        if (err != nil) != tc.wantError || s != tc.wantService || m != tc.wantMethod {
+            t.Errorf("ParseMethod(%s) = (%s, %s, %v), want (%s, %s, %v)", tc.methodName, s, m, err, tc.wantService, tc.wantMethod, tc.wantError)
+        }
+    }
 }
 
 func TestContentSubtype(t *testing.T) {
-	tests := []struct {
-		contentType string
-		want        string
-		wantValid   bool
-	}{
-		{"application/grpc", "", true},
-		{"application/grpc+", "", true},
-		{"application/grpc+blah", "blah", true},
-		{"application/grpc;", "", true},
-		{"application/grpc;blah", "blah", true},
-		{"application/grpcd", "", false},
-		{"application/grpd", "", false},
-		{"application/grp", "", false},
-	}
-	for _, tt := range tests {
-		got, gotValid := ContentSubtype(tt.contentType)
-		if got != tt.want || gotValid != tt.wantValid {
-			t.Errorf("contentSubtype(%q) = (%v, %v); want (%v, %v)", tt.contentType, got, gotValid, tt.want, tt.wantValid)
-		}
-	}
+    tests := []struct {
+        contentType string
+        want        string
+        wantValid   bool
+    }{
+        {"application/grpc", "", true},
+        {"application/grpc+", "", true},
+        {"application/grpc+blah", "blah", true},
+        {"application/grpc;", "", true},
+        {"application/grpc;blah", "blah", true},
+        {"application/grpcd", "", false},
+        {"application/grpd", "", false},
+        {"application/grp", "", false},
+    }
+    for _, tt := range tests {
+        got, gotValid := ContentSubtype(tt.contentType)
+        if got != tt.want || gotValid != tt.wantValid {
+            t.Errorf("contentSubtype(%q) = (%v, %v); want (%v, %v)", tt.contentType, got, gotValid, tt.want, tt.wantValid)
+        }
+    }
 }

@@ -1,0 +1,25 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    aead
+    core
+    daead
+    hybrid
+    insecurecleartextkeyset
+    integration
+    internal
+    jwt
+    keyset
+    kwp
+    mac
+    monitoring
+    prf
+    proto
+    signature
+    streamingaead
+    subtle
+    testing
+    testkeyset
+    testutil
+    tink
+)

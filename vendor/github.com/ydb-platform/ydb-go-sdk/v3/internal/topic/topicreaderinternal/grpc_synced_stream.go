@@ -1,33 +1,33 @@
 package topicreaderinternal
 
 import (
-	"sync"
+    "sync"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
 var _ RawTopicReaderStream = &syncedStream{}
 
 type syncedStream struct {
-	m      sync.Mutex
-	stream RawTopicReaderStream
+    m      sync.Mutex
+    stream RawTopicReaderStream
 }
 
 func (s *syncedStream) Recv() (rawtopicreader.ServerMessage, error) {
-	// not need synced
-	return s.stream.Recv()
+    // not need synced
+    return s.stream.Recv()
 }
 
 func (s *syncedStream) Send(msg rawtopicreader.ClientMessage) error {
-	s.m.Lock()
-	defer s.m.Unlock()
+    s.m.Lock()
+    defer s.m.Unlock()
 
-	return s.stream.Send(msg)
+    return s.stream.Send(msg)
 }
 
 func (s *syncedStream) CloseSend() error {
-	s.m.Lock()
-	defer s.m.Unlock()
+    s.m.Lock()
+    defer s.m.Unlock()
 
-	return s.stream.CloseSend()
+    return s.stream.CloseSend()
 }

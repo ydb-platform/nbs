@@ -23,78 +23,78 @@
 package admin
 
 import (
-	src "cloud.google.com/go/iam/admin/apiv1/adminpb"
-	grpc "google.golang.org/grpc"
+    src "cloud.google.com/go/iam/admin/apiv1/adminpb"
+    grpc "google.golang.org/grpc"
 )
 
 // Deprecated: Please use consts in: cloud.google.com/go/iam/admin/apiv1/adminpb
 const (
-	LintResult_CONDITION                                      = src.LintResult_CONDITION
-	LintResult_DEPRECATED                                     = src.LintResult_DEPRECATED
-	LintResult_ERROR                                          = src.LintResult_ERROR
-	LintResult_INFO                                           = src.LintResult_INFO
-	LintResult_LEVEL_UNSPECIFIED                              = src.LintResult_LEVEL_UNSPECIFIED
-	LintResult_NOTICE                                         = src.LintResult_NOTICE
-	LintResult_SEVERITY_UNSPECIFIED                           = src.LintResult_SEVERITY_UNSPECIFIED
-	LintResult_WARNING                                        = src.LintResult_WARNING
-	ListServiceAccountKeysRequest_KEY_TYPE_UNSPECIFIED        = src.ListServiceAccountKeysRequest_KEY_TYPE_UNSPECIFIED
-	ListServiceAccountKeysRequest_SYSTEM_MANAGED              = src.ListServiceAccountKeysRequest_SYSTEM_MANAGED
-	ListServiceAccountKeysRequest_USER_MANAGED                = src.ListServiceAccountKeysRequest_USER_MANAGED
-	Permission_ALPHA                                          = src.Permission_ALPHA
-	Permission_BETA                                           = src.Permission_BETA
-	Permission_DEPRECATED                                     = src.Permission_DEPRECATED
-	Permission_GA                                             = src.Permission_GA
-	Permission_NOT_SUPPORTED                                  = src.Permission_NOT_SUPPORTED
-	Permission_SUPPORTED                                      = src.Permission_SUPPORTED
-	Permission_TESTING                                        = src.Permission_TESTING
-	RoleView_BASIC                                            = src.RoleView_BASIC
-	RoleView_FULL                                             = src.RoleView_FULL
-	Role_ALPHA                                                = src.Role_ALPHA
-	Role_BETA                                                 = src.Role_BETA
-	Role_DEPRECATED                                           = src.Role_DEPRECATED
-	Role_DISABLED                                             = src.Role_DISABLED
-	Role_EAP                                                  = src.Role_EAP
-	Role_GA                                                   = src.Role_GA
-	ServiceAccountKeyAlgorithm_KEY_ALG_RSA_1024               = src.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_1024
-	ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048               = src.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048
-	ServiceAccountKeyAlgorithm_KEY_ALG_UNSPECIFIED            = src.ServiceAccountKeyAlgorithm_KEY_ALG_UNSPECIFIED
-	ServiceAccountKeyOrigin_GOOGLE_PROVIDED                   = src.ServiceAccountKeyOrigin_GOOGLE_PROVIDED
-	ServiceAccountKeyOrigin_ORIGIN_UNSPECIFIED                = src.ServiceAccountKeyOrigin_ORIGIN_UNSPECIFIED
-	ServiceAccountKeyOrigin_USER_PROVIDED                     = src.ServiceAccountKeyOrigin_USER_PROVIDED
-	ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE = src.ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE
-	ServiceAccountPrivateKeyType_TYPE_PKCS12_FILE             = src.ServiceAccountPrivateKeyType_TYPE_PKCS12_FILE
-	ServiceAccountPrivateKeyType_TYPE_UNSPECIFIED             = src.ServiceAccountPrivateKeyType_TYPE_UNSPECIFIED
-	ServiceAccountPublicKeyType_TYPE_NONE                     = src.ServiceAccountPublicKeyType_TYPE_NONE
-	ServiceAccountPublicKeyType_TYPE_RAW_PUBLIC_KEY           = src.ServiceAccountPublicKeyType_TYPE_RAW_PUBLIC_KEY
-	ServiceAccountPublicKeyType_TYPE_X509_PEM_FILE            = src.ServiceAccountPublicKeyType_TYPE_X509_PEM_FILE
+    LintResult_CONDITION                                      = src.LintResult_CONDITION
+    LintResult_DEPRECATED                                     = src.LintResult_DEPRECATED
+    LintResult_ERROR                                          = src.LintResult_ERROR
+    LintResult_INFO                                           = src.LintResult_INFO
+    LintResult_LEVEL_UNSPECIFIED                              = src.LintResult_LEVEL_UNSPECIFIED
+    LintResult_NOTICE                                         = src.LintResult_NOTICE
+    LintResult_SEVERITY_UNSPECIFIED                           = src.LintResult_SEVERITY_UNSPECIFIED
+    LintResult_WARNING                                        = src.LintResult_WARNING
+    ListServiceAccountKeysRequest_KEY_TYPE_UNSPECIFIED        = src.ListServiceAccountKeysRequest_KEY_TYPE_UNSPECIFIED
+    ListServiceAccountKeysRequest_SYSTEM_MANAGED              = src.ListServiceAccountKeysRequest_SYSTEM_MANAGED
+    ListServiceAccountKeysRequest_USER_MANAGED                = src.ListServiceAccountKeysRequest_USER_MANAGED
+    Permission_ALPHA                                          = src.Permission_ALPHA
+    Permission_BETA                                           = src.Permission_BETA
+    Permission_DEPRECATED                                     = src.Permission_DEPRECATED
+    Permission_GA                                             = src.Permission_GA
+    Permission_NOT_SUPPORTED                                  = src.Permission_NOT_SUPPORTED
+    Permission_SUPPORTED                                      = src.Permission_SUPPORTED
+    Permission_TESTING                                        = src.Permission_TESTING
+    RoleView_BASIC                                            = src.RoleView_BASIC
+    RoleView_FULL                                             = src.RoleView_FULL
+    Role_ALPHA                                                = src.Role_ALPHA
+    Role_BETA                                                 = src.Role_BETA
+    Role_DEPRECATED                                           = src.Role_DEPRECATED
+    Role_DISABLED                                             = src.Role_DISABLED
+    Role_EAP                                                  = src.Role_EAP
+    Role_GA                                                   = src.Role_GA
+    ServiceAccountKeyAlgorithm_KEY_ALG_RSA_1024               = src.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_1024
+    ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048               = src.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048
+    ServiceAccountKeyAlgorithm_KEY_ALG_UNSPECIFIED            = src.ServiceAccountKeyAlgorithm_KEY_ALG_UNSPECIFIED
+    ServiceAccountKeyOrigin_GOOGLE_PROVIDED                   = src.ServiceAccountKeyOrigin_GOOGLE_PROVIDED
+    ServiceAccountKeyOrigin_ORIGIN_UNSPECIFIED                = src.ServiceAccountKeyOrigin_ORIGIN_UNSPECIFIED
+    ServiceAccountKeyOrigin_USER_PROVIDED                     = src.ServiceAccountKeyOrigin_USER_PROVIDED
+    ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE = src.ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE
+    ServiceAccountPrivateKeyType_TYPE_PKCS12_FILE             = src.ServiceAccountPrivateKeyType_TYPE_PKCS12_FILE
+    ServiceAccountPrivateKeyType_TYPE_UNSPECIFIED             = src.ServiceAccountPrivateKeyType_TYPE_UNSPECIFIED
+    ServiceAccountPublicKeyType_TYPE_NONE                     = src.ServiceAccountPublicKeyType_TYPE_NONE
+    ServiceAccountPublicKeyType_TYPE_RAW_PUBLIC_KEY           = src.ServiceAccountPublicKeyType_TYPE_RAW_PUBLIC_KEY
+    ServiceAccountPublicKeyType_TYPE_X509_PEM_FILE            = src.ServiceAccountPublicKeyType_TYPE_X509_PEM_FILE
 )
 
 // Deprecated: Please use vars in: cloud.google.com/go/iam/admin/apiv1/adminpb
 var (
-	File_google_iam_admin_v1_audit_data_proto   = src.File_google_iam_admin_v1_audit_data_proto
-	File_google_iam_admin_v1_iam_proto          = src.File_google_iam_admin_v1_iam_proto
-	LintResult_Level_name                       = src.LintResult_Level_name
-	LintResult_Level_value                      = src.LintResult_Level_value
-	LintResult_Severity_name                    = src.LintResult_Severity_name
-	LintResult_Severity_value                   = src.LintResult_Severity_value
-	ListServiceAccountKeysRequest_KeyType_name  = src.ListServiceAccountKeysRequest_KeyType_name
-	ListServiceAccountKeysRequest_KeyType_value = src.ListServiceAccountKeysRequest_KeyType_value
-	Permission_CustomRolesSupportLevel_name     = src.Permission_CustomRolesSupportLevel_name
-	Permission_CustomRolesSupportLevel_value    = src.Permission_CustomRolesSupportLevel_value
-	Permission_PermissionLaunchStage_name       = src.Permission_PermissionLaunchStage_name
-	Permission_PermissionLaunchStage_value      = src.Permission_PermissionLaunchStage_value
-	RoleView_name                               = src.RoleView_name
-	RoleView_value                              = src.RoleView_value
-	Role_RoleLaunchStage_name                   = src.Role_RoleLaunchStage_name
-	Role_RoleLaunchStage_value                  = src.Role_RoleLaunchStage_value
-	ServiceAccountKeyAlgorithm_name             = src.ServiceAccountKeyAlgorithm_name
-	ServiceAccountKeyAlgorithm_value            = src.ServiceAccountKeyAlgorithm_value
-	ServiceAccountKeyOrigin_name                = src.ServiceAccountKeyOrigin_name
-	ServiceAccountKeyOrigin_value               = src.ServiceAccountKeyOrigin_value
-	ServiceAccountPrivateKeyType_name           = src.ServiceAccountPrivateKeyType_name
-	ServiceAccountPrivateKeyType_value          = src.ServiceAccountPrivateKeyType_value
-	ServiceAccountPublicKeyType_name            = src.ServiceAccountPublicKeyType_name
-	ServiceAccountPublicKeyType_value           = src.ServiceAccountPublicKeyType_value
+    File_google_iam_admin_v1_audit_data_proto   = src.File_google_iam_admin_v1_audit_data_proto
+    File_google_iam_admin_v1_iam_proto          = src.File_google_iam_admin_v1_iam_proto
+    LintResult_Level_name                       = src.LintResult_Level_name
+    LintResult_Level_value                      = src.LintResult_Level_value
+    LintResult_Severity_name                    = src.LintResult_Severity_name
+    LintResult_Severity_value                   = src.LintResult_Severity_value
+    ListServiceAccountKeysRequest_KeyType_name  = src.ListServiceAccountKeysRequest_KeyType_name
+    ListServiceAccountKeysRequest_KeyType_value = src.ListServiceAccountKeysRequest_KeyType_value
+    Permission_CustomRolesSupportLevel_name     = src.Permission_CustomRolesSupportLevel_name
+    Permission_CustomRolesSupportLevel_value    = src.Permission_CustomRolesSupportLevel_value
+    Permission_PermissionLaunchStage_name       = src.Permission_PermissionLaunchStage_name
+    Permission_PermissionLaunchStage_value      = src.Permission_PermissionLaunchStage_value
+    RoleView_name                               = src.RoleView_name
+    RoleView_value                              = src.RoleView_value
+    Role_RoleLaunchStage_name                   = src.Role_RoleLaunchStage_name
+    Role_RoleLaunchStage_value                  = src.Role_RoleLaunchStage_value
+    ServiceAccountKeyAlgorithm_name             = src.ServiceAccountKeyAlgorithm_name
+    ServiceAccountKeyAlgorithm_value            = src.ServiceAccountKeyAlgorithm_value
+    ServiceAccountKeyOrigin_name                = src.ServiceAccountKeyOrigin_name
+    ServiceAccountKeyOrigin_value               = src.ServiceAccountKeyOrigin_value
+    ServiceAccountPrivateKeyType_name           = src.ServiceAccountPrivateKeyType_name
+    ServiceAccountPrivateKeyType_value          = src.ServiceAccountPrivateKeyType_value
+    ServiceAccountPublicKeyType_name            = src.ServiceAccountPublicKeyType_name
+    ServiceAccountPublicKeyType_value           = src.ServiceAccountPublicKeyType_value
 )
 
 // Audit log information specific to Cloud IAM admin APIs. This message is

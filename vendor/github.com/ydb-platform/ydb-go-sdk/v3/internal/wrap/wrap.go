@@ -1,8 +1,8 @@
 package wrap
 
 import (
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Issue"
+    "github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
+    "github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Issue"
 )
 
 // StreamOperationResponse is an interface that provides access to the
@@ -13,6 +13,6 @@ import (
 //
 // This generalization is needed for checking status codes and issues in one place.
 type StreamOperationResponse interface {
-	GetStatus() Ydb.StatusIds_StatusCode
-	GetIssues() []*Ydb_Issue.IssueMessage
+    GetStatus() Ydb.StatusIds_StatusCode
+    GetIssues() []*Ydb_Issue.IssueMessage
 }

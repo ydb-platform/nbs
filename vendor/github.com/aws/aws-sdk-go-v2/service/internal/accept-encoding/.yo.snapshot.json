@@ -1,0 +1,30 @@
+{
+    "Version": "v1.11.2",
+    "GoVersion": "1.20",
+    "Sum": "h1:Ji0DY1xUsUr3I8cHps0G+XM3WWU16lP6yG8qu1GAZAs=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding": {
+            "Imports": [
+                "compress/gzip",
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "context",
+                "encoding/hex",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "testing"
+            ]
+        }
+    }
+}

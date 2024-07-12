@@ -21,22 +21,22 @@ limitations under the License.
 package main
 
 import (
-	"log/slog"
+    "log/slog"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 func doSlog(log logr.Logger) {
-	slogger := slog.New(logr.ToSlogHandler(log.WithName("slog").WithValues("mode", "slog")))
-	slogExample(slogger)
+    slogger := slog.New(logr.ToSlogHandler(log.WithName("slog").WithValues("mode", "slog")))
+    slogExample(slogger)
 }
 
 func slogExample(log *slog.Logger) {
-	log.Warn("hello", "val1", 1, "val2", map[string]int{"k": 1})
-	log.Info("you should see this")
-	log.Debug("you should NOT see this")
-	log.Error("uh oh", "trouble", true, "reasons", []float64{0.1, 0.11, 3.14})
-	log.With("attr1", 1, "attr2", 2).Info("with attrs")
-	log.WithGroup("groupname").Info("with group", "slog2", false)
-	log.WithGroup("group1").With("attr1", 1).WithGroup("group2").With("attr2", 2).Info("msg", "arg", "val")
+    log.Warn("hello", "val1", 1, "val2", map[string]int{"k": 1})
+    log.Info("you should see this")
+    log.Debug("you should NOT see this")
+    log.Error("uh oh", "trouble", true, "reasons", []float64{0.1, 0.11, 3.14})
+    log.With("attr1", 1, "attr2", 2).Info("with attrs")
+    log.WithGroup("groupname").Info("with group", "slog2", false)
+    log.WithGroup("group1").With("attr1", 1).WithGroup("group2").With("attr2", 2).Info("msg", "arg", "val")
 }

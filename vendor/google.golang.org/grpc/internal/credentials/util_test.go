@@ -19,42 +19,42 @@
 package credentials
 
 import (
-	"reflect"
-	"testing"
+    "reflect"
+    "testing"
 )
 
 func (s) TestAppendH2ToNextProtos(t *testing.T) {
-	tests := []struct {
-		name string
-		ps   []string
-		want []string
-	}{
-		{
-			name: "empty",
-			ps:   nil,
-			want: []string{"h2"},
-		},
-		{
-			name: "only h2",
-			ps:   []string{"h2"},
-			want: []string{"h2"},
-		},
-		{
-			name: "with h2",
-			ps:   []string{"alpn", "h2"},
-			want: []string{"alpn", "h2"},
-		},
-		{
-			name: "no h2",
-			ps:   []string{"alpn"},
-			want: []string{"alpn", "h2"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := AppendH2ToNextProtos(tt.ps); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("AppendH2ToNextProtos() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+    tests := []struct {
+        name string
+        ps   []string
+        want []string
+    }{
+        {
+            name: "empty",
+            ps:   nil,
+            want: []string{"h2"},
+        },
+        {
+            name: "only h2",
+            ps:   []string{"h2"},
+            want: []string{"h2"},
+        },
+        {
+            name: "with h2",
+            ps:   []string{"alpn", "h2"},
+            want: []string{"alpn", "h2"},
+        },
+        {
+            name: "no h2",
+            ps:   []string{"alpn"},
+            want: []string{"alpn", "h2"},
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := AppendH2ToNextProtos(tt.ps); !reflect.DeepEqual(got, tt.want) {
+                t.Errorf("AppendH2ToNextProtos() = %v, want %v", got, tt.want)
+            }
+        })
+    }
 }

@@ -1,0 +1,107 @@
+{
+    "Version": "v0.18.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:LAbfDvNQU1l0NOQlTuudjczVhHj061fNX5H8XZxHlH4=",
+    "Packages": {
+        "github.com/hashicorp/terraform-exec/internal/version": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-exec/tfexec": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/terraform-exec/internal/version",
+                "github.com/hashicorp/terraform-json",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "github.com/hashicorp/terraform-exec/internal/version",
+                "github.com/hashicorp/terraform-exec/tfexec/internal/testutil",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-exec/tfexec/internal/e2etest": {
+            "Imports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/terraform-json",
+                "github.com/zclconf/go-cty-debug/ctydebug"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/terraform-exec/tfexec",
+                "github.com/hashicorp/terraform-exec/tfexec/internal/testutil",
+                "github.com/hashicorp/terraform-json",
+                "github.com/zclconf/go-cty/cty",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-exec/tfexec/internal/testutil": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/build",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "testing"
+            ],
+            "TestImports": null
+        }
+    }
+}

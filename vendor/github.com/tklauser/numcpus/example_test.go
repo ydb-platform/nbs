@@ -15,40 +15,40 @@
 package numcpus_test
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/tklauser/numcpus"
+    "github.com/tklauser/numcpus"
 )
 
 func ExampleGetOffline() {
-	offline, err := numcpus.GetOffline()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "GetOffline: %v\n", err)
-	}
-	fmt.Printf("# of offline CPUs: %v\n", offline)
+    offline, err := numcpus.GetOffline()
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "GetOffline: %v\n", err)
+    }
+    fmt.Printf("# of offline CPUs: %v\n", offline)
 }
 
 func ExampleGetOnline() {
-	online, err := numcpus.GetOnline()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "GetOnline: %v\n", err)
-	}
-	fmt.Printf("# of online CPUs: %v\n", online)
+    online, err := numcpus.GetOnline()
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "GetOnline: %v\n", err)
+    }
+    fmt.Printf("# of online CPUs: %v\n", online)
 }
 
 func ExampleGetPossible() {
-	possible, err := numcpus.GetPossible()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "GetPossible: %v\n", err)
-	}
-	fmt.Printf("# of possible CPUs: %v\n", possible)
+    possible, err := numcpus.GetPossible()
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "GetPossible: %v\n", err)
+    }
+    fmt.Printf("# of possible CPUs: %v\n", possible)
 }
 
 func ExampleGetPresent() {
-	present, err := numcpus.GetPresent()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "GetPresent: %v\n", err)
-	}
-	fmt.Printf("# of present CPUs: %v\n", present)
+    present, err := numcpus.GetPresent()
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "GetPresent: %v\n", err)
+    }
+    fmt.Printf("# of present CPUs: %v\n", present)
 }

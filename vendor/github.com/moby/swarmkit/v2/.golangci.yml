@@ -1,0 +1,14 @@
+run:
+  tests: false
+  timeout: 10m
+linters:
+  disable-all: true
+  enable:
+    - misspell
+    - gofmt
+    - goimports
+    - ineffassign
+    - revive
+    - unconvert
+    - unused
+    - govet

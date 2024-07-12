@@ -27,8 +27,8 @@ package klog
 //   - The type implements interfaces that are called by the logger, such as `fmt.Stringer`.
 //   - And these interface implementations do not perform nil checks themselves.
 func SafePtr[T any](p *T) any {
-	if p == nil {
-		return nil
-	}
-	return p
+    if p == nil {
+        return nil
+    }
+    return p
 }

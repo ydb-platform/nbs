@@ -1,0 +1,11 @@
+--- vendor/github.com/jonboulle/clockwork/clockwork.go    (index)
++++ vendor/github.com/jonboulle/clockwork/clockwork.go    (working tree)
+@@ -47,7 +47,7 @@ func NewRealClock() Clock {
+ //
+ // Tests that require a deterministic time must use NewFakeClockAt.
+ func NewFakeClock() FakeClock {
+-    return NewFakeClockAt(time.Now())
++    return NewFakeClockAt(time.Date(1984, time.April, 4, 0, 0, 0, 0, time.UTC))
+ }
+
+ // NewFakeClockAt returns a FakeClock initialised at the given time.Time.

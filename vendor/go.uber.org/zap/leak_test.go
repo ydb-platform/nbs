@@ -21,11 +21,11 @@
 package zap
 
 import (
-	"testing"
+    "testing"
 
-	"go.uber.org/goleak"
+    "go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+    goleak.VerifyTestMain(m)
 }

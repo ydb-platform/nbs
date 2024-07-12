@@ -20,60 +20,60 @@ limitations under the License.
 package mount
 
 import (
-	"testing"
+    "testing"
 )
 
 func TestNormalizeWindowsPath(t *testing.T) {
-	path := `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4/volumes/kubernetes.io~azure-disk`
-	normalizedPath := NormalizeWindowsPath(path)
-	if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path := `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4/volumes/kubernetes.io~azure-disk`
+    normalizedPath := NormalizeWindowsPath(path)
+    if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 
-	path = `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk`
-	normalizedPath = NormalizeWindowsPath(path)
-	if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path = `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk`
+    normalizedPath = NormalizeWindowsPath(path)
+    if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 
-	path = `/`
-	normalizedPath = NormalizeWindowsPath(path)
-	if normalizedPath != `c:\` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path = `/`
+    normalizedPath = NormalizeWindowsPath(path)
+    if normalizedPath != `c:\` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 }
 
 func TestValidateDiskNumber(t *testing.T) {
-	tests := []struct {
-		diskNum     string
-		expectError bool
-	}{
-		{
-			diskNum:     "0",
-			expectError: false,
-		},
-		{
-			diskNum:     "invalid",
-			expectError: true,
-		},
-		{
-			diskNum:     "99",
-			expectError: false,
-		},
-		{
-			diskNum:     "100",
-			expectError: false,
-		},
-		{
-			diskNum:     "200",
-			expectError: false,
-		},
-	}
+    tests := []struct {
+        diskNum     string
+        expectError bool
+    }{
+        {
+            diskNum:     "0",
+            expectError: false,
+        },
+        {
+            diskNum:     "invalid",
+            expectError: true,
+        },
+        {
+            diskNum:     "99",
+            expectError: false,
+        },
+        {
+            diskNum:     "100",
+            expectError: false,
+        },
+        {
+            diskNum:     "200",
+            expectError: false,
+        },
+    }
 
-	for _, test := range tests {
-		err := ValidateDiskNumber(test.diskNum)
-		if (err != nil) != test.expectError {
-			t.Errorf("TestValidateDiskNumber test failed, disk number: %s, error: %v", test.diskNum, err)
-		}
-	}
+    for _, test := range tests {
+        err := ValidateDiskNumber(test.diskNum)
+        if (err != nil) != test.expectError {
+            t.Errorf("TestValidateDiskNumber test failed, disk number: %s, error: %v", test.diskNum, err)
+        }
+    }
 }

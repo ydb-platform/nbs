@@ -1,0 +1,208 @@
+{
+    "Version": "v1.13.6",
+    "GoVersion": "1.15",
+    "Sum": "h1:JFZT4XbOU7l77xGSpOdW+pwIMqP044IyjXX6FGyEKFo=",
+    "Packages": {
+        "github.com/pkg/sftp": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/kr/fs",
+                "github.com/pkg/sftp/internal/encoding/ssh/filexfer",
+                "golang.org/x/crypto/ssh",
+                "io",
+                "io/ioutil",
+                "math",
+                "os",
+                "os/user",
+                "path",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/x509",
+                "encoding",
+                "encoding/hex",
+                "encoding/pem",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/kr/fs",
+                "github.com/pkg/sftp",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/crypto/ssh",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "net",
+                "os",
+                "os/exec",
+                "os/user",
+                "path",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "testing",
+                "testing/quick",
+                "time"
+            ]
+        },
+        "github.com/pkg/sftp/examples/buffered-read-benchmark": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "golang.org/x/crypto/ssh/agent",
+                "io",
+                "log",
+                "net",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/examples/buffered-write-benchmark": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "golang.org/x/crypto/ssh/agent",
+                "log",
+                "net",
+                "os",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/examples/go-sftp-server": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/examples/request-server": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/examples/streaming-read-benchmark": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "golang.org/x/crypto/ssh/agent",
+                "io",
+                "log",
+                "net",
+                "os",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/examples/streaming-write-benchmark": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "golang.org/x/crypto/ssh/agent",
+                "io",
+                "log",
+                "net",
+                "os",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/sftp/internal/encoding/ssh/filexfer": {
+            "Imports": [
+                "encoding",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh": {
+            "Imports": [
+                "github.com/pkg/sftp/internal/encoding/ssh/filexfer"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/pkg/sftp/internal/encoding/ssh/filexfer",
+                "testing"
+            ]
+        },
+        "github.com/pkg/sftp/server_standalone": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "io",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

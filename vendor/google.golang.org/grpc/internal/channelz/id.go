@@ -23,20 +23,20 @@ import "fmt"
 // Identifier is an opaque identifier which uniquely identifies an entity in the
 // channelz database.
 type Identifier struct {
-	typ RefChannelType
-	id  int64
-	str string
-	pid *Identifier
+    typ RefChannelType
+    id  int64
+    str string
+    pid *Identifier
 }
 
 // Type returns the entity type corresponding to id.
 func (id *Identifier) Type() RefChannelType {
-	return id.typ
+    return id.typ
 }
 
 // Int returns the integer identifier corresponding to id.
 func (id *Identifier) Int() int64 {
-	return id.id
+    return id.id
 }
 
 // String returns a string representation of the entity corresponding to id.
@@ -46,30 +46,30 @@ func (id *Identifier) Int() int64 {
 // Nested channel:    [Channel #parent-channel-number Channel #channel-number]
 // Sub channel:       [Channel #parent-channel SubChannel #subchannel-number]
 func (id *Identifier) String() string {
-	return id.str
+    return id.str
 }
 
 // Equal returns true if other is the same as id.
 func (id *Identifier) Equal(other *Identifier) bool {
-	if (id != nil) != (other != nil) {
-		return false
-	}
-	if id == nil && other == nil {
-		return true
-	}
-	return id.typ == other.typ && id.id == other.id && id.pid == other.pid
+    if (id != nil) != (other != nil) {
+        return false
+    }
+    if id == nil && other == nil {
+        return true
+    }
+    return id.typ == other.typ && id.id == other.id && id.pid == other.pid
 }
 
 // NewIdentifierForTesting returns a new opaque identifier to be used only for
 // testing purposes.
 func NewIdentifierForTesting(typ RefChannelType, id int64, pid *Identifier) *Identifier {
-	return newIdentifer(typ, id, pid)
+    return newIdentifer(typ, id, pid)
 }
 
 func newIdentifer(typ RefChannelType, id int64, pid *Identifier) *Identifier {
-	str := fmt.Sprintf("%s #%d", typ, id)
-	if pid != nil {
-		str = fmt.Sprintf("%s %s", pid, str)
-	}
-	return &Identifier{typ: typ, id: id, str: str, pid: pid}
+    str := fmt.Sprintf("%s #%d", typ, id)
+    if pid != nil {
+        str = fmt.Sprintf("%s %s", pid, str)
+    }
+    return &Identifier{typ: typ, id: id, str: str, pid: pid}
 }

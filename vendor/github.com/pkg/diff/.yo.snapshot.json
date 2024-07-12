@@ -1,0 +1,94 @@
+{
+    "Version": "v0.0.0-20210226163009-20ebb0f2a09e",
+    "GoVersion": "1.15",
+    "Sum": "h1:aoZm08cpOy4WuID//EZDgcC4zIxODThtZNPirFr42+A=",
+    "Packages": {
+        "github.com/pkg/diff": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/pkg/diff/ctxt",
+                "github.com/pkg/diff/intern",
+                "github.com/pkg/diff/myers",
+                "github.com/pkg/diff/write",
+                "io",
+                "os",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/pkg/diff",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/pkg/diff/cmd/pkg-diff-example": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pkg/diff",
+                "github.com/pkg/diff/write",
+                "io/ioutil",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/diff/ctxt": {
+            "Imports": [
+                "github.com/pkg/diff/edit"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/diff/edit": {
+            "Imports": [
+                "fmt",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/pkg/diff/intern": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pkg/diff/myers": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/pkg/diff/edit"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/pkg/diff/edit",
+                "github.com/pkg/diff/myers",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pkg/diff/write": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/pkg/diff/edit",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/pkg/diff/ctxt",
+                "github.com/pkg/diff/myers",
+                "github.com/pkg/diff/write",
+                "io",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

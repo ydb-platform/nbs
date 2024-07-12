@@ -1,0 +1,30 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=",
+    "Packages": {
+        "github.com/ghodss/yaml": {
+            "Imports": [
+                "bytes",
+                "encoding",
+                "encoding/json",
+                "fmt",
+                "gopkg.in/yaml.v2",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "math",
+                "reflect",
+                "strconv",
+                "testing"
+            ]
+        }
+    }
+}

@@ -10,6 +10,6 @@ import "github.com/aws/aws-sdk-go/aws"
 //
 // Creates shallow copy of the http.Request with the WithContext method.
 func setRequestContext(r *Request, ctx aws.Context) {
-	r.context = ctx
-	r.HTTPRequest = r.HTTPRequest.WithContext(ctx)
+    r.context = ctx
+    r.HTTPRequest = r.HTTPRequest.WithContext(ctx)
 }

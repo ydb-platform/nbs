@@ -20,67 +20,67 @@
 package main
 
 import (
-	"context"
-	"flag"
-	"fmt"
-	"io"
+    "context"
+    "flag"
+    "fmt"
+    "io"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/grpclog"
-	metricspb "google.golang.org/grpc/stress/grpc_testing"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/grpclog"
+    metricspb "google.golang.org/grpc/stress/grpc_testing"
 )
 
 var (
-	metricsServerAddress = flag.String("metrics_server_address", "", "The metrics server addresses in the format <hostname>:<port>")
-	totalOnly            = flag.Bool("total_only", false, "If true, this prints only the total value of all gauges")
+    metricsServerAddress = flag.String("metrics_server_address", "", "The metrics server addresses in the format <hostname>:<port>")
+    totalOnly            = flag.Bool("total_only", false, "If true, this prints only the total value of all gauges")
 
-	logger = grpclog.Component("stress")
+    logger = grpclog.Component("stress")
 )
 
 func printMetrics(client metricspb.MetricsServiceClient, totalOnly bool) {
-	stream, err := client.GetAllGauges(context.Background(), &metricspb.EmptyMessage{})
-	if err != nil {
-		logger.Fatalf("failed to call GetAllGauges: %v", err)
-	}
+    stream, err := client.GetAllGauges(context.Background(), &metricspb.EmptyMessage{})
+    if err != nil {
+        logger.Fatalf("failed to call GetAllGauges: %v", err)
+    }
 
-	var (
-		overallQPS int64
-		rpcStatus  error
-	)
-	for {
-		gaugeResponse, err := stream.Recv()
-		if err != nil {
-			rpcStatus = err
-			break
-		}
-		if _, ok := gaugeResponse.GetValue().(*metricspb.GaugeResponse_LongValue); !ok {
-			panic(fmt.Sprintf("gauge %s is not a long value", gaugeResponse.Name))
-		}
-		v := gaugeResponse.GetLongValue()
-		if !totalOnly {
-			logger.Infof("%s: %d", gaugeResponse.Name, v)
-		}
-		overallQPS += v
-	}
-	if rpcStatus != io.EOF {
-		logger.Fatalf("failed to finish server streaming: %v", rpcStatus)
-	}
-	logger.Infof("overall qps: %d", overallQPS)
+    var (
+        overallQPS int64
+        rpcStatus  error
+    )
+    for {
+        gaugeResponse, err := stream.Recv()
+        if err != nil {
+            rpcStatus = err
+            break
+        }
+        if _, ok := gaugeResponse.GetValue().(*metricspb.GaugeResponse_LongValue); !ok {
+            panic(fmt.Sprintf("gauge %s is not a long value", gaugeResponse.Name))
+        }
+        v := gaugeResponse.GetLongValue()
+        if !totalOnly {
+            logger.Infof("%s: %d", gaugeResponse.Name, v)
+        }
+        overallQPS += v
+    }
+    if rpcStatus != io.EOF {
+        logger.Fatalf("failed to finish server streaming: %v", rpcStatus)
+    }
+    logger.Infof("overall qps: %d", overallQPS)
 }
 
 func main() {
-	flag.Parse()
-	if *metricsServerAddress == "" {
-		logger.Fatal("-metrics_server_address is unset")
-	}
+    flag.Parse()
+    if *metricsServerAddress == "" {
+        logger.Fatal("-metrics_server_address is unset")
+    }
 
-	conn, err := grpc.Dial(*metricsServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		logger.Fatalf("cannot connect to metrics server: %v", err)
-	}
-	defer conn.Close()
+    conn, err := grpc.Dial(*metricsServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        logger.Fatalf("cannot connect to metrics server: %v", err)
+    }
+    defer conn.Close()
 
-	c := metricspb.NewMetricsServiceClient(conn)
-	printMetrics(c, *totalOnly)
+    c := metricspb.NewMetricsServiceClient(conn)
+    printMetrics(c, *totalOnly)
 }

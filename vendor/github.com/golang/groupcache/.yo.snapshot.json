@@ -1,0 +1,104 @@
+{
+    "Version": "v0.0.0-20210331224755-41bb18bfe9da",
+    "GoVersion": "",
+    "Sum": "h1:oI5xCqsCo564l8iNU+DwB5epxmsaqB+rhGL0m5jtYqE=",
+    "Packages": {
+        "github.com/golang/groupcache": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/golang/groupcache/consistenthash",
+                "github.com/golang/groupcache/groupcachepb",
+                "github.com/golang/groupcache/lru",
+                "github.com/golang/groupcache/singleflight",
+                "github.com/golang/protobuf/proto",
+                "io",
+                "math/rand",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/golang/groupcache/groupcachepb",
+                "github.com/golang/groupcache/testpb",
+                "github.com/golang/protobuf/proto",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "net",
+                "net/http",
+                "os",
+                "os/exec",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time",
+                "unsafe"
+            ]
+        },
+        "github.com/golang/groupcache/consistenthash": {
+            "Imports": [
+                "hash/crc32",
+                "sort",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/golang/groupcache/groupcachepb": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/groupcache/lru": {
+            "Imports": [
+                "container/list"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/golang/groupcache/singleflight": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/groupcache/testpb": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "math"
+            ],
+            "TestImports": null
+        }
+    }
+}

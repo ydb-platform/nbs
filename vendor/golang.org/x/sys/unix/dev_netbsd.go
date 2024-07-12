@@ -9,21 +9,21 @@ package unix
 
 // Major returns the major component of a NetBSD device number.
 func Major(dev uint64) uint32 {
-	return uint32((dev & 0x000fff00) >> 8)
+    return uint32((dev & 0x000fff00) >> 8)
 }
 
 // Minor returns the minor component of a NetBSD device number.
 func Minor(dev uint64) uint32 {
-	minor := uint32((dev & 0x000000ff) >> 0)
-	minor |= uint32((dev & 0xfff00000) >> 12)
-	return minor
+    minor := uint32((dev & 0x000000ff) >> 0)
+    minor |= uint32((dev & 0xfff00000) >> 12)
+    return minor
 }
 
 // Mkdev returns a NetBSD device number generated from the given major and minor
 // components.
 func Mkdev(major, minor uint32) uint64 {
-	dev := (uint64(major) << 8) & 0x000fff00
-	dev |= (uint64(minor) << 12) & 0xfff00000
-	dev |= (uint64(minor) << 0) & 0x000000ff
-	return dev
+    dev := (uint64(major) << 8) & 0x000fff00
+    dev |= (uint64(minor) << 12) & 0xfff00000
+    dev |= (uint64(minor) << 0) & 0x000000ff
+    return dev
 }

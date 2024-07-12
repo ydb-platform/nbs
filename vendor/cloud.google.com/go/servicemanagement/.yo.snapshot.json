@@ -1,0 +1,70 @@
+{
+    "Version": "v1.8.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:fopAQI/IAzlxnVeiKn/8WiV6zKndjFkvi+gzu+NjywY=",
+    "Packages": {
+        "cloud.google.com/go/servicemanagement/apiv1": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/longrunning",
+                "cloud.google.com/go/longrunning/autogen",
+                "cloud.google.com/go/longrunning/autogen/longrunningpb",
+                "cloud.google.com/go/servicemanagement/apiv1/servicemanagementpb",
+                "cloud.google.com/go/servicemanagement/internal",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/googleapi",
+                "google.golang.org/api/iterator",
+                "google.golang.org/api/option",
+                "google.golang.org/api/option/internaloption",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/api/transport/http",
+                "google.golang.org/genproto/googleapis/api/serviceconfig",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "io/ioutil",
+                "math",
+                "net/http",
+                "net/url",
+                "os",
+                "runtime",
+                "strconv",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/servicemanagement/apiv1",
+                "cloud.google.com/go/servicemanagement/apiv1/servicemanagementpb",
+                "context",
+                "google.golang.org/api/iterator"
+            ]
+        },
+        "cloud.google.com/go/servicemanagement/apiv1/servicemanagementpb": {
+            "Imports": [
+                "cloud.google.com/go/longrunning/autogen/longrunningpb",
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/api/configchange",
+                "google.golang.org/genproto/googleapis/api/serviceconfig",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/servicemanagement/internal": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

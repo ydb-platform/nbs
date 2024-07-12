@@ -14,20 +14,21 @@
 package expfmt
 
 import (
-	"fmt"
-	"io"
-	"net/http"
+    "fmt"
+    "io"
+    "net/http"
 
-	"github.com/matttproud/golang_protobuf_extensions/pbutil"
-	"github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg"
-	"google.golang.org/protobuf/encoding/prototext"
+    "google.golang.org/protobuf/encoding/protodelim"
+    "google.golang.org/protobuf/encoding/prototext"
 
-	dto "github.com/prometheus/client_model/go"
+    "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg"
+
+    dto "github.com/prometheus/client_model/go"
 )
 
 // Encoder types encode metric families into an underlying wire protocol.
 type Encoder interface {
-	Encode(*dto.MetricFamily) error
+    Encode(*dto.MetricFamily) error
 }
 
 // Closer is implemented by Encoders that need to be closed to finalize
@@ -38,20 +39,20 @@ type Encoder interface {
 // for adding a Close method to the Encoder interface directly in a (mildly
 // breaking) release in the future.
 type Closer interface {
-	Close() error
+    Close() error
 }
 
 type encoderCloser struct {
-	encode func(*dto.MetricFamily) error
-	close  func() error
+    encode func(*dto.MetricFamily) error
+    close  func() error
 }
 
 func (ec encoderCloser) Encode(v *dto.MetricFamily) error {
-	return ec.encode(v)
+    return ec.encode(v)
 }
 
 func (ec encoderCloser) Close() error {
-	return ec.close()
+    return ec.close()
 }
 
 // Negotiate returns the Content-Type based on the given Accept header. If no
@@ -60,23 +61,23 @@ func (ec encoderCloser) Close() error {
 // as the support is still experimental. To include the option to negotiate
 // FmtOpenMetrics, use NegotiateOpenMetrics.
 func Negotiate(h http.Header) Format {
-	for _, ac := range goautoneg.ParseAccept(h.Get(hdrAccept)) {
-		ver := ac.Params["version"]
-		if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
-			switch ac.Params["encoding"] {
-			case "delimited":
-				return FmtProtoDelim
-			case "text":
-				return FmtProtoText
-			case "compact-text":
-				return FmtProtoCompact
-			}
-		}
-		if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
-			return FmtText
-		}
-	}
-	return FmtText
+    for _, ac := range goautoneg.ParseAccept(h.Get(hdrAccept)) {
+        ver := ac.Params["version"]
+        if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
+            switch ac.Params["encoding"] {
+            case "delimited":
+                return FmtProtoDelim
+            case "text":
+                return FmtProtoText
+            case "compact-text":
+                return FmtProtoCompact
+            }
+        }
+        if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
+            return FmtText
+        }
+    }
+    return FmtText
 }
 
 // NegotiateIncludingOpenMetrics works like Negotiate but includes
@@ -84,29 +85,29 @@ func Negotiate(h http.Header) Format {
 // temporary and will disappear once FmtOpenMetrics is fully supported and as
 // such may be negotiated by the normal Negotiate function.
 func NegotiateIncludingOpenMetrics(h http.Header) Format {
-	for _, ac := range goautoneg.ParseAccept(h.Get(hdrAccept)) {
-		ver := ac.Params["version"]
-		if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
-			switch ac.Params["encoding"] {
-			case "delimited":
-				return FmtProtoDelim
-			case "text":
-				return FmtProtoText
-			case "compact-text":
-				return FmtProtoCompact
-			}
-		}
-		if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
-			return FmtText
-		}
-		if ac.Type+"/"+ac.SubType == OpenMetricsType && (ver == OpenMetricsVersion_0_0_1 || ver == OpenMetricsVersion_1_0_0 || ver == "") {
-			if ver == OpenMetricsVersion_1_0_0 {
-				return FmtOpenMetrics_1_0_0
-			}
-			return FmtOpenMetrics_0_0_1
-		}
-	}
-	return FmtText
+    for _, ac := range goautoneg.ParseAccept(h.Get(hdrAccept)) {
+        ver := ac.Params["version"]
+        if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
+            switch ac.Params["encoding"] {
+            case "delimited":
+                return FmtProtoDelim
+            case "text":
+                return FmtProtoText
+            case "compact-text":
+                return FmtProtoCompact
+            }
+        }
+        if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
+            return FmtText
+        }
+        if ac.Type+"/"+ac.SubType == OpenMetricsType && (ver == OpenMetricsVersion_0_0_1 || ver == OpenMetricsVersion_1_0_0 || ver == "") {
+            if ver == OpenMetricsVersion_1_0_0 {
+                return FmtOpenMetrics_1_0_0
+            }
+            return FmtOpenMetrics_0_0_1
+        }
+    }
+    return FmtText
 }
 
 // NewEncoder returns a new encoder based on content type negotiation. All
@@ -116,50 +117,50 @@ func NegotiateIncludingOpenMetrics(h http.Header) Format {
 // to the Encoder interface directly. The current version of the Encoder
 // interface is kept for backwards compatibility.
 func NewEncoder(w io.Writer, format Format) Encoder {
-	switch format {
-	case FmtProtoDelim:
-		return encoderCloser{
-			encode: func(v *dto.MetricFamily) error {
-				_, err := pbutil.WriteDelimited(w, v)
-				return err
-			},
-			close: func() error { return nil },
-		}
-	case FmtProtoCompact:
-		return encoderCloser{
-			encode: func(v *dto.MetricFamily) error {
-				_, err := fmt.Fprintln(w, v.String())
-				return err
-			},
-			close: func() error { return nil },
-		}
-	case FmtProtoText:
-		return encoderCloser{
-			encode: func(v *dto.MetricFamily) error {
-				_, err := fmt.Fprintln(w, prototext.Format(v))
-				return err
-			},
-			close: func() error { return nil },
-		}
-	case FmtText:
-		return encoderCloser{
-			encode: func(v *dto.MetricFamily) error {
-				_, err := MetricFamilyToText(w, v)
-				return err
-			},
-			close: func() error { return nil },
-		}
-	case FmtOpenMetrics_0_0_1, FmtOpenMetrics_1_0_0:
-		return encoderCloser{
-			encode: func(v *dto.MetricFamily) error {
-				_, err := MetricFamilyToOpenMetrics(w, v)
-				return err
-			},
-			close: func() error {
-				_, err := FinalizeOpenMetrics(w)
-				return err
-			},
-		}
-	}
-	panic(fmt.Errorf("expfmt.NewEncoder: unknown format %q", format))
+    switch format {
+    case FmtProtoDelim:
+        return encoderCloser{
+            encode: func(v *dto.MetricFamily) error {
+                _, err := protodelim.MarshalTo(w, v)
+                return err
+            },
+            close: func() error { return nil },
+        }
+    case FmtProtoCompact:
+        return encoderCloser{
+            encode: func(v *dto.MetricFamily) error {
+                _, err := fmt.Fprintln(w, v.String())
+                return err
+            },
+            close: func() error { return nil },
+        }
+    case FmtProtoText:
+        return encoderCloser{
+            encode: func(v *dto.MetricFamily) error {
+                _, err := fmt.Fprintln(w, prototext.Format(v))
+                return err
+            },
+            close: func() error { return nil },
+        }
+    case FmtText:
+        return encoderCloser{
+            encode: func(v *dto.MetricFamily) error {
+                _, err := MetricFamilyToText(w, v)
+                return err
+            },
+            close: func() error { return nil },
+        }
+    case FmtOpenMetrics_0_0_1, FmtOpenMetrics_1_0_0:
+        return encoderCloser{
+            encode: func(v *dto.MetricFamily) error {
+                _, err := MetricFamilyToOpenMetrics(w, v)
+                return err
+            },
+            close: func() error {
+                _, err := FinalizeOpenMetrics(w)
+                return err
+            },
+        }
+    }
+    panic(fmt.Errorf("expfmt.NewEncoder: unknown format %q", format))
 }

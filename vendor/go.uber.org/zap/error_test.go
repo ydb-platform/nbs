@@ -21,113 +21,113 @@
 package zap
 
 import (
-	"errors"
-	"fmt"
-	"testing"
+    "errors"
+    "fmt"
+    "testing"
 
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/zapcore"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestErrorConstructors(t *testing.T) {
-	fail := errors.New("fail")
+    fail := errors.New("fail")
 
-	tests := []struct {
-		name   string
-		field  Field
-		expect Field
-	}{
-		{"Error", Skip(), Error(nil)},
-		{"Error", Field{Key: "error", Type: zapcore.ErrorType, Interface: fail}, Error(fail)},
-		{"NamedError", Skip(), NamedError("foo", nil)},
-		{"NamedError", Field{Key: "foo", Type: zapcore.ErrorType, Interface: fail}, NamedError("foo", fail)},
-		{"Any:Error", Any("k", errors.New("v")), NamedError("k", errors.New("v"))},
-		{"Any:Errors", Any("k", []error{errors.New("v")}), Errors("k", []error{errors.New("v")})},
-	}
+    tests := []struct {
+        name   string
+        field  Field
+        expect Field
+    }{
+        {"Error", Skip(), Error(nil)},
+        {"Error", Field{Key: "error", Type: zapcore.ErrorType, Interface: fail}, Error(fail)},
+        {"NamedError", Skip(), NamedError("foo", nil)},
+        {"NamedError", Field{Key: "foo", Type: zapcore.ErrorType, Interface: fail}, NamedError("foo", fail)},
+        {"Any:Error", Any("k", errors.New("v")), NamedError("k", errors.New("v"))},
+        {"Any:Errors", Any("k", []error{errors.New("v")}), Errors("k", []error{errors.New("v")})},
+    }
 
-	for _, tt := range tests {
-		if !assert.Equal(t, tt.expect, tt.field, "Unexpected output from convenience field constructor %s.", tt.name) {
-			t.Logf("type expected: %T\nGot: %T", tt.expect.Interface, tt.field.Interface)
-		}
-		assertCanBeReused(t, tt.field)
-	}
+    for _, tt := range tests {
+        if !assert.Equal(t, tt.expect, tt.field, "Unexpected output from convenience field constructor %s.", tt.name) {
+            t.Logf("type expected: %T\nGot: %T", tt.expect.Interface, tt.field.Interface)
+        }
+        assertCanBeReused(t, tt.field)
+    }
 }
 
 func TestErrorArrayConstructor(t *testing.T) {
-	tests := []struct {
-		desc     string
-		field    Field
-		expected []interface{}
-	}{
-		{"empty errors", Errors("", []error{}), []interface{}{}},
-		{
-			"errors",
-			Errors("", []error{nil, errors.New("foo"), nil, errors.New("bar")}),
-			[]interface{}{map[string]interface{}{"error": "foo"}, map[string]interface{}{"error": "bar"}},
-		},
-	}
+    tests := []struct {
+        desc     string
+        field    Field
+        expected []interface{}
+    }{
+        {"empty errors", Errors("", []error{}), []interface{}{}},
+        {
+            "errors",
+            Errors("", []error{nil, errors.New("foo"), nil, errors.New("bar")}),
+            []interface{}{map[string]interface{}{"error": "foo"}, map[string]interface{}{"error": "bar"}},
+        },
+    }
 
-	for _, tt := range tests {
-		enc := zapcore.NewMapObjectEncoder()
-		tt.field.Key = "k"
-		tt.field.AddTo(enc)
-		assert.Equal(t, tt.expected, enc.Fields["k"], "%s: unexpected map contents.", tt.desc)
-		assert.Equal(t, 1, len(enc.Fields), "%s: found extra keys in map: %v", tt.desc, enc.Fields)
-	}
+    for _, tt := range tests {
+        enc := zapcore.NewMapObjectEncoder()
+        tt.field.Key = "k"
+        tt.field.AddTo(enc)
+        assert.Equal(t, tt.expected, enc.Fields["k"], "%s: unexpected map contents.", tt.desc)
+        assert.Equal(t, 1, len(enc.Fields), "%s: found extra keys in map: %v", tt.desc, enc.Fields)
+    }
 }
 
 func TestErrorsArraysHandleRichErrors(t *testing.T) {
-	errs := []error{fmt.Errorf("egad")}
+    errs := []error{fmt.Errorf("egad")}
 
-	enc := zapcore.NewMapObjectEncoder()
-	Errors("k", errs).AddTo(enc)
-	assert.Equal(t, 1, len(enc.Fields), "Expected only top-level field.")
+    enc := zapcore.NewMapObjectEncoder()
+    Errors("k", errs).AddTo(enc)
+    assert.Equal(t, 1, len(enc.Fields), "Expected only top-level field.")
 
-	val := enc.Fields["k"]
-	arr, ok := val.([]interface{})
-	require.True(t, ok, "Expected top-level field to be an array.")
-	require.Equal(t, 1, len(arr), "Expected only one error object in array.")
+    val := enc.Fields["k"]
+    arr, ok := val.([]interface{})
+    require.True(t, ok, "Expected top-level field to be an array.")
+    require.Equal(t, 1, len(arr), "Expected only one error object in array.")
 
-	serialized := arr[0]
-	errMap, ok := serialized.(map[string]interface{})
-	require.True(t, ok, "Expected serialized error to be a map, got %T.", serialized)
-	assert.Equal(t, "egad", errMap["error"], "Unexpected standard error string.")
+    serialized := arr[0]
+    errMap, ok := serialized.(map[string]interface{})
+    require.True(t, ok, "Expected serialized error to be a map, got %T.", serialized)
+    assert.Equal(t, "egad", errMap["error"], "Unexpected standard error string.")
 }
 
 func TestErrArrayBrokenEncoder(t *testing.T) {
-	t.Parallel()
+    t.Parallel()
 
-	failWith := errors.New("great sadness")
-	err := (brokenArrayObjectEncoder{
-		Err:           failWith,
-		ObjectEncoder: zapcore.NewMapObjectEncoder(),
-	}).AddArray("errors", errArray{
-		errors.New("foo"),
-		errors.New("bar"),
-	})
-	require.Error(t, err, "Expected error from broken encoder.")
-	assert.ErrorIs(t, err, failWith, "Unexpected error.")
+    failWith := errors.New("great sadness")
+    err := (brokenArrayObjectEncoder{
+        Err:           failWith,
+        ObjectEncoder: zapcore.NewMapObjectEncoder(),
+    }).AddArray("errors", errArray{
+        errors.New("foo"),
+        errors.New("bar"),
+    })
+    require.Error(t, err, "Expected error from broken encoder.")
+    assert.ErrorIs(t, err, failWith, "Unexpected error.")
 }
 
 // brokenArrayObjectEncoder is an ObjectEncoder
 // that builds a broken ArrayEncoder.
 type brokenArrayObjectEncoder struct {
-	zapcore.ObjectEncoder
-	zapcore.ArrayEncoder
+    zapcore.ObjectEncoder
+    zapcore.ArrayEncoder
 
-	Err error // error to return
+    Err error // error to return
 }
 
 func (enc brokenArrayObjectEncoder) AddArray(key string, marshaler zapcore.ArrayMarshaler) error {
-	return enc.ObjectEncoder.AddArray(key,
-		zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
-			enc.ArrayEncoder = ae
-			return marshaler.MarshalLogArray(enc)
-		}))
+    return enc.ObjectEncoder.AddArray(key,
+        zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+            enc.ArrayEncoder = ae
+            return marshaler.MarshalLogArray(enc)
+        }))
 }
 
 func (enc brokenArrayObjectEncoder) AppendObject(zapcore.ObjectMarshaler) error {
-	return enc.Err
+    return enc.Err
 }

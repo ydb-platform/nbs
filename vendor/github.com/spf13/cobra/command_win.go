@@ -18,24 +18,24 @@
 package cobra
 
 import (
-	"fmt"
-	"os"
-	"time"
+    "fmt"
+    "os"
+    "time"
 
-	"github.com/inconshreveable/mousetrap"
+    "github.com/inconshreveable/mousetrap"
 )
 
 var preExecHookFn = preExecHook
 
 func preExecHook(c *Command) {
-	if MousetrapHelpText != "" && mousetrap.StartedByExplorer() {
-		c.Print(MousetrapHelpText)
-		if MousetrapDisplayDuration > 0 {
-			time.Sleep(MousetrapDisplayDuration)
-		} else {
-			c.Println("Press return to continue...")
-			fmt.Scanln()
-		}
-		os.Exit(1)
-	}
+    if MousetrapHelpText != "" && mousetrap.StartedByExplorer() {
+        c.Print(MousetrapHelpText)
+        if MousetrapDisplayDuration > 0 {
+            time.Sleep(MousetrapDisplayDuration)
+        } else {
+            c.Println("Press return to continue...")
+            fmt.Scanln()
+        }
+        os.Exit(1)
+    }
 }

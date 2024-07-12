@@ -1,0 +1,14 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=",
+    "Packages": {
+        "github.com/inconshreveable/mousetrap": {
+            "Imports": [
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

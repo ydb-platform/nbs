@@ -19,48 +19,48 @@
 package testutils
 
 import (
-	"testing"
+    "testing"
 
-	anypb "github.com/golang/protobuf/ptypes/any"
-	spb "google.golang.org/genproto/googleapis/rpc/status"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/grpctest"
-	"google.golang.org/grpc/status"
+    anypb "github.com/golang/protobuf/ptypes/any"
+    spb "google.golang.org/genproto/googleapis/rpc/status"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/internal/grpctest"
+    "google.golang.org/grpc/status"
 )
 
 type s struct {
-	grpctest.Tester
+    grpctest.Tester
 }
 
 func Test(t *testing.T) {
-	grpctest.RunSubTests(t, s{})
+    grpctest.RunSubTests(t, s{})
 }
 
 var statusErr = status.ErrorProto(&spb.Status{
-	Code:    int32(codes.DataLoss),
-	Message: "error for testing",
-	Details: []*anypb.Any{{
-		TypeUrl: "url",
-		Value:   []byte{6, 0, 0, 6, 1, 3},
-	}},
+    Code:    int32(codes.DataLoss),
+    Message: "error for testing",
+    Details: []*anypb.Any{{
+        TypeUrl: "url",
+        Value:   []byte{6, 0, 0, 6, 1, 3},
+    }},
 })
 
 func (s) TestStatusErrEqual(t *testing.T) {
-	tests := []struct {
-		name      string
-		err1      error
-		err2      error
-		wantEqual bool
-	}{
-		{"nil errors", nil, nil, true},
-		{"equal OK status", status.New(codes.OK, "").Err(), status.New(codes.OK, "").Err(), true},
-		{"equal status errors", statusErr, statusErr, true},
-		{"different status errors", statusErr, status.New(codes.OK, "").Err(), false},
-	}
+    tests := []struct {
+        name      string
+        err1      error
+        err2      error
+        wantEqual bool
+    }{
+        {"nil errors", nil, nil, true},
+        {"equal OK status", status.New(codes.OK, "").Err(), status.New(codes.OK, "").Err(), true},
+        {"equal status errors", statusErr, statusErr, true},
+        {"different status errors", statusErr, status.New(codes.OK, "").Err(), false},
+    }
 
-	for _, test := range tests {
-		if gotEqual := StatusErrEqual(test.err1, test.err2); gotEqual != test.wantEqual {
-			t.Errorf("%v: StatusErrEqual(%v, %v) = %v, want %v", test.name, test.err1, test.err2, gotEqual, test.wantEqual)
-		}
-	}
+    for _, test := range tests {
+        if gotEqual := StatusErrEqual(test.err1, test.err2); gotEqual != test.wantEqual {
+            t.Errorf("%v: StatusErrEqual(%v, %v) = %v, want %v", test.name, test.err1, test.err2, gotEqual, test.wantEqual)
+        }
+    }
 }

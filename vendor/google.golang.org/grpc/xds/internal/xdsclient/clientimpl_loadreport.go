@@ -18,8 +18,8 @@
 package xdsclient
 
 import (
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/load"
+    "google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+    "google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 
 // ReportLoad starts a load reporting stream to the given server. All load
@@ -28,20 +28,20 @@ import (
 // It returns a Store for the user to report loads, a function to cancel the
 // load reporting stream.
 func (c *clientImpl) ReportLoad(server *bootstrap.ServerConfig) (*load.Store, func()) {
-	c.authorityMu.Lock()
-	a, err := c.newAuthorityLocked(server)
-	if err != nil {
-		c.authorityMu.Unlock()
-		c.logger.Infof("xds: failed to connect to the control plane to do load reporting for authority %q: %v", server, err)
-		return nil, func() {}
-	}
-	// Hold the ref before starting load reporting.
-	a.refLocked()
-	c.authorityMu.Unlock()
+    c.authorityMu.Lock()
+    a, err := c.newAuthorityLocked(server)
+    if err != nil {
+        c.authorityMu.Unlock()
+        c.logger.Infof("xds: failed to connect to the control plane to do load reporting for authority %q: %v", server, err)
+        return nil, func() {}
+    }
+    // Hold the ref before starting load reporting.
+    a.refLocked()
+    c.authorityMu.Unlock()
 
-	store, cancelF := a.reportLoad()
-	return store, func() {
-		cancelF()
-		c.unrefAuthority(a)
-	}
+    store, cancelF := a.reportLoad()
+    return store, func() {
+        cancelF()
+        c.unrefAuthority(a)
+    }
 }

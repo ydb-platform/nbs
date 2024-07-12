@@ -18,16 +18,16 @@
 package testutils
 
 import (
-	"net"
-	"strconv"
+    "net"
+    "strconv"
 
-	v2xdspb "github.com/envoyproxy/go-control-plane/envoy/api/v2"
-	v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	v2endpointpb "github.com/envoyproxy/go-control-plane/envoy/api/v2/endpoint"
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	v2typepb "github.com/envoyproxy/go-control-plane/envoy/type"
-	wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
-	"google.golang.org/grpc/xds/internal"
+    v2xdspb "github.com/envoyproxy/go-control-plane/envoy/api/v2"
+    v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
+    v2endpointpb "github.com/envoyproxy/go-control-plane/envoy/api/v2/endpoint"
+    v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    v2typepb "github.com/envoyproxy/go-control-plane/envoy/type"
+    wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
+    "google.golang.org/grpc/xds/internal"
 )
 
 // EmptyNodeProtoV2 is a v2 Node proto with no fields set.
@@ -38,11 +38,11 @@ var EmptyNodeProtoV3 = &v3corepb.Node{}
 
 // LocalityIDToProto converts a LocalityID to its proto representation.
 func LocalityIDToProto(l internal.LocalityID) *v2corepb.Locality {
-	return &v2corepb.Locality{
-		Region:  l.Region,
-		Zone:    l.Zone,
-		SubZone: l.SubZone,
-	}
+    return &v2corepb.Locality{
+        Region:  l.Region,
+        Zone:    l.Zone,
+        SubZone: l.SubZone,
+    }
 }
 
 // The helper structs/functions related to EDS protos are used in EDS balancer
@@ -54,91 +54,91 @@ func LocalityIDToProto(l internal.LocalityID) *v2corepb.Locality {
 // ClusterLoadAssignmentBuilder builds a ClusterLoadAssignment, aka EDS
 // response.
 type ClusterLoadAssignmentBuilder struct {
-	v *v2xdspb.ClusterLoadAssignment
+    v *v2xdspb.ClusterLoadAssignment
 }
 
 // NewClusterLoadAssignmentBuilder creates a ClusterLoadAssignmentBuilder.
 func NewClusterLoadAssignmentBuilder(clusterName string, dropPercents map[string]uint32) *ClusterLoadAssignmentBuilder {
-	drops := make([]*v2xdspb.ClusterLoadAssignment_Policy_DropOverload, 0, len(dropPercents))
-	for n, d := range dropPercents {
-		drops = append(drops, &v2xdspb.ClusterLoadAssignment_Policy_DropOverload{
-			Category: n,
-			DropPercentage: &v2typepb.FractionalPercent{
-				Numerator:   d,
-				Denominator: v2typepb.FractionalPercent_HUNDRED,
-			},
-		})
-	}
+    drops := make([]*v2xdspb.ClusterLoadAssignment_Policy_DropOverload, 0, len(dropPercents))
+    for n, d := range dropPercents {
+        drops = append(drops, &v2xdspb.ClusterLoadAssignment_Policy_DropOverload{
+            Category: n,
+            DropPercentage: &v2typepb.FractionalPercent{
+                Numerator:   d,
+                Denominator: v2typepb.FractionalPercent_HUNDRED,
+            },
+        })
+    }
 
-	return &ClusterLoadAssignmentBuilder{
-		v: &v2xdspb.ClusterLoadAssignment{
-			ClusterName: clusterName,
-			Policy: &v2xdspb.ClusterLoadAssignment_Policy{
-				DropOverloads: drops,
-			},
-		},
-	}
+    return &ClusterLoadAssignmentBuilder{
+        v: &v2xdspb.ClusterLoadAssignment{
+            ClusterName: clusterName,
+            Policy: &v2xdspb.ClusterLoadAssignment_Policy{
+                DropOverloads: drops,
+            },
+        },
+    }
 }
 
 // AddLocalityOptions contains options when adding locality to the builder.
 type AddLocalityOptions struct {
-	Health []v2corepb.HealthStatus
-	Weight []uint32
+    Health []v2corepb.HealthStatus
+    Weight []uint32
 }
 
 // AddLocality adds a locality to the builder.
 func (clab *ClusterLoadAssignmentBuilder) AddLocality(subzone string, weight uint32, priority uint32, addrsWithPort []string, opts *AddLocalityOptions) {
-	lbEndPoints := make([]*v2endpointpb.LbEndpoint, 0, len(addrsWithPort))
-	for i, a := range addrsWithPort {
-		host, portStr, err := net.SplitHostPort(a)
-		if err != nil {
-			panic("failed to split " + a)
-		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			panic("failed to atoi " + portStr)
-		}
+    lbEndPoints := make([]*v2endpointpb.LbEndpoint, 0, len(addrsWithPort))
+    for i, a := range addrsWithPort {
+        host, portStr, err := net.SplitHostPort(a)
+        if err != nil {
+            panic("failed to split " + a)
+        }
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            panic("failed to atoi " + portStr)
+        }
 
-		lbe := &v2endpointpb.LbEndpoint{
-			HostIdentifier: &v2endpointpb.LbEndpoint_Endpoint{
-				Endpoint: &v2endpointpb.Endpoint{
-					Address: &v2corepb.Address{
-						Address: &v2corepb.Address_SocketAddress{
-							SocketAddress: &v2corepb.SocketAddress{
-								Protocol: v2corepb.SocketAddress_TCP,
-								Address:  host,
-								PortSpecifier: &v2corepb.SocketAddress_PortValue{
-									PortValue: uint32(port)}}}}}},
-		}
-		if opts != nil {
-			if i < len(opts.Health) {
-				lbe.HealthStatus = opts.Health[i]
-			}
-			if i < len(opts.Weight) {
-				lbe.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: opts.Weight[i]}
-			}
-		}
-		lbEndPoints = append(lbEndPoints, lbe)
-	}
+        lbe := &v2endpointpb.LbEndpoint{
+            HostIdentifier: &v2endpointpb.LbEndpoint_Endpoint{
+                Endpoint: &v2endpointpb.Endpoint{
+                    Address: &v2corepb.Address{
+                        Address: &v2corepb.Address_SocketAddress{
+                            SocketAddress: &v2corepb.SocketAddress{
+                                Protocol: v2corepb.SocketAddress_TCP,
+                                Address:  host,
+                                PortSpecifier: &v2corepb.SocketAddress_PortValue{
+                                    PortValue: uint32(port)}}}}}},
+        }
+        if opts != nil {
+            if i < len(opts.Health) {
+                lbe.HealthStatus = opts.Health[i]
+            }
+            if i < len(opts.Weight) {
+                lbe.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: opts.Weight[i]}
+            }
+        }
+        lbEndPoints = append(lbEndPoints, lbe)
+    }
 
-	var localityID *v2corepb.Locality
-	if subzone != "" {
-		localityID = &v2corepb.Locality{
-			Region:  "",
-			Zone:    "",
-			SubZone: subzone,
-		}
-	}
+    var localityID *v2corepb.Locality
+    if subzone != "" {
+        localityID = &v2corepb.Locality{
+            Region:  "",
+            Zone:    "",
+            SubZone: subzone,
+        }
+    }
 
-	clab.v.Endpoints = append(clab.v.Endpoints, &v2endpointpb.LocalityLbEndpoints{
-		Locality:            localityID,
-		LbEndpoints:         lbEndPoints,
-		LoadBalancingWeight: &wrapperspb.UInt32Value{Value: weight},
-		Priority:            priority,
-	})
+    clab.v.Endpoints = append(clab.v.Endpoints, &v2endpointpb.LocalityLbEndpoints{
+        Locality:            localityID,
+        LbEndpoints:         lbEndPoints,
+        LoadBalancingWeight: &wrapperspb.UInt32Value{Value: weight},
+        Priority:            priority,
+    })
 }
 
 // Build builds ClusterLoadAssignment.
 func (clab *ClusterLoadAssignmentBuilder) Build() *v2xdspb.ClusterLoadAssignment {
-	return clab.v
+    return clab.v
 }

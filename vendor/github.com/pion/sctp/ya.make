@@ -1,0 +1,98 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MIT)
+
+SRCS(
+    ack_timer.go
+    association.go
+    association_stats.go
+    chunk.go
+    chunk_abort.go
+    chunk_cookie_ack.go
+    chunk_cookie_echo.go
+    chunk_error.go
+    chunk_forward_tsn.go
+    chunk_heartbeat.go
+    chunk_heartbeat_ack.go
+    chunk_init.go
+    chunk_init_ack.go
+    chunk_init_common.go
+    chunk_payload_data.go
+    chunk_reconfig.go
+    chunk_selective_ack.go
+    chunk_shutdown.go
+    chunk_shutdown_ack.go
+    chunk_shutdown_complete.go
+    chunkheader.go
+    chunktype.go
+    control_queue.go
+    error_cause.go
+    error_cause_header.go
+    error_cause_invalid_mandatory_parameter.go
+    error_cause_protocol_violation.go
+    error_cause_unrecognized_chunk_type.go
+    error_cause_user_initiated_abort.go
+    packet.go
+    param.go
+    param_chunk_list.go
+    param_ecn_capable.go
+    param_forward_tsn_supported.go
+    param_heartbeat_info.go
+    param_outgoing_reset_request.go
+    param_random.go
+    param_reconfig_response.go
+    param_requested_hmac_algorithm.go
+    param_state_cookie.go
+    param_supported_extensions.go
+    param_zero_checksum.go
+    paramheader.go
+    paramtype.go
+    payload_queue.go
+    pending_queue.go
+    reassembly_queue.go
+    rtx_timer.go
+    sctp.go
+    stream.go
+    util.go
+)
+
+GO_TEST_SRCS(
+    ack_timer_test.go
+    association_test.go
+    chunk_abort_test.go
+    chunk_error_test.go
+    chunk_forward_tsn_test.go
+    chunk_init_test.go
+    chunk_reconfig_test.go
+    chunk_shutdown_ack_test.go
+    chunk_shutdown_complete_test.go
+    chunk_shutdown_test.go
+    chunk_test.go
+    chunkheader_test.go
+    chunktype_test.go
+    packet_test.go
+    param_ecn_capable_test.go
+    param_forward_tsn_supported_test.go
+    param_outgoing_reset_request_test.go
+    param_reconfig_response_test.go
+    param_test.go
+    param_zero_checksum_test.go
+    paramheader_test.go
+    paramtype_test.go
+    payload_queue_test.go
+    pending_queue_test.go
+    reassembly_queue_test.go
+    rtx_timer_test.go
+    stream_test.go
+    util_test.go
+    vnet_test.go
+)
+
+END()
+
+RECURSE(
+    examples
+    gotest
+)

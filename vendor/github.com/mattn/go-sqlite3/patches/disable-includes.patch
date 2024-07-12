@@ -1,0 +1,137 @@
+--- vendor/github.com/mattn/go-sqlite3/doc.go    (3f36f6c810ce5343b804abf2de25494a9ebe0edc)
++++ vendor/github.com/mattn/go-sqlite3/doc.go    (300a6e2cba1219bd405a1f4e07b3c5875bb566f3)
+@@ -29,1 +29,1 @@ SQLite3 Extension
+-    #include <pcre.h>
++    #error #include <pcre.h>
+--- vendor/github.com/mattn/go-sqlite3/backup.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/backup.go    (working tree)
+@@ -7,7 +7,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/callback.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/callback.go    (working tree)
+@@ -12,7 +12,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/error.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/error.go    (working tree)
+@@ -7,7 +7,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3.go    (working tree)
+@@ -25,7 +25,7 @@ package sqlite3
+ #cgo openbsd CFLAGS: -I/usr/local/include
+ #cgo openbsd LDFLAGS: -L/usr/local/lib
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_context.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_context.go    (working tree)
+@@ -8,7 +8,7 @@ package sqlite3
+ /*
+
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_load_extension.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_load_extension.go    (working tree)
+@@ -9,7 +9,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_opt_preupdate_hook.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_opt_preupdate_hook.go    (working tree)
+@@ -13,7 +13,7 @@ package sqlite3
+ #cgo LDFLAGS: -lm
+
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_opt_unlock_notify.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_opt_unlock_notify.go    (working tree)
+@@ -12,7 +12,7 @@ package sqlite3
+ #cgo CFLAGS: -DSQLITE_ENABLE_UNLOCK_NOTIFY
+
+ #include <stdlib.h>
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+
+ extern void unlock_notify_callback(void *arg, int argc);
+ */
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_opt_userauth.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_opt_userauth.go    (working tree)
+@@ -11,7 +11,7 @@ package sqlite3
+ #cgo CFLAGS: -DSQLITE_USER_AUTHENTICATION
+ #cgo LDFLAGS: -lm
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_opt_vtable.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_opt_vtable.go    (working tree)
+@@ -19,7 +19,7 @@ package sqlite3
+ #cgo CFLAGS: -Wno-deprecated-declarations
+
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_trace.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_trace.go    (working tree)
+@@ -9,7 +9,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif
+--- vendor/github.com/mattn/go-sqlite3/sqlite3_type.go    (index)
++++ vendor/github.com/mattn/go-sqlite3/sqlite3_type.go    (working tree)
+@@ -6,7 +6,7 @@ package sqlite3
+
+ /*
+ #ifndef USE_LIBSQLITE3
+-#include "sqlite3-binding.h"
++#error #include "sqlite-binding.h"
+ #else
+ #include <sqlite3.h>
+ #endif

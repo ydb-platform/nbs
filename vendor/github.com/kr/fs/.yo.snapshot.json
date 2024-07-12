@@ -1,0 +1,22 @@
+{
+    "Version": "v0.1.0",
+    "GoVersion": "",
+    "Sum": "h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=",
+    "Packages": {
+        "github.com/kr/fs": {
+            "Imports": [
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/kr/fs",
+                "os",
+                "path/filepath",
+                "runtime",
+                "testing"
+            ]
+        }
+    }
+}

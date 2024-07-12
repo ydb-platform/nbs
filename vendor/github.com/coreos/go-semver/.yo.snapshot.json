@@ -1,0 +1,38 @@
+{
+    "Version": "v0.3.0",
+    "GoVersion": "",
+    "Sum": "h1:wkHLiw0WNATZnSG7epLsujiMCgPAc9xhjJ4tgnAxmfM=",
+    "Packages": {
+        "github.com/coreos/go-semver": {
+            "Imports": [
+                "fmt",
+                "github.com/coreos/go-semver/semver",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-semver/semver": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "gopkg.in/yaml.v2",
+                "math/rand",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -9,4 +9,4 @@ package unix
 // SYS_ALARM is not defined on arm or riscv, but is available for other GOARCH
 // values.
 
-//sys	Alarm(seconds uint) (remaining uint, err error)
+//sys    Alarm(seconds uint) (remaining uint, err error)

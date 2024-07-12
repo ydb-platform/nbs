@@ -21,11 +21,11 @@
 package zap
 
 import (
-	"errors"
-	"sort"
-	"time"
+    "errors"
+    "sort"
+    "time"
 
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/zapcore"
 )
 
 // SamplingConfig sets a sampling strategy for the logger. Sampling caps the
@@ -37,9 +37,9 @@ import (
 // Values configured here are per-second. See zapcore.NewSamplerWithOptions for
 // details.
 type SamplingConfig struct {
-	Initial    int                                           `json:"initial" yaml:"initial"`
-	Thereafter int                                           `json:"thereafter" yaml:"thereafter"`
-	Hook       func(zapcore.Entry, zapcore.SamplingDecision) `json:"-" yaml:"-"`
+    Initial    int                                           `json:"initial" yaml:"initial"`
+    Thereafter int                                           `json:"thereafter" yaml:"thereafter"`
+    Hook       func(zapcore.Entry, zapcore.SamplingDecision) `json:"-" yaml:"-"`
 }
 
 // Config offers a declarative way to construct a logger. It doesn't do
@@ -56,41 +56,41 @@ type SamplingConfig struct {
 // For an example showing runtime log level changes, see the documentation for
 // AtomicLevel.
 type Config struct {
-	// Level is the minimum enabled logging level. Note that this is a dynamic
-	// level, so calling Config.Level.SetLevel will atomically change the log
-	// level of all loggers descended from this config.
-	Level AtomicLevel `json:"level" yaml:"level"`
-	// Development puts the logger in development mode, which changes the
-	// behavior of DPanicLevel and takes stacktraces more liberally.
-	Development bool `json:"development" yaml:"development"`
-	// DisableCaller stops annotating logs with the calling function's file
-	// name and line number. By default, all logs are annotated.
-	DisableCaller bool `json:"disableCaller" yaml:"disableCaller"`
-	// DisableStacktrace completely disables automatic stacktrace capturing. By
-	// default, stacktraces are captured for WarnLevel and above logs in
-	// development and ErrorLevel and above in production.
-	DisableStacktrace bool `json:"disableStacktrace" yaml:"disableStacktrace"`
-	// Sampling sets a sampling policy. A nil SamplingConfig disables sampling.
-	Sampling *SamplingConfig `json:"sampling" yaml:"sampling"`
-	// Encoding sets the logger's encoding. Valid values are "json" and
-	// "console", as well as any third-party encodings registered via
-	// RegisterEncoder.
-	Encoding string `json:"encoding" yaml:"encoding"`
-	// EncoderConfig sets options for the chosen encoder. See
-	// zapcore.EncoderConfig for details.
-	EncoderConfig zapcore.EncoderConfig `json:"encoderConfig" yaml:"encoderConfig"`
-	// OutputPaths is a list of URLs or file paths to write logging output to.
-	// See Open for details.
-	OutputPaths []string `json:"outputPaths" yaml:"outputPaths"`
-	// ErrorOutputPaths is a list of URLs to write internal logger errors to.
-	// The default is standard error.
-	//
-	// Note that this setting only affects internal errors; for sample code that
-	// sends error-level logs to a different location from info- and debug-level
-	// logs, see the package-level AdvancedConfiguration example.
-	ErrorOutputPaths []string `json:"errorOutputPaths" yaml:"errorOutputPaths"`
-	// InitialFields is a collection of fields to add to the root logger.
-	InitialFields map[string]interface{} `json:"initialFields" yaml:"initialFields"`
+    // Level is the minimum enabled logging level. Note that this is a dynamic
+    // level, so calling Config.Level.SetLevel will atomically change the log
+    // level of all loggers descended from this config.
+    Level AtomicLevel `json:"level" yaml:"level"`
+    // Development puts the logger in development mode, which changes the
+    // behavior of DPanicLevel and takes stacktraces more liberally.
+    Development bool `json:"development" yaml:"development"`
+    // DisableCaller stops annotating logs with the calling function's file
+    // name and line number. By default, all logs are annotated.
+    DisableCaller bool `json:"disableCaller" yaml:"disableCaller"`
+    // DisableStacktrace completely disables automatic stacktrace capturing. By
+    // default, stacktraces are captured for WarnLevel and above logs in
+    // development and ErrorLevel and above in production.
+    DisableStacktrace bool `json:"disableStacktrace" yaml:"disableStacktrace"`
+    // Sampling sets a sampling policy. A nil SamplingConfig disables sampling.
+    Sampling *SamplingConfig `json:"sampling" yaml:"sampling"`
+    // Encoding sets the logger's encoding. Valid values are "json" and
+    // "console", as well as any third-party encodings registered via
+    // RegisterEncoder.
+    Encoding string `json:"encoding" yaml:"encoding"`
+    // EncoderConfig sets options for the chosen encoder. See
+    // zapcore.EncoderConfig for details.
+    EncoderConfig zapcore.EncoderConfig `json:"encoderConfig" yaml:"encoderConfig"`
+    // OutputPaths is a list of URLs or file paths to write logging output to.
+    // See Open for details.
+    OutputPaths []string `json:"outputPaths" yaml:"outputPaths"`
+    // ErrorOutputPaths is a list of URLs to write internal logger errors to.
+    // The default is standard error.
+    //
+    // Note that this setting only affects internal errors; for sample code that
+    // sends error-level logs to a different location from info- and debug-level
+    // logs, see the package-level AdvancedConfiguration example.
+    ErrorOutputPaths []string `json:"errorOutputPaths" yaml:"errorOutputPaths"`
+    // InitialFields is a collection of fields to add to the root logger.
+    InitialFields map[string]interface{} `json:"initialFields" yaml:"initialFields"`
 }
 
 // NewProductionEncoderConfig returns an opinionated EncoderConfig for
@@ -119,23 +119,23 @@ type Config struct {
 // object.
 // For example, use the following to change the time encoding format:
 //
-//	cfg := zap.NewProductionEncoderConfig()
-//	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
+//    cfg := zap.NewProductionEncoderConfig()
+//    cfg.EncodeTime = zapcore.ISO8601TimeEncoder
 func NewProductionEncoderConfig() zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		FunctionKey:    zapcore.OmitKey,
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.EpochTimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
+    return zapcore.EncoderConfig{
+        TimeKey:        "ts",
+        LevelKey:       "level",
+        NameKey:        "logger",
+        CallerKey:      "caller",
+        FunctionKey:    zapcore.OmitKey,
+        MessageKey:     "msg",
+        StacktraceKey:  "stacktrace",
+        LineEnding:     zapcore.DefaultLineEnding,
+        EncodeLevel:    zapcore.LowercaseLevelEncoder,
+        EncodeTime:     zapcore.EpochTimeEncoder,
+        EncodeDuration: zapcore.SecondsDurationEncoder,
+        EncodeCaller:   zapcore.ShortCallerEncoder,
+    }
 }
 
 // NewProductionConfig builds a reasonable default production logging
@@ -155,18 +155,18 @@ func NewProductionEncoderConfig() zapcore.EncoderConfig {
 // See [NewProductionEncoderConfig] for information
 // on the default encoder configuration.
 func NewProductionConfig() Config {
-	return Config{
-		Level:       NewAtomicLevelAt(InfoLevel),
-		Development: false,
-		Sampling: &SamplingConfig{
-			Initial:    100,
-			Thereafter: 100,
-		},
-		Encoding:         "json",
-		EncoderConfig:    NewProductionEncoderConfig(),
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
-	}
+    return Config{
+        Level:       NewAtomicLevelAt(InfoLevel),
+        Development: false,
+        Sampling: &SamplingConfig{
+            Initial:    100,
+            Thereafter: 100,
+        },
+        Encoding:         "json",
+        EncoderConfig:    NewProductionEncoderConfig(),
+        OutputPaths:      []string{"stderr"},
+        ErrorOutputPaths: []string{"stderr"},
+    }
 }
 
 // NewDevelopmentEncoderConfig returns an opinionated EncoderConfig for
@@ -195,24 +195,24 @@ func NewProductionConfig() Config {
 // object.
 // For example, use the following to change the time encoding format:
 //
-//	cfg := zap.NewDevelopmentEncoderConfig()
-//	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
+//    cfg := zap.NewDevelopmentEncoderConfig()
+//    cfg.EncodeTime = zapcore.ISO8601TimeEncoder
 func NewDevelopmentEncoderConfig() zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		// Keys can be anything except the empty string.
-		TimeKey:        "T",
-		LevelKey:       "L",
-		NameKey:        "N",
-		CallerKey:      "C",
-		FunctionKey:    zapcore.OmitKey,
-		MessageKey:     "M",
-		StacktraceKey:  "S",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.StringDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
+    return zapcore.EncoderConfig{
+        // Keys can be anything except the empty string.
+        TimeKey:        "T",
+        LevelKey:       "L",
+        NameKey:        "N",
+        CallerKey:      "C",
+        FunctionKey:    zapcore.OmitKey,
+        MessageKey:     "M",
+        StacktraceKey:  "S",
+        LineEnding:     zapcore.DefaultLineEnding,
+        EncodeLevel:    zapcore.CapitalLevelEncoder,
+        EncodeTime:     zapcore.ISO8601TimeEncoder,
+        EncodeDuration: zapcore.StringDurationEncoder,
+        EncodeCaller:   zapcore.ShortCallerEncoder,
+    }
 }
 
 // NewDevelopmentConfig builds a reasonable default development logging
@@ -225,106 +225,106 @@ func NewDevelopmentEncoderConfig() zapcore.EncoderConfig {
 // See [NewDevelopmentEncoderConfig] for information
 // on the default encoder configuration.
 func NewDevelopmentConfig() Config {
-	return Config{
-		Level:            NewAtomicLevelAt(DebugLevel),
-		Development:      true,
-		Encoding:         "console",
-		EncoderConfig:    NewDevelopmentEncoderConfig(),
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
-	}
+    return Config{
+        Level:            NewAtomicLevelAt(DebugLevel),
+        Development:      true,
+        Encoding:         "console",
+        EncoderConfig:    NewDevelopmentEncoderConfig(),
+        OutputPaths:      []string{"stderr"},
+        ErrorOutputPaths: []string{"stderr"},
+    }
 }
 
 // Build constructs a logger from the Config and Options.
 func (cfg Config) Build(opts ...Option) (*Logger, error) {
-	enc, err := cfg.buildEncoder()
-	if err != nil {
-		return nil, err
-	}
+    enc, err := cfg.buildEncoder()
+    if err != nil {
+        return nil, err
+    }
 
-	sink, errSink, err := cfg.openSinks()
-	if err != nil {
-		return nil, err
-	}
+    sink, errSink, err := cfg.openSinks()
+    if err != nil {
+        return nil, err
+    }
 
-	if cfg.Level == (AtomicLevel{}) {
-		return nil, errors.New("missing Level")
-	}
+    if cfg.Level == (AtomicLevel{}) {
+        return nil, errors.New("missing Level")
+    }
 
-	log := New(
-		zapcore.NewCore(enc, sink, cfg.Level),
-		cfg.buildOptions(errSink)...,
-	)
-	if len(opts) > 0 {
-		log = log.WithOptions(opts...)
-	}
-	return log, nil
+    log := New(
+        zapcore.NewCore(enc, sink, cfg.Level),
+        cfg.buildOptions(errSink)...,
+    )
+    if len(opts) > 0 {
+        log = log.WithOptions(opts...)
+    }
+    return log, nil
 }
 
 func (cfg Config) buildOptions(errSink zapcore.WriteSyncer) []Option {
-	opts := []Option{ErrorOutput(errSink)}
+    opts := []Option{ErrorOutput(errSink)}
 
-	if cfg.Development {
-		opts = append(opts, Development())
-	}
+    if cfg.Development {
+        opts = append(opts, Development())
+    }
 
-	if !cfg.DisableCaller {
-		opts = append(opts, AddCaller())
-	}
+    if !cfg.DisableCaller {
+        opts = append(opts, AddCaller())
+    }
 
-	stackLevel := ErrorLevel
-	if cfg.Development {
-		stackLevel = WarnLevel
-	}
-	if !cfg.DisableStacktrace {
-		opts = append(opts, AddStacktrace(stackLevel))
-	}
+    stackLevel := ErrorLevel
+    if cfg.Development {
+        stackLevel = WarnLevel
+    }
+    if !cfg.DisableStacktrace {
+        opts = append(opts, AddStacktrace(stackLevel))
+    }
 
-	if scfg := cfg.Sampling; scfg != nil {
-		opts = append(opts, WrapCore(func(core zapcore.Core) zapcore.Core {
-			var samplerOpts []zapcore.SamplerOption
-			if scfg.Hook != nil {
-				samplerOpts = append(samplerOpts, zapcore.SamplerHook(scfg.Hook))
-			}
-			return zapcore.NewSamplerWithOptions(
-				core,
-				time.Second,
-				cfg.Sampling.Initial,
-				cfg.Sampling.Thereafter,
-				samplerOpts...,
-			)
-		}))
-	}
+    if scfg := cfg.Sampling; scfg != nil {
+        opts = append(opts, WrapCore(func(core zapcore.Core) zapcore.Core {
+            var samplerOpts []zapcore.SamplerOption
+            if scfg.Hook != nil {
+                samplerOpts = append(samplerOpts, zapcore.SamplerHook(scfg.Hook))
+            }
+            return zapcore.NewSamplerWithOptions(
+                core,
+                time.Second,
+                cfg.Sampling.Initial,
+                cfg.Sampling.Thereafter,
+                samplerOpts...,
+            )
+        }))
+    }
 
-	if len(cfg.InitialFields) > 0 {
-		fs := make([]Field, 0, len(cfg.InitialFields))
-		keys := make([]string, 0, len(cfg.InitialFields))
-		for k := range cfg.InitialFields {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fs = append(fs, Any(k, cfg.InitialFields[k]))
-		}
-		opts = append(opts, Fields(fs...))
-	}
+    if len(cfg.InitialFields) > 0 {
+        fs := make([]Field, 0, len(cfg.InitialFields))
+        keys := make([]string, 0, len(cfg.InitialFields))
+        for k := range cfg.InitialFields {
+            keys = append(keys, k)
+        }
+        sort.Strings(keys)
+        for _, k := range keys {
+            fs = append(fs, Any(k, cfg.InitialFields[k]))
+        }
+        opts = append(opts, Fields(fs...))
+    }
 
-	return opts
+    return opts
 }
 
 func (cfg Config) openSinks() (zapcore.WriteSyncer, zapcore.WriteSyncer, error) {
-	sink, closeOut, err := Open(cfg.OutputPaths...)
-	if err != nil {
-		return nil, nil, err
-	}
-	errSink, _, err := Open(cfg.ErrorOutputPaths...)
-	if err != nil {
-		closeOut()
-		return nil, nil, err
-	}
-	return sink, errSink, nil
+    sink, closeOut, err := Open(cfg.OutputPaths...)
+    if err != nil {
+        return nil, nil, err
+    }
+    errSink, _, err := Open(cfg.ErrorOutputPaths...)
+    if err != nil {
+        closeOut()
+        return nil, nil, err
+    }
+    return sink, errSink, nil
 }
 
 func (cfg Config) buildEncoder() (zapcore.Encoder, error) {
-	return newEncoder(cfg.Encoding, cfg.EncoderConfig)
+    return newEncoder(cfg.Encoding, cfg.EncoderConfig)
 }

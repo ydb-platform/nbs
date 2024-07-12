@@ -1,0 +1,37 @@
+commit c06ee237563c9fe99a29996ee80cd4dae1c11088 (HEAD -> add-rtp-to-publisher-track-stats)
+author: alekseev-dev
+date: 2024-05-03T16:34:10+03:00
+
+    add rid to stats
+
+--- vendor/github.com/pion/webrtc/v3/stats.go    (65acf7ccff5540e80bdc128129006720cecdc269)
++++ vendor/github.com/pion/webrtc/v3/stats.go    (c06ee237563c9fe99a29996ee80cd4dae1c11088)
+@@ -605,6 +605,10 @@ type OutboundRTPStreamStats struct {
+     // null. Otherwise, this member is not present.
+     Mid string `json:"mid"`
+
++    // Rid only exists if a rid has been set for this RTP stream.
++    // Must not exist for audio.
++    Rid string `json:"rid"`
++
+     // MediaSourceID is the identifier of the stats object representing the track currently
+     // attached to the sender of this stream, an RTCMediaSourceStats.
+     MediaSourceID string `json:"mediaSourceId"`
+--- vendor/github.com/pion/webrtc/v3/stats_go_test.go    (65acf7ccff5540e80bdc128129006720cecdc269)
++++ vendor/github.com/pion/webrtc/v3/stats_go_test.go    (c06ee237563c9fe99a29996ee80cd4dae1c11088)
+@@ -215,6 +215,7 @@ func getStatsSamples() []statSample {
+ `
+     outboundRTPStreamStats := OutboundRTPStreamStats{
+         Mid:                      "1",
++        Rid:                      "hi",
+         MediaSourceID:            "SA5",
+         Timestamp:                1688978831527.718,
+         Type:                     StatsTypeOutboundRTP,
+@@ -268,6 +269,7 @@ func getStatsSamples() []statSample {
+     outboundRTPStreamStatsJSON := `
+ {
+   "mid": "1",
++  "rid": "hi",
+   "mediaSourceId": "SA5",
+   "timestamp": 1688978831527.718,
+   "type": "outbound-rtp",

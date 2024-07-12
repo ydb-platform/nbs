@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
 GO_SKIP_TESTS(
@@ -16,4 +18,6 @@ GO_TEST_SRCS(mock_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

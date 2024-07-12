@@ -1,24 +1,24 @@
 package ccache
 
 import (
-	"testing"
+    "testing"
 
-	. "github.com/karlseguin/expect"
+    . "github.com/karlseguin/expect"
 )
 
 type ConfigurationTests struct{}
 
 func Test_Configuration(t *testing.T) {
-	Expectify(new(ConfigurationTests), t)
+    Expectify(new(ConfigurationTests), t)
 }
 
 func (_ *ConfigurationTests) BucketsPowerOf2() {
-	for i := uint32(0); i < 31; i++ {
-		c := Configure().Buckets(i)
-		if i == 1 || i == 2 || i == 4 || i == 8 || i == 16 {
-			Expect(c.buckets).ToEqual(int(i))
-		} else {
-			Expect(c.buckets).ToEqual(16)
-		}
-	}
+    for i := uint32(0); i < 31; i++ {
+        c := Configure().Buckets(i)
+        if i == 1 || i == 2 || i == 4 || i == 8 || i == 16 {
+            Expect(c.buckets).ToEqual(int(i))
+        } else {
+            Expect(c.buckets).ToEqual(16)
+        }
+    }
 }

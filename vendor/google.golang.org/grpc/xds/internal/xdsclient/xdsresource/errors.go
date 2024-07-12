@@ -25,42 +25,42 @@ import "fmt"
 type ErrorType int
 
 const (
-	// ErrorTypeUnknown indicates the error doesn't have a specific type. It is
-	// the default value, and is returned if the error is not an xds error.
-	ErrorTypeUnknown ErrorType = iota
-	// ErrorTypeConnection indicates a connection error from the gRPC client.
-	ErrorTypeConnection
-	// ErrorTypeResourceNotFound indicates a resource is not found from the xds
-	// response. It's typically returned if the resource is removed in the xds
-	// server.
-	ErrorTypeResourceNotFound
-	// ErrorTypeResourceTypeUnsupported indicates the receipt of a message from
-	// the management server with resources of an unsupported resource type.
-	ErrorTypeResourceTypeUnsupported
-	// ErrTypeStreamFailedAfterRecv indicates an ADS stream error, after
-	// successful receipt of at least one message from the server.
-	ErrTypeStreamFailedAfterRecv
+    // ErrorTypeUnknown indicates the error doesn't have a specific type. It is
+    // the default value, and is returned if the error is not an xds error.
+    ErrorTypeUnknown ErrorType = iota
+    // ErrorTypeConnection indicates a connection error from the gRPC client.
+    ErrorTypeConnection
+    // ErrorTypeResourceNotFound indicates a resource is not found from the xds
+    // response. It's typically returned if the resource is removed in the xds
+    // server.
+    ErrorTypeResourceNotFound
+    // ErrorTypeResourceTypeUnsupported indicates the receipt of a message from
+    // the management server with resources of an unsupported resource type.
+    ErrorTypeResourceTypeUnsupported
+    // ErrTypeStreamFailedAfterRecv indicates an ADS stream error, after
+    // successful receipt of at least one message from the server.
+    ErrTypeStreamFailedAfterRecv
 )
 
 type xdsClientError struct {
-	t    ErrorType
-	desc string
+    t    ErrorType
+    desc string
 }
 
 func (e *xdsClientError) Error() string {
-	return e.desc
+    return e.desc
 }
 
 // NewErrorf creates an xds client error. The callbacks are called with this
 // error, to pass additional information about the error.
 func NewErrorf(t ErrorType, format string, args ...interface{}) error {
-	return &xdsClientError{t: t, desc: fmt.Sprintf(format, args...)}
+    return &xdsClientError{t: t, desc: fmt.Sprintf(format, args...)}
 }
 
 // ErrType returns the error's type.
 func ErrType(e error) ErrorType {
-	if xe, ok := e.(*xdsClientError); ok {
-		return xe.t
-	}
-	return ErrorTypeUnknown
+    if xe, ok := e.(*xdsClientError); ok {
+        return xe.t
+    }
+    return ErrorTypeUnknown
 }

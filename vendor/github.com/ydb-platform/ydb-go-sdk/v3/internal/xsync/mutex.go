@@ -1,34 +1,34 @@
 package xsync
 
 import (
-	"sync"
+    "sync"
 )
 
 type Mutex struct { //nolint:gocritic
-	sync.Mutex
+    sync.Mutex
 }
 
 func (l *Mutex) WithLock(f func()) {
-	l.Lock()
-	defer l.Unlock()
+    l.Lock()
+    defer l.Unlock()
 
-	f()
+    f()
 }
 
 type RWMutex struct { //nolint:gocritic
-	sync.RWMutex
+    sync.RWMutex
 }
 
 func (l *RWMutex) WithLock(f func()) {
-	l.Lock()
-	defer l.Unlock()
+    l.Lock()
+    defer l.Unlock()
 
-	f()
+    f()
 }
 
 func (l *RWMutex) WithRLock(f func()) {
-	l.RLock()
-	defer l.RUnlock()
+    l.RLock()
+    defer l.RUnlock()
 
-	f()
+    f()
 }

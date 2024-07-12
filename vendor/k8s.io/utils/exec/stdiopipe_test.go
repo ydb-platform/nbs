@@ -17,39 +17,39 @@ limitations under the License.
 package exec_test
 
 import (
-	"fmt"
-	"io/ioutil"
+    "fmt"
+    "io/ioutil"
 
-	"k8s.io/utils/exec"
+    "k8s.io/utils/exec"
 )
 
 func ExampleNew_stderrPipe() {
-	cmd := exec.New().Command("/bin/sh", "-c", "echo 'We can read from stderr via pipe!' >&2")
+    cmd := exec.New().Command("/bin/sh", "-c", "echo 'We can read from stderr via pipe!' >&2")
 
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		panic(err)
-	}
+    stderrPipe, err := cmd.StderrPipe()
+    if err != nil {
+        panic(err)
+    }
 
-	stderr := make(chan []byte)
-	go func() {
-		b, err := ioutil.ReadAll(stderrPipe)
-		if err != nil {
-			panic(err)
-		}
-		stderr <- b
-	}()
+    stderr := make(chan []byte)
+    go func() {
+        b, err := ioutil.ReadAll(stderrPipe)
+        if err != nil {
+            panic(err)
+        }
+        stderr <- b
+    }()
 
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
+    if err := cmd.Start(); err != nil {
+        panic(err)
+    }
 
-	received := <-stderr
+    received := <-stderr
 
-	if err := cmd.Wait(); err != nil {
-		panic(err)
-	}
+    if err := cmd.Wait(); err != nil {
+        panic(err)
+    }
 
-	fmt.Println(string(received))
-	// Output: We can read from stderr via pipe!
+    fmt.Println(string(received))
+    // Output: We can read from stderr via pipe!
 }

@@ -1,0 +1,8 @@
+RUNTIME ERROR: Not a number
+-------------------------------------------------
+    testdata/builtin_log7:1:1-12    $
+
+std.log(-1)
+
+-------------------------------------------------
+    During evaluation

@@ -1,8 +1,12 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
-SRCS(oleutil.go)
+SRCS(
+    oleutil.go
+)
 
 IF (OS_LINUX)
     SRCS(

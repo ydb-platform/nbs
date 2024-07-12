@@ -31,7 +31,7 @@ import "go.uber.org/zap/zapcore"
 // packages.
 // This cannot be imported from zapcore because of the cyclic dependency.
 type LeveledEnabler interface {
-	zapcore.LevelEnabler
+    zapcore.LevelEnabler
 
-	Level() zapcore.Level
+    Level() zapcore.Level
 }

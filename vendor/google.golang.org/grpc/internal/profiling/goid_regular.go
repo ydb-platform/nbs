@@ -26,5 +26,5 @@ package profiling
 // retrieves the goroutine ID efficiently. See goid_modified.go for a different
 // version of goId that requires a grpcgoid build tag to compile.
 func goid() int64 {
-	return 0
+    return 0
 }

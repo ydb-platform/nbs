@@ -1,0 +1,421 @@
+{
+    "Version": "v1.7.0-rc.1",
+    "GoVersion": "1.15",
+    "Sum": "h1:YojYx61/OLFsiv6Rw1Z96LpldJIy31o+UHmwAUMJ6/U=",
+    "Packages": {
+        "github.com/golang/mock/gomock": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/gomock/internal/mock_gomock",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/mock/gomock/internal/mock_gomock": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen": {
+            "Imports": [
+                "bytes",
+                "encoding/gob",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/golang/mock/mockgen/model",
+                "go/ast",
+                "go/build",
+                "go/importer",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/mod/modfile",
+                "golang.org/x/tools/imports",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "runtime",
+                "runtime/debug",
+                "sort",
+                "strconv",
+                "strings",
+                "text/template",
+                "unicode"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/golang/mock/mockgen/model",
+                "go/parser",
+                "go/token",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/aux_imports_embedded_interface": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/aux_imports_embedded_interface/faux",
+                "log",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/aux_imports_embedded_interface/faux": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/const_array_length": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "math",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/copyright_file": {
+            "Imports": [
+                "github.com/golang/mock/gomock"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/custom_package_name/client/v1": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/custom_package_name/greeter": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/mock/mockgen/internal/tests/custom_package_name/client/v1",
+                "github.com/golang/mock/mockgen/internal/tests/custom_package_name/validator"
+            ],
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/custom_package_name/client/v1",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/custom_package_name/validator": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/dot_imports": {
+            "Imports": [
+                "bytes",
+                "context",
+                "github.com/golang/mock/gomock",
+                "net/http",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/empty_interface": {
+            "Imports": [
+                "github.com/golang/mock/gomock"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/extra_import": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/generated_identifier_conflict": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/ersatz",
+                "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/faux",
+                "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/other/ersatz",
+                "log",
+                "net/http",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/ersatz": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/faux": {
+            "Imports": [
+                "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/other/ersatz",
+                "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/other/log",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/other/ersatz": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_embedded_interface/other/log": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_source": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/import_source/definition",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/import_source/definition": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/internal_pkg": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/internal_pkg/subdir/internal/pkg": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/internal_pkg/subdir/internal/pkg/reflect_output": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/internal_pkg/subdir/internal/pkg",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/internal_pkg/subdir/internal/pkg/source_output": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/internal_pkg/subdir/internal/pkg",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/missing_import/output": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/missing_import/source",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/missing_import/source": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/mock_in_test_package": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/mockgen/internal/tests/mock_in_test_package",
+                "reflect"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/overlapping_methods": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/golang/mock/gomock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/panicing_test": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/parenthesized_parameter_type": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/performance/big_interface": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/self_package": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/test_package": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/unexported_method": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/golang/mock/gomock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/mockgen/internal/tests/vendor_dep": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "golang.org/x/tools/present",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/vendor_dep/source_mock_package": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "golang.org/x/tools/present",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/internal/tests/vendor_pkg": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/mockgen/model": {
+            "Imports": [
+                "encoding/gob",
+                "fmt",
+                "io",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/sample": {
+            "Imports": [
+                "bytes",
+                "github.com/golang/mock/sample/imp1",
+                "github.com/golang/mock/sample/imp2",
+                "github.com/golang/mock/sample/imp3",
+                "github.com/golang/mock/sample/imp4",
+                "hash",
+                "html/template",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "text/template"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/sample",
+                "github.com/golang/mock/sample/imp1",
+                "github.com/golang/mock/sample/imp2",
+                "github.com/golang/mock/sample/imp3",
+                "github.com/golang/mock/sample/imp4",
+                "hash",
+                "html/template",
+                "io",
+                "net/http",
+                "reflect",
+                "testing",
+                "text/template"
+            ]
+        },
+        "github.com/golang/mock/sample/concurrent": {
+            "Imports": null,
+            "TestImports": [
+                "context",
+                "github.com/golang/mock/gomock",
+                "github.com/golang/mock/sample/concurrent/mock",
+                "testing"
+            ]
+        },
+        "github.com/golang/mock/sample/concurrent/mock": {
+            "Imports": [
+                "github.com/golang/mock/gomock",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/sample/imp1": {
+            "Imports": [
+                "bufio"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/mock/sample/imp2": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/sample/imp3": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/golang/mock/sample/imp4": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

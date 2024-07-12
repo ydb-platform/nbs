@@ -21,7 +21,7 @@
 package networktype
 
 import (
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/resolver"
 )
 
 // keyType is the key to use for storing State in Attributes.
@@ -31,16 +31,16 @@ const key = keyType("grpc.internal.transport.networktype")
 
 // Set returns a copy of the provided address with attributes containing networkType.
 func Set(address resolver.Address, networkType string) resolver.Address {
-	address.Attributes = address.Attributes.WithValue(key, networkType)
-	return address
+    address.Attributes = address.Attributes.WithValue(key, networkType)
+    return address
 }
 
 // Get returns the network type in the resolver.Address and true, or "", false
 // if not present.
 func Get(address resolver.Address) (string, bool) {
-	v := address.Attributes.Value(key)
-	if v == nil {
-		return "", false
-	}
-	return v.(string), true
+    v := address.Attributes.Value(key)
+    if v == nil {
+        return "", false
+    }
+    return v.(string), true
 }

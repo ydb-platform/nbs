@@ -17,36 +17,36 @@ limitations under the License.
 package klog_test
 
 import (
-	"io"
-	"testing"
+    "io"
+    "testing"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/test"
+    "k8s.io/klog/v2"
+    "k8s.io/klog/v2/test"
 )
 
 // klogConfig tests klog output without a logger.
 var klogConfig = test.OutputConfig{}
 
 func TestKlogOutput(t *testing.T) {
-	test.InitKlog(t)
-	test.Output(t, klogConfig)
+    test.InitKlog(t)
+    test.Output(t, klogConfig)
 }
 
 func BenchmarkKlogOutput(b *testing.B) {
-	test.InitKlog(b)
-	test.Benchmark(b, klogConfig)
+    test.InitKlog(b)
+    test.Benchmark(b, klogConfig)
 }
 
 // klogKlogrConfig tests klogr output via klog, using the klog/v2 klogr.
 var klogKLogrConfig = test.OutputConfig{
-	NewLogger: func(_ io.Writer, _ int, _ string) logr.Logger {
-		return klog.NewKlogr()
-	},
+    NewLogger: func(out io.Writer, v int, vmodule string) logr.Logger {
+        return klog.NewKlogr()
+    },
 }
 
 func TestKlogrOutput(t *testing.T) {
-	test.InitKlog(t)
-	test.Output(t, klogKLogrConfig)
+    test.InitKlog(t)
+    test.Output(t, klogKLogrConfig)
 }

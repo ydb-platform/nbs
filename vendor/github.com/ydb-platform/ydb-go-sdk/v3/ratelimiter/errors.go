@@ -1,8 +1,8 @@
 package ratelimiter
 
 type AcquireError interface {
-	error
+    error
 
-	Amount() uint64
-	Unwrap() error
+    Amount() uint64
+    Unwrap() error
 }

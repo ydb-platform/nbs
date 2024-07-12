@@ -28,34 +28,34 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"sync"
+    "context"
+    "errors"
+    "sync"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal/profiling"
-	ppb "google.golang.org/grpc/profiling/proto"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/internal/profiling"
+    ppb "google.golang.org/grpc/profiling/proto"
 )
 
 var logger = grpclog.Component("profiling")
 
 // ProfilingConfig defines configuration options for the Init method.
 type ProfilingConfig struct {
-	// Setting this to true will enable profiling.
-	Enabled bool
+    // Setting this to true will enable profiling.
+    Enabled bool
 
-	// Profiling uses a circular buffer (ring buffer) to store statistics for
-	// only the last few RPCs so that profiling stats do not grow unbounded. This
-	// parameter defines the upper limit on the number of RPCs for which
-	// statistics should be stored at any given time. An average RPC requires
-	// approximately 2-3 KiB of memory for profiling-related statistics, so
-	// choose an appropriate number based on the amount of memory you can afford.
-	StreamStatsSize uint32
+    // Profiling uses a circular buffer (ring buffer) to store statistics for
+    // only the last few RPCs so that profiling stats do not grow unbounded. This
+    // parameter defines the upper limit on the number of RPCs for which
+    // statistics should be stored at any given time. An average RPC requires
+    // approximately 2-3 KiB of memory for profiling-related statistics, so
+    // choose an appropriate number based on the amount of memory you can afford.
+    StreamStatsSize uint32
 
-	// To expose the profiling service and its methods, a *grpc.Server must be
-	// provided.
-	Server *grpc.Server
+    // To expose the profiling service and its methods, a *grpc.Server must be
+    // provided.
+    Server *grpc.Server
 }
 
 var errorNilServer = errors.New("profiling: no grpc.Server provided")
@@ -64,25 +64,25 @@ var errorNilServer = errors.New("profiling: no grpc.Server provided")
 // depending on the value set in pc.Enabled) and register the profiling service
 // in the server provided in pc.Server.
 func Init(pc *ProfilingConfig) error {
-	if pc.Server == nil {
-		return errorNilServer
-	}
+    if pc.Server == nil {
+        return errorNilServer
+    }
 
-	if err := profiling.InitStats(pc.StreamStatsSize); err != nil {
-		return err
-	}
+    if err := profiling.InitStats(pc.StreamStatsSize); err != nil {
+        return err
+    }
 
-	ppb.RegisterProfilingServer(pc.Server, getProfilingServerInstance())
+    ppb.RegisterProfilingServer(pc.Server, getProfilingServerInstance())
 
-	// Do this last after everything has been initialized and allocated.
-	profiling.Enable(pc.Enabled)
+    // Do this last after everything has been initialized and allocated.
+    profiling.Enable(pc.Enabled)
 
-	return nil
+    return nil
 }
 
 type profilingServer struct {
-	ppb.UnimplementedProfilingServer
-	drainMutex sync.Mutex
+    ppb.UnimplementedProfilingServer
+    drainMutex sync.Mutex
 }
 
 var profilingServerInstance *profilingServer
@@ -92,59 +92,59 @@ var profilingServerOnce sync.Once
 // profilingServer. Only one instance of profilingServer is created to use a
 // shared mutex across all profilingServer instances.
 func getProfilingServerInstance() *profilingServer {
-	profilingServerOnce.Do(func() {
-		profilingServerInstance = &profilingServer{}
-	})
+    profilingServerOnce.Do(func() {
+        profilingServerInstance = &profilingServer{}
+    })
 
-	return profilingServerInstance
+    return profilingServerInstance
 }
 
 func (s *profilingServer) Enable(ctx context.Context, req *ppb.EnableRequest) (*ppb.EnableResponse, error) {
-	if req.Enabled {
-		logger.Infof("profilingServer: Enable: enabling profiling")
-	} else {
-		logger.Infof("profilingServer: Enable: disabling profiling")
-	}
-	profiling.Enable(req.Enabled)
+    if req.Enabled {
+        logger.Infof("profilingServer: Enable: enabling profiling")
+    } else {
+        logger.Infof("profilingServer: Enable: disabling profiling")
+    }
+    profiling.Enable(req.Enabled)
 
-	return &ppb.EnableResponse{}, nil
+    return &ppb.EnableResponse{}, nil
 }
 
 func timerToProtoTimer(timer *profiling.Timer) *ppb.Timer {
-	return &ppb.Timer{
-		Tags:      timer.Tags,
-		BeginSec:  timer.Begin.Unix(),
-		BeginNsec: int32(timer.Begin.Nanosecond()),
-		EndSec:    timer.End.Unix(),
-		EndNsec:   int32(timer.End.Nanosecond()),
-		GoId:      timer.GoID,
-	}
+    return &ppb.Timer{
+        Tags:      timer.Tags,
+        BeginSec:  timer.Begin.Unix(),
+        BeginNsec: int32(timer.Begin.Nanosecond()),
+        EndSec:    timer.End.Unix(),
+        EndNsec:   int32(timer.End.Nanosecond()),
+        GoId:      timer.GoID,
+    }
 }
 
 func statToProtoStat(stat *profiling.Stat) *ppb.Stat {
-	protoStat := &ppb.Stat{
-		Tags:     stat.Tags,
-		Timers:   make([]*ppb.Timer, 0, len(stat.Timers)),
-		Metadata: stat.Metadata,
-	}
-	for _, t := range stat.Timers {
-		protoStat.Timers = append(protoStat.Timers, timerToProtoTimer(t))
-	}
-	return protoStat
+    protoStat := &ppb.Stat{
+        Tags:     stat.Tags,
+        Timers:   make([]*ppb.Timer, 0, len(stat.Timers)),
+        Metadata: stat.Metadata,
+    }
+    for _, t := range stat.Timers {
+        protoStat.Timers = append(protoStat.Timers, timerToProtoTimer(t))
+    }
+    return protoStat
 }
 
 func (s *profilingServer) GetStreamStats(ctx context.Context, req *ppb.GetStreamStatsRequest) (*ppb.GetStreamStatsResponse, error) {
-	// Since the drain operation is destructive, only one client request should
-	// be served at a time.
-	logger.Infof("profilingServer: GetStreamStats: processing request")
-	s.drainMutex.Lock()
-	results := profiling.StreamStats.Drain()
-	s.drainMutex.Unlock()
+    // Since the drain operation is destructive, only one client request should
+    // be served at a time.
+    logger.Infof("profilingServer: GetStreamStats: processing request")
+    s.drainMutex.Lock()
+    results := profiling.StreamStats.Drain()
+    s.drainMutex.Unlock()
 
-	logger.Infof("profilingServer: GetStreamStats: returning %v records", len(results))
-	streamStats := make([]*ppb.Stat, 0)
-	for _, stat := range results {
-		streamStats = append(streamStats, statToProtoStat(stat.(*profiling.Stat)))
-	}
-	return &ppb.GetStreamStatsResponse{StreamStats: streamStats}, nil
+    logger.Infof("profilingServer: GetStreamStats: returning %v records", len(results))
+    streamStats := make([]*ppb.Stat, 0)
+    for _, stat := range results {
+        streamStats = append(streamStats, statToProtoStat(stat.(*profiling.Stat)))
+    }
+    return &ppb.GetStreamStatsResponse{StreamStats: streamStats}, nil
 }

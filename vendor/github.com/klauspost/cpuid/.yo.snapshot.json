@@ -1,0 +1,31 @@
+{
+    "Version": "v1.3.1",
+    "GoVersion": "1.12",
+    "Sum": "h1:5JNjFYYQrZeKRJ0734q51WCEEn2huer72Dc7K+R/b6s=",
+    "Packages": {
+        "github.com/klauspost/cpuid": {
+            "Imports": [
+                "math",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/zip",
+                "fmt",
+                "io/ioutil",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/klauspost/cpuid/private": {
+            "Imports": [
+                "math",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,8 +1,12 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
-SRCS(httpfilter.go)
+SRCS(
+    httpfilter.go
+)
 
 END()
 

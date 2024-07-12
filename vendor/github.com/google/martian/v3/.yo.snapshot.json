@@ -1,0 +1,1048 @@
+{
+    "Version": "v3.3.2",
+    "GoVersion": "1.11",
+    "Sum": "h1:IqNFLAmvJOgVlpdEBiQbDc2EwKW77amAycfTuWKdfvw=",
+    "Packages": {
+        "github.com/google/martian/v3": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/rand",
+                "crypto/tls",
+                "encoding/hex",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/mitm",
+                "github.com/google/martian/v3/nosigpipe",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/trafficshape",
+                "io",
+                "net",
+                "net/http",
+                "net/http/httputil",
+                "net/url",
+                "regexp",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "crypto/tls",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/mitm",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/trafficshape",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/api": {
+            "Imports": [
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "net/http"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/auth": {
+            "Imports": [
+                "fmt",
+                "github.com/google/martian/v3",
+                "net/http",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/body": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/textproto",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/martian/v3/messageview",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/cmd/marbl": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/martian/v3/marbl",
+                "io",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/cmd/proxy": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "flag",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/api",
+                "github.com/google/martian/v3/body",
+                "github.com/google/martian/v3/cookie",
+                "github.com/google/martian/v3/cors",
+                "github.com/google/martian/v3/failure",
+                "github.com/google/martian/v3/fifo",
+                "github.com/google/martian/v3/har",
+                "github.com/google/martian/v3/httpspec",
+                "github.com/google/martian/v3/marbl",
+                "github.com/google/martian/v3/martianhttp",
+                "github.com/google/martian/v3/martianlog",
+                "github.com/google/martian/v3/martianurl",
+                "github.com/google/martian/v3/method",
+                "github.com/google/martian/v3/mitm",
+                "github.com/google/martian/v3/pingback",
+                "github.com/google/martian/v3/port",
+                "github.com/google/martian/v3/priority",
+                "github.com/google/martian/v3/querystring",
+                "github.com/google/martian/v3/servemux",
+                "github.com/google/martian/v3/skip",
+                "github.com/google/martian/v3/stash",
+                "github.com/google/martian/v3/static",
+                "github.com/google/martian/v3/status",
+                "github.com/google/martian/v3/trafficshape",
+                "github.com/google/martian/v3/verify",
+                "log",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "os/signal",
+                "path",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/martian/v3/mitm",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/cookie": {
+            "Imports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "net/http",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/cors": {
+            "Imports": [
+                "net/http"
+            ],
+            "TestImports": [
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/cybervillains": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/failure": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/fifo": {
+            "Imports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/filter": {
+            "Imports": [
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/verify",
+                "net/http"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/h2": {
+            "Imports": [
+                "bytes",
+                "container/list",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/martian/v3/log",
+                "golang.org/x/net/http2",
+                "golang.org/x/net/http2/hpack",
+                "io",
+                "math",
+                "net/url",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/martian/v3/h2",
+                "github.com/google/martian/v3/h2/grpc",
+                "github.com/google/martian/v3/h2/testing",
+                "github.com/google/martian/v3/h2/testservice",
+                "golang.org/x/net/http2",
+                "golang.org/x/net/http2/hpack",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/encoding/gzip",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "math/rand",
+                "net/url",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/h2/grpc": {
+            "Imports": [
+                "bytes",
+                "compress/flate",
+                "compress/gzip",
+                "encoding/binary",
+                "fmt",
+                "github.com/golang/snappy",
+                "github.com/google/martian/v3/h2",
+                "golang.org/x/net/http2",
+                "golang.org/x/net/http2/hpack",
+                "io/ioutil",
+                "net/url",
+                "sync/atomic"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/h2/testing": {
+            "Imports": [
+                "context",
+                "crypto",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/cybervillains",
+                "github.com/google/martian/v3/h2",
+                "github.com/google/martian/v3/h2/testservice",
+                "github.com/google/martian/v3/mitm",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/h2/testservice": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/har": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/messageview",
+                "github.com/google/martian/v3/proxyutil",
+                "io",
+                "io/ioutil",
+                "mime",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings",
+                "sync",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/proxyutil",
+                "mime/multipart",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/header": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "io",
+                "net",
+                "net/http",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/httpspec": {
+            "Imports": [
+                "github.com/google/martian/v3/fifo",
+                "github.com/google/martian/v3/header"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/ipauth": {
+            "Imports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/auth",
+                "net",
+                "net/http"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/auth",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/log": {
+            "Imports": [
+                "fmt",
+                "log",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "log",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/marbl": {
+            "Imports": [
+                "bufio",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/proxyutil",
+                "golang.org/x/net/websocket",
+                "io",
+                "net/http",
+                "strconv",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/proxyutil",
+                "golang.org/x/net/websocket",
+                "io",
+                "math/rand",
+                "net",
+                "net/http",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/martianhttp": {
+            "Imports": [
+                "bytes",
+                "crypto/x509",
+                "encoding/json",
+                "encoding/pem",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "io/ioutil",
+                "net/http",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/x509",
+                "encoding/json",
+                "encoding/pem",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/mitm",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/martianlog": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/messageview",
+                "github.com/google/martian/v3/parse",
+                "io",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/martiantest": {
+            "Imports": [
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/martianurl": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "net/url",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/messageview": {
+            "Imports": [
+                "bytes",
+                "compress/flate",
+                "compress/gzip",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httputil",
+                "strings"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "compress/flate",
+                "compress/gzip",
+                "github.com/google/martian/v3/proxyutil",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/method": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/mitm": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "errors",
+                "github.com/google/martian/v3/h2",
+                "github.com/google/martian/v3/log",
+                "math/big",
+                "net",
+                "net/http",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "crypto/x509",
+                "net",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/mobile": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/api",
+                "github.com/google/martian/v3/body",
+                "github.com/google/martian/v3/cookie",
+                "github.com/google/martian/v3/cors",
+                "github.com/google/martian/v3/cybervillains",
+                "github.com/google/martian/v3/failure",
+                "github.com/google/martian/v3/fifo",
+                "github.com/google/martian/v3/har",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/httpspec",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/marbl",
+                "github.com/google/martian/v3/martianhttp",
+                "github.com/google/martian/v3/martianurl",
+                "github.com/google/martian/v3/method",
+                "github.com/google/martian/v3/mitm",
+                "github.com/google/martian/v3/pingback",
+                "github.com/google/martian/v3/port",
+                "github.com/google/martian/v3/priority",
+                "github.com/google/martian/v3/querystring",
+                "github.com/google/martian/v3/servemux",
+                "github.com/google/martian/v3/skip",
+                "github.com/google/martian/v3/stash",
+                "github.com/google/martian/v3/static",
+                "github.com/google/martian/v3/status",
+                "github.com/google/martian/v3/trafficshape",
+                "github.com/google/martian/v3/verify",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "path",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/noop": {
+            "Imports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "github.com/google/martian/v3/parse",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/nosigpipe": {
+            "Imports": [
+                "github.com/google/martian/v3/log",
+                "net",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/martian/v3/parse": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "sync"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/martiantest",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/pingback": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "net/url"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/port": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "net",
+                "net/http",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "net",
+                "net/http",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/priority": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "net/http",
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/proxyauth": {
+            "Imports": [
+                "encoding/base64",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/auth",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "errors",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/auth",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/proxyutil": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "io",
+                "net/http",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/querystring": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/header",
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/servemux": {
+            "Imports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/filter",
+                "net/http"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3/martiantest",
+                "github.com/google/martian/v3/proxyutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/skip": {
+            "Imports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "net/http"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/stash": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3/parse",
+                "net/http"
+            ],
+            "TestImports": [
+                "github.com/google/martian/v3/fifo",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/port",
+                "github.com/google/martian/v3/proxyutil",
+                "net",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/static": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "io",
+                "io/ioutil",
+                "mime",
+                "mime/multipart",
+                "net/http",
+                "net/textproto",
+                "os",
+                "path",
+                "path/filepath",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "path",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/status": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/verify",
+                "net/http"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/parse",
+                "github.com/google/martian/v3/proxyutil",
+                "github.com/google/martian/v3/verify",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/google/martian/v3/trafficshape": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/martian/v3/log",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "runtime",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/martian/v3/verify": {
+            "Imports": [
+                "encoding/json",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/log",
+                "net/http"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/google/martian/v3",
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        }
+    }
+}

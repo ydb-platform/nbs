@@ -19,86 +19,86 @@
 package weightedtarget
 
 import (
-	"testing"
+    "testing"
 
-	"github.com/google/go-cmp/cmp"
-	"google.golang.org/grpc/balancer"
-	_ "google.golang.org/grpc/balancer/grpclb"
-	"google.golang.org/grpc/balancer/roundrobin"
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+    "github.com/google/go-cmp/cmp"
+    "google.golang.org/grpc/balancer"
+    _ "google.golang.org/grpc/balancer/grpclb"
+    "google.golang.org/grpc/balancer/roundrobin"
+    internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 )
 
 const (
-	testJSONConfig = `{
+    testJSONConfig = `{
   "targets": {
-	"cluster_1": {
-	  "weight": 75,
-	  "childPolicy": [{
+    "cluster_1": {
+      "weight": 75,
+      "childPolicy": [{
         "grpclb": {
           "childPolicy": [{"pick_first":{}}],
           "targetName": "foo-service"
         }
       }]
-	},
-	"cluster_2": {
-	  "weight": 25,
-	  "childPolicy": [{"round_robin": ""}]
-	}
+    },
+    "cluster_2": {
+      "weight": 25,
+      "childPolicy": [{"round_robin": ""}]
+    }
   }
 }`
 )
 
 var (
-	grpclbConfigParser = balancer.Get("grpclb").(balancer.ConfigParser)
-	grpclbConfigJSON   = `{"childPolicy": [{"pick_first":{}}], "targetName": "foo-service"}`
-	grpclbConfig, _    = grpclbConfigParser.ParseConfig([]byte(grpclbConfigJSON))
+    grpclbConfigParser = balancer.Get("grpclb").(balancer.ConfigParser)
+    grpclbConfigJSON   = `{"childPolicy": [{"pick_first":{}}], "targetName": "foo-service"}`
+    grpclbConfig, _    = grpclbConfigParser.ParseConfig([]byte(grpclbConfigJSON))
 )
 
 func (s) TestParseConfig(t *testing.T) {
-	tests := []struct {
-		name    string
-		js      string
-		want    *LBConfig
-		wantErr bool
-	}{
-		{
-			name:    "empty json",
-			js:      "",
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "OK",
-			js:   testJSONConfig,
-			want: &LBConfig{
-				Targets: map[string]Target{
-					"cluster_1": {
-						Weight: 75,
-						ChildPolicy: &internalserviceconfig.BalancerConfig{
-							Name:   "grpclb",
-							Config: grpclbConfig,
-						},
-					},
-					"cluster_2": {
-						Weight: 25,
-						ChildPolicy: &internalserviceconfig.BalancerConfig{
-							Name: roundrobin.Name,
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseConfig([]byte(tt.js))
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("parseConfig() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !cmp.Equal(got, tt.want) {
-				t.Errorf("parseConfig() got unexpected result, diff: %v", cmp.Diff(got, tt.want))
-			}
-		})
-	}
+    tests := []struct {
+        name    string
+        js      string
+        want    *LBConfig
+        wantErr bool
+    }{
+        {
+            name:    "empty json",
+            js:      "",
+            want:    nil,
+            wantErr: true,
+        },
+        {
+            name: "OK",
+            js:   testJSONConfig,
+            want: &LBConfig{
+                Targets: map[string]Target{
+                    "cluster_1": {
+                        Weight: 75,
+                        ChildPolicy: &internalserviceconfig.BalancerConfig{
+                            Name:   "grpclb",
+                            Config: grpclbConfig,
+                        },
+                    },
+                    "cluster_2": {
+                        Weight: 25,
+                        ChildPolicy: &internalserviceconfig.BalancerConfig{
+                            Name: roundrobin.Name,
+                        },
+                    },
+                },
+            },
+            wantErr: false,
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := parseConfig([]byte(tt.js))
+            if (err != nil) != tt.wantErr {
+                t.Fatalf("parseConfig() error = %v, wantErr %v", err, tt.wantErr)
+            }
+            if !cmp.Equal(got, tt.want) {
+                t.Errorf("parseConfig() got unexpected result, diff: %v", cmp.Diff(got, tt.want))
+            }
+        })
+    }
 }

@@ -1,0 +1,78 @@
+{
+    "Version": "v1.18.8",
+    "GoVersion": "1.15",
+    "Sum": "h1:D6Sc+XyjK++NhkJJLvZNcf0xyzNhhC+GVn/MYDeONS4=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/defaults",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/query",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/xml",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/aws/transport/http",
+                "github.com/aws/aws-sdk-go-v2/internal/configsources",
+                "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints",
+                "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/encoding/xml",
+                "github.com/aws/smithy-go/io",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/time",
+                "github.com/aws/smithy-go/transport/http",
+                "github.com/aws/smithy-go/waiter",
+                "github.com/jmespath/go-jmespath",
+                "io",
+                "net",
+                "net/http",
+                "net/url",
+                "path",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io/ioutil",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints": {
+            "Imports": [
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+                "github.com/aws/smithy-go/logging",
+                "regexp"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/document",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

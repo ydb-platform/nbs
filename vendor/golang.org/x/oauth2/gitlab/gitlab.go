@@ -6,11 +6,11 @@
 package gitlab // import "golang.org/x/oauth2/gitlab"
 
 import (
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 // Endpoint is GitLab's OAuth 2.0 endpoint.
 var Endpoint = oauth2.Endpoint{
-	AuthURL:  "https://gitlab.com/oauth/authorize",
-	TokenURL: "https://gitlab.com/oauth/token",
+    AuthURL:  "https://gitlab.com/oauth/authorize",
+    TokenURL: "https://gitlab.com/oauth/token",
 }

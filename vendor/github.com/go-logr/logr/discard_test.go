@@ -17,38 +17,38 @@ limitations under the License.
 package logr
 
 import (
-	"errors"
-	"reflect"
-	"testing"
+    "errors"
+    "reflect"
+    "testing"
 )
 
 func TestDiscard(t *testing.T) {
-	l := Discard()
-	if l.GetSink() != nil {
-		t.Error("did not return the expected underlying type")
-	}
-	// Verify that none of the methods panic, there is not more we can test.
-	l.WithName("discard").WithValues("z", 5).Info("Hello world")
-	l.Info("Hello world", "x", 1, "y", 2)
-	l.V(1).Error(errors.New("foo"), "a", 123)
-	if l.Enabled() {
-		t.Error("discard loggers must always be disabled")
-	}
+    l := Discard()
+    if l.GetSink() != nil {
+        t.Error("did not return the expected underlying type")
+    }
+    // Verify that none of the methods panic, there is not more we can test.
+    l.WithName("discard").WithValues("z", 5).Info("Hello world")
+    l.Info("Hello world", "x", 1, "y", 2)
+    l.V(1).Error(errors.New("foo"), "a", 123)
+    if l.Enabled() {
+        t.Error("discard loggers must always be disabled")
+    }
 }
 
 func TestComparable(t *testing.T) {
-	a := Discard()
-	if !reflect.TypeOf(a).Comparable() {
-		t.Fatal("discard loggers must be comparable")
-	}
+    a := Discard()
+    if !reflect.TypeOf(a).Comparable() {
+        t.Fatal("discard loggers must be comparable")
+    }
 
-	b := Discard()
-	if a != b {
-		t.Fatal("any two discard Loggers must be equal")
-	}
+    b := Discard()
+    if a != b {
+        t.Fatal("any two discard Loggers must be equal")
+    }
 
-	c := Discard().V(2)
-	if b != c {
-		t.Fatal("any two discard Loggers must be equal")
-	}
+    c := Discard().V(2)
+    if b != c {
+        t.Fatal("any two discard Loggers must be equal")
+    }
 }

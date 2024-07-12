@@ -21,11 +21,11 @@
 package binarylog
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal/grpcutil"
+    "google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/internal/grpcutil"
 )
 
 var grpclogLogger = grpclog.Component("binarylog")
@@ -36,7 +36,7 @@ var grpclogLogger = grpclog.Component("binarylog")
 // This is used in the 1.0 release of gcp/observability, and thus must not be
 // deleted or changed.
 type Logger interface {
-	GetMethodLogger(methodName string) MethodLogger
+    GetMethodLogger(methodName string) MethodLogger
 }
 
 // binLogger is the global binary logger for the binary. One of this should be
@@ -49,14 +49,14 @@ var binLogger Logger
 //
 // Only call this at init time.
 func SetLogger(l Logger) {
-	binLogger = l
+    binLogger = l
 }
 
 // GetLogger gets the binary logger.
 //
 // Only call this at init time.
 func GetLogger() Logger {
-	return binLogger
+    return binLogger
 }
 
 // GetMethodLogger returns the MethodLogger for the given methodName.
@@ -66,102 +66,102 @@ func GetLogger() Logger {
 // Each MethodLogger returned by this method is a new instance. This is to
 // generate sequence id within the call.
 func GetMethodLogger(methodName string) MethodLogger {
-	if binLogger == nil {
-		return nil
-	}
-	return binLogger.GetMethodLogger(methodName)
+    if binLogger == nil {
+        return nil
+    }
+    return binLogger.GetMethodLogger(methodName)
 }
 
 func init() {
-	const envStr = "GRPC_BINARY_LOG_FILTER"
-	configStr := os.Getenv(envStr)
-	binLogger = NewLoggerFromConfigString(configStr)
+    const envStr = "GRPC_BINARY_LOG_FILTER"
+    configStr := os.Getenv(envStr)
+    binLogger = NewLoggerFromConfigString(configStr)
 }
 
 // MethodLoggerConfig contains the setting for logging behavior of a method
 // logger. Currently, it contains the max length of header and message.
 type MethodLoggerConfig struct {
-	// Max length of header and message.
-	Header, Message uint64
+    // Max length of header and message.
+    Header, Message uint64
 }
 
 // LoggerConfig contains the config for loggers to create method loggers.
 type LoggerConfig struct {
-	All      *MethodLoggerConfig
-	Services map[string]*MethodLoggerConfig
-	Methods  map[string]*MethodLoggerConfig
+    All      *MethodLoggerConfig
+    Services map[string]*MethodLoggerConfig
+    Methods  map[string]*MethodLoggerConfig
 
-	Blacklist map[string]struct{}
+    Blacklist map[string]struct{}
 }
 
 type logger struct {
-	config LoggerConfig
+    config LoggerConfig
 }
 
 // NewLoggerFromConfig builds a logger with the given LoggerConfig.
 func NewLoggerFromConfig(config LoggerConfig) Logger {
-	return &logger{config: config}
+    return &logger{config: config}
 }
 
 // newEmptyLogger creates an empty logger. The map fields need to be filled in
 // using the set* functions.
 func newEmptyLogger() *logger {
-	return &logger{}
+    return &logger{}
 }
 
 // Set method logger for "*".
 func (l *logger) setDefaultMethodLogger(ml *MethodLoggerConfig) error {
-	if l.config.All != nil {
-		return fmt.Errorf("conflicting global rules found")
-	}
-	l.config.All = ml
-	return nil
+    if l.config.All != nil {
+        return fmt.Errorf("conflicting global rules found")
+    }
+    l.config.All = ml
+    return nil
 }
 
 // Set method logger for "service/*".
 //
 // New MethodLogger with same service overrides the old one.
 func (l *logger) setServiceMethodLogger(service string, ml *MethodLoggerConfig) error {
-	if _, ok := l.config.Services[service]; ok {
-		return fmt.Errorf("conflicting service rules for service %v found", service)
-	}
-	if l.config.Services == nil {
-		l.config.Services = make(map[string]*MethodLoggerConfig)
-	}
-	l.config.Services[service] = ml
-	return nil
+    if _, ok := l.config.Services[service]; ok {
+        return fmt.Errorf("conflicting service rules for service %v found", service)
+    }
+    if l.config.Services == nil {
+        l.config.Services = make(map[string]*MethodLoggerConfig)
+    }
+    l.config.Services[service] = ml
+    return nil
 }
 
 // Set method logger for "service/method".
 //
 // New MethodLogger with same method overrides the old one.
 func (l *logger) setMethodMethodLogger(method string, ml *MethodLoggerConfig) error {
-	if _, ok := l.config.Blacklist[method]; ok {
-		return fmt.Errorf("conflicting blacklist rules for method %v found", method)
-	}
-	if _, ok := l.config.Methods[method]; ok {
-		return fmt.Errorf("conflicting method rules for method %v found", method)
-	}
-	if l.config.Methods == nil {
-		l.config.Methods = make(map[string]*MethodLoggerConfig)
-	}
-	l.config.Methods[method] = ml
-	return nil
+    if _, ok := l.config.Blacklist[method]; ok {
+        return fmt.Errorf("conflicting blacklist rules for method %v found", method)
+    }
+    if _, ok := l.config.Methods[method]; ok {
+        return fmt.Errorf("conflicting method rules for method %v found", method)
+    }
+    if l.config.Methods == nil {
+        l.config.Methods = make(map[string]*MethodLoggerConfig)
+    }
+    l.config.Methods[method] = ml
+    return nil
 }
 
 // Set blacklist method for "-service/method".
 func (l *logger) setBlacklist(method string) error {
-	if _, ok := l.config.Blacklist[method]; ok {
-		return fmt.Errorf("conflicting blacklist rules for method %v found", method)
-	}
-	if _, ok := l.config.Methods[method]; ok {
-		return fmt.Errorf("conflicting method rules for method %v found", method)
-	}
-	if l.config.Blacklist == nil {
-		l.config.Blacklist = make(map[string]struct{})
-	}
-	l.config.Blacklist[method] = struct{}{}
-	return nil
+    if _, ok := l.config.Blacklist[method]; ok {
+        return fmt.Errorf("conflicting blacklist rules for method %v found", method)
+    }
+    if _, ok := l.config.Methods[method]; ok {
+        return fmt.Errorf("conflicting method rules for method %v found", method)
+    }
+    if l.config.Blacklist == nil {
+        l.config.Blacklist = make(map[string]struct{})
+    }
+    l.config.Blacklist[method] = struct{}{}
+    return nil
 }
 
 // getMethodLogger returns the MethodLogger for the given methodName.
@@ -171,22 +171,22 @@ func (l *logger) setBlacklist(method string) error {
 // Each MethodLogger returned by this method is a new instance. This is to
 // generate sequence id within the call.
 func (l *logger) GetMethodLogger(methodName string) MethodLogger {
-	s, m, err := grpcutil.ParseMethod(methodName)
-	if err != nil {
-		grpclogLogger.Infof("binarylogging: failed to parse %q: %v", methodName, err)
-		return nil
-	}
-	if ml, ok := l.config.Methods[s+"/"+m]; ok {
-		return NewTruncatingMethodLogger(ml.Header, ml.Message)
-	}
-	if _, ok := l.config.Blacklist[s+"/"+m]; ok {
-		return nil
-	}
-	if ml, ok := l.config.Services[s]; ok {
-		return NewTruncatingMethodLogger(ml.Header, ml.Message)
-	}
-	if l.config.All == nil {
-		return nil
-	}
-	return NewTruncatingMethodLogger(l.config.All.Header, l.config.All.Message)
+    s, m, err := grpcutil.ParseMethod(methodName)
+    if err != nil {
+        grpclogLogger.Infof("binarylogging: failed to parse %q: %v", methodName, err)
+        return nil
+    }
+    if ml, ok := l.config.Methods[s+"/"+m]; ok {
+        return NewTruncatingMethodLogger(ml.Header, ml.Message)
+    }
+    if _, ok := l.config.Blacklist[s+"/"+m]; ok {
+        return nil
+    }
+    if ml, ok := l.config.Services[s]; ok {
+        return NewTruncatingMethodLogger(ml.Header, ml.Message)
+    }
+    if l.config.All == nil {
+        return nil
+    }
+    return NewTruncatingMethodLogger(l.config.All.Header, l.config.All.Message)
 }

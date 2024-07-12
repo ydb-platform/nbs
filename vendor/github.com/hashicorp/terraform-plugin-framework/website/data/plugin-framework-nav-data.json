@@ -1,0 +1,321 @@
+[
+  {
+    "heading": "Framework"
+  },
+  {
+    "title": "Overview",
+    "path": ""
+  },
+  {
+    "title": "Getting Started",
+    "routes": [
+      {
+        "title": "Provider Code Walkthrough",
+        "path": "getting-started/code-walkthrough"
+      },
+      {
+        "title": "Tutorials",
+        "href": "https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework?utm_source=WEBSITE&utm_medium=WEB_IO&utm_offer=ARTICLE_PAGE&utm_content=DOCS"
+      },
+      {
+        "title": "Clone Template Repository",
+        "href": "https://github.com/hashicorp/terraform-provider-scaffolding-framework"
+      }
+    ]
+  },
+  {
+    "title": "Provider Servers",
+    "path": "provider-servers"
+  },
+  {
+    "title": "Providers",
+    "routes": [
+      {
+        "title": "Overview",
+        "path": "providers"
+      },
+      {
+        "title": "Validate Configuration",
+        "path": "providers/validate-configuration"
+      }
+    ]
+  },
+  {
+    "title": "Resources",
+    "routes": [
+      {
+        "title": "Overview",
+        "path": "resources"
+      },
+      {
+        "title": "Create",
+        "path": "resources/create"
+      },
+      {
+        "title": "Read",
+        "path": "resources/read"
+      },
+      {
+        "title": "Update",
+        "path": "resources/update"
+      },
+      {
+        "title": "Delete",
+        "path": "resources/delete"
+      },
+      {
+        "title": "Configure Clients",
+        "path": "resources/configure"
+      },
+      {
+        "title": "Validate Configuration",
+        "path": "resources/validate-configuration"
+      },
+      {
+        "title": "Modify Plan",
+        "path": "resources/plan-modification"
+      },
+      {
+        "title": "Default Attribute Values",
+        "path": "resources/default"
+      },
+      {
+        "title": "Import State",
+        "path": "resources/import"
+      },
+      {
+        "title": "Upgrade State",
+        "path": "resources/state-upgrade"
+      },
+      {
+        "title": "Manage Private State",
+        "path": "resources/private-state"
+      },
+      {
+        "title": "Timeouts",
+        "path": "resources/timeouts"
+      }
+    ]
+  },
+  {
+    "title": "Data Sources",
+    "routes": [
+      {
+        "title": "Overview",
+        "path": "data-sources"
+      },
+      {
+        "title": "Configure Clients",
+        "path": "data-sources/configure"
+      },
+      {
+        "title": "Validate Configuration",
+        "path": "data-sources/validate-configuration"
+      },
+      {
+        "title": "Timeouts",
+        "path": "data-sources/timeouts"
+      }
+    ]
+  },
+  {
+    "title": "Handling Data",
+    "routes": [
+      {
+        "title": "Terraform Concepts",
+        "path": "handling-data/terraform-concepts"
+      },
+      {
+        "title": "Schemas",
+        "path": "handling-data/schemas"
+      },
+      {
+        "title": "Attributes",
+        "path": "handling-data/attributes"
+      },
+      {
+        "title": "Blocks",
+        "path": "handling-data/blocks"
+      },
+      {
+        "title": "Paths",
+        "path": "handling-data/paths"
+      },
+      {
+        "title": "Path Expressions",
+        "path": "handling-data/path-expressions"
+      },
+      {
+        "title": "Accessing Terraform Data",
+        "path": "handling-data/accessing-values"
+      },
+      {
+        "title": "Writing Data",
+        "path": "handling-data/writing-state"
+      },
+      {
+        "title": "Conversion Rules",
+        "path": "handling-data/conversion-rules"
+      },
+      {
+        "title": "Custom Types",
+        "path": "handling-data/custom-types"
+      }
+    ]
+  },
+  {
+    "title": "Returning Errors and Warnings",
+    "path": "diagnostics"
+  },
+  {
+    "title": "Validation",
+    "path": "validation"
+  },
+  {
+    "title": "Acceptance Tests",
+    "path": "acctests"
+  },
+  {
+    "title": "Debugging",
+    "path": "debugging"
+  },
+  {
+    "title": "Deprecations, Removals, and Renames",
+    "path": "deprecations"
+  },
+  {
+    "title": "Migrating from SDK",
+    "routes": [
+      {
+        "title": "Overview",
+        "path": "migrating"
+      },
+      {
+        "title": "Benefits",
+        "path": "migrating/benefits"
+      },
+      {
+        "title": "Muxing",
+        "path": "migrating/mux"
+      },
+      {
+        "title": "Testing",
+        "path": "migrating/testing"
+      },
+      {
+        "title": "Schema",
+        "routes": [
+          {
+            "title": "Overview",
+            "path": "migrating/schema"
+          }
+        ]
+      },
+      {
+        "title": "Providers",
+        "routes": [
+          {
+            "title": "Overview",
+            "path": "migrating/providers"
+          }
+        ]
+      },
+      {
+        "title": "Resources",
+        "routes": [
+          {
+            "title": "Overview",
+            "path": "migrating/resources"
+          },
+          {
+            "title": "CRUD Functions",
+            "path": "migrating/resources/crud"
+          },
+          {
+            "title": "Import",
+            "path": "migrating/resources/import"
+          },
+          {
+            "title": "Plan Modification",
+            "path": "migrating/resources/plan-modification"
+          },
+          {
+            "title": "State Upgraders",
+            "path": "migrating/resources/state-upgrade"
+          },
+          {
+            "title": "Timeouts",
+            "path": "migrating/resources/timeouts"
+          }
+        ]
+      },
+      {
+        "title": "Data Sources",
+        "routes": [
+          {
+            "title": "Overview",
+            "path": "migrating/data-sources"
+          },
+          {
+            "title": "Timeouts",
+            "path": "migrating/data-sources/timeouts"
+          }
+        ]
+      },
+      {
+        "title": "Attributes & Blocks",
+        "routes": [
+          {
+            "title": "Attribute Schema",
+            "path": "migrating/attributes-blocks/attribute-schema"
+          },
+          {
+            "title": "Attribute Types",
+            "path": "migrating/attributes-blocks/types"
+          },
+          {
+            "title": "Attribute Fields",
+            "path": "migrating/attributes-blocks/fields"
+          },
+          {
+            "title": "Default Values",
+            "path": "migrating/attributes-blocks/default-values"
+          },
+          {
+            "title": "Force New",
+            "path": "migrating/attributes-blocks/force-new"
+          },
+          {
+            "title": "Validators - Predefined",
+            "path": "migrating/attributes-blocks/validators-predefined"
+          },
+          {
+            "title": "Validators - Custom",
+            "path": "migrating/attributes-blocks/validators-custom"
+          },
+          {
+            "title": "Blocks",
+            "path": "migrating/attributes-blocks/blocks"
+          },
+          {
+            "title": "Blocks with Computed Fields",
+            "path": "migrating/attributes-blocks/blocks-computed"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Internals",
+    "routes": [
+      {
+        "title": "Overview",
+        "path": "internals"
+      },
+      {
+        "title": "RPCs and Framework Functionality",
+        "path": "internals/rpcs"
+      }
+    ]
+  }
+]

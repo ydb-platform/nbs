@@ -1,0 +1,41 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "",
+    "Sum": "h1:MFYpPZCnQqQTE18jFwSII6eUQrD/oxMFp3mlgcqk5mU=",
+    "Packages": {
+        "github.com/hashicorp/go-checkpoint": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-cleanhttp",
+                "github.com/hashicorp/go-uuid",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

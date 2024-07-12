@@ -17,15 +17,15 @@ limitations under the License.
 package semantic
 
 import (
-	"testing"
+    "testing"
 )
 
 var mod2Equal = EqualitiesOrDie(func(a, b int) bool {
-	return a%2 == b%2
+    return a%2 == b%2
 })
 
 func TestEqualities(t *testing.T) {
-	if !mod2Equal.DeepEqual(3, 5) {
-		t.Error("expected 3 and 5 to be equal mod 2")
-	}
+    if !mod2Equal.DeepEqual(3, 5) {
+        t.Error("expected 3 and 5 to be equal mod 2")
+    }
 }

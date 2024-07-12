@@ -20,33 +20,33 @@ limitations under the License.
 package textlogger
 
 import (
-	"context"
-	"log/slog"
+    "context"
+    "log/slog"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 
-	"k8s.io/klog/v2/internal/serialize"
-	"k8s.io/klog/v2/internal/sloghandler"
+    "k8s.io/klog/v2/internal/serialize"
+    "k8s.io/klog/v2/internal/sloghandler"
 )
 
 func (l *tlogger) Handle(ctx context.Context, record slog.Record) error {
-	return sloghandler.Handle(ctx, record, l.groups, l.printWithInfos)
+    return sloghandler.Handle(ctx, record, l.groups, l.printWithInfos)
 }
 
 func (l *tlogger) WithAttrs(attrs []slog.Attr) logr.SlogSink {
-	clone := *l
-	clone.values = serialize.WithValues(l.values, sloghandler.Attrs2KVList(l.groups, attrs))
-	return &clone
+    clone := *l
+    clone.values = serialize.WithValues(l.values, sloghandler.Attrs2KVList(l.groups, attrs))
+    return &clone
 }
 
 func (l *tlogger) WithGroup(name string) logr.SlogSink {
-	clone := *l
-	if clone.groups != "" {
-		clone.groups += "." + name
-	} else {
-		clone.groups = name
-	}
-	return &clone
+    clone := *l
+    if clone.groups != "" {
+        clone.groups += "." + name
+    } else {
+        clone.groups = name
+    }
+    return &clone
 }
 
 var _ logr.SlogSink = &tlogger{}

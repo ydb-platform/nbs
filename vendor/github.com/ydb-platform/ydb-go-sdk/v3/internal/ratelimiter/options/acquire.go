@@ -3,81 +3,81 @@ package options
 import "time"
 
 const (
-	DefaultDecrease = 100 * time.Millisecond
+    DefaultDecrease = 100 * time.Millisecond
 )
 
 type AcquireType uint8
 
 const (
-	AcquireTypeAcquire = AcquireType(iota)
-	AcquireTypeReport
+    AcquireTypeAcquire = AcquireType(iota)
+    AcquireTypeReport
 
-	AcquireTypeDefault = AcquireTypeAcquire
+    AcquireTypeDefault = AcquireTypeAcquire
 )
 
 type Acquire interface {
-	// Type defines type of acquire request
-	Type() AcquireType
+    // Type defines type of acquire request
+    Type() AcquireType
 
-	// OperationTimeout defines operation Timeout for acquire request
-	OperationTimeout() time.Duration
+    // OperationTimeout defines operation Timeout for acquire request
+    OperationTimeout() time.Duration
 
-	// OperationCancelAfter defines operation CancelAfter for acquire request
-	OperationCancelAfter() time.Duration
+    // OperationCancelAfter defines operation CancelAfter for acquire request
+    OperationCancelAfter() time.Duration
 }
 
 type acquireOptionsHolder struct {
-	acquireType          AcquireType
-	operationTimeout     time.Duration
-	operationCancelAfter time.Duration
+    acquireType          AcquireType
+    operationTimeout     time.Duration
+    operationCancelAfter time.Duration
 }
 
 func (h *acquireOptionsHolder) OperationTimeout() time.Duration {
-	return h.operationTimeout
+    return h.operationTimeout
 }
 
 func (h *acquireOptionsHolder) OperationCancelAfter() time.Duration {
-	return h.operationTimeout
+    return h.operationTimeout
 }
 
 func (h *acquireOptionsHolder) Type() AcquireType {
-	return h.acquireType
+    return h.acquireType
 }
 
 type AcquireOption func(h *acquireOptionsHolder)
 
 func WithAcquire() AcquireOption {
-	return func(h *acquireOptionsHolder) {
-		h.acquireType = AcquireTypeAcquire
-	}
+    return func(h *acquireOptionsHolder) {
+        h.acquireType = AcquireTypeAcquire
+    }
 }
 
 func WithReport() AcquireOption {
-	return func(h *acquireOptionsHolder) {
-		h.acquireType = AcquireTypeReport
-	}
+    return func(h *acquireOptionsHolder) {
+        h.acquireType = AcquireTypeReport
+    }
 }
 
 func WithOperationTimeout(operationTimeout time.Duration) AcquireOption {
-	return func(h *acquireOptionsHolder) {
-		h.operationTimeout = operationTimeout
-	}
+    return func(h *acquireOptionsHolder) {
+        h.operationTimeout = operationTimeout
+    }
 }
 
 func WithOperationCancelAfter(operationCancelAfter time.Duration) AcquireOption {
-	return func(h *acquireOptionsHolder) {
-		h.operationCancelAfter = operationCancelAfter
-	}
+    return func(h *acquireOptionsHolder) {
+        h.operationCancelAfter = operationCancelAfter
+    }
 }
 
 func NewAcquire(opts ...AcquireOption) Acquire {
-	h := &acquireOptionsHolder{
-		acquireType: AcquireTypeDefault,
-	}
-	for _, o := range opts {
-		if o != nil {
-			o(h)
-		}
-	}
-	return h
+    h := &acquireOptionsHolder{
+        acquireType: AcquireTypeDefault,
+    }
+    for _, o := range opts {
+        if o != nil {
+            o(h)
+        }
+    }
+    return h
 }

@@ -1,0 +1,26 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    annotation
+    benchmarks
+    conformance
+    editionsfuzztest
+    enums
+    fieldtrack
+    fuzz
+    irregular
+    legacy
+    messageset
+    news
+    nullable
+    order
+    race
+    registry
+    required
+    test
+    test3
+    testeditions
+    textpb2
+    textpb3
+    textpbeditions
+)

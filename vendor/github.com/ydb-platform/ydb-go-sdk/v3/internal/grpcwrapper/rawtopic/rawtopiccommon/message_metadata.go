@@ -1,6 +1,6 @@
 package rawtopiccommon
 
 type MetadataItem struct {
-	Key   string
-	Value []byte
+    Key   string
+    Value []byte
 }

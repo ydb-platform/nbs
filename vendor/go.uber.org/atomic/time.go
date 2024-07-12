@@ -23,33 +23,33 @@
 package atomic
 
 import (
-	"time"
+    "time"
 )
 
 // Time is an atomic type-safe wrapper for time.Time values.
 type Time struct {
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v Value
+    v Value
 }
 
 var _zeroTime time.Time
 
 // NewTime creates a new Time.
 func NewTime(val time.Time) *Time {
-	x := &Time{}
-	if val != _zeroTime {
-		x.Store(val)
-	}
-	return x
+    x := &Time{}
+    if val != _zeroTime {
+        x.Store(val)
+    }
+    return x
 }
 
 // Load atomically loads the wrapped time.Time.
 func (x *Time) Load() time.Time {
-	return unpackTime(x.v.Load())
+    return unpackTime(x.v.Load())
 }
 
 // Store atomically stores the passed time.Time.
 func (x *Time) Store(val time.Time) {
-	x.v.Store(packTime(val))
+    x.v.Store(packTime(val))
 }

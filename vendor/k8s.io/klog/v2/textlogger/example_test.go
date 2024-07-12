@@ -17,34 +17,34 @@ limitations under the License.
 package textlogger_test
 
 import (
-	"bytes"
-	"fmt"
-	"regexp"
+    "bytes"
+    "fmt"
+    "regexp"
 
-	"k8s.io/klog/v2/textlogger"
+    "k8s.io/klog/v2/textlogger"
 )
 
 var headerRe = regexp.MustCompile(`([IE])[[:digit:]]{4} [[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}\.[[:digit:]]{6}[[:space:]]+[[:digit:]]+ example_test.go:[[:digit:]]+\] `)
 
 func ExampleConfig_Verbosity() {
-	var buffer bytes.Buffer
-	config := textlogger.NewConfig(textlogger.Verbosity(1), textlogger.Output(&buffer))
-	logger := textlogger.NewLogger(config)
+    var buffer bytes.Buffer
+    config := textlogger.NewConfig(textlogger.Verbosity(1), textlogger.Output(&buffer))
+    logger := textlogger.NewLogger(config)
 
-	logger.Info("initial verbosity", "v", config.Verbosity().String())
-	logger.V(2).Info("now you don't see me")
-	if err := config.Verbosity().Set("2"); err != nil {
-		logger.Error(err, "setting verbosity to 2")
-	}
-	logger.V(2).Info("now you see me")
-	if err := config.Verbosity().Set("1"); err != nil {
-		logger.Error(err, "setting verbosity to 1")
-	}
-	logger.V(2).Info("now I'm gone again")
+    logger.Info("initial verbosity", "v", config.Verbosity().String())
+    logger.V(2).Info("now you don't see me")
+    if err := config.Verbosity().Set("2"); err != nil {
+        logger.Error(err, "setting verbosity to 2")
+    }
+    logger.V(2).Info("now you see me")
+    if err := config.Verbosity().Set("1"); err != nil {
+        logger.Error(err, "setting verbosity to 1")
+    }
+    logger.V(2).Info("now I'm gone again")
 
-	fmt.Print(headerRe.ReplaceAllString(buffer.String(), "${1}...] "))
+    fmt.Print(headerRe.ReplaceAllString(buffer.String(), "${1}...] "))
 
-	// Output:
-	// I...] "initial verbosity" v="1"
-	// I...] "now you see me"
+    // Output:
+    // I...] "initial verbosity" v="1"
+    // I...] "now you see me"
 }

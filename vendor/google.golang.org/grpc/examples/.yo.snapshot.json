@@ -1,0 +1,885 @@
+{
+    "Version": "v0.0.0-20230623203957-0b3a81eabc28",
+    "GoVersion": "1.17",
+    "Sum": "h1:soFSbKG2H9FiKip4adXyJL8FEsA+wcFvu1YYMDcKKWY=",
+    "Packages": {
+        "google.golang.org/grpc/examples/data": {
+            "Imports": [
+                "path/filepath",
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/authentication/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "golang.org/x/oauth2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/oauth",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/authentication/server": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "log",
+                "net",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/authz/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "golang.org/x/oauth2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/oauth",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/authz/token",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/authz/server": {
+            "Imports": [
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/authz",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/authz/token",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "net",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/authz/token": {
+            "Imports": [
+                "encoding/base64",
+                "encoding/json"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/cancellation/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/cancellation/server": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "io",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/compression/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/encoding/gzip",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/compression/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/encoding/gzip",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/deadline/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/deadline/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "net",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/debugging/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/channelz/service",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/resolver",
+                "google.golang.org/grpc/resolver/manual",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/debugging/server": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/channelz/service",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/internal/grpcrand",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/ALTS/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/alts",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/ALTS/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/alts",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/TLS/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/TLS/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/mTLS/client": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/encryption/mTLS/server": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/error_details/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/genproto/googleapis/rpc/errdetails",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/status",
+                "log",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/error_details/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/genproto/googleapis/rpc/errdetails",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/status",
+                "log",
+                "net",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/error_handling/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/status",
+                "log",
+                "os/user",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/error_handling/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/status",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/health/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/resolver",
+                "google.golang.org/grpc/resolver/manual",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/health/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/interceptor/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "golang.org/x/oauth2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/oauth",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "io",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/interceptor/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "net",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/keepalive/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/keepalive",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/keepalive/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/keepalive",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/load_balancing/client": {
+            "Imports": [
+                "context",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/resolver",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/load_balancing/server": {
+            "Imports": [
+                "context",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/metadata/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "io",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/metadata/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "math/rand",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/metadata_interceptor/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "io",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/metadata_interceptor/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/multiplex/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/multiplex/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/name_resolving/client": {
+            "Imports": [
+                "context",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/resolver",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/name_resolving/server": {
+            "Imports": [
+                "context",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/orca/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/cncf/xds/go/xds/data/orca/v3",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/balancer",
+                "google.golang.org/grpc/connectivity",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/orca",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/orca/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/internal",
+                "google.golang.org/grpc/orca",
+                "google.golang.org/grpc/status",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/proto/echo": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/reflection/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/reflection",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/retry/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/retry/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "log",
+                "net",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/stats_monitoring/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/examples/features/stats_monitoring/statshandler",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/stats_monitoring/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/examples/features/stats_monitoring/statshandler",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/stats_monitoring/statshandler": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc/stats",
+                "log",
+                "net",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/unix_abstract/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/unix_abstract/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/wait_for_ready": {
+            "Imports": [
+                "context",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/features/proto/echo",
+                "google.golang.org/grpc/status",
+                "log",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/xds/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/credentials/xds",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/xds",
+                "log",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/features/xds/server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/credentials/xds",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "google.golang.org/grpc/xds",
+                "log",
+                "math/rand",
+                "net",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/helloworld/greeter_client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/helloworld/greeter_server": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/examples/helloworld/helloworld",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/helloworld/helloworld": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/route_guide/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/route_guide/routeguide",
+                "io",
+                "log",
+                "math/rand",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/route_guide/routeguide": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/grpc/examples/route_guide/server": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/examples/data",
+                "google.golang.org/grpc/examples/route_guide/routeguide",
+                "io",
+                "log",
+                "math",
+                "net",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

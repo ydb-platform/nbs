@@ -1,0 +1,64 @@
+{
+    "Version": "v1.11.1",
+    "GoVersion": "1.19",
+    "Sum": "h1:d0uV7Qegtfaa7Z2ClDzr9HJmnbJW7jn0WhZ7wOX6hLE=",
+    "Packages": {
+        "cloud.google.com/go/servicecontrol/apiv1": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/servicecontrol/apiv1/servicecontrolpb",
+                "cloud.google.com/go/servicecontrol/internal",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/googleapi",
+                "google.golang.org/api/option",
+                "google.golang.org/api/option/internaloption",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/api/transport/http",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/protobuf/encoding/protojson",
+                "io/ioutil",
+                "math",
+                "net/http",
+                "net/url",
+                "os",
+                "runtime",
+                "strconv",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/servicecontrol/apiv1",
+                "cloud.google.com/go/servicecontrol/apiv1/servicecontrolpb",
+                "context"
+            ]
+        },
+        "cloud.google.com/go/servicecontrol/apiv1/servicecontrolpb": {
+            "Imports": [
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/api/distribution",
+                "google.golang.org/genproto/googleapis/logging/type",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/servicecontrol/internal": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

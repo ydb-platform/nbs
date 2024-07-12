@@ -17,9 +17,9 @@ limitations under the License.
 package ktesting
 
 import (
-	"context"
+    "context"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // DefaultConfig is the global default logging configuration for a unit
@@ -31,8 +31,8 @@ var DefaultConfig = NewConfig()
 // will receive all log output. Importing k8s.io/klogr/testing/init will add
 // command line flags that modify the configuration of that log output.
 func NewTestContext(tl TL) (logr.Logger, context.Context) {
-	logger := NewLogger(tl, DefaultConfig)
-	ctx := logr.NewContext(context.Background(), logger)
-	return logger, ctx
+    logger := NewLogger(tl, DefaultConfig)
+    ctx := logr.NewContext(context.Background(), logger)
+    return logger, ctx
 
 }

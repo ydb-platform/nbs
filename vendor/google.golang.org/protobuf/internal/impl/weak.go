@@ -5,10 +5,10 @@
 package impl
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/reflect/protoregistry"
+    "google.golang.org/protobuf/reflect/protoreflect"
+    "google.golang.org/protobuf/reflect/protoregistry"
 )
 
 // weakFields adds methods to the exported WeakFields type for internal use.
@@ -18,57 +18,57 @@ import (
 type weakFields WeakFields
 
 func (w weakFields) get(num protoreflect.FieldNumber) (protoreflect.ProtoMessage, bool) {
-	m, ok := w[int32(num)]
-	return m, ok
+    m, ok := w[int32(num)]
+    return m, ok
 }
 
 func (w *weakFields) set(num protoreflect.FieldNumber, m protoreflect.ProtoMessage) {
-	if *w == nil {
-		*w = make(weakFields)
-	}
-	(*w)[int32(num)] = m
+    if *w == nil {
+        *w = make(weakFields)
+    }
+    (*w)[int32(num)] = m
 }
 
 func (w *weakFields) clear(num protoreflect.FieldNumber) {
-	delete(*w, int32(num))
+    delete(*w, int32(num))
 }
 
 func (Export) HasWeak(w WeakFields, num protoreflect.FieldNumber) bool {
-	_, ok := w[int32(num)]
-	return ok
+    _, ok := w[int32(num)]
+    return ok
 }
 
 func (Export) ClearWeak(w *WeakFields, num protoreflect.FieldNumber) {
-	delete(*w, int32(num))
+    delete(*w, int32(num))
 }
 
 func (Export) GetWeak(w WeakFields, num protoreflect.FieldNumber, name protoreflect.FullName) protoreflect.ProtoMessage {
-	if m, ok := w[int32(num)]; ok {
-		return m
-	}
-	mt, _ := protoregistry.GlobalTypes.FindMessageByName(name)
-	if mt == nil {
-		panic(fmt.Sprintf("message %v for weak field is not linked in", name))
-	}
-	return mt.Zero().Interface()
+    if m, ok := w[int32(num)]; ok {
+        return m
+    }
+    mt, _ := protoregistry.GlobalTypes.FindMessageByName(name)
+    if mt == nil {
+        panic(fmt.Sprintf("message %v for weak field is not linked in", name))
+    }
+    return mt.Zero().Interface()
 }
 
 func (Export) SetWeak(w *WeakFields, num protoreflect.FieldNumber, name protoreflect.FullName, m protoreflect.ProtoMessage) {
-	if m != nil {
-		mt, _ := protoregistry.GlobalTypes.FindMessageByName(name)
-		if mt == nil {
-			panic(fmt.Sprintf("message %v for weak field is not linked in", name))
-		}
-		if mt != m.ProtoReflect().Type() {
-			panic(fmt.Sprintf("invalid message type for weak field: got %T, want %T", m, mt.Zero().Interface()))
-		}
-	}
-	if m == nil || !m.ProtoReflect().IsValid() {
-		delete(*w, int32(num))
-		return
-	}
-	if *w == nil {
-		*w = make(weakFields)
-	}
-	(*w)[int32(num)] = m
+    if m != nil {
+        mt, _ := protoregistry.GlobalTypes.FindMessageByName(name)
+        if mt == nil {
+            panic(fmt.Sprintf("message %v for weak field is not linked in", name))
+        }
+        if mt != m.ProtoReflect().Type() {
+            panic(fmt.Sprintf("invalid message type for weak field: got %T, want %T", m, mt.Zero().Interface()))
+        }
+    }
+    if m == nil || !m.ProtoReflect().IsValid() {
+        delete(*w, int32(num))
+        return
+    }
+    if *w == nil {
+        *w = make(weakFields)
+    }
+    (*w)[int32(num)] = m
 }

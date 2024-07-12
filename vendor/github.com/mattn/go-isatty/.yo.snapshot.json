@@ -1,0 +1,23 @@
+{
+    "Version": "v0.0.20",
+    "GoVersion": "1.15",
+    "Sum": "h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=",
+    "Packages": {
+        "github.com/mattn/go-isatty": {
+            "Imports": [
+                "errors",
+                "golang.org/x/sys/unix",
+                "strings",
+                "syscall",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/mattn/go-isatty",
+                "os",
+                "testing"
+            ]
+        }
+    }
+}

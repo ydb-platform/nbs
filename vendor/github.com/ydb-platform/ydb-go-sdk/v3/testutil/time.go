@@ -1,21 +1,21 @@
 package testutil
 
 import (
-	"time"
+    "time"
 )
 
 type StubTicker struct {
-	d time.Duration
-	f func(time.Time)
+    d time.Duration
+    f func(time.Time)
 }
 
 func (s *StubTicker) Reset(d time.Duration, f func(time.Time)) {
-	s.d = d
-	s.f = f
+    s.d = d
+    s.f = f
 }
 
 func (s *StubTicker) Emit(t time.Time) {
-	s.f(t)
+    s.f(t)
 }
 
 func (s StubTicker) Destroy() {}

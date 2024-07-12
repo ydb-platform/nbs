@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"encoding/json"
-	"io"
+    "encoding/json"
+    "io"
 )
 
 // JSONBuiltin is a Marshaler which marshals/unmarshals into/from JSON
@@ -16,30 +16,30 @@ type JSONBuiltin struct{}
 
 // ContentType always Returns "application/json".
 func (*JSONBuiltin) ContentType() string {
-	return "application/json"
+    return "application/json"
 }
 
 // Marshal marshals "v" into JSON
 func (j *JSONBuiltin) Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
+    return json.Marshal(v)
 }
 
 // Unmarshal unmarshals JSON data into "v".
 func (j *JSONBuiltin) Unmarshal(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
+    return json.Unmarshal(data, v)
 }
 
 // NewDecoder returns a Decoder which reads JSON stream from "r".
 func (j *JSONBuiltin) NewDecoder(r io.Reader) Decoder {
-	return json.NewDecoder(r)
+    return json.NewDecoder(r)
 }
 
 // NewEncoder returns an Encoder which writes JSON stream into "w".
 func (j *JSONBuiltin) NewEncoder(w io.Writer) Encoder {
-	return json.NewEncoder(w)
+    return json.NewEncoder(w)
 }
 
 // Delimiter for newline encoded JSON streams.
 func (j *JSONBuiltin) Delimiter() []byte {
-	return []byte("\n")
+    return []byte("\n")
 }

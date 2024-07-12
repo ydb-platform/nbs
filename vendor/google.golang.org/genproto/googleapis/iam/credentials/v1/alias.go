@@ -23,14 +23,14 @@
 package credentials
 
 import (
-	src "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
-	grpc "google.golang.org/grpc"
+    src "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
+    grpc "google.golang.org/grpc"
 )
 
 // Deprecated: Please use vars in: cloud.google.com/go/iam/credentials/apiv1/credentialspb
 var (
-	File_google_iam_credentials_v1_common_proto         = src.File_google_iam_credentials_v1_common_proto
-	File_google_iam_credentials_v1_iamcredentials_proto = src.File_google_iam_credentials_v1_iamcredentials_proto
+    File_google_iam_credentials_v1_common_proto         = src.File_google_iam_credentials_v1_common_proto
+    File_google_iam_credentials_v1_iamcredentials_proto = src.File_google_iam_credentials_v1_iamcredentials_proto
 )
 
 type GenerateAccessTokenRequest = src.GenerateAccessTokenRequest
@@ -62,10 +62,10 @@ type UnimplementedIAMCredentialsServer = src.UnimplementedIAMCredentialsServer
 
 // Deprecated: Please use funcs in: cloud.google.com/go/iam/credentials/apiv1/credentialspb
 func NewIAMCredentialsClient(cc grpc.ClientConnInterface) IAMCredentialsClient {
-	return src.NewIAMCredentialsClient(cc)
+    return src.NewIAMCredentialsClient(cc)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/iam/credentials/apiv1/credentialspb
 func RegisterIAMCredentialsServer(s *grpc.Server, srv IAMCredentialsServer) {
-	src.RegisterIAMCredentialsServer(s, srv)
+    src.RegisterIAMCredentialsServer(s, srv)
 }

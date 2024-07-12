@@ -1,0 +1,4444 @@
+{
+    "Version": "v0.12.2",
+    "GoVersion": "1.20",
+    "Sum": "h1:B7guBgY6sfk4dBlv/ORUxyYlp0UojYaYyATgtNwSCXc=",
+    "Packages": {
+        "github.com/moby/buildkit": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/api/services/control": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/gogo/googleapis/google/rpc",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "github.com/gogo/protobuf/types",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/moby/buildkit/api/types",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/opencontainers/go-digest",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/api/types": {
+            "Imports": [
+                "fmt",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/solver/pb",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache": {
+            "Imports": [
+                "archive/tar",
+                "bufio",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/archive/compression",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/diff",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/filters",
+                "github.com/containerd/containerd/gc",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/images/converter",
+                "github.com/containerd/containerd/labels",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/pkg/userns",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/hashicorp/go-multierror",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/iohelper",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/overlay",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/util/pull/pullprogress",
+                "github.com/moby/buildkit/util/rootless/mountopts",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/moby/sys/mountinfo",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/identity",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "go.etcd.io/bbolt",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "encoding/binary",
+                "fmt",
+                "github.com/containerd/containerd/archive/compression",
+                "github.com/containerd/containerd/archive/tarheader",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/klauspost/compress/zstd",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/iohelper",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/overlay",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/cache/config": {
+            "Imports": [
+                "github.com/moby/buildkit/util/compression"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/contenthash": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "fmt",
+                "github.com/containerd/continuity/sysx",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "github.com/hashicorp/go-immutable-radix",
+                "github.com/hashicorp/golang-lru/simplelru",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/locker",
+                "github.com/moby/patternmatcher",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/sys/unix",
+                "hash",
+                "io",
+                "math",
+                "math/bits",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "go.etcd.io/bbolt",
+                "io",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/cache/metadata": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/pkg/errors",
+                "go.etcd.io/bbolt",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/cache/remotecache": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/azblob": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/Azure/azure-sdk-for-go/sdk/azidentity",
+                "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net/url",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/gha": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/go-actions-cache",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/inline": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/local": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/content",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "strconv",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/registry": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/docker/distribution/reference",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/estargz",
+                "github.com/moby/buildkit/util/push",
+                "github.com/moby/buildkit/util/resolver",
+                "github.com/moby/buildkit/util/resolver/config",
+                "github.com/moby/buildkit/util/resolver/limited",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/s3": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/config",
+                "github.com/aws/aws-sdk-go-v2/credentials",
+                "github.com/aws/aws-sdk-go-v2/feature/s3/manager",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "github.com/aws/smithy-go",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "os",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cache/remotecache/v1": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "sort",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "github.com/moby/buildkit/solver",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/cache/util": {
+            "Imports": [
+                "context",
+                "github.com/containerd/continuity/fs",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "io",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/client": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/json",
+                "github.com/Microsoft/go-winio",
+                "github.com/containerd/containerd/api/services/content/v1",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/defaults",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/api/types",
+                "github.com/moby/buildkit/client/buildid",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/client/ociindex",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/grpcclient",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/content",
+                "github.com/moby/buildkit/session/filesync",
+                "github.com/moby/buildkit/session/grpchijack",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/appdefaults",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/buildkit/util/tracing/otlptracegrpc",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/insecure",
+                "io",
+                "net",
+                "net/url",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "fmt",
+                "github.com/containerd/containerd",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/content/proxy",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/docker/distribution/reference",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets/secretsprovider",
+                "github.com/moby/buildkit/session/sshforward/sshprovider",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/sourcepolicy",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/attestation",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/moby/buildkit/util/system",
+                "github.com/moby/buildkit/util/testutil",
+                "github.com/moby/buildkit/util/testutil/containerd",
+                "github.com/moby/buildkit/util/testutil/echoserver",
+                "github.com/moby/buildkit/util/testutil/httpserver",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/spdx/tools-golang/spdx",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/crypto/ssh/agent",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sys/unix",
+                "google.golang.org/grpc",
+                "io",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/client/buildid": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc/metadata"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/client/connhelper": {
+            "Imports": [
+                "context",
+                "net",
+                "net/url"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/client/connhelper/dockercontainer": {
+            "Imports": [
+                "context",
+                "github.com/docker/cli/cli/connhelper/commandconn",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/pkg/errors",
+                "net",
+                "net/url"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/connhelper/kubepod": {
+            "Imports": [
+                "context",
+                "github.com/docker/cli/cli/connhelper/commandconn",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/pkg/errors",
+                "net",
+                "net/url",
+                "regexp"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/connhelper/nerdctlcontainer": {
+            "Imports": [
+                "context",
+                "github.com/docker/cli/cli/connhelper/commandconn",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/pkg/errors",
+                "net",
+                "net/url"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/connhelper/podmancontainer": {
+            "Imports": [
+                "context",
+                "github.com/docker/cli/cli/connhelper/commandconn",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/pkg/errors",
+                "net",
+                "net/url"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/connhelper/ssh": {
+            "Imports": [
+                "context",
+                "github.com/docker/cli/cli/connhelper/commandconn",
+                "github.com/moby/buildkit/client/connhelper",
+                "github.com/pkg/errors",
+                "net",
+                "net/url"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/llb": {
+            "Imports": [
+                "context",
+                "crypto/sha256",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/platforms",
+                "github.com/docker/distribution/reference",
+                "github.com/google/shlex",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/gitutil",
+                "github.com/moby/buildkit/util/sshutil",
+                "github.com/moby/buildkit/util/system",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "net",
+                "os",
+                "path",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/client/llb/imagemetaresolver": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/version",
+                "github.com/moby/locker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "net/http",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/client/llb/llbbuild": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/opencontainers/go-digest"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/opencontainers/go-digest",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/llb/llbtest": {
+            "Imports": null,
+            "TestImports": [
+                "context",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/llbsolver",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/system",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/stretchr/testify/require",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/client/ociindex": {
+            "Imports": [
+                "encoding/json",
+                "github.com/gofrs/flock",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "os",
+                "path"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cmd/buildctl": {
+            "Imports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/continuity",
+                "github.com/docker/cli/cli/config",
+                "github.com/hashicorp/go-multierror",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/connhelper/dockercontainer",
+                "github.com/moby/buildkit/client/connhelper/kubepod",
+                "github.com/moby/buildkit/client/connhelper/nerdctlcontainer",
+                "github.com/moby/buildkit/client/connhelper/podmancontainer",
+                "github.com/moby/buildkit/client/connhelper/ssh",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/cmd/buildctl/build",
+                "github.com/moby/buildkit/cmd/buildctl/common",
+                "github.com/moby/buildkit/cmd/buildctl/debug",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/auth/authprovider",
+                "github.com/moby/buildkit/session/sshforward/sshprovider",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/appdefaults",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/profiler",
+                "github.com/moby/buildkit/util/progress/progresswriter",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/moby/buildkit/util/tracing/detect/delegated",
+                "github.com/moby/buildkit/util/tracing/detect/jaeger",
+                "github.com/moby/buildkit/util/tracing/env",
+                "github.com/moby/buildkit/version",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "github.com/tonistiigi/units",
+                "github.com/urfave/cli",
+                "go.opentelemetry.io/otel",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net",
+                "os",
+                "strings",
+                "syscall",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "os",
+                "path",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/cmd/buildctl/build": {
+            "Imports": [
+                "encoding/csv",
+                "github.com/containerd/console",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets/secretsprovider",
+                "github.com/moby/buildkit/session/sshforward/sshprovider",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/pkg/errors",
+                "io",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/client",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/cmd/buildctl/common": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/tracing/detect",
+                "github.com/pkg/errors",
+                "github.com/urfave/cli",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/trace",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/backoff",
+                "net/url",
+                "os",
+                "path/filepath",
+                "strings",
+                "text/template",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cmd/buildctl/debug": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/proxy",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/cmd/buildctl/common",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/appdefaults",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/progress/progresswriter",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/units",
+                "github.com/urfave/cli",
+                "go.etcd.io/bbolt",
+                "io",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/cmd/buildkitd/config": {
+            "Imports": [
+                "encoding",
+                "github.com/docker/go-units",
+                "github.com/moby/buildkit/util/resolver/config",
+                "github.com/pelletier/go-toml",
+                "github.com/pkg/errors",
+                "io",
+                "os",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/control": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/api/services/content/v1",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/services/content/contentserver",
+                "github.com/docker/distribution/reference",
+                "github.com/mitchellh/hashstructure/v2",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/api/types",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/cmd/buildkitd/config",
+                "github.com/moby/buildkit/control/gateway",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/util/epoch",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/attestations",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/grpchijack",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/llbsolver",
+                "github.com/moby/buildkit/solver/llbsolver/proc",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/throttle",
+                "github.com/moby/buildkit/util/tracing/transform",
+                "github.com/moby/buildkit/version",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "go.etcd.io/bbolt",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/proto/otlp/collector/trace/v1",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "strconv",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/control/gateway": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client/buildid",
+                "github.com/moby/buildkit/frontend/gateway",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/docs": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/pkg/errors",
+                "io/fs",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/build-using-dockerfile": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/console",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/frontend/dockerfile/builder",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/appdefaults",
+                "github.com/moby/buildkit/util/progress/progressui",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "github.com/urfave/cli",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/buildkit0": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/system",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/buildkit1": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/system",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/buildkit2": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/system",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/buildkit3": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/system",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/buildkit4": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/util/system",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/dockerfile2llb": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "flag",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/client/llb/imagemetaresolver",
+                "github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/sirupsen/logrus",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/kubernetes/consistenthash": {
+            "Imports": [
+                "fmt",
+                "github.com/pkg/errors",
+                "github.com/serialx/hashring",
+                "github.com/sirupsen/logrus",
+                "io",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/examples/nested-llb": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/client/llb/llbbuild",
+                "github.com/moby/buildkit/util/system",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/executor": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/containerd/continuity/fs",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/system",
+                "io",
+                "net",
+                "os",
+                "path/filepath",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/executor/containerdexecutor": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd",
+                "github.com/containerd/containerd/cio",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/oci",
+                "github.com/containerd/continuity/fs",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/executor/oci",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/network",
+                "github.com/moby/buildkit/util/rootless/specconv",
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "github.com/pkg/errors",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/trace",
+                "io",
+                "os",
+                "path/filepath",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/containerd/containerd",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/executor/resources": {
+            "Imports": [
+                "bufio",
+                "context",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/util/network",
+                "github.com/pkg/errors",
+                "github.com/prometheus/procfs",
+                "github.com/sirupsen/logrus",
+                "golang.org/x/sys/unix",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/executor/resources/types": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/moby/buildkit/util/network",
+                "math",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/opencontainers/image-spec/specs-go/v1"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/attestation": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "github.com/containerd/continuity/fs",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "os",
+                "path",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/containerimage": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/diff",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/pkg/epoch",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/rootfs",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/attestation",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/util/epoch",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/attestation",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/purl",
+                "github.com/moby/buildkit/util/push",
+                "github.com/moby/buildkit/util/system",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/moby/buildkit/version",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/identity",
+                "github.com/opencontainers/image-spec/specs-go",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/package-url/packageurl-go",
+                "github.com/pkg/errors",
+                "github.com/spdx/tools-golang/json",
+                "github.com/spdx/tools-golang/spdx",
+                "github.com/spdx/tools-golang/spdx/v2/common",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sync/errgroup",
+                "io/fs",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/containerimage/exptypes": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/exporter/exptypes",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "regexp"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/containerimage/image": {
+            "Imports": [
+                "github.com/docker/docker/api/types/strslice",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/exptypes": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/local": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/attestation",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/util/epoch",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/filesync",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/staticfs",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/time/rate",
+                "io",
+                "io/fs",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/oci": {
+            "Imports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/images/archive",
+                "github.com/containerd/containerd/leases",
+                "github.com/docker/distribution/reference",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/containerimage",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/content",
+                "github.com/moby/buildkit/session/filesync",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc/codes",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/tar": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/local",
+                "github.com/moby/buildkit/exporter/util/epoch",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/filesync",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/exporter/util/epoch": {
+            "Imports": [
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/exptypes",
+                "github.com/pkg/errors",
+                "strconv",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/opencontainers/go-digest"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/attestations": {
+            "Imports": [
+                "encoding/csv",
+                "github.com/pkg/errors",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/attestations/sbom": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "path",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/dockerfile": {
+            "Imports": null,
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/json",
+                "encoding/pem",
+                "fmt",
+                "github.com/containerd/containerd",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/cache/remotecache/v1",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/frontend/dockerfile/builder",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/subrequests",
+                "github.com/moby/buildkit/frontend/subrequests/outline",
+                "github.com/moby/buildkit/frontend/subrequests/targets",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets/secretsprovider",
+                "github.com/moby/buildkit/session/sshforward/sshprovider",
+                "github.com/moby/buildkit/session/upload/uploadprovider",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/provenance",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/moby/buildkit/util/iohelper",
+                "github.com/moby/buildkit/util/testutil",
+                "github.com/moby/buildkit/util/testutil/echoserver",
+                "github.com/moby/buildkit/util/testutil/httpserver",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "text/template",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/builder": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/exporter/containerimage/image",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/attestations/sbom",
+                "github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb",
+                "github.com/moby/buildkit/frontend/dockerfile/parser",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/frontend/subrequests/outline",
+                "github.com/moby/buildkit/frontend/subrequests/targets",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc/codes",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/cmd/dockerfile-frontend": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/moby/buildkit/frontend/dockerfile/builder",
+                "github.com/moby/buildkit/frontend/gateway/grpcclient",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/stack",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/command": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/platforms",
+                "github.com/docker/distribution/reference",
+                "github.com/docker/go-connections/nat",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/client/llb/imagemetaresolver",
+                "github.com/moby/buildkit/exporter/containerimage/image",
+                "github.com/moby/buildkit/frontend/dockerfile/instructions",
+                "github.com/moby/buildkit/frontend/dockerfile/parser",
+                "github.com/moby/buildkit/frontend/dockerfile/shell",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/frontend/subrequests/outline",
+                "github.com/moby/buildkit/frontend/subrequests/targets",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/gitutil",
+                "github.com/moby/buildkit/util/suggest",
+                "github.com/moby/buildkit/util/system",
+                "github.com/moby/sys/signal",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "math",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/frontend/dockerfile/instructions",
+                "github.com/moby/buildkit/frontend/dockerfile/shell",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/dockerignore": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "github.com/pkg/errors",
+                "io",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/instructions": {
+            "Imports": [
+                "encoding/csv",
+                "fmt",
+                "github.com/docker/docker/api/types/container",
+                "github.com/docker/docker/api/types/strslice",
+                "github.com/docker/go-units",
+                "github.com/moby/buildkit/frontend/dockerfile/command",
+                "github.com/moby/buildkit/frontend/dockerfile/parser",
+                "github.com/moby/buildkit/util/suggest",
+                "github.com/pkg/errors",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/docker/docker/api/types/strslice",
+                "github.com/moby/buildkit/frontend/dockerfile/command",
+                "github.com/moby/buildkit/frontend/dockerfile/parser",
+                "github.com/stretchr/testify/require",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/parser": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/moby/buildkit/frontend/dockerfile/command",
+                "github.com/moby/buildkit/frontend/dockerfile/shell",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/pkg/errors",
+                "io",
+                "regexp",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/stretchr/testify/require",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/parser/dumper": {
+            "Imports": [
+                "fmt",
+                "github.com/moby/buildkit/frontend/dockerfile/parser",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/dockerfile/shell": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/pkg/errors",
+                "strings",
+                "text/scanner",
+                "unicode"
+            ],
+            "TestImports": [
+                "bufio",
+                "github.com/stretchr/testify/require",
+                "os",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/frontend/dockerui": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "context",
+                "encoding/csv",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/platforms",
+                "github.com/docker/distribution/reference",
+                "github.com/docker/go-units",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/containerimage/image",
+                "github.com/moby/buildkit/frontend/attestations",
+                "github.com/moby/buildkit/frontend/dockerfile/dockerignore",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/frontend/subrequests",
+                "github.com/moby/buildkit/frontend/subrequests/outline",
+                "github.com/moby/buildkit/frontend/subrequests/targets",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/gitutil",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "net",
+                "path",
+                "path/filepath",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/mount",
+                "github.com/docker/distribution/reference",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/gogo/googleapis/google/rpc",
+                "github.com/gogo/protobuf/types",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/moby/buildkit/api/types",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/util",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/exporter/containerimage/image",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/dockerui",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/container",
+                "github.com/moby/buildkit/frontend/gateway/forwarder",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/moby/buildkit/worker",
+                "github.com/moby/sys/signal",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/net/http2",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "google.golang.org/grpc/status",
+                "io",
+                "net",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway/client": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil/types",
+                "io",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway/container": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/llbsolver/mounts",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/moby/buildkit/util/system",
+                "github.com/moby/buildkit/worker",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "net",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway/forwarder": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/cache/util",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/container",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/errdefs",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/sync/errgroup",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway/grpcclient": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/gogo/googleapis/google/rpc",
+                "github.com/gogo/protobuf/types",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/sys/signal",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/status",
+                "io",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/gateway/pb": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/typeurl/v2",
+                "github.com/gogo/googleapis/google/rpc",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/api/types",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/moby/buildkit/util/apicaps/pb",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/opencontainers/go-digest",
+                "github.com/tonistiigi/fsutil/types",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/subrequests": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/pkg/errors",
+                "io",
+                "strings",
+                "text/tabwriter"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/subrequests/outline": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/subrequests",
+                "github.com/moby/buildkit/solver/pb",
+                "io",
+                "text/tabwriter"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/frontend/subrequests/targets": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/frontend/subrequests",
+                "github.com/moby/buildkit/solver/pb",
+                "io",
+                "text/tabwriter"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/identity": {
+            "Imports": [
+                "crypto/rand",
+                "github.com/pkg/errors",
+                "io",
+                "math/big"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session": {
+            "Imports": [
+                "context",
+                "github.com/grpc-ecosystem/go-grpc-middleware",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/net/http2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "math",
+                "net",
+                "net/http",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/auth": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/subtle",
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/pkg/errors",
+                "golang.org/x/crypto/nacl/sign",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "reflect",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/auth/authprovider": {
+            "Imports": [
+                "context",
+                "crypto/ed25519",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/sha256",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/remotes/docker/auth",
+                "github.com/containerd/containerd/remotes/errors",
+                "github.com/docker/cli/cli/config",
+                "github.com/docker/cli/cli/config/configfile",
+                "github.com/docker/cli/cli/config/types",
+                "github.com/gofrs/flock",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/auth",
+                "github.com/moby/buildkit/util/progress/progresswriter",
+                "github.com/pkg/errors",
+                "golang.org/x/crypto/nacl/sign",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/docker/cli/cli/config/configfile",
+                "github.com/docker/cli/cli/config/types",
+                "github.com/moby/buildkit/session/auth",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/session/content": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/api/services/content/v1",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/proxy",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/services/content/contentserver",
+                "github.com/moby/buildkit/session",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/testutil",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/session/filesync": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "net/url",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/testutil",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/session/grpchijack": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/session",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "io",
+                "net",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/secrets": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/gogo/protobuf/sortkeys",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/secrets/secretsprovider": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/units",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/sshforward": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/session",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/sshforward/sshprovider": {
+            "Imports": [
+                "context",
+                "github.com/Microsoft/go-winio",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/sshforward",
+                "github.com/pkg/errors",
+                "golang.org/x/crypto/ssh",
+                "golang.org/x/crypto/ssh/agent",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sys/windows",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "io",
+                "net",
+                "os",
+                "regexp",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/cmd/buildctl/build",
+                "github.com/moby/buildkit/session/sshforward/sshprovider",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/session/testutil": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/bklog",
+                "io",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/upload": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/moby/buildkit/session",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "math/bits",
+                "net/url",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/session/upload/uploadprovider": {
+            "Imports": [
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session/upload",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "io",
+                "path",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/snapshot": {
+            "Imports": [
+                "context",
+                "github.com/Microsoft/go-winio/pkg/bindfilter",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/pkg/userns",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/overlay/overlayutils",
+                "github.com/containerd/continuity/fs",
+                "github.com/containerd/continuity/sysx",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/hashicorp/go-multierror",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/overlay",
+                "github.com/moby/buildkit/util/rootless/mountopts",
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/containerd/containerd/snapshots/overlay",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/overlay",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "kernel.org/pub/linux/libs/security/libcap/cap",
+                "os",
+                "path/filepath",
+                "strings",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/snapshot/containerd": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/nydus-snapshotter/pkg/errdefs",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/snapshot/imagerefchecker": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/moby/buildkit/cache",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/internal/pipe",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/cond",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/controller",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "os",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/sha256",
+                "fmt",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "math",
+                "math/rand",
+                "os",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/solver/bboltcachestorage": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/moby/buildkit/solver",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "go.etcd.io/bbolt"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/testutil",
+                "github.com/stretchr/testify/require",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/solver/errdefs": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/containerd/typeurl/v2",
+                "github.com/gogo/protobuf/proto",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc/codes",
+                "io",
+                "math",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/internal/pipe": {
+            "Imports": [
+                "context",
+                "github.com/pkg/errors",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/solver/llbsolver": {
+            "Imports": [
+                "bufio",
+                "context",
+                "encoding/binary",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/platforms",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2",
+                "github.com/mitchellh/hashstructure/v2",
+                "github.com/moby/buildkit/api/services/control",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/cache/remotecache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/cmd/buildkitd/config",
+                "github.com/moby/buildkit/control/gateway",
+                "github.com/moby/buildkit/executor/resources",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/containerimage",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/gateway",
+                "github.com/moby/buildkit/frontend/gateway/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/ops",
+                "github.com/moby/buildkit/solver/llbsolver/ops/opsutils",
+                "github.com/moby/buildkit/solver/llbsolver/provenance",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/sourcepolicy",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/entitlements",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/tracing/detect",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "go.etcd.io/bbolt",
+                "go.opentelemetry.io/otel/sdk/trace/tracetest",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "os",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/opencontainers/go-digest",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/solver/llbsolver/errdefs": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/util/bklog",
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/llbsolver/file": {
+            "Imports": [
+                "archive/tar",
+                "context",
+                "github.com/containerd/continuity/fs",
+                "github.com/docker/docker/pkg/archive",
+                "github.com/docker/docker/pkg/chrootarchive",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/llbsolver/ops/fileoptypes",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/system",
+                "github.com/opencontainers/runc/libcontainer/user",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil/copy",
+                "log",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/llbsolver/mounts": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/pkg/userns",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets",
+                "github.com/moby/buildkit/session/sshforward",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/grpcerrors",
+                "github.com/moby/locker",
+                "github.com/pkg/errors",
+                "google.golang.org/grpc/codes",
+                "os",
+                "path/filepath",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "golang.org/x/sync/errgroup",
+                "os",
+                "path/filepath",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/solver/llbsolver/ops": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/continuity/fs",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/gateway/container",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/llbsolver/errdefs",
+                "github.com/moby/buildkit/solver/llbsolver/file",
+                "github.com/moby/buildkit/solver/llbsolver/mounts",
+                "github.com/moby/buildkit/solver/llbsolver/ops/fileoptypes",
+                "github.com/moby/buildkit/solver/llbsolver/ops/opsutils",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/util/archutil",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/util/system",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil/copy",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sync/semaphore",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver/llbsolver/ops/fileoptypes",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "sync",
+                "sync/atomic",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/solver/llbsolver/ops/fileoptypes": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver/pb"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/llbsolver/ops/opsutils": {
+            "Imports": [
+                "bytes",
+                "context",
+                "github.com/moby/buildkit/cache/contenthash",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/worker",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "path"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/llbsolver/proc": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/executor/resources",
+                "github.com/moby/buildkit/exporter/containerimage/exptypes",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/frontend/attestations/sbom",
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/llbsolver",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/pkg/errors",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/llbsolver/provenance": {
+            "Imports": [
+                "github.com/containerd/containerd/platforms",
+                "github.com/docker/distribution/reference",
+                "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common",
+                "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2",
+                "github.com/moby/buildkit/executor/resources/types",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/solver/result",
+                "github.com/moby/buildkit/util/purl",
+                "github.com/moby/buildkit/util/urlutil",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/package-url/packageurl-go",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/pb": {
+            "Imports": [
+                "fmt",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "github.com/gogo/protobuf/sortkeys",
+                "github.com/moby/buildkit/util/apicaps",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/result": {
+            "Imports": [
+                "github.com/moby/buildkit/frontend/gateway/pb",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/solver/testutil": {
+            "Imports": [
+                "fmt",
+                "github.com/moby/buildkit/solver",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/solver",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/source": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/containerd/containerd/reference",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/util/sshutil",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "net/url",
+                "path",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/source/containerimage": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/diff",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/content",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/errdefs",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/util/estargz",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/controller",
+                "github.com/moby/buildkit/util/pull",
+                "github.com/moby/buildkit/util/resolver",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/identity",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "runtime",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/source/git": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "fmt",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/secrets",
+                "github.com/moby/buildkit/session/sshforward",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/util/urlutil",
+                "github.com/moby/locker",
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "net/url",
+                "os",
+                "os/exec",
+                "os/user",
+                "path",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "net/http",
+                "net/http/cgi",
+                "net/http/httptest",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/source/http": {
+            "Imports": [
+                "context",
+                "crypto/sha256",
+                "encoding/json",
+                "fmt",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/upload",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/moby/locker",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "io",
+                "mime",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/native",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/testutil/httpserver",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/opencontainers/go-digest",
+                "github.com/stretchr/testify/require",
+                "go.etcd.io/bbolt",
+                "os",
+                "path/filepath",
+                "runtime",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/source/local": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/contenthash",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/filesync",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/time/rate",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/source/types": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/sourcepolicy": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/wildcard",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "regexp"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/sirupsen/logrus",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/sourcepolicy/pb": {
+            "Imports": [
+                "fmt",
+                "github.com/gogo/protobuf/proto",
+                "github.com/pkg/errors",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/apicaps": {
+            "Imports": [
+                "fmt",
+                "github.com/moby/buildkit/util/apicaps/pb",
+                "github.com/pkg/errors",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/util/apicaps/pb",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/apicaps/pb": {
+            "Imports": [
+                "fmt",
+                "github.com/gogo/protobuf/gogoproto",
+                "github.com/gogo/protobuf/proto",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/appcontext": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/bklog",
+                "golang.org/x/sys/unix",
+                "os",
+                "os/signal",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/appdefaults": {
+            "Imports": [
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/archutil": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "errors",
+                "github.com/containerd/containerd/platforms",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/go-archvariant",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "sort",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/attestation": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/bklog": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/log",
+                "github.com/sirupsen/logrus",
+                "go.opentelemetry.io/otel/trace",
+                "runtime/debug"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/compression": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/archive/compression",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/docker/docker/pkg/ioutils",
+                "github.com/klauspost/compress/zstd",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/iohelper",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "strconv",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/cond": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/contentutil": {
+            "Imports": [
+                "bytes",
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/resolver/limited",
+                "github.com/moby/buildkit/util/resolver/retryhandler",
+                "github.com/moby/buildkit/version",
+                "github.com/moby/locker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "net/http",
+                "net/url",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "io",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/entitlements": {
+            "Imports": [
+                "github.com/pkg/errors"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/entitlements/security": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/containers",
+                "github.com/containerd/containerd/oci",
+                "github.com/containerd/containerd/pkg/cap",
+                "github.com/containerd/containerd/pkg/userns",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix",
+                "os",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/estargz": {
+            "Imports": [
+                "fmt",
+                "github.com/containerd/containerd/labels",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/flightcontrol": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/pkg/errors",
+                "io",
+                "runtime",
+                "sort",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/gitutil": {
+            "Imports": [
+                "github.com/containerd/containerd/errdefs",
+                "github.com/moby/buildkit/util/sshutil",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/grpcerrors": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "github.com/containerd/typeurl/v2",
+                "github.com/gogo/googleapis/google/rpc",
+                "github.com/gogo/protobuf/types",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/stack",
+                "github.com/pkg/errors",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/imageutil": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/exporter/containerimage/image",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/source/types",
+                "github.com/moby/buildkit/sourcepolicy",
+                "github.com/moby/buildkit/sourcepolicy/pb",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/resolver/limited",
+                "github.com/moby/buildkit/util/resolver/retryhandler",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/iohelper": {
+            "Imports": [
+                "github.com/pkg/errors",
+                "io",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/leaseutil": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/namespaces",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/network": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/oci",
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/network/cniprovider": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/Microsoft/hcsshim/hcn",
+                "github.com/containerd/containerd/oci",
+                "github.com/containerd/go-cni",
+                "github.com/gofrs/flock",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/network",
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "github.com/pkg/errors",
+                "go.opentelemetry.io/otel/trace",
+                "golang.org/x/sys/unix",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/network/netproviders": {
+            "Imports": [
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/network",
+                "github.com/moby/buildkit/util/network/cniprovider",
+                "github.com/pkg/errors",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/overlay": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/archive",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/continuity/devices",
+                "github.com/containerd/continuity/fs",
+                "github.com/containerd/continuity/sysx",
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix",
+                "io",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/mount",
+                "github.com/containerd/continuity/fs",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/pkg/errors",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/profiler": {
+            "Imports": [
+                "github.com/pkg/profile",
+                "github.com/urfave/cli"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/progress": {
+            "Imports": [
+                "context",
+                "github.com/pkg/errors",
+                "io",
+                "sort",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/progress/controller": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/opencontainers/go-digest",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/progress/logs": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/armon/circbuf",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/pkg/errors",
+                "github.com/tonistiigi/units",
+                "io",
+                "math",
+                "os",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/progress/progressui": {
+            "Imports": [
+                "bytes",
+                "container/ring",
+                "context",
+                "encoding/csv",
+                "errors",
+                "fmt",
+                "github.com/containerd/console",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/morikuni/aec",
+                "github.com/opencontainers/go-digest",
+                "github.com/tonistiigi/units",
+                "github.com/tonistiigi/vt100",
+                "golang.org/x/time/rate",
+                "io",
+                "os",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/progress/progresswriter": {
+            "Imports": [
+                "context",
+                "github.com/containerd/console",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/util/progress/progressui",
+                "github.com/opencontainers/go-digest",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "os",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/pull": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/reference",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/remotes/docker/schema1",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/util/pull/pullprogress",
+                "github.com/moby/buildkit/util/resolver/limited",
+                "github.com/moby/buildkit/util/resolver/retryhandler",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/pull/pullprogress": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/remotes",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "io",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/purl": {
+            "Imports": [
+                "github.com/containerd/containerd/platforms",
+                "github.com/docker/distribution/reference",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/package-url/packageurl-go",
+                "github.com/pkg/errors",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/containerd/containerd/platforms",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/package-url/packageurl-go",
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/push": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/log",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/docker/distribution/reference",
+                "github.com/in-toto/in-toto-golang/in_toto",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/imageutil",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/logs",
+                "github.com/moby/buildkit/util/resolver",
+                "github.com/moby/buildkit/util/resolver/config",
+                "github.com/moby/buildkit/util/resolver/limited",
+                "github.com/moby/buildkit/util/resolver/retryhandler",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/resolver": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/base64",
+                "fmt",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/remotes",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/containerd/remotes/docker/auth",
+                "github.com/containerd/containerd/remotes/errors",
+                "github.com/docker/distribution/reference",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/session/auth",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/flightcontrol",
+                "github.com/moby/buildkit/util/resolver/config",
+                "github.com/moby/buildkit/util/tracing",
+                "github.com/moby/buildkit/version",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/moby/buildkit/cmd/buildkitd/config",
+                "github.com/stretchr/testify/require",
+                "path",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/resolver/config": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/resolver/limited": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/remotes",
+                "github.com/docker/distribution/reference",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "golang.org/x/sync/semaphore",
+                "io",
+                "runtime",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/resolver/retryhandler": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/remotes/errors",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "net",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/rootless/mountopts": {
+            "Imports": [
+                "github.com/containerd/containerd/mount",
+                "github.com/moby/buildkit/util/strutil",
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/rootless/specconv": {
+            "Imports": [
+                "github.com/opencontainers/runtime-spec/specs-go",
+                "github.com/pkg/errors",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/sshutil": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/ssh",
+                "net",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/stack": {
+            "Imports": [
+                "fmt",
+                "github.com/containerd/typeurl/v2",
+                "github.com/pkg/errors",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io",
+                "os",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/staticfs": {
+            "Imports": [
+                "bytes",
+                "context",
+                "github.com/tonistiigi/fsutil",
+                "github.com/tonistiigi/fsutil/types",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/require",
+                "github.com/tonistiigi/fsutil/types",
+                "io",
+                "io/fs",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/strutil": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/suggest": {
+            "Imports": [
+                "github.com/agext/levenshtein",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/system": {
+            "Imports": [
+                "fmt",
+                "github.com/containerd/continuity/fs",
+                "github.com/pkg/errors",
+                "io/fs",
+                "path",
+                "path/filepath",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/system/getuserinfo": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/docker/docker/pkg/reexec",
+                "golang.org/x/sys/windows",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "encoding/json",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/platforms",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil/containerd": {
+            "Imports": [
+                "context",
+                "github.com/Masterminds/semver/v3",
+                "github.com/containerd/containerd",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil/dockerd": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/moby/buildkit/identity",
+                "github.com/pkg/errors",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil/echoserver": {
+            "Imports": [
+                "io",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil/httpserver": {
+            "Imports": [
+                "bytes",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/testutil/integration": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/json",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/images/archive",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/containerd/continuity/fs/fstest",
+                "github.com/docker/docker/client",
+                "github.com/gofrs/flock",
+                "github.com/google/shlex",
+                "github.com/moby/buildkit/cmd/buildkitd/config",
+                "github.com/moby/buildkit/util/appcontext",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/contentutil",
+                "github.com/moby/buildkit/util/testutil/dockerd",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sync/semaphore",
+                "io",
+                "log",
+                "math/rand",
+                "net",
+                "net/http",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/throttle": {
+            "Imports": [
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/util/tracing": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/moby/buildkit/util/bklog",
+                "go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace",
+                "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/semconv/v1.17.0",
+                "go.opentelemetry.io/otel/trace",
+                "net/http",
+                "net/http/httptrace"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/detect": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/pkg/errors",
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+                "go.opentelemetry.io/otel/sdk/resource",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/sdk/trace/tracetest",
+                "go.opentelemetry.io/otel/semconv/v1.17.0",
+                "go.opentelemetry.io/otel/trace",
+                "os",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/detect/delegated": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/tracing/detect",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/util/tracing/detect",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/tracing/detect/jaeger": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/tracing/detect",
+                "go.opentelemetry.io/otel/exporters/jaeger",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "net",
+                "os",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/env": {
+            "Imports": [
+                "context",
+                "github.com/moby/buildkit/util/appcontext",
+                "go.opentelemetry.io/otel/propagation",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/exec": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/otel/propagation"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/otlptracegrpc": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/pkg/errors",
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+                "go.opentelemetry.io/proto/otlp/collector/trace/v1",
+                "go.opentelemetry.io/proto/otlp/trace/v1",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "math/rand",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/tracing/transform": {
+            "Imports": [
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/sdk/instrumentation",
+                "go.opentelemetry.io/otel/sdk/resource",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/trace",
+                "go.opentelemetry.io/proto/otlp/common/v1",
+                "go.opentelemetry.io/proto/otlp/resource/v1",
+                "go.opentelemetry.io/proto/otlp/trace/v1",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/util/urlutil": {
+            "Imports": [
+                "net/url"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/wildcard": {
+            "Imports": [
+                "github.com/pkg/errors",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/util/winlayers": {
+            "Imports": [
+                "archive/tar",
+                "context",
+                "crypto/rand",
+                "encoding/base64",
+                "fmt",
+                "github.com/containerd/containerd/archive",
+                "github.com/containerd/containerd/archive/compression",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/diff",
+                "github.com/containerd/containerd/errdefs",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/mount",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/version": {
+            "Imports": [
+                "fmt",
+                "regexp",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/worker": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/filters",
+                "github.com/hashicorp/go-multierror",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/config",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/util/compression",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "io",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/worker/base": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/content",
+                "github.com/containerd/containerd/diff",
+                "github.com/containerd/containerd/gc",
+                "github.com/containerd/containerd/images",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/remotes/docker",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/hashicorp/go-multierror",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/client/llb",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/executor/resources",
+                "github.com/moby/buildkit/exporter",
+                "github.com/moby/buildkit/exporter/containerimage",
+                "github.com/moby/buildkit/exporter/local",
+                "github.com/moby/buildkit/exporter/oci",
+                "github.com/moby/buildkit/exporter/tar",
+                "github.com/moby/buildkit/frontend",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/snapshot/imagerefchecker",
+                "github.com/moby/buildkit/solver",
+                "github.com/moby/buildkit/solver/llbsolver/mounts",
+                "github.com/moby/buildkit/solver/llbsolver/ops",
+                "github.com/moby/buildkit/solver/pb",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/source/containerimage",
+                "github.com/moby/buildkit/source/git",
+                "github.com/moby/buildkit/source/http",
+                "github.com/moby/buildkit/source/local",
+                "github.com/moby/buildkit/util/archutil",
+                "github.com/moby/buildkit/util/bklog",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/network",
+                "github.com/moby/buildkit/util/progress",
+                "github.com/moby/buildkit/util/progress/controller",
+                "github.com/opencontainers/go-digest",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sync/semaphore",
+                "os",
+                "path/filepath",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/worker/containerd": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd",
+                "github.com/containerd/containerd/gc",
+                "github.com/containerd/containerd/leases",
+                "github.com/containerd/containerd/protobuf/types",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/executor/containerdexecutor",
+                "github.com/moby/buildkit/executor/oci",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/network/netproviders",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/moby/buildkit/worker/base",
+                "github.com/moby/buildkit/worker/label",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/pkg/errors",
+                "golang.org/x/sync/semaphore",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/buildkit/util/network/netproviders",
+                "github.com/moby/buildkit/util/testutil/integration",
+                "github.com/moby/buildkit/worker/base",
+                "github.com/moby/buildkit/worker/tests",
+                "github.com/stretchr/testify/require",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/moby/buildkit/worker/label": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/moby/buildkit/worker/runc": {
+            "Imports": [
+                "context",
+                "github.com/containerd/containerd/content/local",
+                "github.com/containerd/containerd/diff/apply",
+                "github.com/containerd/containerd/diff/walking",
+                "github.com/containerd/containerd/metadata",
+                "github.com/containerd/containerd/platforms",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/docker/docker/pkg/idtools",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/cache/metadata",
+                "github.com/moby/buildkit/executor/oci",
+                "github.com/moby/buildkit/executor/resources",
+                "github.com/moby/buildkit/executor/runcexecutor",
+                "github.com/moby/buildkit/snapshot/containerd",
+                "github.com/moby/buildkit/util/leaseutil",
+                "github.com/moby/buildkit/util/network/netproviders",
+                "github.com/moby/buildkit/util/winlayers",
+                "github.com/moby/buildkit/worker/base",
+                "github.com/moby/buildkit/worker/label",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "go.etcd.io/bbolt",
+                "golang.org/x/sync/semaphore",
+                "os",
+                "path/filepath",
+                "strconv"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/containerd/containerd/snapshots",
+                "github.com/containerd/containerd/snapshots/overlay",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/client",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/executor/oci",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/util/network/netproviders",
+                "github.com/moby/buildkit/worker/base",
+                "github.com/moby/buildkit/worker/tests",
+                "github.com/stretchr/testify/require",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/buildkit/worker/tests": {
+            "Imports": [
+                "bytes",
+                "context",
+                "github.com/containerd/containerd/namespaces",
+                "github.com/moby/buildkit/cache",
+                "github.com/moby/buildkit/executor",
+                "github.com/moby/buildkit/identity",
+                "github.com/moby/buildkit/session",
+                "github.com/moby/buildkit/snapshot",
+                "github.com/moby/buildkit/source",
+                "github.com/moby/buildkit/worker/base",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -22,14 +24,7 @@ IF (ARCH_X86_64)
     )
 ENDIF()
 
-IF (OS_LINUX AND ARCH_ARM64)
-    SRCS(
-        decode_arm64.s
-        encode_arm64.s
-    )
-ENDIF()
-
-IF (OS_DARWIN AND ARCH_ARM64)
+IF (ARCH_ARM64)
     SRCS(
         decode_arm64.s
         encode_arm64.s

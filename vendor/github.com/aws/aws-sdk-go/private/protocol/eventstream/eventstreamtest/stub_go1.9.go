@@ -6,5 +6,5 @@ package eventstreamtest
 import "testing"
 
 var getHelper = func(t testing.TB) func() {
-	return t.Helper
+    return t.Helper
 }

@@ -1,0 +1,147 @@
+{
+    "Version": "v0.2.0",
+    "GoVersion": "1.21",
+    "Sum": "h1:PbJwaBmbVLzpeldoeUKGkE2RjstrjPKMl6oLrfEJ6/8=",
+    "Packages": {
+        "github.com/google/nftables": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/nftables/binaryutil",
+                "github.com/google/nftables/expr",
+                "github.com/google/nftables/internal/parseexprfunc",
+                "github.com/mdlayher/netlink",
+                "github.com/mdlayher/netlink/nltest",
+                "golang.org/x/sys/unix",
+                "math",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/nftables",
+                "github.com/google/nftables/binaryutil",
+                "github.com/google/nftables/expr",
+                "github.com/google/nftables/internal/nftest",
+                "github.com/google/nftables/xt",
+                "github.com/mdlayher/netlink",
+                "golang.org/x/sys/unix",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/nftables/alignedbuff": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/nftables/binaryutil",
+                "unsafe"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/nftables/binaryutil": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "reflect",
+                "testing",
+                "unsafe"
+            ]
+        },
+        "github.com/google/nftables/expr": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/nftables/binaryutil",
+                "github.com/google/nftables/internal/parseexprfunc",
+                "github.com/google/nftables/xt",
+                "github.com/mdlayher/netlink",
+                "golang.org/x/sys/unix",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/binary",
+                "github.com/google/nftables/xt",
+                "github.com/mdlayher/netlink",
+                "golang.org/x/sys/unix",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/nftables/internal/nftest": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/nftables",
+                "github.com/mdlayher/netlink",
+                "github.com/vishvananda/netns",
+                "runtime",
+                "strings",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/nftables/internal/parseexprfunc": {
+            "Imports": [
+                "github.com/mdlayher/netlink"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/nftables/userdata": {
+            "Imports": [
+                "bytes",
+                "encoding/binary"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "flag",
+                "github.com/google/nftables",
+                "github.com/google/nftables/internal/nftest",
+                "github.com/google/nftables/userdata",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/nftables/xt": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/nftables/alignedbuff",
+                "golang.org/x/sys/unix",
+                "net"
+            ],
+            "TestImports": [
+                "golang.org/x/sys/unix",
+                "net",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

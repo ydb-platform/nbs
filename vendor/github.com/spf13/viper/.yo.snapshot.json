@@ -1,0 +1,172 @@
+{
+    "Version": "v1.16.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:rGGH0XDZhdUOryiDWjmIvUSWpbNqisK8Wk0Vyefw8hc=",
+    "Packages": {
+        "github.com/spf13/viper": {
+            "Imports": [
+                "bytes",
+                "encoding/csv",
+                "errors",
+                "fmt",
+                "github.com/fsnotify/fsnotify",
+                "github.com/mitchellh/mapstructure",
+                "github.com/spf13/afero",
+                "github.com/spf13/cast",
+                "github.com/spf13/jwalterweatherman",
+                "github.com/spf13/pflag",
+                "github.com/spf13/viper/internal/encoding",
+                "github.com/spf13/viper/internal/encoding/dotenv",
+                "github.com/spf13/viper/internal/encoding/hcl",
+                "github.com/spf13/viper/internal/encoding/ini",
+                "github.com/spf13/viper/internal/encoding/javaproperties",
+                "github.com/spf13/viper/internal/encoding/json",
+                "github.com/spf13/viper/internal/encoding/toml",
+                "github.com/spf13/viper/internal/encoding/yaml",
+                "io",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/fsnotify/fsnotify",
+                "github.com/mitchellh/mapstructure",
+                "github.com/spf13/afero",
+                "github.com/spf13/cast",
+                "github.com/spf13/pflag",
+                "github.com/spf13/viper/internal/testutil",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "sort",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/dotenv": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/spf13/cast",
+                "github.com/subosito/gotenv",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/hcl": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "github.com/hashicorp/hcl",
+                "github.com/hashicorp/hcl/hcl/printer"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/ini": {
+            "Imports": [
+                "bytes",
+                "github.com/spf13/cast",
+                "gopkg.in/ini.v1",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/javaproperties": {
+            "Imports": [
+                "bytes",
+                "github.com/magiconair/properties",
+                "github.com/spf13/cast",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/json": {
+            "Imports": [
+                "encoding/json"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/toml": {
+            "Imports": [
+                "github.com/pelletier/go-toml/v2"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/encoding/yaml": {
+            "Imports": [
+                "gopkg.in/yaml.v3"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/spf13/viper/internal/testutil": {
+            "Imports": [
+                "path/filepath",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/spf13/viper/remote": {
+            "Imports": [
+                "bytes",
+                "github.com/sagikazarmark/crypt/config",
+                "github.com/spf13/viper",
+                "io",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -1,0 +1,334 @@
+{
+    "Version": "v2.120.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:QXU6cPEOIslTGvZaXvFWiP9VKyeet3sawzTOvdXb4Vw=",
+    "Packages": {
+        "k8s.io/klog/v2": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/go-logr/logr",
+                "io",
+                "k8s.io/klog/v2/internal/buffer",
+                "k8s.io/klog/v2/internal/clock",
+                "k8s.io/klog/v2/internal/dbg",
+                "k8s.io/klog/v2/internal/serialize",
+                "k8s.io/klog/v2/internal/severity",
+                "k8s.io/klog/v2/internal/sloghandler",
+                "log",
+                "log/slog",
+                "math",
+                "os",
+                "os/user",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/go-logr/logr",
+                "io",
+                "io/ioutil",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/buffer",
+                "k8s.io/klog/v2/internal/clock/testing",
+                "k8s.io/klog/v2/internal/severity",
+                "k8s.io/klog/v2/internal/test",
+                "k8s.io/klog/v2/internal/test/require",
+                "k8s.io/klog/v2/test",
+                "log",
+                "log/slog",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/klog/v2/integration_tests": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/klog/v2/integration_tests/internal": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "k8s.io/klog/v2",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/buffer": {
+            "Imports": [
+                "bytes",
+                "k8s.io/klog/v2/internal/severity",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/clock": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/clock/testing": {
+            "Imports": [
+                "k8s.io/klog/v2/internal/clock",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/dbg": {
+            "Imports": [
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/serialize": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/go-logr/logr",
+                "log/slog",
+                "strconv"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/serialize",
+                "k8s.io/klog/v2/internal/test",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/klog/v2/internal/severity": {
+            "Imports": [
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/sloghandler": {
+            "Imports": [
+                "context",
+                "k8s.io/klog/v2/internal/severity",
+                "log/slog",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/test": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/test/require": {
+            "Imports": [
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/internal/verbosity": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "k8s.io/klog/v2/internal/test/require",
+                "testing"
+            ]
+        },
+        "k8s.io/klog/v2/klogr": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/go-logr/logr",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/serialize",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "github.com/go-logr/logr",
+                "io",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/test/require",
+                "k8s.io/klog/v2/klogr",
+                "k8s.io/klog/v2/test",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/klog/v2/klogr/calldepth-test": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "flag",
+                "github.com/go-logr/logr",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/test/require",
+                "k8s.io/klog/v2/klogr",
+                "strings",
+                "testing"
+            ]
+        },
+        "k8s.io/klog/v2/ktesting": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/go-logr/logr",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/buffer",
+                "k8s.io/klog/v2/internal/dbg",
+                "k8s.io/klog/v2/internal/serialize",
+                "k8s.io/klog/v2/internal/severity",
+                "k8s.io/klog/v2/internal/verbosity",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/test/require",
+                "k8s.io/klog/v2/ktesting",
+                "regexp",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "k8s.io/klog/v2/ktesting/example": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/test",
+                "k8s.io/klog/v2/ktesting",
+                "k8s.io/klog/v2/ktesting/init",
+                "testing"
+            ]
+        },
+        "k8s.io/klog/v2/ktesting/init": {
+            "Imports": [
+                "flag",
+                "k8s.io/klog/v2/ktesting"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/test": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/go-logr/logr",
+                "io",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/textlogger",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "k8s.io/klog/v2/textlogger": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/go-logr/logr",
+                "io",
+                "k8s.io/klog/v2/internal/buffer",
+                "k8s.io/klog/v2/internal/serialize",
+                "k8s.io/klog/v2/internal/severity",
+                "k8s.io/klog/v2/internal/sloghandler",
+                "k8s.io/klog/v2/internal/verbosity",
+                "log/slog",
+                "os",
+                "runtime",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/go-logr/logr",
+                "github.com/go-logr/logr/slogr",
+                "io",
+                "k8s.io/klog/v2",
+                "k8s.io/klog/v2/internal/buffer",
+                "k8s.io/klog/v2/test",
+                "k8s.io/klog/v2/textlogger",
+                "log/slog",
+                "os",
+                "regexp",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

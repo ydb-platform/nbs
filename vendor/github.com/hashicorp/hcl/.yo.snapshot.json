@@ -1,0 +1,208 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:0Anlzjpi4vEasTeNFn2mLJgTSwt0+6sfsiTG8qcWGx4=",
+    "Packages": {
+        "github.com/hashicorp/hcl": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/parser",
+                "github.com/hashicorp/hcl/hcl/token",
+                "github.com/hashicorp/hcl/json/parser",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "github.com/davecgh/go-spew/spew",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "io/ioutil",
+                "path/filepath",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/ast": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/token",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/hcl/hcl/token",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/fmtcmd": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/printer",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/testhelper",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/parser": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/scanner",
+                "github.com/hashicorp/hcl/hcl/token",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/token",
+                "io/ioutil",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/printer": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/parser",
+                "github.com/hashicorp/hcl/hcl/token",
+                "io",
+                "sort",
+                "text/tabwriter"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/parser",
+                "io/ioutil",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/scanner": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/token",
+                "os",
+                "regexp",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/token",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/strconv": {
+            "Imports": [
+                "errors",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/hcl/token": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/strconv",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/json/parser": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/token",
+                "github.com/hashicorp/hcl/json/scanner",
+                "github.com/hashicorp/hcl/json/token"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/ast",
+                "github.com/hashicorp/hcl/hcl/token",
+                "io/ioutil",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/json/scanner": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/json/token",
+                "os",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/json/token",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/json/token": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/hcl/token",
+                "strconv"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/testhelper": {
+            "Imports": [
+                "runtime",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

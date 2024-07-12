@@ -1,0 +1,27 @@
+{
+    "Version": "v1.0.8-0.20190503095111-78e7bbc3c34b",
+    "GoVersion": "",
+    "Sum": "h1:XXnSmzX/5Dv2PoLKaRnf2f9P4BqzTfcrTKJY+hic/k4=",
+    "Packages": {
+        "github.com/google/brotli/go/cbrotli": {
+            "Imports": [
+                "C",
+                "bytes",
+                "errors",
+                "io",
+                "io/ioutil",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "math",
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

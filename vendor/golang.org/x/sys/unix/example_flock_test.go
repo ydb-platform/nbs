@@ -7,19 +7,19 @@
 package unix_test
 
 import (
-	"log"
-	"os"
+    "log"
+    "os"
 
-	"golang.org/x/sys/unix"
+    "golang.org/x/sys/unix"
 )
 
 func ExampleFlock() {
-	f, _ := os.Create("example.lock")
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
-		log.Fatal(err)
-	}
-	// Do work here that requires the lock. When finished, release the lock:
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_UN); err != nil {
-		log.Fatal(err)
-	}
+    f, _ := os.Create("example.lock")
+    if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+        log.Fatal(err)
+    }
+    // Do work here that requires the lock. When finished, release the lock:
+    if err := unix.Flock(int(f.Fd()), unix.LOCK_UN); err != nil {
+        log.Fatal(err)
+    }
 }

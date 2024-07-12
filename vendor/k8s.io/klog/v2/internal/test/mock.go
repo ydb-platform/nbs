@@ -18,23 +18,23 @@ limitations under the License.
 package test
 
 type KMetadataMock struct {
-	Name, NS string
+    Name, NS string
 }
 
 func (m KMetadataMock) GetName() string {
-	return m.Name
+    return m.Name
 }
 func (m KMetadataMock) GetNamespace() string {
-	return m.NS
+    return m.NS
 }
 
 type PtrKMetadataMock struct {
-	Name, NS string
+    Name, NS string
 }
 
 func (m *PtrKMetadataMock) GetName() string {
-	return m.Name
+    return m.Name
 }
 func (m *PtrKMetadataMock) GetNamespace() string {
-	return m.NS
+    return m.NS
 }

@@ -1,0 +1,9 @@
+GO_TEST_FOR(vendor/github.com/aws/aws-sdk-go/aws/signer/v4)
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(Apache-2.0)
+
+GO_SKIP_TESTS(TestPresignRequest)
+
+END()

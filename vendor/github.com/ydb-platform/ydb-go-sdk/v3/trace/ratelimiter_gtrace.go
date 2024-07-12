@@ -4,7 +4,7 @@ package trace
 
 // ratelimiterComposeOptions is a holder of options
 type ratelimiterComposeOptions struct {
-	panicCallback func(e interface{})
+    panicCallback func(e interface{})
 }
 
 // RatelimiterOption specified Ratelimiter compose option
@@ -12,13 +12,13 @@ type RatelimiterComposeOption func(o *ratelimiterComposeOptions)
 
 // WithRatelimiterPanicCallback specified behavior on panic
 func WithRatelimiterPanicCallback(cb func(e interface{})) RatelimiterComposeOption {
-	return func(o *ratelimiterComposeOptions) {
-		o.panicCallback = cb
-	}
+    return func(o *ratelimiterComposeOptions) {
+        o.panicCallback = cb
+    }
 }
 
 // Compose returns a new Ratelimiter which has functional fields composed both from t and x.
 func (t *Ratelimiter) Compose(x *Ratelimiter, opts ...RatelimiterComposeOption) *Ratelimiter {
-	var ret Ratelimiter
-	return &ret
+    var ret Ratelimiter
+    return &ret
 }

@@ -1,0 +1,18 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:jkp/imWsmJz2f6LyFsk7EkVeN2HxR/HTTOY8kHrsxfA=",
+    "Packages": {
+        "github.com/moby/pubsub": {
+            "Imports": [
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -1,0 +1,189 @@
+{
+    "Version": "v1.10.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:EaGW2JJh15aKOejeuJ+wpFSHnbd7GE6Wvp3TsNhb6LY=",
+    "Packages": {
+        "github.com/spf13/afero": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/spf13/afero/internal/common",
+                "github.com/spf13/afero/mem",
+                "golang.org/x/text/runes",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "io",
+                "io/fs",
+                "log",
+                "net/http",
+                "os",
+                "path",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/spf13/afero/internal/common",
+                "io",
+                "io/fs",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "testing/fstest",
+                "time"
+            ]
+        },
+        "github.com/spf13/afero/gcsfs": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/storage",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/googleapis/google-cloud-go-testing/storage/stiface",
+                "github.com/spf13/afero",
+                "google.golang.org/api/iterator",
+                "google.golang.org/api/option",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/storage",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/googleapis/google-cloud-go-testing/storage/stiface",
+                "github.com/spf13/afero",
+                "golang.org/x/oauth2/google",
+                "io",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/spf13/afero/internal/common": {
+            "Imports": [
+                "io/fs"
+            ],
+            "TestImports": null
+        },
+        "github.com/spf13/afero/mem": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "github.com/spf13/afero/internal/common",
+                "io",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "sort",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/spf13/afero/sftpfs": {
+            "Imports": [
+                "github.com/pkg/sftp",
+                "github.com/spf13/afero",
+                "os",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/pem",
+                "flag",
+                "fmt",
+                "github.com/pkg/sftp",
+                "golang.org/x/crypto/ssh",
+                "io/ioutil",
+                "log",
+                "net",
+                "os",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/spf13/afero/tarfs": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "github.com/spf13/afero",
+                "io",
+                "os",
+                "path/filepath",
+                "sort",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "errors",
+                "fmt",
+                "github.com/spf13/afero",
+                "io",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/spf13/afero/zipfs": {
+            "Imports": [
+                "archive/zip",
+                "github.com/spf13/afero",
+                "io",
+                "os",
+                "path/filepath",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "archive/zip",
+                "github.com/spf13/afero",
+                "io",
+                "path/filepath",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

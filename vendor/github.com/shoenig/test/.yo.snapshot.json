@@ -1,0 +1,143 @@
+{
+    "Version": "v0.6.6",
+    "GoVersion": "1.18",
+    "Sum": "h1:Oe8TPH9wAbv++YPNDKJWUnI8Q4PPWCx3UbOfH+FxiMU=",
+    "Packages": {
+        "github.com/shoenig/test": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/shoenig/test/interfaces",
+                "github.com/shoenig/test/internal/assertions",
+                "github.com/shoenig/test/internal/brokenfs",
+                "github.com/shoenig/test/internal/constraints",
+                "github.com/shoenig/test/internal/util",
+                "github.com/shoenig/test/wait",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/shoenig/test/wait",
+                "io/fs",
+                "math",
+                "os",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/shoenig/test/interfaces": {
+            "Imports": [
+                "github.com/shoenig/test/internal/constraints",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/shoenig/test/internal/assertions": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/shoenig/test/interfaces",
+                "github.com/shoenig/test/internal/constraints",
+                "github.com/shoenig/test/wait",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/shoenig/test/internal/brokenfs": {
+            "Imports": [
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/shoenig/test/internal/constraints": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/shoenig/test/internal/util": {
+            "Imports": null,
+            "TestImports": [
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/shoenig/test/must": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/shoenig/test/interfaces",
+                "github.com/shoenig/test/internal/assertions",
+                "github.com/shoenig/test/internal/brokenfs",
+                "github.com/shoenig/test/internal/constraints",
+                "github.com/shoenig/test/internal/util",
+                "github.com/shoenig/test/wait",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/shoenig/test/wait",
+                "io/fs",
+                "math",
+                "os",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/shoenig/test/portal": {
+            "Imports": [
+                "fmt",
+                "io",
+                "net",
+                "strconv",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/shoenig/test/wait": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "math",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -1,0 +1,257 @@
+{
+    "Version": "v1.4.10",
+    "GoVersion": "1.17",
+    "Sum": "h1:xUbmA4jC6Dq163/fWcp8P3JuHilrHHMLNRxzGQJ9hNk=",
+    "Packages": {
+        "github.com/hashicorp/go-plugin": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/subtle",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "debug/elf",
+                "debug/macho",
+                "debug/pe",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin/internal/plugin",
+                "github.com/hashicorp/yamux",
+                "github.com/mitchellh/go-testing-interface",
+                "github.com/oklog/run",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/health",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "google.golang.org/grpc/reflection",
+                "google.golang.org/grpc/status",
+                "hash",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "math/big",
+                "net",
+                "net/rpc",
+                "os",
+                "os/exec",
+                "os/signal",
+                "os/user",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin/test/grpc",
+                "github.com/jhump/protoreflect/grpcreflect",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/reflection/grpc_reflection_v1alpha",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/rpc",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go-plugin/examples/basic": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/basic/shared",
+                "log",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/basic/plugin": {
+            "Imports": [
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/basic/shared",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/basic/shared": {
+            "Imports": [
+                "github.com/hashicorp/go-plugin",
+                "net/rpc"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/bidirectional": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/bidirectional/shared",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/bidirectional/plugin-go-grpc": {
+            "Imports": [
+                "encoding/json",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/bidirectional/shared",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/bidirectional/proto": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/bidirectional/shared": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/bidirectional/proto",
+                "google.golang.org/grpc"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/grpc": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/shared",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/grpc/plugin-go-grpc": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/shared",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/grpc/plugin-go-netrpc": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/shared",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/grpc/proto": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/grpc/shared": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/proto",
+                "google.golang.org/grpc",
+                "net/rpc"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/negotiated": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/shared",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/examples/negotiated/plugin-go": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-plugin/examples/grpc/shared",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/internal/plugin": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/empty",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-plugin/test/grpc": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/empty",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        }
+    }
+}

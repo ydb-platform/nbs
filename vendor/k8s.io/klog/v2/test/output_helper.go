@@ -17,16 +17,16 @@ limitations under the License.
 package test
 
 import (
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 func loggerHelper(logger logr.Logger, msg string, kv []interface{}) {
-	logger = logger.WithCallDepth(1)
-	logger.Info(msg, kv...)
+    logger = logger.WithCallDepth(1)
+    logger.Info(msg, kv...)
 }
 
 func klogHelper(level klog.Level, msg string, kv []interface{}) {
-	klog.V(level).InfoSDepth(1, msg, kv...)
+    klog.V(level).InfoSDepth(1, msg, kv...)
 }

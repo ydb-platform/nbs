@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(
     Apache-2.0 AND
     BSD-3-Clause AND
@@ -15,8 +17,13 @@ SRCS(
     fse.go
 )
 
-GO_TEST_SRCS(fse_test.go)
+GO_TEST_SRCS(
+    fse_test.go
+    fuzz_test.go
+)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

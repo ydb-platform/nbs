@@ -1,0 +1,127 @@
+---
+page_title: 'Resources - CRUD Functions: Migrating from SDKv2 to the Framework'
+description: >-
+  Migrate resource create, read, update, and delete (CRUD) functions from SDKv2 to the plugin Framework.
+---
+
+# CRUD functions
+
+In Terraform, a resource represents a single instance of a given resource type. They modify a specific resource in the
+API and in Terraform's state through a set of Create, Read, Update, and Delete (CRUD) functions. A resource's CRUD
+functions implement the logic required to manage your resources with Terraform. Refer to
+[Resources - Define Resources](/terraform/plugin/framework/resources#define-resources) in the Framework documentation for details.
+
+This page explains how to migrate a resource's CRUD functions from SDKv2 to the plugin Framework.
+
+## SDKv2
+
+In SDKv2, a resource's CRUD functions are defined by populating the relevant fields (e.g., `CreateContext`,
+`ReadContext`) on the `schema.Resource` struct.
+
+The following code shows a basic implementation of CRUD functions with SDKv2.
+
+```go
+func resourceExample() *schema.Resource {
+    return &schema.Resource{
+        CreateContext: create,
+        ReadContext:   read,
+        UpdateContext: update,
+        DeleteContext: delete,
+        /* ... */
+```
+
+## Framework
+In the Framework, you implement CRUD functions for your resource by defining a type that implements the
+`resource.Resource` interface. To define functions related to state upgrade, import, and plan modification,
+implement their respective interfaces on your resource: `ResourceWithUpgradeState`, `ResourceWithImportState`, and
+`ResourceWithModifyPlan`.
+
+The following code shows how you define a `resource.Resource` which implements CRUD functions with the Framework.
+
+```go
+type resourceExample struct {
+    p provider
+}
+
+func (r *resourceExample) Create(ctx context.Context, req resource.CreateRequest, resp
+*resource.CreateResponse) {
+    /* ... */
+}
+
+func (r *resourceExample) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+    /* ... */
+}
+
+func (r *resourceExample) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+    /* ... */
+}
+
+func (r *resourceExample) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+    /* ... */
+}
+```
+## Migration Notes
+Remember the following differences between SDKv2 and the Framework when completing the migration.
+
+- In SDKv2 it is not necessary to define functions for parts of the CRUD lifecycle that are not used by a given
+resource. For instance, if the resource does not support in-place modification, you do not need to define an `Update`
+function. In the Framework, you must implement each of the CRUD lifecycle functions on all resources to satisfy the
+`Resource` interface, even if the function does nothing.
+- In SDKv2, the `Update` function (even if empty or missing) would automatically copy the request plan to the response state. This could be problematic when the `Update` function also returned errors as additional steps were required to disable the automatic SDKv2 behavior. In the Framework, the `Update` method must be written to explicitly copy data from `req.Plan` to `resp.State` to actually update the resource's state and prevent `Provider produced inconsistent result after apply` errors from Terraform.
+- In SDKv2, calling `d.SetId("")` would signal resource removal. In the Framework, this is replaced with `resp.State.RemoveResource()`. Resource removal should only occur during the `Read` method to prevent `Provider produced inconsistent result after apply` errors from Terraform during other operations. The `Delete` method will automatically call `resp.State.RemoveResource()` if there are no errors.
+- In SDKv2, you get and set attribute values in Terraform's state by calling `Get()` and `Set()` on
+`schema.ResourceData`. In the Framework, you get attribute values from the configuration and plan by accessing
+`Config` and `Plan` on `resource.CreateRequest`. You set attribute values in Terraform's state by mutating `State`
+on `resource.CreateResponse`.
+
+## Example
+
+### SDKv2
+
+The following example from shows implementations of CRUD functions on the with SDKv2.
+The `UpdateContext` function is not implemented because the provider does not support updating this resource.
+
+```go
+func resourceExample() *schema.Resource {
+    return &schema.Resource{
+        CreateContext: create,
+        ReadContext:   readNil,
+        DeleteContext: RemoveResourceFromState,
+        /* ... */
+```
+
+The following example shows the implementation of the `create()` function with SDKv2. The implementations of
+the `readNil()` and `RemoveResourceFromState()` functions are not shown for brevity.
+
+```go
+func create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    if err := d.Set("example_attribute", "value"); err != nil {
+        diags = append(diags, diag.Errorf("err: %s", err)...)
+        return diags
+    }
+
+    return nil
+}
+```
+
+### Framework
+The following shows the same section of provider code after the migration.
+
+This code implements the `Create` function for the `example_resource` resource with the Framework.
+
+```go
+func (r *exampleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+    var plan exampleModel
+
+    diags := req.Plan.Get(ctx, &plan)
+    resp.Diagnostics.Append(diags...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
+
+    plan.ExampleAttribute = types.StringValue("value")
+
+    diags = resp.State.Set(ctx, plan)
+    resp.Diagnostics.Append(diags...)
+}
+```

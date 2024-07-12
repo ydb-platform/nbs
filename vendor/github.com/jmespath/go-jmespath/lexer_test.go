@@ -1,110 +1,110 @@
 package jmespath
 
 import (
-	"fmt"
-	"testing"
+    "fmt"
+    "testing"
 
-	"github.com/jmespath/go-jmespath/internal/testify/assert"
+    "github.com/jmespath/go-jmespath/internal/testify/assert"
 )
 
 var lexingTests = []struct {
-	expression string
-	expected   []token
+    expression string
+    expected   []token
 }{
-	{"*", []token{{tStar, "*", 0, 1}}},
-	{".", []token{{tDot, ".", 0, 1}}},
-	{"[?", []token{{tFilter, "[?", 0, 2}}},
-	{"[]", []token{{tFlatten, "[]", 0, 2}}},
-	{"(", []token{{tLparen, "(", 0, 1}}},
-	{")", []token{{tRparen, ")", 0, 1}}},
-	{"[", []token{{tLbracket, "[", 0, 1}}},
-	{"]", []token{{tRbracket, "]", 0, 1}}},
-	{"{", []token{{tLbrace, "{", 0, 1}}},
-	{"}", []token{{tRbrace, "}", 0, 1}}},
-	{"||", []token{{tOr, "||", 0, 2}}},
-	{"|", []token{{tPipe, "|", 0, 1}}},
-	{"29", []token{{tNumber, "29", 0, 2}}},
-	{"2", []token{{tNumber, "2", 0, 1}}},
-	{"0", []token{{tNumber, "0", 0, 1}}},
-	{"-20", []token{{tNumber, "-20", 0, 3}}},
-	{"foo", []token{{tUnquotedIdentifier, "foo", 0, 3}}},
-	{`"bar"`, []token{{tQuotedIdentifier, "bar", 0, 3}}},
-	// Escaping the delimiter
-	{`"bar\"baz"`, []token{{tQuotedIdentifier, `bar"baz`, 0, 7}}},
-	{",", []token{{tComma, ",", 0, 1}}},
-	{":", []token{{tColon, ":", 0, 1}}},
-	{"<", []token{{tLT, "<", 0, 1}}},
-	{"<=", []token{{tLTE, "<=", 0, 2}}},
-	{">", []token{{tGT, ">", 0, 1}}},
-	{">=", []token{{tGTE, ">=", 0, 2}}},
-	{"==", []token{{tEQ, "==", 0, 2}}},
-	{"!=", []token{{tNE, "!=", 0, 2}}},
-	{"`[0, 1, 2]`", []token{{tJSONLiteral, "[0, 1, 2]", 1, 9}}},
-	{"'foo'", []token{{tStringLiteral, "foo", 1, 3}}},
-	{"'a'", []token{{tStringLiteral, "a", 1, 1}}},
-	{`'foo\'bar'`, []token{{tStringLiteral, "foo'bar", 1, 7}}},
-	{"@", []token{{tCurrent, "@", 0, 1}}},
-	{"&", []token{{tExpref, "&", 0, 1}}},
-	// Quoted identifier unicode escape sequences
-	{`"\u2713"`, []token{{tQuotedIdentifier, "✓", 0, 3}}},
-	{`"\\"`, []token{{tQuotedIdentifier, `\`, 0, 1}}},
-	{"`\"foo\"`", []token{{tJSONLiteral, "\"foo\"", 1, 5}}},
-	// Combinations of tokens.
-	{"foo.bar", []token{
-		{tUnquotedIdentifier, "foo", 0, 3},
-		{tDot, ".", 3, 1},
-		{tUnquotedIdentifier, "bar", 4, 3},
-	}},
-	{"foo[0]", []token{
-		{tUnquotedIdentifier, "foo", 0, 3},
-		{tLbracket, "[", 3, 1},
-		{tNumber, "0", 4, 1},
-		{tRbracket, "]", 5, 1},
-	}},
-	{"foo[?a<b]", []token{
-		{tUnquotedIdentifier, "foo", 0, 3},
-		{tFilter, "[?", 3, 2},
-		{tUnquotedIdentifier, "a", 5, 1},
-		{tLT, "<", 6, 1},
-		{tUnquotedIdentifier, "b", 7, 1},
-		{tRbracket, "]", 8, 1},
-	}},
+    {"*", []token{{tStar, "*", 0, 1}}},
+    {".", []token{{tDot, ".", 0, 1}}},
+    {"[?", []token{{tFilter, "[?", 0, 2}}},
+    {"[]", []token{{tFlatten, "[]", 0, 2}}},
+    {"(", []token{{tLparen, "(", 0, 1}}},
+    {")", []token{{tRparen, ")", 0, 1}}},
+    {"[", []token{{tLbracket, "[", 0, 1}}},
+    {"]", []token{{tRbracket, "]", 0, 1}}},
+    {"{", []token{{tLbrace, "{", 0, 1}}},
+    {"}", []token{{tRbrace, "}", 0, 1}}},
+    {"||", []token{{tOr, "||", 0, 2}}},
+    {"|", []token{{tPipe, "|", 0, 1}}},
+    {"29", []token{{tNumber, "29", 0, 2}}},
+    {"2", []token{{tNumber, "2", 0, 1}}},
+    {"0", []token{{tNumber, "0", 0, 1}}},
+    {"-20", []token{{tNumber, "-20", 0, 3}}},
+    {"foo", []token{{tUnquotedIdentifier, "foo", 0, 3}}},
+    {`"bar"`, []token{{tQuotedIdentifier, "bar", 0, 3}}},
+    // Escaping the delimiter
+    {`"bar\"baz"`, []token{{tQuotedIdentifier, `bar"baz`, 0, 7}}},
+    {",", []token{{tComma, ",", 0, 1}}},
+    {":", []token{{tColon, ":", 0, 1}}},
+    {"<", []token{{tLT, "<", 0, 1}}},
+    {"<=", []token{{tLTE, "<=", 0, 2}}},
+    {">", []token{{tGT, ">", 0, 1}}},
+    {">=", []token{{tGTE, ">=", 0, 2}}},
+    {"==", []token{{tEQ, "==", 0, 2}}},
+    {"!=", []token{{tNE, "!=", 0, 2}}},
+    {"`[0, 1, 2]`", []token{{tJSONLiteral, "[0, 1, 2]", 1, 9}}},
+    {"'foo'", []token{{tStringLiteral, "foo", 1, 3}}},
+    {"'a'", []token{{tStringLiteral, "a", 1, 1}}},
+    {`'foo\'bar'`, []token{{tStringLiteral, "foo'bar", 1, 7}}},
+    {"@", []token{{tCurrent, "@", 0, 1}}},
+    {"&", []token{{tExpref, "&", 0, 1}}},
+    // Quoted identifier unicode escape sequences
+    {`"\u2713"`, []token{{tQuotedIdentifier, "✓", 0, 3}}},
+    {`"\\"`, []token{{tQuotedIdentifier, `\`, 0, 1}}},
+    {"`\"foo\"`", []token{{tJSONLiteral, "\"foo\"", 1, 5}}},
+    // Combinations of tokens.
+    {"foo.bar", []token{
+        {tUnquotedIdentifier, "foo", 0, 3},
+        {tDot, ".", 3, 1},
+        {tUnquotedIdentifier, "bar", 4, 3},
+    }},
+    {"foo[0]", []token{
+        {tUnquotedIdentifier, "foo", 0, 3},
+        {tLbracket, "[", 3, 1},
+        {tNumber, "0", 4, 1},
+        {tRbracket, "]", 5, 1},
+    }},
+    {"foo[?a<b]", []token{
+        {tUnquotedIdentifier, "foo", 0, 3},
+        {tFilter, "[?", 3, 2},
+        {tUnquotedIdentifier, "a", 5, 1},
+        {tLT, "<", 6, 1},
+        {tUnquotedIdentifier, "b", 7, 1},
+        {tRbracket, "]", 8, 1},
+    }},
 }
 
 func TestCanLexTokens(t *testing.T) {
-	assert := assert.New(t)
-	lexer := NewLexer()
-	for _, tt := range lexingTests {
-		tokens, err := lexer.tokenize(tt.expression)
-		if assert.Nil(err) {
-			errMsg := fmt.Sprintf("Mismatch expected number of tokens: (expected: %s, actual: %s)",
-				tt.expected, tokens)
-			tt.expected = append(tt.expected, token{tEOF, "", len(tt.expression), 0})
-			if assert.Equal(len(tt.expected), len(tokens), errMsg) {
-				for i, token := range tokens {
-					expected := tt.expected[i]
-					assert.Equal(expected, token, "Token not equal")
-				}
-			}
-		}
-	}
+    assert := assert.New(t)
+    lexer := NewLexer()
+    for _, tt := range lexingTests {
+        tokens, err := lexer.tokenize(tt.expression)
+        if assert.Nil(err) {
+            errMsg := fmt.Sprintf("Mismatch expected number of tokens: (expected: %s, actual: %s)",
+                tt.expected, tokens)
+            tt.expected = append(tt.expected, token{tEOF, "", len(tt.expression), 0})
+            if assert.Equal(len(tt.expected), len(tokens), errMsg) {
+                for i, token := range tokens {
+                    expected := tt.expected[i]
+                    assert.Equal(expected, token, "Token not equal")
+                }
+            }
+        }
+    }
 }
 
 var lexingErrorTests = []struct {
-	expression string
-	msg        string
+    expression string
+    msg        string
 }{
-	{"'foo", "Missing closing single quote"},
-	{"[?foo==bar?]", "Unknown char '?'"},
+    {"'foo", "Missing closing single quote"},
+    {"[?foo==bar?]", "Unknown char '?'"},
 }
 
 func TestLexingErrors(t *testing.T) {
-	assert := assert.New(t)
-	lexer := NewLexer()
-	for _, tt := range lexingErrorTests {
-		_, err := lexer.tokenize(tt.expression)
-		assert.NotNil(err, fmt.Sprintf("Expected lexing error: %s", tt.msg))
-	}
+    assert := assert.New(t)
+    lexer := NewLexer()
+    for _, tt := range lexingErrorTests {
+        _, err := lexer.tokenize(tt.expression)
+        assert.NotNil(err, fmt.Sprintf("Expected lexing error: %s", tt.msg))
+    }
 }
 
 var exprIdentifier = "abcdefghijklmnopqrstuvwxyz"
@@ -118,44 +118,44 @@ var quotedIdentifierEscapes = `"\n\r\b\t\n\r\b\t\n\r\b\t\n\r\b\t\n\r\b\t\n\r\b\t
 var rawStringLiteral = `'abcdefghijklmnopqrstuvwxyz.abcdefghijklmnopqrstuvwxyz'`
 
 func BenchmarkLexIdentifier(b *testing.B) {
-	runLexBenchmark(b, exprIdentifier)
+    runLexBenchmark(b, exprIdentifier)
 }
 
 func BenchmarkLexSubexpression(b *testing.B) {
-	runLexBenchmark(b, exprSubexpr)
+    runLexBenchmark(b, exprSubexpr)
 }
 
 func BenchmarkLexDeeplyNested50(b *testing.B) {
-	runLexBenchmark(b, deeplyNested50)
+    runLexBenchmark(b, deeplyNested50)
 }
 
 func BenchmarkLexDeepNested50Pipe(b *testing.B) {
-	runLexBenchmark(b, deeplyNested50Pipe)
+    runLexBenchmark(b, deeplyNested50Pipe)
 }
 
 func BenchmarkLexDeepNested50Index(b *testing.B) {
-	runLexBenchmark(b, deeplyNested50Index)
+    runLexBenchmark(b, deeplyNested50Index)
 }
 
 func BenchmarkLexQuotedIdentifier(b *testing.B) {
-	runLexBenchmark(b, exprQuotedIdentifier)
+    runLexBenchmark(b, exprQuotedIdentifier)
 }
 
 func BenchmarkLexQuotedIdentifierEscapes(b *testing.B) {
-	runLexBenchmark(b, quotedIdentifierEscapes)
+    runLexBenchmark(b, quotedIdentifierEscapes)
 }
 
 func BenchmarkLexRawStringLiteral(b *testing.B) {
-	runLexBenchmark(b, rawStringLiteral)
+    runLexBenchmark(b, rawStringLiteral)
 }
 
 func BenchmarkLexDeepProjection104(b *testing.B) {
-	runLexBenchmark(b, deepProjection104)
+    runLexBenchmark(b, deepProjection104)
 }
 
 func runLexBenchmark(b *testing.B, expression string) {
-	lexer := NewLexer()
-	for i := 0; i < b.N; i++ {
-		lexer.tokenize(expression)
-	}
+    lexer := NewLexer()
+    for i := 0; i < b.N; i++ {
+        lexer.tokenize(expression)
+    }
 }

@@ -1,1 +1,5 @@
-RECURSE(jpgo)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    jpgo
+)

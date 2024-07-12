@@ -1,0 +1,530 @@
+{
+    "Version": "v1.1.19",
+    "GoVersion": "1.12",
+    "Sum": "h1:ves8RnFZPGiFnTS0uPQStjwru6uO6h+nlr9j6fL7kF8=",
+    "Packages": {
+        "github.com/google/gopacket": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "io",
+                "math",
+                "net",
+                "os",
+                "reflect",
+                "runtime/debug",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "io",
+                "reflect",
+                "runtime",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/afpacket": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/sys/unix",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/bsdbpf": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/gopacket",
+                "golang.org/x/sys/unix",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/bytediff": {
+            "Imports": [
+                "bytes",
+                "fmt"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/defrag/lcmdefrag": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/dumpcommand": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/ip4defrag",
+                "github.com/google/gopacket/layers",
+                "log",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/afpacket": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/afpacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "golang.org/x/net/bpf",
+                "log",
+                "os",
+                "runtime/pprof",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/arpscan": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "log",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/bidirectional": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/tcpassembly",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/bytediff": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gopacket/bytediff"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/httpassembly": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/tcpassembly",
+                "github.com/google/gopacket/tcpassembly/tcpreader",
+                "io",
+                "log",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/pcapdump": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket/dumpcommand",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/pcap",
+                "log",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/pcaplay": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/pcap",
+                "io",
+                "log",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/pfdump": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket/dumpcommand",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/pfring",
+                "log",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/reassemblydump": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "encoding/binary",
+                "encoding/hex",
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/ip4defrag",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/reassembly",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "os/signal",
+                "path",
+                "runtime/pprof",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/snoopread": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/pcapgo",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/statsassembly": {
+            "Imports": [
+                "flag",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/tcpassembly",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/synscan": {
+            "Imports": [
+                "errors",
+                "flag",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/examples/util",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/routing",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/examples/util": {
+            "Imports": [
+                "flag",
+                "log",
+                "os",
+                "runtime/pprof"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/ip4defrag": {
+            "Imports": [
+                "container/list",
+                "errors",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "log",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/bytediff",
+                "github.com/google/gopacket/layers",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/layers": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/gopacket",
+                "hash/crc32",
+                "io",
+                "math",
+                "net",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/bytediff",
+                "io",
+                "net",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/macs": {
+            "Imports": null,
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/pcap": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "golang.org/x/sys/windows",
+                "io",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "strconv",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcapgo",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/pcap/gopacket_benchmark": {
+            "Imports": [
+                "compress/gzip",
+                "encoding/hex",
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcap",
+                "github.com/google/gopacket/tcpassembly",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "runtime",
+                "runtime/pprof",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/pcapgo": {
+            "Imports": [
+                "bufio",
+                "compress/gzip",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "golang.org/x/net/bpf",
+                "golang.org/x/sys/unix",
+                "io",
+                "math",
+                "net",
+                "runtime",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/pcapgo",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/pfring": {
+            "Imports": [
+                "C",
+                "fmt",
+                "github.com/google/gopacket",
+                "net",
+                "os",
+                "reflect",
+                "strconv",
+                "sync",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "flag",
+                "log",
+                "testing"
+            ]
+        },
+        "github.com/google/gopacket/reassembly": {
+            "Imports": [
+                "encoding/binary",
+                "encoding/hex",
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "log",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "math/rand",
+                "net",
+                "reflect",
+                "runtime",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/routing": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "net",
+                "sort",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gopacket/tcpassembly": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "log",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "net",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gopacket/tcpassembly/tcpreader": {
+            "Imports": [
+                "errors",
+                "github.com/google/gopacket/tcpassembly",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/gopacket",
+                "github.com/google/gopacket/layers",
+                "github.com/google/gopacket/tcpassembly",
+                "io",
+                "net",
+                "testing"
+            ]
+        }
+    }
+}

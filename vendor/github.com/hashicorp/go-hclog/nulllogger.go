@@ -4,16 +4,16 @@
 package hclog
 
 import (
-	"io"
-	"io/ioutil"
-	"log"
+    "io"
+    "io/ioutil"
+    "log"
 )
 
 // NewNullLogger instantiates a Logger for which all calls
 // will succeed without doing anything.
 // Useful for testing purposes.
 func NewNullLogger() Logger {
-	return &nullLogger{}
+    return &nullLogger{}
 }
 
 type nullLogger struct{}
@@ -55,9 +55,9 @@ func (l *nullLogger) SetLevel(level Level) {}
 func (l *nullLogger) GetLevel() Level { return NoLevel }
 
 func (l *nullLogger) StandardLogger(opts *StandardLoggerOptions) *log.Logger {
-	return log.New(l.StandardWriter(opts), "", log.LstdFlags)
+    return log.New(l.StandardWriter(opts), "", log.LstdFlags)
 }
 
 func (l *nullLogger) StandardWriter(opts *StandardLoggerOptions) io.Writer {
-	return ioutil.Discard
+    return ioutil.Discard
 }

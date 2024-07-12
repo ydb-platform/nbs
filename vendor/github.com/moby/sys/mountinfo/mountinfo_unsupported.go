@@ -4,16 +4,16 @@
 package mountinfo
 
 import (
-	"fmt"
-	"runtime"
+    "fmt"
+    "runtime"
 )
 
 var errNotImplemented = fmt.Errorf("not implemented on %s/%s", runtime.GOOS, runtime.GOARCH)
 
 func parseMountTable(_ FilterFunc) ([]*Info, error) {
-	return nil, errNotImplemented
+    return nil, errNotImplemented
 }
 
 func mounted(path string) (bool, error) {
-	return false, errNotImplemented
+    return false, errNotImplemented
 }

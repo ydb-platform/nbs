@@ -1,0 +1,16 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:hxNvNX/xYBp0ovncs8WyWZrOrpBNub/JfaMvbURyft8=",
+    "Packages": {
+        "github.com/fatih/camelcase": {
+            "Imports": [
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt"
+            ]
+        }
+    }
+}

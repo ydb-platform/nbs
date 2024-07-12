@@ -1,0 +1,1184 @@
+{
+    "Version": "v0.19.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:uIsMRBV7m/HDkDxE/nXMnv1q+lOOSPlQ/ywc5JbB8Ic=",
+    "Packages": {
+        "github.com/google/go-containerregistry/cmd/crane": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/cmd/crane/cmd",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "os",
+                "os/signal"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/internal/depcheck",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/cmd/crane/cmd": {
+            "Imports": [
+                "compress/gzip",
+                "context",
+                "crypto/tls",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/docker/cli/cli/config",
+                "github.com/docker/cli/cli/config/types",
+                "github.com/google/go-containerregistry/internal/cmd",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/cache",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/layout",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "github.com/spf13/cobra",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "path",
+                "path/filepath",
+                "runtime",
+                "runtime/debug",
+                "sort",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/cmd/crane/help": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-containerregistry/cmd/crane/cmd",
+                "github.com/spf13/cobra",
+                "github.com/spf13/cobra/doc",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/cmd/gcrane": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/cmd/crane/cmd",
+                "github.com/google/go-containerregistry/cmd/gcrane/cmd",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/gcrane",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/spf13/cobra",
+                "os",
+                "os/signal"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/internal/depcheck",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/cmd/gcrane/cmd": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/cmd/crane/cmd",
+                "github.com/google/go-containerregistry/pkg/gcrane",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/google",
+                "github.com/spf13/cobra",
+                "path",
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/cmd/registry": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "log",
+                "net",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/and": {
+            "Imports": [
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/cmd": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/editor",
+                "github.com/google/go-containerregistry/internal/verify",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/static",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/spf13/cobra",
+                "io",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "io",
+                "net/http/httptest",
+                "net/url",
+                "path",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/compare": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/compression": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/internal/zstd",
+                "github.com/google/go-containerregistry/pkg/compression",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-containerregistry/internal/and",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/internal/zstd",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/depcheck": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/tools/go/packages",
+                "sort",
+                "strings",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/editor": {
+            "Imports": [
+                "fmt",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/estargz": {
+            "Imports": [
+                "bytes",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "io"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/gzip": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "github.com/google/go-containerregistry/internal/and",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/httptest": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/pem",
+                "math/big",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/redact": {
+            "Imports": [
+                "context",
+                "errors",
+                "net/url"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/retry": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/retry/wait"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "net/http",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/retry/wait": {
+            "Imports": [
+                "errors",
+                "math/rand",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/internal/verify": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/and",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "hash",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/windows": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "io",
+                "path",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "errors",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "io",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/internal/zstd": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "github.com/google/go-containerregistry/internal/and",
+                "github.com/klauspost/compress/zstd",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/authn": {
+            "Imports": [
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/docker/cli/cli/config",
+                "github.com/docker/cli/cli/config/configfile",
+                "github.com/docker/cli/cli/config/types",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/mitchellh/go-homedir",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/name",
+                "log",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/authn/github": {
+            "Imports": [
+                "github.com/google/go-containerregistry/pkg/authn",
+                "net/url",
+                "os"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/pkg/authn",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/compression": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/crane": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "context",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/windows",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/legacy/tarball",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/layout",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net/http",
+                "os",
+                "sort"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/static",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/gcrane": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/retry",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/crane",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/google",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "golang.org/x/sync/errgroup",
+                "net/http",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/internal/retry",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1/google",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/legacy": {
+            "Imports": [
+                "github.com/google/go-containerregistry/pkg/v1"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/legacy/tarball": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/legacy",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "io",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/logs": {
+            "Imports": [
+                "io",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/name": {
+            "Imports": [
+                "crypto/sha256",
+                "errors",
+                "fmt",
+                "github.com/opencontainers/go-digest",
+                "net",
+                "net/url",
+                "path",
+                "regexp",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "errors",
+                "path",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/registry": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/httptest",
+                "github.com/google/go-containerregistry/internal/verify",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "log",
+                "math/rand",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/depcheck",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1": {
+            "Imports": [
+                "crypto",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "hash",
+                "io",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/cache": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "os",
+                "path/filepath",
+                "runtime"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/cache",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "log",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/daemon": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/docker/docker/api/types",
+                "github.com/docker/docker/api/types/container",
+                "github.com/docker/docker/api/types/image",
+                "github.com/docker/docker/client",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/docker/docker/api/types",
+                "github.com/docker/docker/api/types/container",
+                "github.com/docker/docker/api/types/image",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/empty": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/types"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/fake": {
+            "Imports": [
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/v1/google": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google",
+                "net/http",
+                "net/url",
+                "os/exec",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/layout": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "io/fs",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/match": {
+            "Imports": [
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/opencontainers/image-spec/specs-go/v1"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/opencontainers/image-spec/specs-go/v1",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/mutate": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "errors",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/partial": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/and",
+                "github.com/google/go-containerregistry/internal/compression",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/internal/zstd",
+                "github.com/google/go-containerregistry/pkg/compression",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/match",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/legacy/tarball",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/random": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "crypto",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "math/rand"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "errors",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "math/rand",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/remote": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/internal/redact",
+                "github.com/google/go-containerregistry/internal/retry",
+                "github.com/google/go-containerregistry/internal/verify",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net",
+                "net/http",
+                "net/url",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/registry",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/empty",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+                "github.com/google/go-containerregistry/pkg/v1/stream",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/remote/transport": {
+            "Imports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/docker/distribution/registry/client/auth/challenge",
+                "github.com/google/go-containerregistry/internal/redact",
+                "github.com/google/go-containerregistry/internal/retry",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "io",
+                "net",
+                "net/http",
+                "net/http/httputil",
+                "net/url",
+                "runtime/debug",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/internal/redact",
+                "github.com/google/go-containerregistry/internal/retry",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/static": {
+            "Imports": [
+                "bytes",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/stream": {
+            "Imports": [
+                "bufio",
+                "compress/gzip",
+                "crypto",
+                "encoding/hex",
+                "errors",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "hash",
+                "io",
+                "os",
+                "sync"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/tarball": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/google/go-containerregistry/internal/and",
+                "github.com/google/go-containerregistry/internal/compression",
+                "github.com/google/go-containerregistry/internal/estargz",
+                "github.com/google/go-containerregistry/internal/gzip",
+                "github.com/google/go-containerregistry/internal/zstd",
+                "github.com/google/go-containerregistry/pkg/compression",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/containerd/stargz-snapshotter/estargz",
+                "github.com/google/go-containerregistry/internal/compare",
+                "github.com/google/go-containerregistry/pkg/compression",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/mutate",
+                "github.com/google/go-containerregistry/pkg/v1/random",
+                "github.com/google/go-containerregistry/pkg/v1/tarball",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "github.com/google/go-containerregistry/pkg/v1/validate",
+                "io",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/types": {
+            "Imports": null,
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/go-containerregistry/pkg/v1/validate": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "crypto",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/logs",
+                "github.com/google/go-containerregistry/pkg/v1",
+                "github.com/google/go-containerregistry/pkg/v1/partial",
+                "github.com/google/go-containerregistry/pkg/v1/types",
+                "io",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

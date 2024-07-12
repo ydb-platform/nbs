@@ -1,0 +1,86 @@
+{
+    "Version": "v3.4.0",
+    "GoVersion": "1.14",
+    "Sum": "h1:xz7elHb/LDwm/ERpwHd+5nb7wFHL32rsr6bBOgaeu6g=",
+    "Packages": {
+        "github.com/coreos/go-oidc/v3/example/idtoken": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/json",
+                "github.com/coreos/go-oidc/v3/oidc",
+                "golang.org/x/net/context",
+                "golang.org/x/oauth2",
+                "io",
+                "log",
+                "net/http",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-oidc/v3/example/userinfo": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/json",
+                "github.com/coreos/go-oidc/v3/oidc",
+                "golang.org/x/net/context",
+                "golang.org/x/oauth2",
+                "io",
+                "log",
+                "net/http",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-oidc/v3/oidc": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/rsa",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "gopkg.in/square/go-jose.v2",
+                "hash",
+                "io/ioutil",
+                "mime",
+                "net/http",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "gopkg.in/square/go-jose.v2",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

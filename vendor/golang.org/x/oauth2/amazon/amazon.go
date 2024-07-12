@@ -6,11 +6,11 @@
 package amazon
 
 import (
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 // Endpoint is Amazon's OAuth 2.0 endpoint.
 var Endpoint = oauth2.Endpoint{
-	AuthURL:  "https://www.amazon.com/ap/oa",
-	TokenURL: "https://api.amazon.com/auth/o2/token",
+    AuthURL:  "https://www.amazon.com/ap/oa",
+    TokenURL: "https://api.amazon.com/auth/o2/token",
 }

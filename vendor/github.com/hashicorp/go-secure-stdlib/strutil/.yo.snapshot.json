@@ -1,0 +1,25 @@
+{
+    "Version": "v0.1.2",
+    "GoVersion": "1.16",
+    "Sum": "h1:kes8mmyCpxJsI7FTwtzRqEy9CdjCtrXrXGuOpxEA7Ts=",
+    "Packages": {
+        "github.com/hashicorp/go-secure-stdlib/strutil": {
+            "Imports": [
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/ryanuber/go-glob",
+                "sort",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

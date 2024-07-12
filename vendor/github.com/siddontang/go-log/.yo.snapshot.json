@@ -1,0 +1,30 @@
+{
+    "Version": "v0.0.0-20190221022429-1e957dd83bed",
+    "GoVersion": "",
+    "Sum": "h1:KMgQoLJGCq1IoZpLZE3AIffh9veYWoVlsvA4ib55TMM=",
+    "Packages": {
+        "github.com/siddontang/go-log/log": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/siddontang/go-log/loggers",
+                "io",
+                "os",
+                "path",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-log/loggers": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

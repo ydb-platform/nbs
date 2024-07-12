@@ -20,11 +20,11 @@ limitations under the License.
 package init
 
 import (
-	"flag"
+    "flag"
 
-	"k8s.io/klog/v2/ktesting"
+    "k8s.io/klog/v2/ktesting"
 )
 
 func init() {
-	ktesting.DefaultConfig.AddFlags(flag.CommandLine)
+    ktesting.DefaultConfig.AddFlags(flag.CommandLine)
 }

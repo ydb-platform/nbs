@@ -25,12 +25,12 @@ const clientKey = clientKeyType("grpc.xds.internal.client.Client")
 
 // FromResolverState returns the Client from state, or nil if not present.
 func FromResolverState(state resolver.State) XDSClient {
-	cs, _ := state.Attributes.Value(clientKey).(XDSClient)
-	return cs
+    cs, _ := state.Attributes.Value(clientKey).(XDSClient)
+    return cs
 }
 
 // SetClient sets c in state and returns the new state.
 func SetClient(state resolver.State, c XDSClient) resolver.State {
-	state.Attributes = state.Attributes.WithValue(clientKey, c)
-	return state
+    state.Attributes = state.Attributes.WithValue(clientKey, c)
+    return state
 }

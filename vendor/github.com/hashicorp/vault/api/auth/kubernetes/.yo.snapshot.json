@@ -1,0 +1,16 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:K8sKGhtTAqGKfzaaYvUSIOAqTOIn3Gk1EsCEAMzZHtM=",
+    "Packages": {
+        "github.com/hashicorp/vault/api/auth/kubernetes": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/vault/api",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

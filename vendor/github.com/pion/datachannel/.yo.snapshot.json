@@ -1,0 +1,31 @@
+{
+    "Version": "v1.5.5",
+    "GoVersion": "1.13",
+    "Sum": "h1:10ef4kwdjije+M9d7Xm9im2Y3O6A6ccQb0zcqZcJew8=",
+    "Packages": {
+        "github.com/pion/datachannel": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/sctp",
+                "io",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/binary",
+                "github.com/pion/logging",
+                "github.com/pion/sctp",
+                "github.com/pion/transport/test",
+                "github.com/stretchr/testify/assert",
+                "os",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

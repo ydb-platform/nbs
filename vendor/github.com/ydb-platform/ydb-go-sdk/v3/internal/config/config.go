@@ -1,29 +1,29 @@
 package config
 
 import (
-	"time"
+    "time"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+    "github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 type Common struct {
-	operationTimeout     time.Duration
-	operationCancelAfter time.Duration
-	disableAutoRetry     bool
-	traceRetry           trace.Retry
+    operationTimeout     time.Duration
+    operationCancelAfter time.Duration
+    disableAutoRetry     bool
+    traceRetry           trace.Retry
 
-	panicCallback func(e interface{})
+    panicCallback func(e interface{})
 }
 
 // AutoRetry defines auto-retry flag
 func (c *Common) AutoRetry() bool {
-	return !c.disableAutoRetry
+    return !c.disableAutoRetry
 }
 
 // PanicCallback returns user-defined panic callback
 // If nil - panic callback not defined
 func (c *Common) PanicCallback() func(e interface{}) {
-	return c.panicCallback
+    return c.panicCallback
 }
 
 // OperationTimeout is the maximum amount of time a YDB server will process
@@ -32,7 +32,7 @@ func (c *Common) PanicCallback() func(e interface{}) {
 // the client.
 // If OperationTimeout is zero then no timeout is used.
 func (c *Common) OperationTimeout() time.Duration {
-	return c.operationTimeout
+    return c.operationTimeout
 }
 
 // OperationCancelAfter is the maximum amount of time a YDB server will process an
@@ -41,11 +41,11 @@ func (c *Common) OperationTimeout() time.Duration {
 // processing will be continued.
 // If OperationCancelAfter is zero then no timeout is used.
 func (c *Common) OperationCancelAfter() time.Duration {
-	return c.operationCancelAfter
+    return c.operationCancelAfter
 }
 
 func (c *Common) TraceRetry() *trace.Retry {
-	return &c.traceRetry
+    return &c.traceRetry
 }
 
 // SetOperationTimeout define the maximum amount of time a YDB server will process
@@ -55,7 +55,7 @@ func (c *Common) TraceRetry() *trace.Retry {
 //
 // If OperationTimeout is zero then no timeout is used.
 func SetOperationTimeout(c *Common, operationTimeout time.Duration) {
-	c.operationTimeout = operationTimeout
+    c.operationTimeout = operationTimeout
 }
 
 // SetOperationCancelAfter set the maximum amount of time a YDB server will process an
@@ -65,19 +65,19 @@ func SetOperationTimeout(c *Common, operationTimeout time.Duration) {
 //
 // If OperationCancelAfter is zero then no timeout is used.
 func SetOperationCancelAfter(c *Common, operationCancelAfter time.Duration) {
-	c.operationCancelAfter = operationCancelAfter
+    c.operationCancelAfter = operationCancelAfter
 }
 
 // SetPanicCallback applies panic callback to config
 func SetPanicCallback(c *Common, panicCallback func(e interface{})) {
-	c.panicCallback = panicCallback
+    c.panicCallback = panicCallback
 }
 
 // SetAutoRetry affects on AutoRetry() flag
 func SetAutoRetry(c *Common, autoRetry bool) {
-	c.disableAutoRetry = !autoRetry
+    c.disableAutoRetry = !autoRetry
 }
 
 func SetTraceRetry(c *Common, t *trace.Retry, opts ...trace.RetryComposeOption) {
-	c.traceRetry = *c.traceRetry.Compose(t, opts...)
+    c.traceRetry = *c.traceRetry.Compose(t, opts...)
 }

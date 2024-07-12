@@ -17,11 +17,11 @@ limitations under the License.
 package klog
 
 import (
-	"encoding/json"
-	"fmt"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "strings"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // Format wraps a value of an arbitrary type and implement fmt.Stringer and
@@ -35,30 +35,30 @@ import (
 // implementation produces output that is less readable or unstructured (for
 // example, the generated String functions for Kubernetes API types).
 func Format(obj interface{}) interface{} {
-	return formatAny{Object: obj}
+    return formatAny{Object: obj}
 }
 
 type formatAny struct {
-	Object interface{}
+    Object interface{}
 }
 
 func (f formatAny) String() string {
-	var buffer strings.Builder
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(&f.Object); err != nil {
-		return fmt.Sprintf("error marshaling %T to JSON: %v", f, err)
-	}
-	return buffer.String()
+    var buffer strings.Builder
+    encoder := json.NewEncoder(&buffer)
+    encoder.SetIndent("", "  ")
+    if err := encoder.Encode(&f.Object); err != nil {
+        return fmt.Sprintf("error marshaling %T to JSON: %v", f, err)
+    }
+    return buffer.String()
 }
 
 func (f formatAny) MarshalLog() interface{} {
-	// Returning a pointer to a pointer ensures that zapr doesn't find a
-	// fmt.Stringer or logr.Marshaler when it checks the type of the
-	// value. It then falls back to reflection, which dumps the value being
-	// pointed to (JSON doesn't have pointers).
-	ptr := &f.Object
-	return &ptr
+    // Returning a pointer to a pointer ensures that zapr doesn't find a
+    // fmt.Stringer or logr.Marshaler when it checks the type of the
+    // value. It then falls back to reflection, which dumps the value being
+    // pointed to (JSON doesn't have pointers).
+    ptr := &f.Object
+    return &ptr
 }
 
 var _ fmt.Stringer = formatAny{}

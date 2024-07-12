@@ -1,0 +1,43 @@
+{
+    "Version": "v2.2.5",
+    "GoVersion": "1.15",
+    "Sum": "h1:0E5MSMDEoAulmXNFquVs//DdoomxaoTY1kUhbc/qbZg=",
+    "Packages": {
+        "github.com/klauspost/cpuid/v2": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "math",
+                "math/bits",
+                "os",
+                "runtime",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/zip",
+                "fmt",
+                "io/ioutil",
+                "math",
+                "os/exec",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/klauspost/cpuid/v2/cmd/cpuid": {
+            "Imports": [
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/klauspost/cpuid/v2",
+                "log",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

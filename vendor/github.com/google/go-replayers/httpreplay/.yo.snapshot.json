@@ -1,0 +1,120 @@
+{
+    "Version": "v1.1.1",
+    "GoVersion": "1.16",
+    "Sum": "h1:H91sIMlt1NZzN7R+/ASswyouLJfW0WLW7fhyUFvDEkY=",
+    "Packages": {
+        "github.com/google/go-replayers/httpreplay": {
+            "Imports": [
+                "github.com/google/go-replayers/httpreplay/internal/proxy",
+                "net/http",
+                "net/url"
+            ],
+            "TestImports": [
+                "bytes",
+                "cloud.google.com/go/storage",
+                "context",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-replayers/httpreplay",
+                "github.com/google/go-replayers/httpreplay/google",
+                "golang.org/x/oauth2/google",
+                "google.golang.org/api/option",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-replayers/httpreplay/cmd/httpr": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-replayers/httpreplay/internal/proxy",
+                "github.com/google/martian/v3/martianhttp",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "os/signal"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/storage",
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google",
+                "google.golang.org/api/option",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-replayers/httpreplay/google": {
+            "Imports": [
+                "context",
+                "google.golang.org/api/option",
+                "google.golang.org/api/transport/http",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-replayers/httpreplay/internal/proxy": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/martian/v3",
+                "github.com/google/martian/v3/fifo",
+                "github.com/google/martian/v3/httpspec",
+                "github.com/google/martian/v3/martianlog",
+                "github.com/google/martian/v3/mitm",
+                "io",
+                "io/ioutil",
+                "log",
+                "mime",
+                "mime/multipart",
+                "net",
+                "net/http",
+                "net/url",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/martian/v3",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

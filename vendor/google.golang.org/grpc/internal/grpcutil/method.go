@@ -19,23 +19,23 @@
 package grpcutil
 
 import (
-	"errors"
-	"strings"
+    "errors"
+    "strings"
 )
 
 // ParseMethod splits service and method from the input. It expects format
 // "/service/method".
 func ParseMethod(methodName string) (service, method string, _ error) {
-	if !strings.HasPrefix(methodName, "/") {
-		return "", "", errors.New("invalid method name: should start with /")
-	}
-	methodName = methodName[1:]
+    if !strings.HasPrefix(methodName, "/") {
+        return "", "", errors.New("invalid method name: should start with /")
+    }
+    methodName = methodName[1:]
 
-	pos := strings.LastIndex(methodName, "/")
-	if pos < 0 {
-		return "", "", errors.New("invalid method name: suffix /method is missing")
-	}
-	return methodName[:pos], methodName[pos+1:], nil
+    pos := strings.LastIndex(methodName, "/")
+    if pos < 0 {
+        return "", "", errors.New("invalid method name: suffix /method is missing")
+    }
+    return methodName[:pos], methodName[pos+1:], nil
 }
 
 // baseContentType is the base content-type for gRPC.  This is a valid
@@ -59,30 +59,30 @@ const baseContentType = "application/grpc"
 //
 // contentType is assumed to be lowercase already.
 func ContentSubtype(contentType string) (string, bool) {
-	if contentType == baseContentType {
-		return "", true
-	}
-	if !strings.HasPrefix(contentType, baseContentType) {
-		return "", false
-	}
-	// guaranteed since != baseContentType and has baseContentType prefix
-	switch contentType[len(baseContentType)] {
-	case '+', ';':
-		// this will return true for "application/grpc+" or "application/grpc;"
-		// which the previous validContentType function tested to be valid, so we
-		// just say that no content-subtype is specified in this case
-		return contentType[len(baseContentType)+1:], true
-	default:
-		return "", false
-	}
+    if contentType == baseContentType {
+        return "", true
+    }
+    if !strings.HasPrefix(contentType, baseContentType) {
+        return "", false
+    }
+    // guaranteed since != baseContentType and has baseContentType prefix
+    switch contentType[len(baseContentType)] {
+    case '+', ';':
+        // this will return true for "application/grpc+" or "application/grpc;"
+        // which the previous validContentType function tested to be valid, so we
+        // just say that no content-subtype is specified in this case
+        return contentType[len(baseContentType)+1:], true
+    default:
+        return "", false
+    }
 }
 
 // ContentType builds full content type with the given sub-type.
 //
 // contentSubtype is assumed to be lowercase
 func ContentType(contentSubtype string) string {
-	if contentSubtype == "" {
-		return baseContentType
-	}
-	return baseContentType + "+" + contentSubtype
+    if contentSubtype == "" {
+        return baseContentType
+    }
+    return baseContentType + "+" + contentSubtype
 }

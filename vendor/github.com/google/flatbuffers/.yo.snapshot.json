@@ -1,0 +1,119 @@
+{
+    "Version": "v23.5.26+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:M9dgRyhJemaM4Sw8+66GHBu8ioaQmyPLg1b8VwK5WJg=",
+    "Packages": {
+        "github.com/google/flatbuffers/go": {
+            "Imports": [
+                "math",
+                "sort",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/goldens/go": {
+            "Imports": [
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/grpc/tests": {
+            "Imports": null,
+            "TestImports": [
+                "context",
+                "github.com/google/flatbuffers/go",
+                "github.com/google/flatbuffers/tests/MyGame/Example",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/encoding",
+                "net",
+                "testing"
+            ]
+        },
+        "github.com/google/flatbuffers/tests": {
+            "Imports": [
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": [
+                "MyGame",
+                "MyGame/Example",
+                "Pizza",
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/flatbuffers/go",
+                "optional_scalars",
+                "order",
+                "os",
+                "reflect",
+                "sort",
+                "testing",
+                "testing/quick"
+            ]
+        },
+        "github.com/google/flatbuffers/tests/MyGame": {
+            "Imports": [
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/MyGame/Example": {
+            "Imports": [
+                "MyGame",
+                "MyGame/Example2",
+                "bytes",
+                "context",
+                "github.com/google/flatbuffers/go",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "math",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/MyGame/Example2": {
+            "Imports": [
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/namespace_test/NamespaceA": {
+            "Imports": [
+                "NamespaceA/NamespaceB",
+                "NamespaceC",
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/namespace_test/NamespaceA/NamespaceB": {
+            "Imports": [
+                "NamespaceA/NamespaceB",
+                "github.com/google/flatbuffers/go",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/namespace_test/NamespaceC": {
+            "Imports": [
+                "NamespaceA",
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/optional_scalars": {
+            "Imports": [
+                "github.com/google/flatbuffers/go",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/flatbuffers/tests/order": {
+            "Imports": [
+                "Pizza",
+                "github.com/google/flatbuffers/go"
+            ],
+            "TestImports": null
+        }
+    }
+}

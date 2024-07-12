@@ -5,5 +5,5 @@
 package must
 
 var (
-	fsRoot = "/"
+    fsRoot = "/"
 )

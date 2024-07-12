@@ -22,5 +22,5 @@
 package googlecloud
 
 func manufacturer() ([]byte, error) {
-	return nil, nil
+    return nil, nil
 }

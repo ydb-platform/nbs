@@ -1,0 +1,191 @@
+{
+    "Version": "v0.0.0-20220810130054-c7d1c02cb6cf",
+    "GoVersion": "",
+    "Sum": "h1:GOPo6vn/vTN+3IwZBvXX0y5doJfSC7My0cdzelyOCsQ=",
+    "Packages": {
+        "github.com/coreos/pkg/capnslog": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/coreos/go-systemd/journal",
+                "io",
+                "log",
+                "log/syslog",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/pkg/capnslog/example": {
+            "Imports": [
+                "flag",
+                "github.com/coreos/pkg/capnslog",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/pkg/cryptoutil": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/rand",
+                "errors"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/dlopen": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/flagutil": {
+            "Imports": [
+                "bufio",
+                "errors",
+                "flag",
+                "fmt",
+                "net",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "flag",
+                "io/ioutil",
+                "os",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/health": {
+            "Imports": [
+                "expvar",
+                "fmt",
+                "github.com/coreos/pkg/httputil",
+                "log",
+                "net/http"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "errors",
+                "github.com/coreos/pkg/httputil",
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/httputil": {
+            "Imports": [
+                "encoding/json",
+                "net/http",
+                "time"
+            ],
+            "TestImports": [
+                "net/http",
+                "net/http/httptest",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/pkg/k8s-tlsutil": {
+            "Imports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/pem",
+                "errors",
+                "math",
+                "math/big",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/pkg/multierror": {
+            "Imports": [
+                "fmt",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/netutil": {
+            "Imports": [
+                "io",
+                "log",
+                "net",
+                "net/url",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "net/url",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/pkg/progressutil": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/ssh/terminal",
+                "io",
+                "os",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/pkg/timeutil": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/pkg/yamlutil": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "gopkg.in/yaml.v1",
+                "strings"
+            ],
+            "TestImports": [
+                "flag",
+                "testing"
+            ]
+        }
+    }
+}

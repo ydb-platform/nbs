@@ -12,5 +12,5 @@ import "reflect"
 // Wrapper around reflect.Value.CanConvert, for compatibility
 // reasons.
 func canConvert(value reflect.Value, to reflect.Type) bool {
-	return value.CanConvert(to)
+    return value.CanConvert(to)
 }

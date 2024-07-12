@@ -19,28 +19,28 @@
 package clustermanager
 
 import (
-	"encoding/json"
+    "encoding/json"
 
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	"google.golang.org/grpc/serviceconfig"
+    internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+    "google.golang.org/grpc/serviceconfig"
 )
 
 type childConfig struct {
-	// ChildPolicy is the child policy and it's config.
-	ChildPolicy *internalserviceconfig.BalancerConfig
+    // ChildPolicy is the child policy and it's config.
+    ChildPolicy *internalserviceconfig.BalancerConfig
 }
 
 // lbConfig is the balancer config for xds routing policy.
 type lbConfig struct {
-	serviceconfig.LoadBalancingConfig
-	Children map[string]childConfig
+    serviceconfig.LoadBalancingConfig
+    Children map[string]childConfig
 }
 
 func parseConfig(c json.RawMessage) (*lbConfig, error) {
-	cfg := &lbConfig{}
-	if err := json.Unmarshal(c, cfg); err != nil {
-		return nil, err
-	}
+    cfg := &lbConfig{}
+    if err := json.Unmarshal(c, cfg); err != nil {
+        return nil, err
+    }
 
-	return cfg, nil
+    return cfg, nil
 }

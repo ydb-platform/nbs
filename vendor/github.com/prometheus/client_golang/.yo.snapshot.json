@@ -1,0 +1,397 @@
+{
+    "Version": "v1.18.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:HzFfmkOzH5Q8L8G+kSJKUx5dtG87sewO+FoDDqP5Tbk=",
+    "Packages": {
+        "github.com/prometheus/client_golang/api": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "net",
+                "net/http",
+                "net/url",
+                "path",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/api/prometheus/v1": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/json-iterator/go",
+                "github.com/prometheus/client_golang/api",
+                "github.com/prometheus/common/model",
+                "math",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/json-iterator/go",
+                "github.com/prometheus/client_golang/api",
+                "github.com/prometheus/client_golang/api/prometheus/v1",
+                "github.com/prometheus/common/config",
+                "github.com/prometheus/common/model",
+                "io",
+                "math",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/client_golang/examples/exemplars": {
+            "Imports": [
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/collectors",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "log",
+                "math/rand",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/client_golang/examples/gocollector": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/collectors",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "log",
+                "net/http",
+                "regexp"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/client_golang/examples/random": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/collectors",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "log",
+                "math",
+                "math/rand",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/client_golang/examples/simple": {
+            "Imports": [
+                "flag",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/collectors",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "log",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/client_golang/prometheus": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "expvar",
+                "fmt",
+                "github.com/beorn7/perks/quantile",
+                "github.com/cespare/xxhash/v2",
+                "github.com/prometheus/client_golang/prometheus/internal",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "github.com/prometheus/common/model",
+                "github.com/prometheus/procfs",
+                "golang.org/x/sys/windows",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "math",
+                "os",
+                "path/filepath",
+                "runtime",
+                "runtime/debug",
+                "runtime/metrics",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "expvar",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/internal",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "github.com/prometheus/procfs",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "log",
+                "math",
+                "math/rand",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "runtime/metrics",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "testing/quick",
+                "time"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/collectors": {
+            "Imports": [
+                "database/sql",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/internal",
+                "regexp"
+            ],
+            "TestImports": [
+                "database/sql",
+                "encoding/json",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "log",
+                "net/http",
+                "reflect",
+                "regexp",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/graphite": {
+            "Imports": [
+                "bufio",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "github.com/prometheus/common/model",
+                "io",
+                "net",
+                "sort",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/common/model",
+                "io",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/internal": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/model",
+                "io",
+                "math",
+                "path",
+                "regexp",
+                "runtime/metrics",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "math",
+                "reflect",
+                "runtime/metrics",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/promauto": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus"
+            ],
+            "TestImports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/promhttp": {
+            "Imports": [
+                "bufio",
+                "compress/gzip",
+                "context",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "io",
+                "net",
+                "net/http",
+                "net/http/httptrace",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/testutil",
+                "github.com/prometheus/client_model/go",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/push": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/common/expfmt",
+                "github.com/prometheus/common/model",
+                "io",
+                "net/http",
+                "net/url",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/push",
+                "github.com/prometheus/common/expfmt",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/testutil": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/internal",
+                "github.com/prometheus/client_golang/prometheus/testutil/promlint",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "net/http",
+                "reflect"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "net/http",
+                "net/http/httptest",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/testutil/promlint": {
+            "Imports": [
+                "errors",
+                "github.com/prometheus/client_golang/prometheus/testutil/promlint/validations",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/expfmt",
+                "io",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus/testutil/promlint",
+                "github.com/prometheus/client_model/go",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/client_golang/prometheus/testutil/promlint/validations": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_model/go",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

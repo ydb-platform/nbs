@@ -1,4 +1,14 @@
+SUBSCRIBER(g:go-contrib)
+
 RECURSE(
+    buffer
+    clock
     exec
-    io
+    integer
+    internal
+    net
+    pointer
+    ptr
+    strings
+    trace
 )

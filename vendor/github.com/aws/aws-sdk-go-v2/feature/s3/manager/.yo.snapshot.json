@@ -1,0 +1,98 @@
+{
+    "Version": "v1.13.9",
+    "GoVersion": "1.19",
+    "Sum": "h1:yG01Big4R5CDxftieMlgZPcHKZbwkRygur4DMGTqSzg=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/feature/s3/manager": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/arn",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/internal/awsutil",
+                "github.com/aws/aws-sdk-go-v2/internal/sdkio",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net/http",
+                "sort",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/transport/http",
+                "github.com/aws/aws-sdk-go-v2/config",
+                "github.com/aws/aws-sdk-go-v2/feature/s3/manager",
+                "github.com/aws/aws-sdk-go-v2/feature/s3/manager/internal/testing",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/aws-sdk-go-v2/internal/sdkio",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types",
+                "github.com/google/go-cmp/cmp",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/feature/s3/manager/internal/integration": {
+            "Imports": [
+                "context",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types",
+                "github.com/aws/smithy-go/rand",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/feature/s3/manager/internal/testing": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/sdkio",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net/http",
+                "net/url",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

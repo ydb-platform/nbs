@@ -4,42 +4,42 @@
 package clusterv3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on CdsDummy with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
 func (m *CdsDummy) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on CdsDummy with the rules defined in
@@ -47,21 +47,21 @@ func (m *CdsDummy) Validate() error {
 // result is a list of violation errors wrapped in CdsDummyMultiError, or nil
 // if none found.
 func (m *CdsDummy) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *CdsDummy) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(errors) > 0 {
-		return CdsDummyMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return CdsDummyMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // CdsDummyMultiError is an error wrapping multiple validation errors returned
@@ -70,11 +70,11 @@ type CdsDummyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CdsDummyMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -83,10 +83,10 @@ func (m CdsDummyMultiError) AllErrors() []error { return m }
 // CdsDummyValidationError is the validation error returned by
 // CdsDummy.Validate if the designated constraints aren't met.
 type CdsDummyValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -106,30 +106,30 @@ func (e CdsDummyValidationError) ErrorName() string { return "CdsDummyValidation
 
 // Error satisfies the builtin error interface
 func (e CdsDummyValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sCdsDummy.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sCdsDummy.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = CdsDummyValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = CdsDummyValidationError{}

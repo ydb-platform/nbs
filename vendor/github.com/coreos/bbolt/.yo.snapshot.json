@@ -1,0 +1,72 @@
+{
+    "Version": "v1.3.3",
+    "GoVersion": "",
+    "Sum": "h1:n6AiVyVRKQFNb6mJlwESEvvLoDyiTzXX7ORAUlkeBdY=",
+    "Packages": {
+        "github.com/coreos/bbolt": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "hash/fnv",
+                "io",
+                "log",
+                "os",
+                "runtime",
+                "sort",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "flag",
+                "fmt",
+                "go.etcd.io/bbolt",
+                "hash/fnv",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "testing/quick",
+                "time",
+                "unsafe"
+            ]
+        },
+        "github.com/coreos/bbolt/cmd/bbolt": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "flag",
+                "fmt",
+                "go.etcd.io/bbolt",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "runtime",
+                "runtime/pprof",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

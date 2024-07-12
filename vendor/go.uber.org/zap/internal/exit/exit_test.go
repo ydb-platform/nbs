@@ -21,28 +21,28 @@
 package exit_test
 
 import (
-	"testing"
+    "testing"
 
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap/internal/exit"
+    "github.com/stretchr/testify/assert"
+    "go.uber.org/zap/internal/exit"
 )
 
 func TestStub(t *testing.T) {
-	type want struct {
-		exit bool
-		code int
-	}
-	tests := []struct {
-		f    func()
-		want want
-	}{
-		{func() { exit.With(42) }, want{exit: true, code: 42}},
-		{func() {}, want{}},
-	}
+    type want struct {
+        exit bool
+        code int
+    }
+    tests := []struct {
+        f    func()
+        want want
+    }{
+        {func() { exit.With(42) }, want{exit: true, code: 42}},
+        {func() {}, want{}},
+    }
 
-	for _, tt := range tests {
-		s := exit.WithStub(tt.f)
-		assert.Equal(t, tt.want.exit, s.Exited, "Stub captured unexpected exit value.")
-		assert.Equal(t, tt.want.code, s.Code, "Stub captured unexpected exit value.")
-	}
+    for _, tt := range tests {
+        s := exit.WithStub(tt.f)
+        assert.Equal(t, tt.want.exit, s.Exited, "Stub captured unexpected exit value.")
+        assert.Equal(t, tt.want.code, s.Code, "Stub captured unexpected exit value.")
+    }
 }

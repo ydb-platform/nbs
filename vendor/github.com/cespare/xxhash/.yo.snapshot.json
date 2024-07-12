@@ -1,0 +1,36 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "",
+    "Sum": "h1:a6HrQnmkObjyL+Gs60czilIUGqrzKutQD6XZog3p+ko=",
+    "Packages": {
+        "github.com/cespare/xxhash": {
+            "Imports": [
+                "encoding/binary",
+                "hash",
+                "math/bits",
+                "reflect",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "github.com/OneOfOne/xxhash",
+                "github.com/spaolacci/murmur3",
+                "hash",
+                "hash/crc32",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/cespare/xxhash/xxhsum": {
+            "Imports": [
+                "fmt",
+                "github.com/cespare/xxhash",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

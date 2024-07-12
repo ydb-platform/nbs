@@ -21,14 +21,14 @@
 package internal
 
 import (
-	"errors"
-	"fmt"
+    "errors"
+    "fmt"
 
-	ibackoff "google.golang.org/grpc/internal/backoff"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/proto"
+    ibackoff "google.golang.org/grpc/internal/backoff"
+    "google.golang.org/grpc/metadata"
+    "google.golang.org/protobuf/proto"
 
-	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
+    v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 )
 
 // AllowAnyMinReportingInterval prevents clamping of the MinReportingInterval
@@ -56,16 +56,16 @@ const TrailerMetadataKey = "endpoint-load-metrics-bin"
 //
 // [ORCA LoadReport]: (https://github.com/cncf/xds/blob/main/xds/data/orca/v3/orca_load_report.proto#L15)
 func ToLoadReport(md metadata.MD) (*v3orcapb.OrcaLoadReport, error) {
-	vs := md.Get(TrailerMetadataKey)
-	if len(vs) == 0 {
-		return nil, nil
-	}
-	if len(vs) != 1 {
-		return nil, errors.New("multiple orca load reports found in provided metadata")
-	}
-	ret := new(v3orcapb.OrcaLoadReport)
-	if err := proto.Unmarshal([]byte(vs[0]), ret); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal load report found in metadata: %v", err)
-	}
-	return ret, nil
+    vs := md.Get(TrailerMetadataKey)
+    if len(vs) == 0 {
+        return nil, nil
+    }
+    if len(vs) != 1 {
+        return nil, errors.New("multiple orca load reports found in provided metadata")
+    }
+    ret := new(v3orcapb.OrcaLoadReport)
+    if err := proto.Unmarshal([]byte(vs[0]), ret); err != nil {
+        return nil, fmt.Errorf("failed to unmarshal load report found in metadata: %v", err)
+    }
+    return ret, nil
 }

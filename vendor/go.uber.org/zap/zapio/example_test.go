@@ -21,27 +21,27 @@
 package zapio_test
 
 import (
-	"io"
-	"log"
+    "io"
+    "log"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapio"
+    "go.uber.org/zap"
+    "go.uber.org/zap/zapio"
 )
 
 func ExampleWriter() {
-	logger := zap.NewExample()
-	w := &zapio.Writer{Log: logger}
+    logger := zap.NewExample()
+    w := &zapio.Writer{Log: logger}
 
-	io.WriteString(w, "starting up\n")
-	io.WriteString(w, "running\n")
-	io.WriteString(w, "shutting down\n")
+    io.WriteString(w, "starting up\n")
+    io.WriteString(w, "running\n")
+    io.WriteString(w, "shutting down\n")
 
-	if err := w.Close(); err != nil {
-		log.Fatal(err)
-	}
+    if err := w.Close(); err != nil {
+        log.Fatal(err)
+    }
 
-	// Output:
-	// {"level":"info","msg":"starting up"}
-	// {"level":"info","msg":"running"}
-	// {"level":"info","msg":"shutting down"}
+    // Output:
+    // {"level":"info","msg":"starting up"}
+    // {"level":"info","msg":"running"}
+    // {"level":"info","msg":"shutting down"}
 }

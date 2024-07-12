@@ -1,0 +1,44 @@
+{
+    "Version": "v2.2.0",
+    "GoVersion": "1.11",
+    "Sum": "h1:DC2CZ1Ep5Y4k3ZQ899DldepgrayRUGE6BBZ/cd9Cj44=",
+    "Packages": {
+        "github.com/cespare/xxhash/v2": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "math/bits",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "os/exec",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/cespare/xxhash/v2/dynamic": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "log",
+                "os",
+                "os/exec",
+                "plugin",
+                "testing"
+            ]
+        },
+        "github.com/cespare/xxhash/v2/xxhsum": {
+            "Imports": [
+                "fmt",
+                "github.com/cespare/xxhash/v2",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

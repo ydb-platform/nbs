@@ -1,0 +1,84 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:vN3A+E/rm6nCkx9iM+kjlMzXAtE0a2vP1JhF9oqLjZQ=",
+    "Packages": {
+        "go.opentelemetry.io/collector/processor": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/consumer",
+                "go.uber.org/zap"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/processor/processorhelper": {
+            "Imports": [
+                "context",
+                "errors",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/internal/obsreportconfig/obsmetrics",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "go.opentelemetry.io/collector/processor",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/trace"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "go.opentelemetry.io/collector/processor/processortest",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/processor/processortest": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "go.opentelemetry.io/collector/internal/testdata",
+                "go.opentelemetry.io/collector/processor",
+                "testing"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "testing"
+            ]
+        }
+    }
+}

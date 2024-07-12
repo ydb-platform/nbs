@@ -1,0 +1,55 @@
+{
+    "Version": "v2.0.7",
+    "GoVersion": "1.18",
+    "Sum": "h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=",
+    "Packages": {
+        "github.com/hashicorp/golang-lru/v2": {
+            "Imports": [
+                "errors",
+                "github.com/hashicorp/golang-lru/v2/simplelru",
+                "sync"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "math",
+                "math/big",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/golang-lru/v2/expirable": {
+            "Imports": [
+                "github.com/hashicorp/golang-lru/v2/internal",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "fmt",
+                "github.com/hashicorp/golang-lru/v2/simplelru",
+                "math",
+                "math/big",
+                "reflect",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/golang-lru/v2/internal": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/golang-lru/v2/simplelru": {
+            "Imports": [
+                "errors",
+                "github.com/hashicorp/golang-lru/v2/internal"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

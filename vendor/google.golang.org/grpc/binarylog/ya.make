@@ -1,8 +1,12 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
-SRCS(sink.go)
+SRCS(
+    sink.go
+)
 
 GO_XTEST_SRCS(binarylog_end2end_test.go)
 

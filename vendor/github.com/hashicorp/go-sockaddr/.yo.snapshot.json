@@ -1,0 +1,88 @@
+{
+    "Version": "v1.0.2",
+    "GoVersion": "",
+    "Sum": "h1:ztczhD1jLxIRjVejw8gFomI1BQZOe2WoVOu0SyteCQc=",
+    "Packages": {
+        "github.com/hashicorp/go-sockaddr": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "math/big",
+                "net",
+                "os/exec",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-sockaddr",
+                "math",
+                "math/big",
+                "math/rand",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go-sockaddr/cmd/sockaddr": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-sockaddr/cmd/sockaddr/command",
+                "github.com/mitchellh/cli",
+                "io/ioutil",
+                "log",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-sockaddr/cmd/sockaddr/command": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-sockaddr",
+                "github.com/hashicorp/go-sockaddr/template",
+                "github.com/mitchellh/cli",
+                "github.com/mitchellh/go-wordwrap",
+                "github.com/ryanuber/columnize",
+                "io",
+                "net",
+                "os",
+                "os/exec",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go-sockaddr/template": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-sockaddr",
+                "text/template"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/go-sockaddr/template",
+                "testing"
+            ]
+        }
+    }
+}

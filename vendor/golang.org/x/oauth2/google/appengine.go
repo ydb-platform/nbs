@@ -5,10 +5,10 @@
 package google
 
 import (
-	"context"
-	"time"
+    "context"
+    "time"
 
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 // Set at init time by appengine_gen1.go. If nil, we're not on App Engine standard first generation (<= Go 1.9) or App Engine flexible.
@@ -34,5 +34,5 @@ var appengineAppIDFunc func(c context.Context) string
 // context and scopes are not used. Please use DefaultTokenSource (or ComputeTokenSource,
 // which DefaultTokenSource will use in this case) instead.
 func AppEngineTokenSource(ctx context.Context, scope ...string) oauth2.TokenSource {
-	return appEngineTokenSource(ctx, scope...)
+    return appEngineTokenSource(ctx, scope...)
 }

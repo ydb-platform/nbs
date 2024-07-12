@@ -1,0 +1,33 @@
+{
+    "Version": "v0.7.1",
+    "GoVersion": "1.16",
+    "Sum": "h1:/tTvQaSJRr2FshkhXiIpux6fQ2Zvc4j7tAhMTStAG2g=",
+    "Packages": {
+        "github.com/moby/sys/mountinfo": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "golang.org/x/sys/unix",
+                "io",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "golang.org/x/sys/unix",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

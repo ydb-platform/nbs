@@ -1,0 +1,90 @@
+{
+    "Version": "v0.13.1",
+    "GoVersion": "1.19",
+    "Sum": "h1:EygWVWWMczTzXGpO93awkHFzfUka6hLYJ0qhETd+6lY=",
+    "Packages": {
+        "github.com/hashicorp/consul/sdk/freeport": {
+            "Imports": [
+                "container/list",
+                "fmt",
+                "golang.org/x/sys/unix",
+                "math/rand",
+                "net",
+                "os",
+                "os/exec",
+                "regexp",
+                "runtime",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/consul/sdk/testutil/retry",
+                "io",
+                "net",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/consul/sdk/iptables": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "os/exec",
+                "strconv"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/require",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/consul/sdk/testutil": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/consul/sdk/freeport",
+                "github.com/hashicorp/consul/sdk/testutil/retry",
+                "github.com/hashicorp/go-cleanhttp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/go-version",
+                "github.com/pkg/errors",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/consul/sdk/testutil/retry": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

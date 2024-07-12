@@ -19,17 +19,17 @@
 package clustermanager
 
 import (
-	"testing"
+    "testing"
 
-	"github.com/google/go-cmp/cmp"
-	"google.golang.org/grpc/balancer"
-	_ "google.golang.org/grpc/balancer/weightedtarget"
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	_ "google.golang.org/grpc/xds/internal/balancer/cdsbalancer"
+    "github.com/google/go-cmp/cmp"
+    "google.golang.org/grpc/balancer"
+    _ "google.golang.org/grpc/balancer/weightedtarget"
+    internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+    _ "google.golang.org/grpc/xds/internal/balancer/cdsbalancer"
 )
 
 const (
-	testJSONConfig = `{
+    testJSONConfig = `{
       "children":{
         "cds:cluster_1":{
           "childPolicy":[{
@@ -72,73 +72,73 @@ const (
 }
 `
 
-	cdsName = "cds_experimental"
-	wtName  = "weighted_target_experimental"
+    cdsName = "cds_experimental"
+    wtName  = "weighted_target_experimental"
 )
 
 var (
-	cdsConfigParser = balancer.Get(cdsName).(balancer.ConfigParser)
-	cdsConfigJSON1  = `{"cluster":"cluster_1"}`
-	cdsConfig1, _   = cdsConfigParser.ParseConfig([]byte(cdsConfigJSON1))
+    cdsConfigParser = balancer.Get(cdsName).(balancer.ConfigParser)
+    cdsConfigJSON1  = `{"cluster":"cluster_1"}`
+    cdsConfig1, _   = cdsConfigParser.ParseConfig([]byte(cdsConfigJSON1))
 
-	wtConfigParser = balancer.Get(wtName).(balancer.ConfigParser)
-	wtConfigJSON1  = `{
-	"targets": {
-	  "cluster_1" : { "weight":75, "childPolicy":[{"cds_experimental":{"cluster":"cluster_1"}}] },
-	  "cluster_2" : { "weight":25, "childPolicy":[{"cds_experimental":{"cluster":"cluster_2"}}] }
-	} }`
-	wtConfig1, _  = wtConfigParser.ParseConfig([]byte(wtConfigJSON1))
-	wtConfigJSON2 = `{
+    wtConfigParser = balancer.Get(wtName).(balancer.ConfigParser)
+    wtConfigJSON1  = `{
+    "targets": {
+      "cluster_1" : { "weight":75, "childPolicy":[{"cds_experimental":{"cluster":"cluster_1"}}] },
+      "cluster_2" : { "weight":25, "childPolicy":[{"cds_experimental":{"cluster":"cluster_2"}}] }
+    } }`
+    wtConfig1, _  = wtConfigParser.ParseConfig([]byte(wtConfigJSON1))
+    wtConfigJSON2 = `{
     "targets": {
       "cluster_1": { "weight":99, "childPolicy":[{"cds_experimental":{"cluster":"cluster_1"}}] },
       "cluster_3": { "weight":1, "childPolicy":[{"cds_experimental":{"cluster":"cluster_3"}}] }
     } }`
-	wtConfig2, _ = wtConfigParser.ParseConfig([]byte(wtConfigJSON2))
+    wtConfig2, _ = wtConfigParser.ParseConfig([]byte(wtConfigJSON2))
 )
 
 func Test_parseConfig(t *testing.T) {
-	tests := []struct {
-		name    string
-		js      string
-		want    *lbConfig
-		wantErr bool
-	}{
-		{
-			name:    "empty json",
-			js:      "",
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "OK",
-			js:   testJSONConfig,
-			want: &lbConfig{
-				Children: map[string]childConfig{
-					"cds:cluster_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
-						Name: cdsName, Config: cdsConfig1},
-					},
-					"weighted:cluster_1_cluster_2_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
-						Name: wtName, Config: wtConfig1},
-					},
-					"weighted:cluster_1_cluster_3_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
-						Name: wtName, Config: wtConfig2},
-					},
-				},
-			},
-			wantErr: false,
-		},
-	}
+    tests := []struct {
+        name    string
+        js      string
+        want    *lbConfig
+        wantErr bool
+    }{
+        {
+            name:    "empty json",
+            js:      "",
+            want:    nil,
+            wantErr: true,
+        },
+        {
+            name: "OK",
+            js:   testJSONConfig,
+            want: &lbConfig{
+                Children: map[string]childConfig{
+                    "cds:cluster_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
+                        Name: cdsName, Config: cdsConfig1},
+                    },
+                    "weighted:cluster_1_cluster_2_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
+                        Name: wtName, Config: wtConfig1},
+                    },
+                    "weighted:cluster_1_cluster_3_1": {ChildPolicy: &internalserviceconfig.BalancerConfig{
+                        Name: wtName, Config: wtConfig2},
+                    },
+                },
+            },
+            wantErr: false,
+        },
+    }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseConfig([]byte(tt.js))
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseConfig() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if d := cmp.Diff(got, tt.want, cmp.AllowUnexported(lbConfig{})); d != "" {
-				t.Errorf("parseConfig() got unexpected result, diff: %v", d)
-			}
-		})
-	}
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := parseConfig([]byte(tt.js))
+            if (err != nil) != tt.wantErr {
+                t.Errorf("parseConfig() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if d := cmp.Diff(got, tt.want, cmp.AllowUnexported(lbConfig{})); d != "" {
+                t.Errorf("parseConfig() got unexpected result, diff: %v", d)
+            }
+        })
+    }
 }

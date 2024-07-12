@@ -8,8 +8,8 @@ import "fmt"
 
 // errorString is a trivial implementation of error.
 type errorString struct {
-	s     string
-	frame Frame
+    s     string
+    frame Frame
 }
 
 // New returns an error that formats as the given text.
@@ -17,17 +17,17 @@ type errorString struct {
 // The returned error contains a Frame set to the caller's location and
 // implements Formatter to show this information when printed with details.
 func New(text string) error {
-	return &errorString{text, Caller(1)}
+    return &errorString{text, Caller(1)}
 }
 
 func (e *errorString) Error() string {
-	return e.s
+    return e.s
 }
 
 func (e *errorString) Format(s fmt.State, v rune) { FormatError(e, s, v) }
 
 func (e *errorString) FormatError(p Printer) (next error) {
-	p.Print(e.s)
-	e.frame.Format(p)
-	return nil
+    p.Print(e.s)
+    e.frame.Format(p)
+    return nil
 }

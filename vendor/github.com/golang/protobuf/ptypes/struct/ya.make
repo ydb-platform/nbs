@@ -1,7 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
-SRCS(struct.pb.go)
+SRCS(
+    struct.pb.go
+)
 
 END()

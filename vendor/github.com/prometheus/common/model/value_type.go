@@ -14,14 +14,14 @@
 package model
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 )
 
 // Value is a generic interface for values resulting from a query evaluation.
 type Value interface {
-	Type() ValueType
-	String() string
+    Type() ValueType
+    String() string
 }
 
 func (Matrix) Type() ValueType  { return ValMatrix }
@@ -32,52 +32,52 @@ func (*String) Type() ValueType { return ValString }
 type ValueType int
 
 const (
-	ValNone ValueType = iota
-	ValScalar
-	ValVector
-	ValMatrix
-	ValString
+    ValNone ValueType = iota
+    ValScalar
+    ValVector
+    ValMatrix
+    ValString
 )
 
 // MarshalJSON implements json.Marshaler.
 func (et ValueType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(et.String())
+    return json.Marshal(et.String())
 }
 
 func (et *ValueType) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	switch s {
-	case "<ValNone>":
-		*et = ValNone
-	case "scalar":
-		*et = ValScalar
-	case "vector":
-		*et = ValVector
-	case "matrix":
-		*et = ValMatrix
-	case "string":
-		*et = ValString
-	default:
-		return fmt.Errorf("unknown value type %q", s)
-	}
-	return nil
+    var s string
+    if err := json.Unmarshal(b, &s); err != nil {
+        return err
+    }
+    switch s {
+    case "<ValNone>":
+        *et = ValNone
+    case "scalar":
+        *et = ValScalar
+    case "vector":
+        *et = ValVector
+    case "matrix":
+        *et = ValMatrix
+    case "string":
+        *et = ValString
+    default:
+        return fmt.Errorf("unknown value type %q", s)
+    }
+    return nil
 }
 
 func (e ValueType) String() string {
-	switch e {
-	case ValNone:
-		return "<ValNone>"
-	case ValScalar:
-		return "scalar"
-	case ValVector:
-		return "vector"
-	case ValMatrix:
-		return "matrix"
-	case ValString:
-		return "string"
-	}
-	panic("ValueType.String: unhandled value type")
+    switch e {
+    case ValNone:
+        return "<ValNone>"
+    case ValScalar:
+        return "scalar"
+    case ValVector:
+        return "vector"
+    case ValMatrix:
+        return "matrix"
+    case ValString:
+        return "string"
+    }
+    panic("ValueType.String: unhandled value type")
 }

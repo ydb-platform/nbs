@@ -1,0 +1,60 @@
+{
+    "Version": "v0.16.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:UKkeWRWb23do5LNAFlh/K3N0ymn1qTOO8c+85Albo3s=",
+    "Packages": {
+        "github.com/hashicorp/terraform-json": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/zclconf/go-cty/cty"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/google/go-cmp/cmp",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-json/cmd/round-trip-dumper": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/terraform-json",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-json/sanitize": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/terraform-json",
+                "github.com/mitchellh/copystructure",
+                "reflect"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-json",
+                "github.com/sebdah/goldie",
+                "github.com/zclconf/go-cty-debug/ctydebug",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,44 @@
+{
+    "Version": "v0.42.0-rc.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:Rmz52Xlc5k3WzAHzD0SCH4USCzyti7EbK4HtrHys3ME=",
+    "Packages": {
+        "github.com/DataDog/datadog-agent/pkg/remoteconfig/state": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/client",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/DataDog/go-tuf/verify",
+                "io",
+                "log",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/datadog-agent/pkg/remoteconfig/state/products/apmsampling",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/DataDog/go-tuf/sign",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/DataDog/datadog-agent/pkg/remoteconfig/state/products/apmsampling": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

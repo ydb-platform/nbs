@@ -8,5 +8,5 @@ import "math/rand"
 // Read provides the stub for math.Rand.Read method support for go version's
 // 1.6 and greater.
 func Read(r *rand.Rand, p []byte) (int, error) {
-	return r.Read(p)
+    return r.Read(p)
 }

@@ -1,0 +1,325 @@
+{
+    "Version": "v0.1.25",
+    "GoVersion": "1.15",
+    "Sum": "h1:pwY9r7P6ToQ3+IF0bajN0xmk/fNw/suTgaTdlwTDmhc=",
+    "Packages": {
+        "github.com/pion/interceptor": {
+            "Imports": [
+                "errors",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "io",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/pion/interceptor/examples/nack": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/nack",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "log",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/interceptor/internal/cc": {
+            "Imports": [
+                "container/list",
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/internal/ntp": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/internal/sequencenumber": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/pion/interceptor/internal/test": {
+            "Imports": [
+                "errors",
+                "github.com/pion/interceptor",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "io",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/cc": {
+            "Imports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/gcc",
+                "github.com/pion/rtcp"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/interceptor/pkg/flexfec": {
+            "Imports": [
+                "encoding/binary",
+                "github.com/pion/interceptor/pkg/flexfec/util",
+                "github.com/pion/rtp"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/interceptor/pkg/flexfec/util": {
+            "Imports": [
+                "github.com/pion/rtp"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/interceptor/pkg/gcc": {
+            "Imports": [
+                "container/list",
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/cc",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "math",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/cc",
+                "github.com/pion/interceptor/pkg/twcc",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/intervalpli": {
+            "Imports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/mock": {
+            "Imports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp"
+            ],
+            "TestImports": [
+                "github.com/pion/interceptor",
+                "sync/atomic",
+                "testing"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/nack": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "io",
+                "math/rand",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/packetdump": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "io",
+                "os",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/report": {
+            "Imports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "math/rand",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/rfc8888": {
+            "Imports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/stats": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/interceptor/internal/sequencenumber",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/ntp",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/interceptor/pkg/twcc": {
+            "Imports": [
+                "errors",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/sequencenumber",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "math",
+                "math/rand",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/internal/test",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/transport/v3/test",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

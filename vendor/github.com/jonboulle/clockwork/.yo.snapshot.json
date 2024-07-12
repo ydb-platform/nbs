@@ -1,0 +1,23 @@
+{
+    "Version": "v0.4.0",
+    "GoVersion": "1.15",
+    "Sum": "h1:p4Cf1aMWXnXAUh8lVfewRBx1zaTSYKrKMF2g3ST4RZ4=",
+    "Packages": {
+        "github.com/jonboulle/clockwork": {
+            "Imports": [
+                "context",
+                "sort",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "reflect",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

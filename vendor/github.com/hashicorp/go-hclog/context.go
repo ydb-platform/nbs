@@ -4,7 +4,7 @@
 package hclog
 
 import (
-	"context"
+    "context"
 )
 
 // WithContext inserts a logger into the context and is retrievable
@@ -12,26 +12,26 @@ import (
 // Logger.With to set fields on the inserted logger. This will not modify
 // the logger argument in-place.
 func WithContext(ctx context.Context, logger Logger, args ...interface{}) context.Context {
-	// While we could call logger.With even with zero args, we have this
-	// check to avoid unnecessary allocations around creating a copy of a
-	// logger.
-	if len(args) > 0 {
-		logger = logger.With(args...)
-	}
+    // While we could call logger.With even with zero args, we have this
+    // check to avoid unnecessary allocations around creating a copy of a
+    // logger.
+    if len(args) > 0 {
+        logger = logger.With(args...)
+    }
 
-	return context.WithValue(ctx, contextKey, logger)
+    return context.WithValue(ctx, contextKey, logger)
 }
 
 // FromContext returns a logger from the context. This will return L()
 // (the default logger) if no logger is found in the context. Therefore,
 // this will never return a nil value.
 func FromContext(ctx context.Context) Logger {
-	logger, _ := ctx.Value(contextKey).(Logger)
-	if logger == nil {
-		return L()
-	}
+    logger, _ := ctx.Value(contextKey).(Logger)
+    if logger == nil {
+        return L()
+    }
 
-	return logger
+    return logger
 }
 
 // Unexported new type so that our context key never collides with another.

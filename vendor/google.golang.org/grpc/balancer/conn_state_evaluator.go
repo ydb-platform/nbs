@@ -25,10 +25,10 @@ import "google.golang.org/grpc/connectivity"
 //
 // It's not thread safe.
 type ConnectivityStateEvaluator struct {
-	numReady            uint64 // Number of addrConns in ready state.
-	numConnecting       uint64 // Number of addrConns in connecting state.
-	numTransientFailure uint64 // Number of addrConns in transient failure state.
-	numIdle             uint64 // Number of addrConns in idle state.
+    numReady            uint64 // Number of addrConns in ready state.
+    numConnecting       uint64 // Number of addrConns in connecting state.
+    numTransientFailure uint64 // Number of addrConns in transient failure state.
+    numIdle             uint64 // Number of addrConns in idle state.
 }
 
 // RecordTransition records state change happening in subConn and based on that
@@ -41,34 +41,34 @@ type ConnectivityStateEvaluator struct {
 //
 // Shutdown is not considered.
 func (cse *ConnectivityStateEvaluator) RecordTransition(oldState, newState connectivity.State) connectivity.State {
-	// Update counters.
-	for idx, state := range []connectivity.State{oldState, newState} {
-		updateVal := 2*uint64(idx) - 1 // -1 for oldState and +1 for new.
-		switch state {
-		case connectivity.Ready:
-			cse.numReady += updateVal
-		case connectivity.Connecting:
-			cse.numConnecting += updateVal
-		case connectivity.TransientFailure:
-			cse.numTransientFailure += updateVal
-		case connectivity.Idle:
-			cse.numIdle += updateVal
-		}
-	}
-	return cse.CurrentState()
+    // Update counters.
+    for idx, state := range []connectivity.State{oldState, newState} {
+        updateVal := 2*uint64(idx) - 1 // -1 for oldState and +1 for new.
+        switch state {
+        case connectivity.Ready:
+            cse.numReady += updateVal
+        case connectivity.Connecting:
+            cse.numConnecting += updateVal
+        case connectivity.TransientFailure:
+            cse.numTransientFailure += updateVal
+        case connectivity.Idle:
+            cse.numIdle += updateVal
+        }
+    }
+    return cse.CurrentState()
 }
 
 // CurrentState returns the current aggregate conn state by evaluating the counters
 func (cse *ConnectivityStateEvaluator) CurrentState() connectivity.State {
-	// Evaluate.
-	if cse.numReady > 0 {
-		return connectivity.Ready
-	}
-	if cse.numConnecting > 0 {
-		return connectivity.Connecting
-	}
-	if cse.numIdle > 0 {
-		return connectivity.Idle
-	}
-	return connectivity.TransientFailure
+    // Evaluate.
+    if cse.numReady > 0 {
+        return connectivity.Ready
+    }
+    if cse.numConnecting > 0 {
+        return connectivity.Connecting
+    }
+    if cse.numIdle > 0 {
+        return connectivity.Idle
+    }
+    return connectivity.TransientFailure
 }

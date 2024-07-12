@@ -1,0 +1,25 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "",
+    "Sum": "h1:ue6voC5bR5F8YxI5S67j9i582FU4Qvo2bmqnqMYADFk=",
+    "Packages": {
+        "github.com/spf13/jwalterweatherman": {
+            "Imports": [
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "sync",
+                "testing"
+            ]
+        }
+    }
+}

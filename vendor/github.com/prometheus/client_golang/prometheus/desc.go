@@ -14,16 +14,16 @@
 package prometheus
 
 import (
-	"fmt"
-	"sort"
-	"strings"
+    "fmt"
+    "sort"
+    "strings"
 
-	"github.com/cespare/xxhash/v2"
-	dto "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/model"
-	"google.golang.org/protobuf/proto"
+    "github.com/cespare/xxhash/v2"
+    dto "github.com/prometheus/client_model/go"
+    "github.com/prometheus/common/model"
+    "google.golang.org/protobuf/proto"
 
-	"github.com/prometheus/client_golang/prometheus/internal"
+    "github.com/prometheus/client_golang/prometheus/internal"
 )
 
 // Desc is the descriptor used by every Prometheus Metric. It is essentially
@@ -43,27 +43,27 @@ import (
 //
 // Use NewDesc to create new Desc instances.
 type Desc struct {
-	// fqName has been built from Namespace, Subsystem, and Name.
-	fqName string
-	// help provides some helpful information about this metric.
-	help string
-	// constLabelPairs contains precalculated DTO label pairs based on
-	// the constant labels.
-	constLabelPairs []*dto.LabelPair
-	// variableLabels contains names of labels and normalization function for
-	// which the metric maintains variable values.
-	variableLabels ConstrainedLabels
-	// id is a hash of the values of the ConstLabels and fqName. This
-	// must be unique among all registered descriptors and can therefore be
-	// used as an identifier of the descriptor.
-	id uint64
-	// dimHash is a hash of the label names (preset and variable) and the
-	// Help string. Each Desc with the same fqName must have the same
-	// dimHash.
-	dimHash uint64
-	// err is an error that occurred during construction. It is reported on
-	// registration time.
-	err error
+    // fqName has been built from Namespace, Subsystem, and Name.
+    fqName string
+    // help provides some helpful information about this metric.
+    help string
+    // constLabelPairs contains precalculated DTO label pairs based on
+    // the constant labels.
+    constLabelPairs []*dto.LabelPair
+    // variableLabels contains names of labels and normalization function for
+    // which the metric maintains variable values.
+    variableLabels *compiledLabels
+    // id is a hash of the values of the ConstLabels and fqName. This
+    // must be unique among all registered descriptors and can therefore be
+    // used as an identifier of the descriptor.
+    id uint64
+    // dimHash is a hash of the label names (preset and variable) and the
+    // Help string. Each Desc with the same fqName must have the same
+    // dimHash.
+    dimHash uint64
+    // err is an error that occurred during construction. It is reported on
+    // registration time.
+    err error
 }
 
 // NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
@@ -76,7 +76,7 @@ type Desc struct {
 // For constLabels, the label values are constant. Therefore, they are fully
 // specified in the Desc. See the Collector example for a usage pattern.
 func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *Desc {
-	return V2.NewDesc(fqName, help, UnconstrainedLabels(variableLabels), constLabels)
+    return V2.NewDesc(fqName, help, UnconstrainedLabels(variableLabels), constLabels)
 }
 
 // NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
@@ -90,85 +90,85 @@ func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *
 // For constLabels, the label values are constant. Therefore, they are fully
 // specified in the Desc. See the Collector example for a usage pattern.
 func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, constLabels Labels) *Desc {
-	d := &Desc{
-		fqName:         fqName,
-		help:           help,
-		variableLabels: variableLabels.constrainedLabels(),
-	}
-	if !model.IsValidMetricName(model.LabelValue(fqName)) {
-		d.err = fmt.Errorf("%q is not a valid metric name", fqName)
-		return d
-	}
-	// labelValues contains the label values of const labels (in order of
-	// their sorted label names) plus the fqName (at position 0).
-	labelValues := make([]string, 1, len(constLabels)+1)
-	labelValues[0] = fqName
-	labelNames := make([]string, 0, len(constLabels)+len(d.variableLabels))
-	labelNameSet := map[string]struct{}{}
-	// First add only the const label names and sort them...
-	for labelName := range constLabels {
-		if !checkLabelName(labelName) {
-			d.err = fmt.Errorf("%q is not a valid label name for metric %q", labelName, fqName)
-			return d
-		}
-		labelNames = append(labelNames, labelName)
-		labelNameSet[labelName] = struct{}{}
-	}
-	sort.Strings(labelNames)
-	// ... so that we can now add const label values in the order of their names.
-	for _, labelName := range labelNames {
-		labelValues = append(labelValues, constLabels[labelName])
-	}
-	// Validate the const label values. They can't have a wrong cardinality, so
-	// use in len(labelValues) as expectedNumberOfValues.
-	if err := validateLabelValues(labelValues, len(labelValues)); err != nil {
-		d.err = err
-		return d
-	}
-	// Now add the variable label names, but prefix them with something that
-	// cannot be in a regular label name. That prevents matching the label
-	// dimension with a different mix between preset and variable labels.
-	for _, label := range d.variableLabels {
-		if !checkLabelName(label.Name) {
-			d.err = fmt.Errorf("%q is not a valid label name for metric %q", label.Name, fqName)
-			return d
-		}
-		labelNames = append(labelNames, "$"+label.Name)
-		labelNameSet[label.Name] = struct{}{}
-	}
-	if len(labelNames) != len(labelNameSet) {
-		d.err = fmt.Errorf("duplicate label names in constant and variable labels for metric %q", fqName)
-		return d
-	}
+    d := &Desc{
+        fqName:         fqName,
+        help:           help,
+        variableLabels: variableLabels.compile(),
+    }
+    if !model.IsValidMetricName(model.LabelValue(fqName)) {
+        d.err = fmt.Errorf("%q is not a valid metric name", fqName)
+        return d
+    }
+    // labelValues contains the label values of const labels (in order of
+    // their sorted label names) plus the fqName (at position 0).
+    labelValues := make([]string, 1, len(constLabels)+1)
+    labelValues[0] = fqName
+    labelNames := make([]string, 0, len(constLabels)+len(d.variableLabels.names))
+    labelNameSet := map[string]struct{}{}
+    // First add only the const label names and sort them...
+    for labelName := range constLabels {
+        if !checkLabelName(labelName) {
+            d.err = fmt.Errorf("%q is not a valid label name for metric %q", labelName, fqName)
+            return d
+        }
+        labelNames = append(labelNames, labelName)
+        labelNameSet[labelName] = struct{}{}
+    }
+    sort.Strings(labelNames)
+    // ... so that we can now add const label values in the order of their names.
+    for _, labelName := range labelNames {
+        labelValues = append(labelValues, constLabels[labelName])
+    }
+    // Validate the const label values. They can't have a wrong cardinality, so
+    // use in len(labelValues) as expectedNumberOfValues.
+    if err := validateLabelValues(labelValues, len(labelValues)); err != nil {
+        d.err = err
+        return d
+    }
+    // Now add the variable label names, but prefix them with something that
+    // cannot be in a regular label name. That prevents matching the label
+    // dimension with a different mix between preset and variable labels.
+    for _, label := range d.variableLabels.names {
+        if !checkLabelName(label) {
+            d.err = fmt.Errorf("%q is not a valid label name for metric %q", label, fqName)
+            return d
+        }
+        labelNames = append(labelNames, "$"+label)
+        labelNameSet[label] = struct{}{}
+    }
+    if len(labelNames) != len(labelNameSet) {
+        d.err = fmt.Errorf("duplicate label names in constant and variable labels for metric %q", fqName)
+        return d
+    }
 
-	xxh := xxhash.New()
-	for _, val := range labelValues {
-		xxh.WriteString(val)
-		xxh.Write(separatorByteSlice)
-	}
-	d.id = xxh.Sum64()
-	// Sort labelNames so that order doesn't matter for the hash.
-	sort.Strings(labelNames)
-	// Now hash together (in this order) the help string and the sorted
-	// label names.
-	xxh.Reset()
-	xxh.WriteString(help)
-	xxh.Write(separatorByteSlice)
-	for _, labelName := range labelNames {
-		xxh.WriteString(labelName)
-		xxh.Write(separatorByteSlice)
-	}
-	d.dimHash = xxh.Sum64()
+    xxh := xxhash.New()
+    for _, val := range labelValues {
+        xxh.WriteString(val)
+        xxh.Write(separatorByteSlice)
+    }
+    d.id = xxh.Sum64()
+    // Sort labelNames so that order doesn't matter for the hash.
+    sort.Strings(labelNames)
+    // Now hash together (in this order) the help string and the sorted
+    // label names.
+    xxh.Reset()
+    xxh.WriteString(help)
+    xxh.Write(separatorByteSlice)
+    for _, labelName := range labelNames {
+        xxh.WriteString(labelName)
+        xxh.Write(separatorByteSlice)
+    }
+    d.dimHash = xxh.Sum64()
 
-	d.constLabelPairs = make([]*dto.LabelPair, 0, len(constLabels))
-	for n, v := range constLabels {
-		d.constLabelPairs = append(d.constLabelPairs, &dto.LabelPair{
-			Name:  proto.String(n),
-			Value: proto.String(v),
-		})
-	}
-	sort.Sort(internal.LabelPairSorter(d.constLabelPairs))
-	return d
+    d.constLabelPairs = make([]*dto.LabelPair, 0, len(constLabels))
+    for n, v := range constLabels {
+        d.constLabelPairs = append(d.constLabelPairs, &dto.LabelPair{
+            Name:  proto.String(n),
+            Value: proto.String(v),
+        })
+    }
+    sort.Sort(internal.LabelPairSorter(d.constLabelPairs))
+    return d
 }
 
 // NewInvalidDesc returns an invalid descriptor, i.e. a descriptor with the
@@ -176,24 +176,32 @@ func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, const
 // registration will fail with the provided error. NewInvalidDesc can be used by
 // a Collector to signal inability to describe itself.
 func NewInvalidDesc(err error) *Desc {
-	return &Desc{
-		err: err,
-	}
+    return &Desc{
+        err: err,
+    }
 }
 
 func (d *Desc) String() string {
-	lpStrings := make([]string, 0, len(d.constLabelPairs))
-	for _, lp := range d.constLabelPairs {
-		lpStrings = append(
-			lpStrings,
-			fmt.Sprintf("%s=%q", lp.GetName(), lp.GetValue()),
-		)
-	}
-	return fmt.Sprintf(
-		"Desc{fqName: %q, help: %q, constLabels: {%s}, variableLabels: %v}",
-		d.fqName,
-		d.help,
-		strings.Join(lpStrings, ","),
-		d.variableLabels,
-	)
+    lpStrings := make([]string, 0, len(d.constLabelPairs))
+    for _, lp := range d.constLabelPairs {
+        lpStrings = append(
+            lpStrings,
+            fmt.Sprintf("%s=%q", lp.GetName(), lp.GetValue()),
+        )
+    }
+    vlStrings := make([]string, 0, len(d.variableLabels.names))
+    for _, vl := range d.variableLabels.names {
+        if fn, ok := d.variableLabels.labelConstraints[vl]; ok && fn != nil {
+            vlStrings = append(vlStrings, fmt.Sprintf("c(%s)", vl))
+        } else {
+            vlStrings = append(vlStrings, vl)
+        }
+    }
+    return fmt.Sprintf(
+        "Desc{fqName: %q, help: %q, constLabels: {%s}, variableLabels: {%s}}",
+        d.fqName,
+        d.help,
+        strings.Join(lpStrings, ","),
+        strings.Join(vlStrings, ","),
+    )
 }

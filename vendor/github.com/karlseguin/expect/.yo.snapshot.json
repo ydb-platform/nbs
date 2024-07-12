@@ -1,0 +1,56 @@
+{
+    "Version": "v1.0.8",
+    "GoVersion": "1.14",
+    "Sum": "h1:Bb0H6IgBWQpadY25UDNkYPDB9ITqK1xnSoZfAq362fw=",
+    "Packages": {
+        "github.com/karlseguin/expect": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/wsxiaoys/terminal/color",
+                "os",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/karlseguin/expect/build": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strconv"
+            ],
+            "TestImports": [
+                "compress/gzip",
+                "github.com/karlseguin/expect",
+                "io",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/karlseguin/expect/mock": {
+            "Imports": [
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

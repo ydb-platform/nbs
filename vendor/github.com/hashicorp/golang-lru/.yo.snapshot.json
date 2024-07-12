@@ -1,0 +1,32 @@
+{
+    "Version": "v1.0.2",
+    "GoVersion": "1.12",
+    "Sum": "h1:dV3g9Z/unq5DpblPpw+Oqcv4dU/1omnb4Ok8iPY6p1c=",
+    "Packages": {
+        "github.com/hashicorp/golang-lru": {
+            "Imports": [
+                "crypto/rand",
+                "fmt",
+                "github.com/hashicorp/golang-lru/simplelru",
+                "math",
+                "math/big",
+                "sync",
+                "testing"
+            ],
+            "TestImports": [
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/golang-lru/simplelru": {
+            "Imports": [
+                "container/list",
+                "errors"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        }
+    }
+}

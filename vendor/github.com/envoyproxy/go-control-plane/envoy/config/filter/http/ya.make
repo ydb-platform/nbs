@@ -1,0 +1,34 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    adaptive_concurrency
+    aws_lambda
+    aws_request_signing
+    buffer
+    cache
+    compressor
+    cors
+    csrf
+    dynamic_forward_proxy
+    dynamo
+    ext_authz
+    fault
+    grpc_http1_bridge
+    grpc_http1_reverse_bridge
+    grpc_stats
+    grpc_web
+    gzip
+    header_to_metadata
+    health_check
+    ip_tagging
+    jwt_authn
+    lua
+    on_demand
+    original_src
+    rate_limit
+    rbac
+    router
+    squash
+    tap
+    transcoder
+)

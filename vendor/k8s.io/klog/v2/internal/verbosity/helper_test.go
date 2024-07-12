@@ -17,5 +17,5 @@ limitations under the License.
 package verbosity
 
 func enabledInHelper(vs *VState, l Level) bool {
-	return vs.Enabled(l, 0)
+    return vs.Enabled(l, 0)
 }

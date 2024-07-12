@@ -20,21 +20,21 @@
 package googlecloud
 
 import (
-	"runtime"
-	"strings"
-	"sync"
+    "runtime"
+    "strings"
+    "sync"
 
-	"google.golang.org/grpc/grpclog"
-	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/grpclog"
+    internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
 const logPrefix = "[googlecloud]"
 
 var (
-	vmOnGCEOnce sync.Once
-	vmOnGCE     bool
+    vmOnGCEOnce sync.Once
+    vmOnGCE     bool
 
-	logger = internalgrpclog.NewPrefixLogger(grpclog.Component("googlecloud"), logPrefix)
+    logger = internalgrpclog.NewPrefixLogger(grpclog.Component("googlecloud"), logPrefix)
 )
 
 // OnGCE returns whether the client is running on GCE.
@@ -42,31 +42,31 @@ var (
 // It provides similar functionality as metadata.OnGCE from the cloud library
 // package. We keep this to avoid depending on the cloud library module.
 func OnGCE() bool {
-	vmOnGCEOnce.Do(func() {
-		mf, err := manufacturer()
-		if err != nil {
-			logger.Infof("failed to read manufacturer, setting onGCE=false: %v")
-			return
-		}
-		vmOnGCE = isRunningOnGCE(mf, runtime.GOOS)
-	})
-	return vmOnGCE
+    vmOnGCEOnce.Do(func() {
+        mf, err := manufacturer()
+        if err != nil {
+            logger.Infof("failed to read manufacturer, setting onGCE=false: %v")
+            return
+        }
+        vmOnGCE = isRunningOnGCE(mf, runtime.GOOS)
+    })
+    return vmOnGCE
 }
 
 // isRunningOnGCE checks whether the local system, without doing a network request, is
 // running on GCP.
 func isRunningOnGCE(manufacturer []byte, goos string) bool {
-	name := string(manufacturer)
-	switch goos {
-	case "linux":
-		name = strings.TrimSpace(name)
-		return name == "Google" || name == "Google Compute Engine"
-	case "windows":
-		name = strings.Replace(name, " ", "", -1)
-		name = strings.Replace(name, "\n", "", -1)
-		name = strings.Replace(name, "\r", "", -1)
-		return name == "Google"
-	default:
-		return false
-	}
+    name := string(manufacturer)
+    switch goos {
+    case "linux":
+        name = strings.TrimSpace(name)
+        return name == "Google" || name == "Google Compute Engine"
+    case "windows":
+        name = strings.Replace(name, " ", "", -1)
+        name = strings.Replace(name, "\n", "", -1)
+        name = strings.Replace(name, "\r", "", -1)
+        return name == "Google"
+    default:
+        return false
+    }
 }

@@ -4,10 +4,10 @@ import "time"
 
 // TimerVec stores multiple dynamically created timers
 type TimerVec interface {
-	With(labels map[string]string) Timer
+    With(labels map[string]string) Timer
 }
 
 // Timer tracks distribution of value.
 type Timer interface {
-	Record(value time.Duration)
+    Record(value time.Duration)
 }

@@ -1,7 +1,7 @@
 package awsutil
 
 import (
-	"reflect"
+    "reflect"
 )
 
 // DeepEqual returns if the two values are deeply equal like reflect.DeepEqual.
@@ -11,17 +11,17 @@ import (
 //
 // DeepEqual will not perform indirection of nested values of the input parameters.
 func DeepEqual(a, b interface{}) bool {
-	ra := reflect.Indirect(reflect.ValueOf(a))
-	rb := reflect.Indirect(reflect.ValueOf(b))
+    ra := reflect.Indirect(reflect.ValueOf(a))
+    rb := reflect.Indirect(reflect.ValueOf(b))
 
-	if raValid, rbValid := ra.IsValid(), rb.IsValid(); !raValid && !rbValid {
-		// If the elements are both nil, and of the same type they are equal
-		// If they are of different types they are not equal
-		return reflect.TypeOf(a) == reflect.TypeOf(b)
-	} else if raValid != rbValid {
-		// Both values must be valid to be equal
-		return false
-	}
+    if raValid, rbValid := ra.IsValid(), rb.IsValid(); !raValid && !rbValid {
+        // If the elements are both nil, and of the same type they are equal
+        // If they are of different types they are not equal
+        return reflect.TypeOf(a) == reflect.TypeOf(b)
+    } else if raValid != rbValid {
+        // Both values must be valid to be equal
+        return false
+    }
 
-	return reflect.DeepEqual(ra.Interface(), rb.Interface())
+    return reflect.DeepEqual(ra.Interface(), rb.Interface())
 }

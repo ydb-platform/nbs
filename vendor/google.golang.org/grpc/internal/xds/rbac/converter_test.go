@@ -17,154 +17,154 @@
 package rbac
 
 import (
-	"reflect"
-	"strings"
-	"testing"
+    "reflect"
+    "strings"
+    "testing"
 
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
-	v3auditloggersstreampb "github.com/envoyproxy/go-control-plane/envoy/extensions/rbac/audit_loggers/stream/v3"
-	"google.golang.org/grpc/authz/audit"
-	"google.golang.org/grpc/authz/audit/stdout"
-	"google.golang.org/grpc/internal/testutils"
-	"google.golang.org/protobuf/types/known/anypb"
+    v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
+    v3auditloggersstreampb "github.com/envoyproxy/go-control-plane/envoy/extensions/rbac/audit_loggers/stream/v3"
+    "google.golang.org/grpc/authz/audit"
+    "google.golang.org/grpc/authz/audit/stdout"
+    "google.golang.org/grpc/internal/testutils"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 func (s) TestBuildLoggerErrors(t *testing.T) {
-	tests := []struct {
-		name           string
-		loggerConfig   *v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig
-		expectedLogger audit.Logger
-		expectedError  string
-	}{
-		{
-			name: "nil typed config",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					TypedConfig: nil,
-				},
-			},
-			expectedError: "missing required field: TypedConfig",
-		},
-		{
-			name: "Unsupported Type",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        "TestAuditLoggerBuffer",
-					TypedConfig: testutils.MarshalAny(&v3rbacpb.RBAC_AuditLoggingOptions{}),
-				},
-			},
-			expectedError: "custom config not implemented for type ",
-		},
-		{
-			name: "Empty name",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        "TestAuditLoggerBuffer",
-					TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, ""),
-				},
-			},
-			expectedError: "field TypedConfig.TypeURL cannot be an empty string",
-		},
-		{
-			name: "No registered logger",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        "UnregisteredLogger",
-					TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "UnregisteredLogger"),
-				},
-				IsOptional: false,
-			},
-			expectedError: "no builder registered for UnregisteredLogger",
-		},
-		{
-			name: "fail to parse custom config",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        "TestAuditLoggerCustomConfig",
-					TypedConfig: createUDPATypedStruct(t, map[string]interface{}{"abc": "BADVALUE", "xyz": "123"}, "fail to parse custom config_TestAuditLoggerCustomConfig")},
-				IsOptional: false,
-			},
-			expectedError: "custom config could not be parsed",
-		},
-		{
-			name: "no registered logger but optional passes",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        "UnregisteredLogger",
-					TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "no registered logger but optional passes_UnregisteredLogger"),
-				},
-				IsOptional: true,
-			},
-			expectedLogger: nil,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			b := TestAuditLoggerCustomConfigBuilder{testName: test.name}
-			audit.RegisterLoggerBuilder(&b)
-			logger, err := buildLogger(test.loggerConfig)
-			if err != nil && !strings.HasPrefix(err.Error(), test.expectedError) {
-				t.Fatalf("expected error: %v. got error: %v", test.expectedError, err)
-			}
-			if logger != test.expectedLogger {
-				t.Fatalf("expected logger: %v. got logger: %v", test.expectedLogger, logger)
-			}
+    tests := []struct {
+        name           string
+        loggerConfig   *v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig
+        expectedLogger audit.Logger
+        expectedError  string
+    }{
+        {
+            name: "nil typed config",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    TypedConfig: nil,
+                },
+            },
+            expectedError: "missing required field: TypedConfig",
+        },
+        {
+            name: "Unsupported Type",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        "TestAuditLoggerBuffer",
+                    TypedConfig: testutils.MarshalAny(&v3rbacpb.RBAC_AuditLoggingOptions{}),
+                },
+            },
+            expectedError: "custom config not implemented for type ",
+        },
+        {
+            name: "Empty name",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        "TestAuditLoggerBuffer",
+                    TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, ""),
+                },
+            },
+            expectedError: "field TypedConfig.TypeURL cannot be an empty string",
+        },
+        {
+            name: "No registered logger",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        "UnregisteredLogger",
+                    TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "UnregisteredLogger"),
+                },
+                IsOptional: false,
+            },
+            expectedError: "no builder registered for UnregisteredLogger",
+        },
+        {
+            name: "fail to parse custom config",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        "TestAuditLoggerCustomConfig",
+                    TypedConfig: createUDPATypedStruct(t, map[string]interface{}{"abc": "BADVALUE", "xyz": "123"}, "fail to parse custom config_TestAuditLoggerCustomConfig")},
+                IsOptional: false,
+            },
+            expectedError: "custom config could not be parsed",
+        },
+        {
+            name: "no registered logger but optional passes",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        "UnregisteredLogger",
+                    TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "no registered logger but optional passes_UnregisteredLogger"),
+                },
+                IsOptional: true,
+            },
+            expectedLogger: nil,
+        },
+    }
+    for _, test := range tests {
+        t.Run(test.name, func(t *testing.T) {
+            b := TestAuditLoggerCustomConfigBuilder{testName: test.name}
+            audit.RegisterLoggerBuilder(&b)
+            logger, err := buildLogger(test.loggerConfig)
+            if err != nil && !strings.HasPrefix(err.Error(), test.expectedError) {
+                t.Fatalf("expected error: %v. got error: %v", test.expectedError, err)
+            }
+            if logger != test.expectedLogger {
+                t.Fatalf("expected logger: %v. got logger: %v", test.expectedLogger, logger)
+            }
 
-		})
-	}
+        })
+    }
 }
 
 func (s) TestBuildLoggerKnownTypes(t *testing.T) {
-	tests := []struct {
-		name         string
-		loggerConfig *v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig
-		expectedType reflect.Type
-	}{
-		{
-			name: "stdout logger",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        stdout.Name,
-					TypedConfig: createStdoutPb(t),
-				},
-				IsOptional: false,
-			},
-			expectedType: reflect.TypeOf(audit.GetLoggerBuilder(stdout.Name).Build(nil)),
-		},
-		{
-			name: "stdout logger with generic TypedConfig",
-			loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
-				AuditLogger: &v3corepb.TypedExtensionConfig{
-					Name:        stdout.Name,
-					TypedConfig: createXDSTypedStruct(t, map[string]interface{}{}, stdout.Name),
-				},
-				IsOptional: false,
-			},
-			expectedType: reflect.TypeOf(audit.GetLoggerBuilder(stdout.Name).Build(nil)),
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			logger, err := buildLogger(test.loggerConfig)
-			if err != nil {
-				t.Fatalf("expected success. got error: %v", err)
-			}
-			loggerType := reflect.TypeOf(logger)
-			if test.expectedType != loggerType {
-				t.Fatalf("logger not of expected type. want: %v got: %v", test.expectedType, loggerType)
-			}
-		})
-	}
+    tests := []struct {
+        name         string
+        loggerConfig *v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig
+        expectedType reflect.Type
+    }{
+        {
+            name: "stdout logger",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        stdout.Name,
+                    TypedConfig: createStdoutPb(t),
+                },
+                IsOptional: false,
+            },
+            expectedType: reflect.TypeOf(audit.GetLoggerBuilder(stdout.Name).Build(nil)),
+        },
+        {
+            name: "stdout logger with generic TypedConfig",
+            loggerConfig: &v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
+                AuditLogger: &v3corepb.TypedExtensionConfig{
+                    Name:        stdout.Name,
+                    TypedConfig: createXDSTypedStruct(t, map[string]interface{}{}, stdout.Name),
+                },
+                IsOptional: false,
+            },
+            expectedType: reflect.TypeOf(audit.GetLoggerBuilder(stdout.Name).Build(nil)),
+        },
+    }
+    for _, test := range tests {
+        t.Run(test.name, func(t *testing.T) {
+            logger, err := buildLogger(test.loggerConfig)
+            if err != nil {
+                t.Fatalf("expected success. got error: %v", err)
+            }
+            loggerType := reflect.TypeOf(logger)
+            if test.expectedType != loggerType {
+                t.Fatalf("logger not of expected type. want: %v got: %v", test.expectedType, loggerType)
+            }
+        })
+    }
 }
 
 // Builds stdout config for audit logger proto.
 func createStdoutPb(t *testing.T) *anypb.Any {
-	t.Helper()
-	pb := &v3auditloggersstreampb.StdoutAuditLog{}
-	customConfig, err := anypb.New(pb)
-	if err != nil {
-		t.Fatalf("createStdoutPb failed during anypb.New: %v", err)
-	}
-	return customConfig
+    t.Helper()
+    pb := &v3auditloggersstreampb.StdoutAuditLog{}
+    customConfig, err := anypb.New(pb)
+    if err != nil {
+        t.Fatalf("createStdoutPb failed during anypb.New: %v", err)
+    }
+    return customConfig
 }

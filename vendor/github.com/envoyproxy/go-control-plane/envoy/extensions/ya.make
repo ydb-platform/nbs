@@ -1,0 +1,39 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    access_loggers
+    bootstrap
+    clusters
+    common
+    compression
+    config
+    early_data
+    filters
+    formatter
+    geoip_providers
+    health_check
+    health_checkers
+    http
+    injected_credentials
+    internal_redirect
+    key_value
+    load_balancing_policies
+    matching
+    network
+    path
+    quic
+    rate_limit_descriptors
+    rbac
+    regex_engines
+    request_id
+    resource_monitors
+    retry
+    router
+    stat_sinks
+    tracers
+    transport_sockets
+    udp_packet_writer
+    upstreams
+    wasm
+    watchdog
+)

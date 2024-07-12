@@ -1,0 +1,19 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    fromproto5
+    fromproto6
+    fromtftypes
+    fwschema
+    fwschemadata
+    fwserver
+    logging
+    privatestate
+    proto5server
+    proto6server
+    reflect
+    testing
+    toproto5
+    toproto6
+    totftypes
+)

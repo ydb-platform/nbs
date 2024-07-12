@@ -1,0 +1,26 @@
+{
+    "Version": "v1.8.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:hT8rVHwugYE2lEfdFE0QWVo81lF7jMrYJVDWI+f+VxU=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/internal/ini": {
+            "Imports": [
+                "fmt",
+                "io",
+                "os",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

@@ -19,21 +19,21 @@
 package e2e
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 )
 
 // DefaultFileWatcherConfig is a helper function to create a default certificate
 // provider plugin configuration. The test is expected to have setup the files
 // appropriately before this configuration is used to instantiate providers.
 func DefaultFileWatcherConfig(certPath, keyPath, caPath string) json.RawMessage {
-	return json.RawMessage(fmt.Sprintf(`{
-			"plugin_name": "file_watcher",
-			"config": {
-				"certificate_file": %q,
-				"private_key_file": %q,
-				"ca_certificate_file": %q,
-				"refresh_interval": "600s"
-			}
-		}`, certPath, keyPath, caPath))
+    return json.RawMessage(fmt.Sprintf(`{
+            "plugin_name": "file_watcher",
+            "config": {
+                "certificate_file": %q,
+                "private_key_file": %q,
+                "ca_certificate_file": %q,
+                "refresh_interval": "600s"
+            }
+        }`, certPath, keyPath, caPath))
 }

@@ -14,17 +14,17 @@
 package procfs
 
 import (
-	"strings"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // CmdLine returns the command line of the kernel.
 func (fs FS) CmdLine() ([]string, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("cmdline"))
-	if err != nil {
-		return nil, err
-	}
+    data, err := util.ReadFileNoStat(fs.proc.Path("cmdline"))
+    if err != nil {
+        return nil, err
+    }
 
-	return strings.Fields(string(data)), nil
+    return strings.Fields(string(data)), nil
 }

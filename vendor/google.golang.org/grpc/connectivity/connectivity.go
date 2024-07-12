@@ -21,7 +21,7 @@
 package connectivity
 
 import (
-	"google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/grpclog"
 )
 
 var logger = grpclog.Component("core")
@@ -31,34 +31,34 @@ var logger = grpclog.Component("core")
 type State int
 
 func (s State) String() string {
-	switch s {
-	case Idle:
-		return "IDLE"
-	case Connecting:
-		return "CONNECTING"
-	case Ready:
-		return "READY"
-	case TransientFailure:
-		return "TRANSIENT_FAILURE"
-	case Shutdown:
-		return "SHUTDOWN"
-	default:
-		logger.Errorf("unknown connectivity state: %d", s)
-		return "INVALID_STATE"
-	}
+    switch s {
+    case Idle:
+        return "IDLE"
+    case Connecting:
+        return "CONNECTING"
+    case Ready:
+        return "READY"
+    case TransientFailure:
+        return "TRANSIENT_FAILURE"
+    case Shutdown:
+        return "SHUTDOWN"
+    default:
+        logger.Errorf("unknown connectivity state: %d", s)
+        return "INVALID_STATE"
+    }
 }
 
 const (
-	// Idle indicates the ClientConn is idle.
-	Idle State = iota
-	// Connecting indicates the ClientConn is connecting.
-	Connecting
-	// Ready indicates the ClientConn is ready for work.
-	Ready
-	// TransientFailure indicates the ClientConn has seen a failure but expects to recover.
-	TransientFailure
-	// Shutdown indicates the ClientConn has started shutting down.
-	Shutdown
+    // Idle indicates the ClientConn is idle.
+    Idle State = iota
+    // Connecting indicates the ClientConn is connecting.
+    Connecting
+    // Ready indicates the ClientConn is ready for work.
+    Ready
+    // TransientFailure indicates the ClientConn has seen a failure but expects to recover.
+    TransientFailure
+    // Shutdown indicates the ClientConn has started shutting down.
+    Shutdown
 )
 
 // ServingMode indicates the current mode of operation of the server.
@@ -67,28 +67,28 @@ const (
 type ServingMode int
 
 const (
-	// ServingModeStarting indicates that the server is starting up.
-	ServingModeStarting ServingMode = iota
-	// ServingModeServing indicates that the server contains all required
-	// configuration and is serving RPCs.
-	ServingModeServing
-	// ServingModeNotServing indicates that the server is not accepting new
-	// connections. Existing connections will be closed gracefully, allowing
-	// in-progress RPCs to complete. A server enters this mode when it does not
-	// contain the required configuration to serve RPCs.
-	ServingModeNotServing
+    // ServingModeStarting indicates that the server is starting up.
+    ServingModeStarting ServingMode = iota
+    // ServingModeServing indicates that the server contains all required
+    // configuration and is serving RPCs.
+    ServingModeServing
+    // ServingModeNotServing indicates that the server is not accepting new
+    // connections. Existing connections will be closed gracefully, allowing
+    // in-progress RPCs to complete. A server enters this mode when it does not
+    // contain the required configuration to serve RPCs.
+    ServingModeNotServing
 )
 
 func (s ServingMode) String() string {
-	switch s {
-	case ServingModeStarting:
-		return "STARTING"
-	case ServingModeServing:
-		return "SERVING"
-	case ServingModeNotServing:
-		return "NOT_SERVING"
-	default:
-		logger.Errorf("unknown serving mode: %d", s)
-		return "INVALID_MODE"
-	}
+    switch s {
+    case ServingModeStarting:
+        return "STARTING"
+    case ServingModeServing:
+        return "SERVING"
+    case ServingModeNotServing:
+        return "NOT_SERVING"
+    default:
+        logger.Errorf("unknown serving mode: %d", s)
+        return "INVALID_MODE"
+    }
 }

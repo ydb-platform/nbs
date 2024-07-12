@@ -17,25 +17,25 @@ package numcpus
 import "golang.org/x/sys/windows"
 
 func getConfigured() (int, error) {
-	return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
+    return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
 }
 
 func getKernelMax() (int, error) {
-	return int(windows.GetMaximumProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
+    return int(windows.GetMaximumProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
 }
 
 func getOffline() (int, error) {
-	return 0, ErrNotSupported
+    return 0, ErrNotSupported
 }
 
 func getOnline() (int, error) {
-	return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
+    return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
 }
 
 func getPossible() (int, error) {
-	return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
+    return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
 }
 
 func getPresent() (int, error) {
-	return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
+    return int(windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)), nil
 }

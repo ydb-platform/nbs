@@ -17,43 +17,43 @@ limitations under the License.
 package textlogger_test
 
 import (
-	"io"
-	"testing"
+    "io"
+    "testing"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 
-	"k8s.io/klog/v2/test"
-	"k8s.io/klog/v2/textlogger"
+    "k8s.io/klog/v2/test"
+    "k8s.io/klog/v2/textlogger"
 )
 
 // These test cover the textlogger, directly and as backend.
 func newLogger(out io.Writer, v int, vmodule string) logr.Logger {
-	config := textlogger.NewConfig(
-		textlogger.Verbosity(v),
-		textlogger.Output(out),
-	)
-	if err := config.VModule().Set(vmodule); err != nil {
-		panic(err)
-	}
-	return textlogger.NewLogger(config)
+    config := textlogger.NewConfig(
+        textlogger.Verbosity(v),
+        textlogger.Output(out),
+    )
+    if err := config.VModule().Set(vmodule); err != nil {
+        panic(err)
+    }
+    return textlogger.NewLogger(config)
 }
 
 var (
-	directConfig   = test.OutputConfig{NewLogger: newLogger, SupportsVModule: true}
-	indirectConfig = test.OutputConfig{NewLogger: newLogger, AsBackend: true}
+    directConfig   = test.OutputConfig{NewLogger: newLogger, SupportsVModule: true}
+    indirectConfig = test.OutputConfig{NewLogger: newLogger, AsBackend: true}
 )
 
 func TestTextloggerOutput(t *testing.T) {
-	test.InitKlog(t)
-	t.Run("direct", func(t *testing.T) {
-		test.Output(t, directConfig)
-	})
-	t.Run("klog-backend", func(t *testing.T) {
-		test.Output(t, indirectConfig)
-	})
+    test.InitKlog(t)
+    t.Run("direct", func(t *testing.T) {
+        test.Output(t, directConfig)
+    })
+    t.Run("klog-backend", func(t *testing.T) {
+        test.Output(t, indirectConfig)
+    })
 }
 
 func BenchmarkTextloggerOutput(b *testing.B) {
-	test.InitKlog(b)
-	test.Benchmark(b, directConfig)
+    test.InitKlog(b)
+    test.Benchmark(b, directConfig)
 }

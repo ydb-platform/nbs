@@ -3,68 +3,68 @@
 package m1cpu
 
 import (
-	"testing"
+    "testing"
 
-	"github.com/shoenig/test/must"
+    "github.com/shoenig/test/must"
 )
 
 const (
-	message = "m1cpu: not a darwin/arm64 system"
+    message = "m1cpu: not a darwin/arm64 system"
 )
 
 func panics(f func()) (message string) {
-	defer func() {
-		if r := recover(); r != nil {
-			message = r.(string)
-		}
-	}()
-	f()
-	return
+    defer func() {
+        if r := recover(); r != nil {
+            message = r.(string)
+        }
+    }()
+    f()
+    return
 }
 
 func Test_IsAppleSilicon(t *testing.T) {
-	result := IsAppleSilicon()
-	must.False(t, result)
+    result := IsAppleSilicon()
+    must.False(t, result)
 }
 
 func check(t *testing.T, f func()) {
-	t.Helper()
-	result := panics(f)
-	must.Eq(t, result, message)
+    t.Helper()
+    result := panics(f)
+    must.Eq(t, result, message)
 }
 
 func Test_PCoreHz(t *testing.T) {
-	check(t, func() { _ = PCoreHz() })
+    check(t, func() { _ = PCoreHz() })
 }
 
 func Test_ECoreHz(t *testing.T) {
-	check(t, func() { _ = ECoreHz() })
+    check(t, func() { _ = ECoreHz() })
 }
 
 func Test_PCoreGHz(t *testing.T) {
-	check(t, func() { _ = PCoreGHz() })
+    check(t, func() { _ = PCoreGHz() })
 }
 
 func Test_ECoreGHz(t *testing.T) {
-	check(t, func() { _ = ECoreGHz() })
+    check(t, func() { _ = ECoreGHz() })
 }
 
 func Test_PCoreCount(t *testing.T) {
-	check(t, func() { _ = PCoreCount() })
+    check(t, func() { _ = PCoreCount() })
 }
 
 func Test_ECoreCount(t *testing.T) {
-	check(t, func() { _ = ECoreCount() })
+    check(t, func() { _ = ECoreCount() })
 }
 
 func Test_PCoreCache(t *testing.T) {
-	check(t, func() { _, _, _ = PCoreCache() })
+    check(t, func() { _, _, _ = PCoreCache() })
 }
 
 func Test_ECoreCache(t *testing.T) {
-	check(t, func() { _, _, _ = ECoreCache() })
+    check(t, func() { _, _, _ = ECoreCache() })
 }
 
 func Test_ModelName(t *testing.T) {
-	check(t, func() { _ = ModelName() })
+    check(t, func() { _ = ModelName() })
 }

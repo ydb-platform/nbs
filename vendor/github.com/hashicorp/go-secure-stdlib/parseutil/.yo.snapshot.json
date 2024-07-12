@@ -1,0 +1,36 @@
+{
+    "Version": "v0.1.7",
+    "GoVersion": "1.16",
+    "Sum": "h1:UpiO20jno/eV1eVZcxqWnUohyKRe1g8FPV/xH1s/2qs=",
+    "Packages": {
+        "github.com/hashicorp/go-secure-stdlib/parseutil": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/go-sockaddr",
+                "github.com/mitchellh/mapstructure",
+                "io/ioutil",
+                "math",
+                "net/url",
+                "os",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "math/cmplx",
+                "os",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -36,7 +36,7 @@ shared config credentials instead specify the session.Options.Profile, (e.g.
 when using credential_source=Environment to assume a role).
 
   sess, err := session.NewSessionWithOptions(session.Options{
-	  Profile: "myProfile",
+      Profile: "myProfile",
   })
 
 Creating Sessions
@@ -46,8 +46,8 @@ profile loaded from the environment and shared config automatically. See,
 "Environment Variables" section for information on environment variables used
 by Session.
 
-	// Create Session
-	sess, err := session.NewSession()
+    // Create Session
+    sess, err := session.NewSession()
 
 
 When creating Sessions optional aws.Config values can be passed in that will
@@ -55,32 +55,32 @@ override the default, or loaded, config values the Session is being created
 with. This allows you to provide additional, or case based, configuration
 as needed.
 
-	// Create a Session with a custom region
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("us-west-2"),
-	})
+    // Create a Session with a custom region
+    sess, err := session.NewSession(&aws.Config{
+        Region: aws.String("us-west-2"),
+    })
 
 Use NewSessionWithOptions to provide additional configuration driving how the
 Session's configuration will be loaded. Such as, specifying shared config
 profile, or override the shared config state,  (AWS_SDK_LOAD_CONFIG).
 
-	// Equivalent to session.NewSession()
-	sess, err := session.NewSessionWithOptions(session.Options{
-		// Options
-	})
+    // Equivalent to session.NewSession()
+    sess, err := session.NewSessionWithOptions(session.Options{
+        // Options
+    })
 
-	sess, err := session.NewSessionWithOptions(session.Options{
-		// Specify profile to load for the session's config
-		Profile: "profile_name",
+    sess, err := session.NewSessionWithOptions(session.Options{
+        // Specify profile to load for the session's config
+        Profile: "profile_name",
 
-		// Provide SDK Config options, such as Region.
-		Config: aws.Config{
-			Region: aws.String("us-west-2"),
-		},
+        // Provide SDK Config options, such as Region.
+        Config: aws.Config{
+            Region: aws.String("us-west-2"),
+        },
 
-		// Force enable Shared Config support
-		SharedConfigState: session.SharedConfigEnable,
-	})
+        // Force enable Shared Config support
+        SharedConfigState: session.SharedConfigEnable,
+    })
 
 Adding Handlers
 
@@ -89,15 +89,15 @@ headers). All clients that use the Session receive a copy of the Session's
 handlers. For example, the following request handler added to the Session logs
 every requests made.
 
-	// Create a session, and add additional handlers for all service
-	// clients created with the Session to inherit. Adds logging handler.
-	sess := session.Must(session.NewSession())
+    // Create a session, and add additional handlers for all service
+    // clients created with the Session to inherit. Adds logging handler.
+    sess := session.Must(session.NewSession())
 
-	sess.Handlers.Send.PushFront(func(r *request.Request) {
-		// Log every request made and its payload
-		logger.Printf("Request: %s/%s, Params: %s",
-			r.ClientInfo.ServiceName, r.Operation, r.Params)
-	})
+    sess.Handlers.Send.PushFront(func(r *request.Request) {
+        // Log every request made and its payload
+        logger.Printf("Request: %s/%s, Params: %s",
+            r.ClientInfo.ServiceName, r.Operation, r.Params)
+    })
 
 Shared Config Fields
 
@@ -124,12 +124,12 @@ considered valid. They will be ignored if both are not present.
 aws_session_token is an optional field that can be provided in addition to the
 other two fields.
 
-	aws_access_key_id = AKID
-	aws_secret_access_key = SECRET
-	aws_session_token = TOKEN
+    aws_access_key_id = AKID
+    aws_secret_access_key = SECRET
+    aws_session_token = TOKEN
 
-	; region only supported if SharedConfigEnabled.
-	region = us-east-1
+    ; region only supported if SharedConfigEnabled.
+    region = us-east-1
 
 Assume Role configuration
 
@@ -140,11 +140,11 @@ fields. If "role_arn" is provided, a source of credentials must also be
 specified, such as "source_profile", "credential_source", or
 "credential_process".
 
-	role_arn = arn:aws:iam::<account_number>:role/<role_name>
-	source_profile = profile_with_creds
-	external_id = 1234
-	mfa_serial = <serial or mfa arn>
-	role_session_name = session_name
+    role_arn = arn:aws:iam::<account_number>:role/<role_name>
+    source_profile = profile_with_creds
+    external_id = 1234
+    mfa_serial = <serial or mfa arn>
+    role_session_name = session_name
 
 
 The SDK supports assuming a role with MFA token. If "mfa_serial" is set, you
@@ -170,35 +170,35 @@ Environment configuration values. If set both Access Key ID and Secret Access
 Key must be provided. Session Token and optionally also be provided, but is
 not required.
 
-	# Access Key ID
-	AWS_ACCESS_KEY_ID=AKID
-	AWS_ACCESS_KEY=AKID # only read if AWS_ACCESS_KEY_ID is not set.
+    # Access Key ID
+    AWS_ACCESS_KEY_ID=AKID
+    AWS_ACCESS_KEY=AKID # only read if AWS_ACCESS_KEY_ID is not set.
 
-	# Secret Access Key
-	AWS_SECRET_ACCESS_KEY=SECRET
-	AWS_SECRET_KEY=SECRET=SECRET # only read if AWS_SECRET_ACCESS_KEY is not set.
+    # Secret Access Key
+    AWS_SECRET_ACCESS_KEY=SECRET
+    AWS_SECRET_KEY=SECRET=SECRET # only read if AWS_SECRET_ACCESS_KEY is not set.
 
-	# Session Token
-	AWS_SESSION_TOKEN=TOKEN
+    # Session Token
+    AWS_SESSION_TOKEN=TOKEN
 
 Region value will instruct the SDK where to make service API requests to. If is
 not provided in the environment the region must be provided before a service
 client request is made.
 
-	AWS_REGION=us-east-1
+    AWS_REGION=us-east-1
 
-	# AWS_DEFAULT_REGION is only read if AWS_SDK_LOAD_CONFIG is also set,
-	# and AWS_REGION is not also set.
-	AWS_DEFAULT_REGION=us-east-1
+    # AWS_DEFAULT_REGION is only read if AWS_SDK_LOAD_CONFIG is also set,
+    # and AWS_REGION is not also set.
+    AWS_DEFAULT_REGION=us-east-1
 
 Profile name the SDK should load use when loading shared config from the
 configuration files. If not provided "default" will be used as the profile name.
 
-	AWS_PROFILE=my_profile
+    AWS_PROFILE=my_profile
 
-	# AWS_DEFAULT_PROFILE is only read if AWS_SDK_LOAD_CONFIG is also set,
-	# and AWS_PROFILE is not also set.
-	AWS_DEFAULT_PROFILE=my_profile
+    # AWS_DEFAULT_PROFILE is only read if AWS_SDK_LOAD_CONFIG is also set,
+    # and AWS_PROFILE is not also set.
+    AWS_DEFAULT_PROFILE=my_profile
 
 SDK load config instructs the SDK to load the shared config in addition to
 shared credentials. This also expands the configuration loaded so the shared
@@ -206,7 +206,7 @@ credentials will have parity with the shared config file. This also enables
 Region and Profile support for the AWS_DEFAULT_REGION and AWS_DEFAULT_PROFILE
 env values as well.
 
-	AWS_SDK_LOAD_CONFIG=1
+    AWS_SDK_LOAD_CONFIG=1
 
 Custom Shared Config and Credential Files
 
@@ -215,14 +215,14 @@ file for the shared credentials. If not set the file will be loaded from
 $HOME/.aws/credentials on Linux/Unix based systems, and
 %USERPROFILE%\.aws\credentials on Windows.
 
-	AWS_SHARED_CREDENTIALS_FILE=$HOME/my_shared_credentials
+    AWS_SHARED_CREDENTIALS_FILE=$HOME/my_shared_credentials
 
 Shared config file path can be set to instruct the SDK to use an alternative
 file for the shared config. If not set the file will be loaded from
 $HOME/.aws/config on Linux/Unix based systems, and
 %USERPROFILE%\.aws\config on Windows.
 
-	AWS_CONFIG_FILE=$HOME/my_shared_config
+    AWS_CONFIG_FILE=$HOME/my_shared_config
 
 Custom CA Bundle
 
@@ -230,7 +230,7 @@ Path to a custom Credentials Authority (CA) bundle PEM file that the SDK
 will use instead of the default system's root CA bundle. Use this only
 if you want to replace the CA bundle the SDK uses for TLS requests.
 
-	AWS_CA_BUNDLE=$HOME/my_custom_ca_bundle
+    AWS_CA_BUNDLE=$HOME/my_custom_ca_bundle
 
 Enabling this option will attempt to merge the Transport into the SDK's HTTP
 client. If the client's Transport is not a http.Transport an error will be
@@ -257,15 +257,15 @@ be returned.
 HTTP Client's Transport concrete implementation must be a http.Transport
 or creating the session will fail.
 
-	AWS_SDK_GO_CLIENT_TLS_KEY=$HOME/my_client_key
-	AWS_SDK_GO_CLIENT_TLS_CERT=$HOME/my_client_cert
+    AWS_SDK_GO_CLIENT_TLS_KEY=$HOME/my_client_key
+    AWS_SDK_GO_CLIENT_TLS_CERT=$HOME/my_client_cert
 
 This can also be configured via the session.Options ClientTLSCert and ClientTLSKey.
 
-	sess, err := session.NewSessionWithOptions(session.Options{
-		ClientTLSCert: myCertFile,
-		ClientTLSKey: myKeyFile,
-	})
+    sess, err := session.NewSessionWithOptions(session.Options{
+        ClientTLSCert: myCertFile,
+        ClientTLSKey: myKeyFile,
+    })
 
 Custom EC2 IMDS Endpoint
 

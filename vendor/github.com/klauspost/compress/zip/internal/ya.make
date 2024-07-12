@@ -1,1 +1,5 @@
-RECURSE(obscuretestdata)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    obscuretestdata
+)

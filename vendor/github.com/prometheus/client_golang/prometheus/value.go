@@ -14,16 +14,17 @@
 package prometheus
 
 import (
-	"fmt"
-	"sort"
-	"time"
-	"unicode/utf8"
+    "errors"
+    "fmt"
+    "sort"
+    "time"
+    "unicode/utf8"
 
-	"github.com/prometheus/client_golang/prometheus/internal"
+    "github.com/prometheus/client_golang/prometheus/internal"
 
-	dto "github.com/prometheus/client_model/go"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    dto "github.com/prometheus/client_model/go"
+    "google.golang.org/protobuf/proto"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // ValueType is an enumeration of metric types that represent a simple value.
@@ -32,27 +33,27 @@ type ValueType int
 // Possible values for the ValueType enum. Use UntypedValue to mark a metric
 // with an unknown type.
 const (
-	_ ValueType = iota
-	CounterValue
-	GaugeValue
-	UntypedValue
+    _ ValueType = iota
+    CounterValue
+    GaugeValue
+    UntypedValue
 )
 
 var (
-	CounterMetricTypePtr = func() *dto.MetricType { d := dto.MetricType_COUNTER; return &d }()
-	GaugeMetricTypePtr   = func() *dto.MetricType { d := dto.MetricType_GAUGE; return &d }()
-	UntypedMetricTypePtr = func() *dto.MetricType { d := dto.MetricType_UNTYPED; return &d }()
+    CounterMetricTypePtr = func() *dto.MetricType { d := dto.MetricType_COUNTER; return &d }()
+    GaugeMetricTypePtr   = func() *dto.MetricType { d := dto.MetricType_GAUGE; return &d }()
+    UntypedMetricTypePtr = func() *dto.MetricType { d := dto.MetricType_UNTYPED; return &d }()
 )
 
 func (v ValueType) ToDTO() *dto.MetricType {
-	switch v {
-	case CounterValue:
-		return CounterMetricTypePtr
-	case GaugeValue:
-		return GaugeMetricTypePtr
-	default:
-		return UntypedMetricTypePtr
-	}
+    switch v {
+    case CounterValue:
+        return CounterMetricTypePtr
+    case GaugeValue:
+        return GaugeMetricTypePtr
+    default:
+        return UntypedMetricTypePtr
+    }
 }
 
 // valueFunc is a generic metric for simple values retrieved on collect time
@@ -61,12 +62,12 @@ func (v ValueType) ToDTO() *dto.MetricType {
 // library to back the implementations of CounterFunc, GaugeFunc, and
 // UntypedFunc.
 type valueFunc struct {
-	selfCollector
+    selfCollector
 
-	desc       *Desc
-	valType    ValueType
-	function   func() float64
-	labelPairs []*dto.LabelPair
+    desc       *Desc
+    valType    ValueType
+    function   func() float64
+    labelPairs []*dto.LabelPair
 }
 
 // newValueFunc returns a newly allocated valueFunc with the given Desc and
@@ -76,22 +77,22 @@ type valueFunc struct {
 // the case where a valueFunc is directly registered with Prometheus, the
 // provided function must be concurrency-safe.
 func newValueFunc(desc *Desc, valueType ValueType, function func() float64) *valueFunc {
-	result := &valueFunc{
-		desc:       desc,
-		valType:    valueType,
-		function:   function,
-		labelPairs: MakeLabelPairs(desc, nil),
-	}
-	result.init(result)
-	return result
+    result := &valueFunc{
+        desc:       desc,
+        valType:    valueType,
+        function:   function,
+        labelPairs: MakeLabelPairs(desc, nil),
+    }
+    result.init(result)
+    return result
 }
 
 func (v *valueFunc) Desc() *Desc {
-	return v.desc
+    return v.desc
 }
 
 func (v *valueFunc) Write(out *dto.Metric) error {
-	return populateMetric(v.valType, v.function(), v.labelPairs, nil, out)
+    return populateMetric(v.valType, v.function(), v.labelPairs, nil, out, nil)
 }
 
 // NewConstMetric returns a metric with one fixed value that cannot be
@@ -102,70 +103,108 @@ func (v *valueFunc) Write(out *dto.Metric) error {
 // labelValues is not consistent with the variable labels in Desc or if Desc is
 // invalid.
 func NewConstMetric(desc *Desc, valueType ValueType, value float64, labelValues ...string) (Metric, error) {
-	if desc.err != nil {
-		return nil, desc.err
-	}
-	if err := validateLabelValues(labelValues, len(desc.variableLabels)); err != nil {
-		return nil, err
-	}
+    if desc.err != nil {
+        return nil, desc.err
+    }
+    if err := validateLabelValues(labelValues, len(desc.variableLabels.names)); err != nil {
+        return nil, err
+    }
 
-	metric := &dto.Metric{}
-	if err := populateMetric(valueType, value, MakeLabelPairs(desc, labelValues), nil, metric); err != nil {
-		return nil, err
-	}
+    metric := &dto.Metric{}
+    if err := populateMetric(valueType, value, MakeLabelPairs(desc, labelValues), nil, metric, nil); err != nil {
+        return nil, err
+    }
 
-	return &constMetric{
-		desc:   desc,
-		metric: metric,
-	}, nil
+    return &constMetric{
+        desc:   desc,
+        metric: metric,
+    }, nil
 }
 
 // MustNewConstMetric is a version of NewConstMetric that panics where
 // NewConstMetric would have returned an error.
 func MustNewConstMetric(desc *Desc, valueType ValueType, value float64, labelValues ...string) Metric {
-	m, err := NewConstMetric(desc, valueType, value, labelValues...)
-	if err != nil {
-		panic(err)
-	}
-	return m
+    m, err := NewConstMetric(desc, valueType, value, labelValues...)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+
+// NewConstMetricWithCreatedTimestamp does the same thing as NewConstMetric, but generates Counters
+// with created timestamp set and returns an error for other metric types.
+func NewConstMetricWithCreatedTimestamp(desc *Desc, valueType ValueType, value float64, ct time.Time, labelValues ...string) (Metric, error) {
+    if desc.err != nil {
+        return nil, desc.err
+    }
+    if err := validateLabelValues(labelValues, len(desc.variableLabels.names)); err != nil {
+        return nil, err
+    }
+    switch valueType {
+    case CounterValue:
+        break
+    default:
+        return nil, errors.New("created timestamps are only supported for counters")
+    }
+
+    metric := &dto.Metric{}
+    if err := populateMetric(valueType, value, MakeLabelPairs(desc, labelValues), nil, metric, timestamppb.New(ct)); err != nil {
+        return nil, err
+    }
+
+    return &constMetric{
+        desc:   desc,
+        metric: metric,
+    }, nil
+}
+
+// MustNewConstMetricWithCreatedTimestamp is a version of NewConstMetricWithCreatedTimestamp that panics where
+// NewConstMetricWithCreatedTimestamp would have returned an error.
+func MustNewConstMetricWithCreatedTimestamp(desc *Desc, valueType ValueType, value float64, ct time.Time, labelValues ...string) Metric {
+    m, err := NewConstMetricWithCreatedTimestamp(desc, valueType, value, ct, labelValues...)
+    if err != nil {
+        panic(err)
+    }
+    return m
 }
 
 type constMetric struct {
-	desc   *Desc
-	metric *dto.Metric
+    desc   *Desc
+    metric *dto.Metric
 }
 
 func (m *constMetric) Desc() *Desc {
-	return m.desc
+    return m.desc
 }
 
 func (m *constMetric) Write(out *dto.Metric) error {
-	out.Label = m.metric.Label
-	out.Counter = m.metric.Counter
-	out.Gauge = m.metric.Gauge
-	out.Untyped = m.metric.Untyped
-	return nil
+    out.Label = m.metric.Label
+    out.Counter = m.metric.Counter
+    out.Gauge = m.metric.Gauge
+    out.Untyped = m.metric.Untyped
+    return nil
 }
 
 func populateMetric(
-	t ValueType,
-	v float64,
-	labelPairs []*dto.LabelPair,
-	e *dto.Exemplar,
-	m *dto.Metric,
+    t ValueType,
+    v float64,
+    labelPairs []*dto.LabelPair,
+    e *dto.Exemplar,
+    m *dto.Metric,
+    ct *timestamppb.Timestamp,
 ) error {
-	m.Label = labelPairs
-	switch t {
-	case CounterValue:
-		m.Counter = &dto.Counter{Value: proto.Float64(v), Exemplar: e}
-	case GaugeValue:
-		m.Gauge = &dto.Gauge{Value: proto.Float64(v)}
-	case UntypedValue:
-		m.Untyped = &dto.Untyped{Value: proto.Float64(v)}
-	default:
-		return fmt.Errorf("encountered unknown type %v", t)
-	}
-	return nil
+    m.Label = labelPairs
+    switch t {
+    case CounterValue:
+        m.Counter = &dto.Counter{Value: proto.Float64(v), Exemplar: e, CreatedTimestamp: ct}
+    case GaugeValue:
+        m.Gauge = &dto.Gauge{Value: proto.Float64(v)}
+    case UntypedValue:
+        m.Untyped = &dto.Untyped{Value: proto.Float64(v)}
+    default:
+        return fmt.Errorf("encountered unknown type %v", t)
+    }
+    return nil
 }
 
 // MakeLabelPairs is a helper function to create protobuf LabelPairs from the
@@ -176,25 +215,25 @@ func populateMetric(
 // This function is only needed for custom Metric implementations. See MetricVec
 // example.
 func MakeLabelPairs(desc *Desc, labelValues []string) []*dto.LabelPair {
-	totalLen := len(desc.variableLabels) + len(desc.constLabelPairs)
-	if totalLen == 0 {
-		// Super fast path.
-		return nil
-	}
-	if len(desc.variableLabels) == 0 {
-		// Moderately fast path.
-		return desc.constLabelPairs
-	}
-	labelPairs := make([]*dto.LabelPair, 0, totalLen)
-	for i, l := range desc.variableLabels {
-		labelPairs = append(labelPairs, &dto.LabelPair{
-			Name:  proto.String(l.Name),
-			Value: proto.String(labelValues[i]),
-		})
-	}
-	labelPairs = append(labelPairs, desc.constLabelPairs...)
-	sort.Sort(internal.LabelPairSorter(labelPairs))
-	return labelPairs
+    totalLen := len(desc.variableLabels.names) + len(desc.constLabelPairs)
+    if totalLen == 0 {
+        // Super fast path.
+        return nil
+    }
+    if len(desc.variableLabels.names) == 0 {
+        // Moderately fast path.
+        return desc.constLabelPairs
+    }
+    labelPairs := make([]*dto.LabelPair, 0, totalLen)
+    for i, l := range desc.variableLabels.names {
+        labelPairs = append(labelPairs, &dto.LabelPair{
+            Name:  proto.String(l),
+            Value: proto.String(labelValues[i]),
+        })
+    }
+    labelPairs = append(labelPairs, desc.constLabelPairs...)
+    sort.Sort(internal.LabelPairSorter(labelPairs))
+    return labelPairs
 }
 
 // ExemplarMaxRunes is the max total number of runes allowed in exemplar labels.
@@ -204,32 +243,32 @@ const ExemplarMaxRunes = 128
 // returned if any of the label names or values are invalid or if the total
 // number of runes in the label names and values exceeds ExemplarMaxRunes.
 func newExemplar(value float64, ts time.Time, l Labels) (*dto.Exemplar, error) {
-	e := &dto.Exemplar{}
-	e.Value = proto.Float64(value)
-	tsProto := timestamppb.New(ts)
-	if err := tsProto.CheckValid(); err != nil {
-		return nil, err
-	}
-	e.Timestamp = tsProto
-	labelPairs := make([]*dto.LabelPair, 0, len(l))
-	var runes int
-	for name, value := range l {
-		if !checkLabelName(name) {
-			return nil, fmt.Errorf("exemplar label name %q is invalid", name)
-		}
-		runes += utf8.RuneCountInString(name)
-		if !utf8.ValidString(value) {
-			return nil, fmt.Errorf("exemplar label value %q is not valid UTF-8", value)
-		}
-		runes += utf8.RuneCountInString(value)
-		labelPairs = append(labelPairs, &dto.LabelPair{
-			Name:  proto.String(name),
-			Value: proto.String(value),
-		})
-	}
-	if runes > ExemplarMaxRunes {
-		return nil, fmt.Errorf("exemplar labels have %d runes, exceeding the limit of %d", runes, ExemplarMaxRunes)
-	}
-	e.Label = labelPairs
-	return e, nil
+    e := &dto.Exemplar{}
+    e.Value = proto.Float64(value)
+    tsProto := timestamppb.New(ts)
+    if err := tsProto.CheckValid(); err != nil {
+        return nil, err
+    }
+    e.Timestamp = tsProto
+    labelPairs := make([]*dto.LabelPair, 0, len(l))
+    var runes int
+    for name, value := range l {
+        if !checkLabelName(name) {
+            return nil, fmt.Errorf("exemplar label name %q is invalid", name)
+        }
+        runes += utf8.RuneCountInString(name)
+        if !utf8.ValidString(value) {
+            return nil, fmt.Errorf("exemplar label value %q is not valid UTF-8", value)
+        }
+        runes += utf8.RuneCountInString(value)
+        labelPairs = append(labelPairs, &dto.LabelPair{
+            Name:  proto.String(name),
+            Value: proto.String(value),
+        })
+    }
+    if runes > ExemplarMaxRunes {
+        return nil, fmt.Errorf("exemplar labels have %d runes, exceeding the limit of %d", runes, ExemplarMaxRunes)
+    }
+    e.Label = labelPairs
+    return e, nil
 }

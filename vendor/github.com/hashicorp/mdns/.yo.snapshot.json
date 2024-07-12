@@ -1,0 +1,30 @@
+{
+    "Version": "v1.0.5",
+    "GoVersion": "1.13",
+    "Sum": "h1:1M5hW1cunYeoXOqHwEb/GBDDHAFo0Yqb/uz/beC6LbE=",
+    "Packages": {
+        "github.com/hashicorp/mdns": {
+            "Imports": [
+                "fmt",
+                "github.com/miekg/dns",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/ipv6",
+                "log",
+                "net",
+                "os",
+                "strings",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/miekg/dns",
+                "net",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

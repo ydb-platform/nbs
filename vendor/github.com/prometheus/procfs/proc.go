@@ -14,32 +14,32 @@
 package procfs
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"io"
-	"os"
-	"strconv"
-	"strings"
+    "bytes"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // Proc provides information about a running process.
 type Proc struct {
-	// The process ID.
-	PID int
+    // The process ID.
+    PID int
 
-	fs FS
+    fs FS
 }
 
 // Procs represents a list of Proc structs.
 type Procs []Proc
 
 var (
-	ErrFileParse  = errors.New("Error Parsing File")
-	ErrFileRead   = errors.New("Error Reading File")
-	ErrMountPoint = errors.New("Error Accessing Mount point")
+    ErrFileParse  = errors.New("Error Parsing File")
+    ErrFileRead   = errors.New("Error Reading File")
+    ErrMountPoint = errors.New("Error Accessing Mount point")
 )
 
 func (p Procs) Len() int           { return len(p) }
@@ -48,232 +48,232 @@ func (p Procs) Less(i, j int) bool { return p[i].PID < p[j].PID }
 
 // Self returns a process for the current process read via /proc/self.
 func Self() (Proc, error) {
-	fs, err := NewFS(DefaultMountPoint)
-	if err != nil || errors.Unwrap(err) == ErrMountPoint {
-		return Proc{}, err
-	}
-	return fs.Self()
+    fs, err := NewFS(DefaultMountPoint)
+    if err != nil || errors.Unwrap(err) == ErrMountPoint {
+        return Proc{}, err
+    }
+    return fs.Self()
 }
 
 // NewProc returns a process for the given pid under /proc.
 func NewProc(pid int) (Proc, error) {
-	fs, err := NewFS(DefaultMountPoint)
-	if err != nil {
-		return Proc{}, err
-	}
-	return fs.Proc(pid)
+    fs, err := NewFS(DefaultMountPoint)
+    if err != nil {
+        return Proc{}, err
+    }
+    return fs.Proc(pid)
 }
 
 // AllProcs returns a list of all currently available processes under /proc.
 func AllProcs() (Procs, error) {
-	fs, err := NewFS(DefaultMountPoint)
-	if err != nil {
-		return Procs{}, err
-	}
-	return fs.AllProcs()
+    fs, err := NewFS(DefaultMountPoint)
+    if err != nil {
+        return Procs{}, err
+    }
+    return fs.AllProcs()
 }
 
 // Self returns a process for the current process.
 func (fs FS) Self() (Proc, error) {
-	p, err := os.Readlink(fs.proc.Path("self"))
-	if err != nil {
-		return Proc{}, err
-	}
-	pid, err := strconv.Atoi(strings.Replace(p, string(fs.proc), "", -1))
-	if err != nil {
-		return Proc{}, err
-	}
-	return fs.Proc(pid)
+    p, err := os.Readlink(fs.proc.Path("self"))
+    if err != nil {
+        return Proc{}, err
+    }
+    pid, err := strconv.Atoi(strings.Replace(p, string(fs.proc), "", -1))
+    if err != nil {
+        return Proc{}, err
+    }
+    return fs.Proc(pid)
 }
 
 // NewProc returns a process for the given pid.
 //
 // Deprecated: Use fs.Proc() instead.
 func (fs FS) NewProc(pid int) (Proc, error) {
-	return fs.Proc(pid)
+    return fs.Proc(pid)
 }
 
 // Proc returns a process for the given pid.
 func (fs FS) Proc(pid int) (Proc, error) {
-	if _, err := os.Stat(fs.proc.Path(strconv.Itoa(pid))); err != nil {
-		return Proc{}, err
-	}
-	return Proc{PID: pid, fs: fs}, nil
+    if _, err := os.Stat(fs.proc.Path(strconv.Itoa(pid))); err != nil {
+        return Proc{}, err
+    }
+    return Proc{PID: pid, fs: fs}, nil
 }
 
 // AllProcs returns a list of all currently available processes.
 func (fs FS) AllProcs() (Procs, error) {
-	d, err := os.Open(fs.proc.Path())
-	if err != nil {
-		return Procs{}, err
-	}
-	defer d.Close()
+    d, err := os.Open(fs.proc.Path())
+    if err != nil {
+        return Procs{}, err
+    }
+    defer d.Close()
 
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return Procs{}, fmt.Errorf("%s: Cannot read file: %v: %w", ErrFileRead, names, err)
-	}
+    names, err := d.Readdirnames(-1)
+    if err != nil {
+        return Procs{}, fmt.Errorf("%s: Cannot read file: %v: %w", ErrFileRead, names, err)
+    }
 
-	p := Procs{}
-	for _, n := range names {
-		pid, err := strconv.ParseInt(n, 10, 64)
-		if err != nil {
-			continue
-		}
-		p = append(p, Proc{PID: int(pid), fs: fs})
-	}
+    p := Procs{}
+    for _, n := range names {
+        pid, err := strconv.ParseInt(n, 10, 64)
+        if err != nil {
+            continue
+        }
+        p = append(p, Proc{PID: int(pid), fs: fs})
+    }
 
-	return p, nil
+    return p, nil
 }
 
 // CmdLine returns the command line of a process.
 func (p Proc) CmdLine() ([]string, error) {
-	data, err := util.ReadFileNoStat(p.path("cmdline"))
-	if err != nil {
-		return nil, err
-	}
+    data, err := util.ReadFileNoStat(p.path("cmdline"))
+    if err != nil {
+        return nil, err
+    }
 
-	if len(data) < 1 {
-		return []string{}, nil
-	}
+    if len(data) < 1 {
+        return []string{}, nil
+    }
 
-	return strings.Split(string(bytes.TrimRight(data, string("\x00"))), string(byte(0))), nil
+    return strings.Split(string(bytes.TrimRight(data, string("\x00"))), string(byte(0))), nil
 }
 
 // Wchan returns the wchan (wait channel) of a process.
 func (p Proc) Wchan() (string, error) {
-	f, err := os.Open(p.path("wchan"))
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
+    f, err := os.Open(p.path("wchan"))
+    if err != nil {
+        return "", err
+    }
+    defer f.Close()
 
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return "", err
-	}
+    data, err := io.ReadAll(f)
+    if err != nil {
+        return "", err
+    }
 
-	wchan := string(data)
-	if wchan == "" || wchan == "0" {
-		return "", nil
-	}
+    wchan := string(data)
+    if wchan == "" || wchan == "0" {
+        return "", nil
+    }
 
-	return wchan, nil
+    return wchan, nil
 }
 
 // Comm returns the command name of a process.
 func (p Proc) Comm() (string, error) {
-	data, err := util.ReadFileNoStat(p.path("comm"))
-	if err != nil {
-		return "", err
-	}
+    data, err := util.ReadFileNoStat(p.path("comm"))
+    if err != nil {
+        return "", err
+    }
 
-	return strings.TrimSpace(string(data)), nil
+    return strings.TrimSpace(string(data)), nil
 }
 
 // Executable returns the absolute path of the executable command of a process.
 func (p Proc) Executable() (string, error) {
-	exe, err := os.Readlink(p.path("exe"))
-	if os.IsNotExist(err) {
-		return "", nil
-	}
+    exe, err := os.Readlink(p.path("exe"))
+    if os.IsNotExist(err) {
+        return "", nil
+    }
 
-	return exe, err
+    return exe, err
 }
 
 // Cwd returns the absolute path to the current working directory of the process.
 func (p Proc) Cwd() (string, error) {
-	wd, err := os.Readlink(p.path("cwd"))
-	if os.IsNotExist(err) {
-		return "", nil
-	}
+    wd, err := os.Readlink(p.path("cwd"))
+    if os.IsNotExist(err) {
+        return "", nil
+    }
 
-	return wd, err
+    return wd, err
 }
 
 // RootDir returns the absolute path to the process's root directory (as set by chroot).
 func (p Proc) RootDir() (string, error) {
-	rdir, err := os.Readlink(p.path("root"))
-	if os.IsNotExist(err) {
-		return "", nil
-	}
+    rdir, err := os.Readlink(p.path("root"))
+    if os.IsNotExist(err) {
+        return "", nil
+    }
 
-	return rdir, err
+    return rdir, err
 }
 
 // FileDescriptors returns the currently open file descriptors of a process.
 func (p Proc) FileDescriptors() ([]uintptr, error) {
-	names, err := p.fileDescriptors()
-	if err != nil {
-		return nil, err
-	}
+    names, err := p.fileDescriptors()
+    if err != nil {
+        return nil, err
+    }
 
-	fds := make([]uintptr, len(names))
-	for i, n := range names {
-		fd, err := strconv.ParseInt(n, 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("%s: Cannot parse line: %v: %w", ErrFileParse, i, err)
-		}
-		fds[i] = uintptr(fd)
-	}
+    fds := make([]uintptr, len(names))
+    for i, n := range names {
+        fd, err := strconv.ParseInt(n, 10, 32)
+        if err != nil {
+            return nil, fmt.Errorf("%s: Cannot parse line: %v: %w", ErrFileParse, i, err)
+        }
+        fds[i] = uintptr(fd)
+    }
 
-	return fds, nil
+    return fds, nil
 }
 
 // FileDescriptorTargets returns the targets of all file descriptors of a process.
 // If a file descriptor is not a symlink to a file (like a socket), that value will be the empty string.
 func (p Proc) FileDescriptorTargets() ([]string, error) {
-	names, err := p.fileDescriptors()
-	if err != nil {
-		return nil, err
-	}
+    names, err := p.fileDescriptors()
+    if err != nil {
+        return nil, err
+    }
 
-	targets := make([]string, len(names))
+    targets := make([]string, len(names))
 
-	for i, name := range names {
-		target, err := os.Readlink(p.path("fd", name))
-		if err == nil {
-			targets[i] = target
-		}
-	}
+    for i, name := range names {
+        target, err := os.Readlink(p.path("fd", name))
+        if err == nil {
+            targets[i] = target
+        }
+    }
 
-	return targets, nil
+    return targets, nil
 }
 
 // FileDescriptorsLen returns the number of currently open file descriptors of
 // a process.
 func (p Proc) FileDescriptorsLen() (int, error) {
-	// Use fast path if available (Linux v6.2): https://github.com/torvalds/linux/commit/f1f1f2569901
-	if p.fs.isReal {
-		stat, err := os.Stat(p.path("fd"))
-		if err != nil {
-			return 0, err
-		}
+    // Use fast path if available (Linux v6.2): https://github.com/torvalds/linux/commit/f1f1f2569901
+    if p.fs.isReal {
+        stat, err := os.Stat(p.path("fd"))
+        if err != nil {
+            return 0, err
+        }
 
-		size := stat.Size()
-		if size > 0 {
-			return int(size), nil
-		}
-	}
+        size := stat.Size()
+        if size > 0 {
+            return int(size), nil
+        }
+    }
 
-	fds, err := p.fileDescriptors()
-	if err != nil {
-		return 0, err
-	}
+    fds, err := p.fileDescriptors()
+    if err != nil {
+        return 0, err
+    }
 
-	return len(fds), nil
+    return len(fds), nil
 }
 
 // MountStats retrieves statistics and configuration for mount points in a
 // process's namespace.
 func (p Proc) MountStats() ([]*Mount, error) {
-	f, err := os.Open(p.path("mountstats"))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+    f, err := os.Open(p.path("mountstats"))
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-	return parseMountStats(f)
+    return parseMountStats(f)
 }
 
 // MountInfo retrieves mount information for mount points in a
@@ -281,58 +281,58 @@ func (p Proc) MountStats() ([]*Mount, error) {
 // It supplies information missing in `/proc/self/mounts` and
 // fixes various other problems with that file too.
 func (p Proc) MountInfo() ([]*MountInfo, error) {
-	data, err := util.ReadFileNoStat(p.path("mountinfo"))
-	if err != nil {
-		return nil, err
-	}
-	return parseMountInfo(data)
+    data, err := util.ReadFileNoStat(p.path("mountinfo"))
+    if err != nil {
+        return nil, err
+    }
+    return parseMountInfo(data)
 }
 
 func (p Proc) fileDescriptors() ([]string, error) {
-	d, err := os.Open(p.path("fd"))
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
+    d, err := os.Open(p.path("fd"))
+    if err != nil {
+        return nil, err
+    }
+    defer d.Close()
 
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return nil, fmt.Errorf("%s: Cannot read file: %v: %w", ErrFileRead, names, err)
-	}
+    names, err := d.Readdirnames(-1)
+    if err != nil {
+        return nil, fmt.Errorf("%s: Cannot read file: %v: %w", ErrFileRead, names, err)
+    }
 
-	return names, nil
+    return names, nil
 }
 
 func (p Proc) path(pa ...string) string {
-	return p.fs.proc.Path(append([]string{strconv.Itoa(p.PID)}, pa...)...)
+    return p.fs.proc.Path(append([]string{strconv.Itoa(p.PID)}, pa...)...)
 }
 
 // FileDescriptorsInfo retrieves information about all file descriptors of
 // the process.
 func (p Proc) FileDescriptorsInfo() (ProcFDInfos, error) {
-	names, err := p.fileDescriptors()
-	if err != nil {
-		return nil, err
-	}
+    names, err := p.fileDescriptors()
+    if err != nil {
+        return nil, err
+    }
 
-	var fdinfos ProcFDInfos
+    var fdinfos ProcFDInfos
 
-	for _, n := range names {
-		fdinfo, err := p.FDInfo(n)
-		if err != nil {
-			continue
-		}
-		fdinfos = append(fdinfos, *fdinfo)
-	}
+    for _, n := range names {
+        fdinfo, err := p.FDInfo(n)
+        if err != nil {
+            continue
+        }
+        fdinfos = append(fdinfos, *fdinfo)
+    }
 
-	return fdinfos, nil
+    return fdinfos, nil
 }
 
 // Schedstat returns task scheduling information for the process.
 func (p Proc) Schedstat() (ProcSchedstat, error) {
-	contents, err := os.ReadFile(p.path("schedstat"))
-	if err != nil {
-		return ProcSchedstat{}, err
-	}
-	return parseProcSchedstat(string(contents))
+    contents, err := os.ReadFile(p.path("schedstat"))
+    if err != nil {
+        return ProcSchedstat{}, err
+    }
+    return parseProcSchedstat(string(contents))
 }

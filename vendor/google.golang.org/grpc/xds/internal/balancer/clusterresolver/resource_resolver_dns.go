@@ -19,33 +19,33 @@
 package clusterresolver
 
 import (
-	"fmt"
-	"net/url"
-	"sync"
+    "fmt"
+    "net/url"
+    "sync"
 
-	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/serviceconfig"
+    "google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/serviceconfig"
 )
 
 var (
-	newDNS = func(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
-		// The dns resolver is registered by the grpc package. So, this call to
-		// resolver.Get() is never expected to return nil.
-		return resolver.Get("dns").Build(target, cc, opts)
-	}
+    newDNS = func(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+        // The dns resolver is registered by the grpc package. So, this call to
+        // resolver.Get() is never expected to return nil.
+        return resolver.Get("dns").Build(target, cc, opts)
+    }
 )
 
 // dnsDiscoveryMechanism watches updates for the given DNS hostname.
 //
 // It implements resolver.ClientConn interface to work with the DNS resolver.
 type dnsDiscoveryMechanism struct {
-	target           string
-	topLevelResolver topLevelResolver
-	dnsR             resolver.Resolver
+    target           string
+    topLevelResolver topLevelResolver
+    dnsR             resolver.Resolver
 
-	mu             sync.Mutex
-	addrs          []string
-	updateReceived bool
+    mu             sync.Mutex
+    addrs          []string
+    updateReceived bool
 }
 
 // newDNSResolver creates an endpoints resolver which uses a DNS resolver under
@@ -65,39 +65,39 @@ type dnsDiscoveryMechanism struct {
 // The `dnsR` field is unset if we run into erros in this function. Therefore, a
 // nil check is required wherever we access that field.
 func newDNSResolver(target string, topLevelResolver topLevelResolver) *dnsDiscoveryMechanism {
-	ret := &dnsDiscoveryMechanism{
-		target:           target,
-		topLevelResolver: topLevelResolver,
-	}
-	u, err := url.Parse("dns:///" + target)
-	if err != nil {
-		topLevelResolver.onError(fmt.Errorf("failed to parse dns hostname %q in clusterresolver LB policy", target))
-		return ret
-	}
+    ret := &dnsDiscoveryMechanism{
+        target:           target,
+        topLevelResolver: topLevelResolver,
+    }
+    u, err := url.Parse("dns:///" + target)
+    if err != nil {
+        topLevelResolver.onError(fmt.Errorf("failed to parse dns hostname %q in clusterresolver LB policy", target))
+        return ret
+    }
 
-	r, err := newDNS(resolver.Target{Scheme: "dns", URL: *u}, ret, resolver.BuildOptions{})
-	if err != nil {
-		topLevelResolver.onError(fmt.Errorf("failed to build DNS resolver for target %q: %v", target, err))
-		return ret
-	}
-	ret.dnsR = r
-	return ret
+    r, err := newDNS(resolver.Target{Scheme: "dns", URL: *u}, ret, resolver.BuildOptions{})
+    if err != nil {
+        topLevelResolver.onError(fmt.Errorf("failed to build DNS resolver for target %q: %v", target, err))
+        return ret
+    }
+    ret.dnsR = r
+    return ret
 }
 
 func (dr *dnsDiscoveryMechanism) lastUpdate() (interface{}, bool) {
-	dr.mu.Lock()
-	defer dr.mu.Unlock()
+    dr.mu.Lock()
+    defer dr.mu.Unlock()
 
-	if !dr.updateReceived {
-		return nil, false
-	}
-	return dr.addrs, true
+    if !dr.updateReceived {
+        return nil, false
+    }
+    return dr.addrs, true
 }
 
 func (dr *dnsDiscoveryMechanism) resolveNow() {
-	if dr.dnsR != nil {
-		dr.dnsR.ResolveNow(resolver.ResolveNowOptions{})
-	}
+    if dr.dnsR != nil {
+        dr.dnsR.ResolveNow(resolver.ResolveNowOptions{})
+    }
 }
 
 // The definition of stop() mentions that implementations must not invoke any
@@ -107,40 +107,40 @@ func (dr *dnsDiscoveryMechanism) resolveNow() {
 // after its `Close()` returns. Therefore, we can guarantee that no methods of
 // the topLevelResolver are invoked after we return from this method.
 func (dr *dnsDiscoveryMechanism) stop() {
-	if dr.dnsR != nil {
-		dr.dnsR.Close()
-	}
+    if dr.dnsR != nil {
+        dr.dnsR.Close()
+    }
 }
 
 // dnsDiscoveryMechanism needs to implement resolver.ClientConn interface to receive
 // updates from the real DNS resolver.
 
 func (dr *dnsDiscoveryMechanism) UpdateState(state resolver.State) error {
-	dr.mu.Lock()
-	addrs := make([]string, len(state.Addresses))
-	for i, a := range state.Addresses {
-		addrs[i] = a.Addr
-	}
-	dr.addrs = addrs
-	dr.updateReceived = true
-	dr.mu.Unlock()
+    dr.mu.Lock()
+    addrs := make([]string, len(state.Addresses))
+    for i, a := range state.Addresses {
+        addrs[i] = a.Addr
+    }
+    dr.addrs = addrs
+    dr.updateReceived = true
+    dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate()
-	return nil
+    dr.topLevelResolver.onUpdate()
+    return nil
 }
 
 func (dr *dnsDiscoveryMechanism) ReportError(err error) {
-	dr.topLevelResolver.onError(err)
+    dr.topLevelResolver.onError(err)
 }
 
 func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {
-	dr.UpdateState(resolver.State{Addresses: addresses})
+    dr.UpdateState(resolver.State{Addresses: addresses})
 }
 
 func (dr *dnsDiscoveryMechanism) NewServiceConfig(string) {
-	// This method is deprecated, and service config isn't supported.
+    // This method is deprecated, and service config isn't supported.
 }
 
 func (dr *dnsDiscoveryMechanism) ParseServiceConfig(string) *serviceconfig.ParseResult {
-	return &serviceconfig.ParseResult{Err: fmt.Errorf("service config not supported")}
+    return &serviceconfig.ParseResult{Err: fmt.Errorf("service config not supported")}
 }

@@ -1,0 +1,32 @@
+{
+    "Version": "v0.7.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:XWM3V+MPRr5/q51NuWSgU0fqMad64Zyxs8ZUoMsamr8=",
+    "Packages": {
+        "github.com/coreos/go-iptables/iptables": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "io",
+                "net",
+                "os",
+                "os/exec",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "fmt",
+                "math/big",
+                "net",
+                "os",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

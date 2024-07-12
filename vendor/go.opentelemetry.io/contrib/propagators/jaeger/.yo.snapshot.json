@@ -1,0 +1,31 @@
+{
+    "Version": "v1.11.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:Gw+P9NQzw4bjNGZXsoDhwwDWLnk4Y1waF8MQZAq/eYM=",
+    "Packages": {
+        "go.opentelemetry.io/contrib/propagators/jaeger": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/trace",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/contrib/propagators/jaeger",
+                "go.opentelemetry.io/otel",
+                "go.opentelemetry.io/otel/propagation",
+                "go.opentelemetry.io/otel/trace",
+                "net/http",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

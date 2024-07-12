@@ -15,17 +15,18 @@
 package cache
 
 import (
-	"sync"
-	"time"
+    "sort"
+    "sync"
+    "time"
 
-	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
+    core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    "github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 )
 
 // NodeHash computes string identifiers for Envoy nodes.
 type NodeHash interface {
-	// ID function defines a unique string identifier for the remote Envoy node.
-	ID(node *core.Node) string
+    // ID function defines a unique string identifier for the remote Envoy node.
+    ID(node *core.Node) string
 }
 
 // IDHash uses ID field as the node hash.
@@ -33,125 +34,166 @@ type IDHash struct{}
 
 // ID uses the node ID field
 func (IDHash) ID(node *core.Node) string {
-	if node == nil {
-		return ""
-	}
-	return node.Id
+    if node == nil {
+        return ""
+    }
+    return node.GetId()
 }
 
 var _ NodeHash = IDHash{}
 
 // StatusInfo publishes information about nodes that are watching the xDS cache.
 type StatusInfo interface {
-	// GetNode returns the node metadata.
-	GetNode() *core.Node
+    // GetNode returns the node metadata.
+    GetNode() *core.Node
 
-	// GetNumWatches returns the number of open watches.
-	GetNumWatches() int
+    // GetNumWatches returns the number of open watches.
+    GetNumWatches() int
 
-	// GetNumDeltaWatches returns the number of open delta watches.
-	GetNumDeltaWatches() int
+    // GetNumDeltaWatches returns the number of open delta watches.
+    GetNumDeltaWatches() int
 
-	// GetLastWatchRequestTime returns the timestamp of the last discovery watch request.
-	GetLastWatchRequestTime() time.Time
+    // GetLastWatchRequestTime returns the timestamp of the last discovery watch request.
+    GetLastWatchRequestTime() time.Time
 
-	// GetLastDeltaWatchRequestTime returns the timestamp of the last delta discovery watch request.
-	GetLastDeltaWatchRequestTime() time.Time
+    // GetLastDeltaWatchRequestTime returns the timestamp of the last delta discovery watch request.
+    GetLastDeltaWatchRequestTime() time.Time
 }
 
 // statusInfo tracks the server state for the remote Envoy node.
 type statusInfo struct {
-	// node is the constant Envoy node metadata.
-	node *core.Node
+    // node is the constant Envoy node metadata.
+    node *core.Node
 
-	// watches are indexed channels for the response watches and the original requests.
-	watches map[int64]ResponseWatch
+    // watches are indexed channels for the response watches and the original requests.
+    watches        map[int64]ResponseWatch
+    orderedWatches keys
 
-	// deltaWatches are indexed channels for the delta response watches and the original requests
-	deltaWatches map[int64]DeltaResponseWatch
+    // deltaWatches are indexed channels for the delta response watches and the original requests
+    deltaWatches        map[int64]DeltaResponseWatch
+    orderedDeltaWatches keys
 
-	// the timestamp of the last watch request
-	lastWatchRequestTime time.Time
+    // the timestamp of the last watch request
+    lastWatchRequestTime time.Time
 
-	// the timestamp of the last delta watch request
-	lastDeltaWatchRequestTime time.Time
+    // the timestamp of the last delta watch request
+    lastDeltaWatchRequestTime time.Time
 
-	// mutex to protect the status fields.
-	// should not acquire mutex of the parent cache after acquiring this mutex.
-	mu sync.RWMutex
+    // mutex to protect the status fields.
+    // should not acquire mutex of the parent cache after acquiring this mutex.
+    mu sync.RWMutex
 }
 
 // ResponseWatch is a watch record keeping both the request and an open channel for the response.
 type ResponseWatch struct {
-	// Request is the original request for the watch.
-	Request *Request
+    // Request is the original request for the watch.
+    Request *Request
 
-	// Response is the channel to push responses to.
-	Response chan Response
+    // Response is the channel to push responses to.
+    Response chan Response
 }
 
 // DeltaResponseWatch is a watch record keeping both the delta request and an open channel for the delta response.
 type DeltaResponseWatch struct {
-	// Request is the most recent delta request for the watch
-	Request *DeltaRequest
+    // Request is the most recent delta request for the watch
+    Request *DeltaRequest
 
-	// Response is the channel to push the delta responses to
-	Response chan DeltaResponse
+    // Response is the channel to push the delta responses to
+    Response chan DeltaResponse
 
-	// VersionMap for the stream
-	StreamState stream.StreamState
+    // VersionMap for the stream
+    StreamState stream.StreamState
 }
 
 // newStatusInfo initializes a status info data structure.
 func newStatusInfo(node *core.Node) *statusInfo {
-	out := statusInfo{
-		node:         node,
-		watches:      make(map[int64]ResponseWatch),
-		deltaWatches: make(map[int64]DeltaResponseWatch),
-	}
-	return &out
+    out := statusInfo{
+        node:           node,
+        watches:        make(map[int64]ResponseWatch),
+        orderedWatches: make(keys, 0),
+        deltaWatches:   make(map[int64]DeltaResponseWatch),
+    }
+    return &out
 }
 
 func (info *statusInfo) GetNode() *core.Node {
-	info.mu.RLock()
-	defer info.mu.RUnlock()
-	return info.node
+    info.mu.RLock()
+    defer info.mu.RUnlock()
+    return info.node
 }
 
 func (info *statusInfo) GetNumWatches() int {
-	info.mu.RLock()
-	defer info.mu.RUnlock()
-	return len(info.watches)
+    info.mu.RLock()
+    defer info.mu.RUnlock()
+    return len(info.watches)
 }
 
 func (info *statusInfo) GetNumDeltaWatches() int {
-	info.mu.RLock()
-	defer info.mu.RUnlock()
-	return len(info.deltaWatches)
+    info.mu.RLock()
+    defer info.mu.RUnlock()
+    return len(info.deltaWatches)
 }
 
 func (info *statusInfo) GetLastWatchRequestTime() time.Time {
-	info.mu.RLock()
-	defer info.mu.RUnlock()
-	return info.lastWatchRequestTime
+    info.mu.RLock()
+    defer info.mu.RUnlock()
+    return info.lastWatchRequestTime
 }
 
 func (info *statusInfo) GetLastDeltaWatchRequestTime() time.Time {
-	info.mu.RLock()
-	defer info.mu.RUnlock()
-	return info.lastDeltaWatchRequestTime
+    info.mu.RLock()
+    defer info.mu.RUnlock()
+    return info.lastDeltaWatchRequestTime
 }
 
 // setLastDeltaWatchRequestTime will set the current time of the last delta discovery watch request.
 func (info *statusInfo) setLastDeltaWatchRequestTime(t time.Time) {
-	info.mu.Lock()
-	defer info.mu.Unlock()
-	info.lastDeltaWatchRequestTime = t
+    info.mu.Lock()
+    defer info.mu.Unlock()
+    info.lastDeltaWatchRequestTime = t
 }
 
 // setDeltaResponseWatch will set the provided delta response watch for the associated watch ID.
 func (info *statusInfo) setDeltaResponseWatch(id int64, drw DeltaResponseWatch) {
-	info.mu.Lock()
-	defer info.mu.Unlock()
-	info.deltaWatches[id] = drw
+    info.mu.Lock()
+    defer info.mu.Unlock()
+    info.deltaWatches[id] = drw
+}
+
+// orderResponseWatches will track a list of watch keys and order them if
+// true is passed.
+func (info *statusInfo) orderResponseWatches() {
+    info.orderedWatches = make(keys, len(info.watches))
+
+    var index int
+    for id, watch := range info.watches {
+        info.orderedWatches[index] = key{
+            ID:      id,
+            TypeURL: watch.Request.GetTypeUrl(),
+        }
+        index++
+    }
+
+    // Sort our list which we can use in the SetSnapshot functions.
+    // This is only run when we enable ADS on the cache.
+    sort.Sort(info.orderedWatches)
+}
+
+// orderResponseDeltaWatches will track a list of delta watch keys and order them if
+// true is passed.
+func (info *statusInfo) orderResponseDeltaWatches() {
+    info.orderedDeltaWatches = make(keys, len(info.deltaWatches))
+
+    var index int
+    for id, deltaWatch := range info.deltaWatches {
+        info.orderedDeltaWatches[index] = key{
+            ID:      id,
+            TypeURL: deltaWatch.Request.GetTypeUrl(),
+        }
+        index++
+    }
+
+    // Sort our list which we can use in the SetSnapshot functions.
+    // This is only run when we enable ADS on the cache.
+    sort.Sort(info.orderedDeltaWatches)
 }

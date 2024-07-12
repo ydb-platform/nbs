@@ -18,24 +18,24 @@
 package cobra
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
-	"strings"
+    "bytes"
+    "fmt"
+    "io"
+    "os"
+    "strings"
 )
 
 func genPowerShellComp(buf io.StringWriter, name string, includeDesc bool) {
-	// Variables should not contain a '-' or ':' character
-	nameForVar := name
-	nameForVar = strings.Replace(nameForVar, "-", "_", -1)
-	nameForVar = strings.Replace(nameForVar, ":", "_", -1)
+    // Variables should not contain a '-' or ':' character
+    nameForVar := name
+    nameForVar = strings.Replace(nameForVar, "-", "_", -1)
+    nameForVar = strings.Replace(nameForVar, ":", "_", -1)
 
-	compCmd := ShellCompRequestCmd
-	if !includeDesc {
-		compCmd = ShellCompNoDescRequestCmd
-	}
-	WriteStringAndCheck(buf, fmt.Sprintf(`# powershell completion for %-36[1]s -*- shell-script -*-
+    compCmd := ShellCompRequestCmd
+    if !includeDesc {
+        compCmd = ShellCompNoDescRequestCmd
+    }
+    WriteStringAndCheck(buf, fmt.Sprintf(`# powershell completion for %-36[1]s -*- shell-script -*-
 
 function __%[1]s_debug {
     if ($env:BASH_COMP_DEBUG_FILE) {
@@ -281,45 +281,45 @@ filter __%[1]s_escapeStringWithSpecialChars {
 
 Register-ArgumentCompleter -CommandName '%[1]s' -ScriptBlock ${__%[2]sCompleterBlock}
 `, name, nameForVar, compCmd,
-		ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
-		ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder, activeHelpEnvVar(name)))
+        ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
+        ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder, activeHelpEnvVar(name)))
 }
 
 func (c *Command) genPowerShellCompletion(w io.Writer, includeDesc bool) error {
-	buf := new(bytes.Buffer)
-	genPowerShellComp(buf, c.Name(), includeDesc)
-	_, err := buf.WriteTo(w)
-	return err
+    buf := new(bytes.Buffer)
+    genPowerShellComp(buf, c.Name(), includeDesc)
+    _, err := buf.WriteTo(w)
+    return err
 }
 
 func (c *Command) genPowerShellCompletionFile(filename string, includeDesc bool) error {
-	outFile, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
+    outFile, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer outFile.Close()
 
-	return c.genPowerShellCompletion(outFile, includeDesc)
+    return c.genPowerShellCompletion(outFile, includeDesc)
 }
 
 // GenPowerShellCompletionFile generates powershell completion file without descriptions.
 func (c *Command) GenPowerShellCompletionFile(filename string) error {
-	return c.genPowerShellCompletionFile(filename, false)
+    return c.genPowerShellCompletionFile(filename, false)
 }
 
 // GenPowerShellCompletion generates powershell completion file without descriptions
 // and writes it to the passed writer.
 func (c *Command) GenPowerShellCompletion(w io.Writer) error {
-	return c.genPowerShellCompletion(w, false)
+    return c.genPowerShellCompletion(w, false)
 }
 
 // GenPowerShellCompletionFileWithDesc generates powershell completion file with descriptions.
 func (c *Command) GenPowerShellCompletionFileWithDesc(filename string) error {
-	return c.genPowerShellCompletionFile(filename, true)
+    return c.genPowerShellCompletionFile(filename, true)
 }
 
 // GenPowerShellCompletionWithDesc generates powershell completion file with descriptions
 // and writes it to the passed writer.
 func (c *Command) GenPowerShellCompletionWithDesc(w io.Writer) error {
-	return c.genPowerShellCompletion(w, true)
+    return c.genPowerShellCompletion(w, true)
 }

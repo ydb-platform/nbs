@@ -7,57 +7,57 @@
 package unix_test
 
 import (
-	"testing"
+    "testing"
 
-	"golang.org/x/sys/unix"
+    "golang.org/x/sys/unix"
 )
 
 func TestFdSet(t *testing.T) {
-	var fdSet unix.FdSet
-	fdSet.Zero()
-	for fd := 0; fd < unix.FD_SETSIZE; fd++ {
-		if fdSet.IsSet(fd) {
-			t.Fatalf("Zero did not clear fd %d", fd)
-		}
-		fdSet.Set(fd)
-	}
+    var fdSet unix.FdSet
+    fdSet.Zero()
+    for fd := 0; fd < unix.FD_SETSIZE; fd++ {
+        if fdSet.IsSet(fd) {
+            t.Fatalf("Zero did not clear fd %d", fd)
+        }
+        fdSet.Set(fd)
+    }
 
-	for fd := 0; fd < unix.FD_SETSIZE; fd++ {
-		if !fdSet.IsSet(fd) {
-			t.Fatalf("IsSet(%d): expected true, got false", fd)
-		}
-	}
+    for fd := 0; fd < unix.FD_SETSIZE; fd++ {
+        if !fdSet.IsSet(fd) {
+            t.Fatalf("IsSet(%d): expected true, got false", fd)
+        }
+    }
 
-	fdSet.Zero()
-	for fd := 0; fd < unix.FD_SETSIZE; fd++ {
-		if fdSet.IsSet(fd) {
-			t.Fatalf("Zero did not clear fd %d", fd)
-		}
-	}
+    fdSet.Zero()
+    for fd := 0; fd < unix.FD_SETSIZE; fd++ {
+        if fdSet.IsSet(fd) {
+            t.Fatalf("Zero did not clear fd %d", fd)
+        }
+    }
 
-	for fd := 1; fd < unix.FD_SETSIZE; fd += 2 {
-		fdSet.Set(fd)
-	}
+    for fd := 1; fd < unix.FD_SETSIZE; fd += 2 {
+        fdSet.Set(fd)
+    }
 
-	for fd := 0; fd < unix.FD_SETSIZE; fd++ {
-		if fd&0x1 == 0x1 {
-			if !fdSet.IsSet(fd) {
-				t.Fatalf("IsSet(%d): expected true, got false", fd)
-			}
-		} else {
-			if fdSet.IsSet(fd) {
-				t.Fatalf("IsSet(%d): expected false, got true", fd)
-			}
-		}
-	}
+    for fd := 0; fd < unix.FD_SETSIZE; fd++ {
+        if fd&0x1 == 0x1 {
+            if !fdSet.IsSet(fd) {
+                t.Fatalf("IsSet(%d): expected true, got false", fd)
+            }
+        } else {
+            if fdSet.IsSet(fd) {
+                t.Fatalf("IsSet(%d): expected false, got true", fd)
+            }
+        }
+    }
 
-	for fd := 1; fd < unix.FD_SETSIZE; fd += 2 {
-		fdSet.Clear(fd)
-	}
+    for fd := 1; fd < unix.FD_SETSIZE; fd += 2 {
+        fdSet.Clear(fd)
+    }
 
-	for fd := 0; fd < unix.FD_SETSIZE; fd++ {
-		if fdSet.IsSet(fd) {
-			t.Fatalf("Clear(%d) did not clear fd", fd)
-		}
-	}
+    for fd := 0; fd < unix.FD_SETSIZE; fd++ {
+        if fdSet.IsSet(fd) {
+            t.Fatalf("Clear(%d) did not clear fd", fd)
+        }
+    }
 }

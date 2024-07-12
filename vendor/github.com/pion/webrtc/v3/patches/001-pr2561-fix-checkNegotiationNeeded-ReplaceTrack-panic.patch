@@ -1,0 +1,65 @@
+From df0baf50e3ef8ecc351d5205153a8dfe968ec9b7 Mon Sep 17 00:00:00 2001
+From: Aleksandr Alekseev <alekseev-dev@yandex-team.ru>
+Date: Wed, 6 Sep 2023 18:33:31 +0300
+Subject: [PATCH] Fix checkNegotiationNeeded x ReplaceTrack panic
+
+---
+ peerconnection.go      |  8 ++++++++
+ peerconnection_test.go | 26 ++++++++++++++++++++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/peerconnection.go b/peerconnection.go
+index e8bd7ecda1..cda94066fc 100644
+--- vendor/github.com/pion/webrtc/v3/peerconnection.go
++++ vendor/github.com/pion/webrtc/v3/peerconnection.go
+@@ -400,6 +400,14 @@ func (pc *PeerConnection) checkNegotiationNeeded() bool { //nolint:gocognit
+                     return true
+                 }
+                 track := sender.Track()
++                if track == nil {
++                    // Situation when sender's track is nil could happen when
++                    // a) replaceTrack(nil) is called
++                    // b) removeTrack() is called, changing the transceiver's direction to inactive
++                    // As t.Direction() in this branch is either sendrecv or sendonly, we believe (a) option is the case
++                    // As calling replaceTrack does not require renegotiation, we skip check for this transceiver
++                    continue
++                }
+                 if !okMsid || descMsid != track.StreamID()+" "+track.ID() {
+                     return true
+                 }
+diff --git a/peerconnection_test.go b/peerconnection_test.go
+index a1579a5945..1101001005 100644
+--- vendor/github.com/pion/webrtc/v3/peerconnection_test.go
++++ vendor/github.com/pion/webrtc/v3/peerconnection_test.go
+@@ -553,6 +553,32 @@ func TestNegotiationNeeded(t *testing.T) {
+     assert.NoError(t, pc.Close())
+ }
+
++func TestNegotiationNotNeededAfterReplaceTrackNil(t *testing.T) {
++    lim := test.TimeOut(time.Second * 30)
++    defer lim.Stop()
++
++    report := test.CheckRoutines(t)
++    defer report()
++
++    pcOffer, err := NewPeerConnection(Configuration{})
++    assert.NoError(t, err)
++
++    pcAnswer, err := NewPeerConnection(Configuration{})
++    assert.NoError(t, err)
++
++    tr, err := pcOffer.AddTransceiverFromKind(RTPCodecTypeAudio)
++    assert.NoError(t, err)
++
++    assert.NoError(t, signalPair(pcOffer, pcAnswer))
++
++    assert.NoError(t, tr.Sender().ReplaceTrack(nil))
++
++    assert.False(t, pcOffer.checkNegotiationNeeded())
++
++    assert.NoError(t, pcOffer.Close())
++    assert.NoError(t, pcAnswer.Close())
++}
++
+ func TestMultipleCreateChannel(t *testing.T) {
+     var wg sync.WaitGroup

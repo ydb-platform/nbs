@@ -1,5 +1,7 @@
 GO_TEST_FOR(vendor/github.com/klauspost/compress/s2)
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(
     Apache-2.0 AND
     BSD-3-Clause AND
@@ -8,7 +10,9 @@ LICENSE(
 
 SIZE(MEDIUM)
 
-DATA(arcadia/vendor/github.com/klauspost/compress/s2/testdata)
+DATA(
+    arcadia/vendor/github.com/klauspost/compress/s2/testdata
+)
 
 TEST_CWD(vendor/github.com/klauspost/compress/s2)
 

@@ -28,12 +28,12 @@ package atomic
 type packedError struct{ Value error }
 
 func packError(v error) interface{} {
-	return packedError{v}
+    return packedError{v}
 }
 
 func unpackError(v interface{}) error {
-	if err, ok := v.(packedError); ok {
-		return err.Value
-	}
-	return nil
+    if err, ok := v.(packedError); ok {
+        return err.Value
+    }
+    return nil
 }

@@ -19,7 +19,7 @@
 package grpc
 
 import (
-	"context"
+    "context"
 )
 
 // UnaryInvoker is called by UnaryClientInterceptor to complete RPCs.
@@ -65,10 +65,10 @@ type StreamClientInterceptor func(ctx context.Context, desc *StreamDesc, cc *Cli
 // UnaryServerInfo consists of various information about a unary RPC on
 // server side. All per-rpc information may be mutated by the interceptor.
 type UnaryServerInfo struct {
-	// Server is the service implementation the user provides. This is read-only.
-	Server interface{}
-	// FullMethod is the full RPC method string, i.e., /package.service/method.
-	FullMethod string
+    // Server is the service implementation the user provides. This is read-only.
+    Server interface{}
+    // FullMethod is the full RPC method string, i.e., /package.service/method.
+    FullMethod string
 }
 
 // UnaryHandler defines the handler invoked by UnaryServerInterceptor to complete the normal
@@ -89,12 +89,12 @@ type UnaryServerInterceptor func(ctx context.Context, req interface{}, info *Una
 // StreamServerInfo consists of various information about a streaming RPC on
 // server side. All per-rpc information may be mutated by the interceptor.
 type StreamServerInfo struct {
-	// FullMethod is the full RPC method string, i.e., /package.service/method.
-	FullMethod string
-	// IsClientStream indicates whether the RPC is a client streaming RPC.
-	IsClientStream bool
-	// IsServerStream indicates whether the RPC is a server streaming RPC.
-	IsServerStream bool
+    // FullMethod is the full RPC method string, i.e., /package.service/method.
+    FullMethod string
+    // IsClientStream indicates whether the RPC is a client streaming RPC.
+    IsClientStream bool
+    // IsServerStream indicates whether the RPC is a server streaming RPC.
+    IsServerStream bool
 }
 
 // StreamServerInterceptor provides a hook to intercept the execution of a streaming RPC on the server.

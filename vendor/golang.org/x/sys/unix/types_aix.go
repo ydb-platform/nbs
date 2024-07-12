@@ -39,20 +39,20 @@ package unix
 #include <fcntl.h>
 
 enum {
-	sizeofPtr = sizeof(void*),
+    sizeofPtr = sizeof(void*),
 };
 
 union sockaddr_all {
-	struct sockaddr s1;     // this one gets used for fields
-	struct sockaddr_in s2;  // these pad it out
-	struct sockaddr_in6 s3;
-	struct sockaddr_un s4;
-	struct sockaddr_dl s5;
+    struct sockaddr s1;     // this one gets used for fields
+    struct sockaddr_in s2;  // these pad it out
+    struct sockaddr_in6 s3;
+    struct sockaddr_un s4;
+    struct sockaddr_dl s5;
 };
 
 struct sockaddr_any {
-	struct sockaddr addr;
-	char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
+    struct sockaddr addr;
+    char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
 };
 
 */
@@ -61,21 +61,21 @@ import "C"
 // Machine characteristics
 
 const (
-	SizeofPtr      = C.sizeofPtr
-	SizeofShort    = C.sizeof_short
-	SizeofInt      = C.sizeof_int
-	SizeofLong     = C.sizeof_long
-	SizeofLongLong = C.sizeof_longlong
-	PathMax        = C.PATH_MAX
+    SizeofPtr      = C.sizeofPtr
+    SizeofShort    = C.sizeof_short
+    SizeofInt      = C.sizeof_int
+    SizeofLong     = C.sizeof_long
+    SizeofLongLong = C.sizeof_longlong
+    PathMax        = C.PATH_MAX
 )
 
 // Basic types
 
 type (
-	_C_short     C.short
-	_C_int       C.int
-	_C_long      C.long
-	_C_long_long C.longlong
+    _C_short     C.short
+    _C_int       C.int
+    _C_long      C.long
+    _C_long_long C.longlong
 )
 
 type off64 C.off64_t
@@ -155,25 +155,25 @@ type Linger C.struct_linger
 type Msghdr C.struct_msghdr
 
 const (
-	SizeofSockaddrInet4    = C.sizeof_struct_sockaddr_in
-	SizeofSockaddrInet6    = C.sizeof_struct_sockaddr_in6
-	SizeofSockaddrAny      = C.sizeof_struct_sockaddr_any
-	SizeofSockaddrUnix     = C.sizeof_struct_sockaddr_un
-	SizeofSockaddrDatalink = C.sizeof_struct_sockaddr_dl
-	SizeofLinger           = C.sizeof_struct_linger
-	SizeofIovec            = C.sizeof_struct_iovec
-	SizeofIPMreq           = C.sizeof_struct_ip_mreq
-	SizeofIPv6Mreq         = C.sizeof_struct_ipv6_mreq
-	SizeofIPv6MTUInfo      = C.sizeof_struct_ip6_mtuinfo
-	SizeofMsghdr           = C.sizeof_struct_msghdr
-	SizeofCmsghdr          = C.sizeof_struct_cmsghdr
-	SizeofICMPv6Filter     = C.sizeof_struct_icmp6_filter
+    SizeofSockaddrInet4    = C.sizeof_struct_sockaddr_in
+    SizeofSockaddrInet6    = C.sizeof_struct_sockaddr_in6
+    SizeofSockaddrAny      = C.sizeof_struct_sockaddr_any
+    SizeofSockaddrUnix     = C.sizeof_struct_sockaddr_un
+    SizeofSockaddrDatalink = C.sizeof_struct_sockaddr_dl
+    SizeofLinger           = C.sizeof_struct_linger
+    SizeofIovec            = C.sizeof_struct_iovec
+    SizeofIPMreq           = C.sizeof_struct_ip_mreq
+    SizeofIPv6Mreq         = C.sizeof_struct_ipv6_mreq
+    SizeofIPv6MTUInfo      = C.sizeof_struct_ip6_mtuinfo
+    SizeofMsghdr           = C.sizeof_struct_msghdr
+    SizeofCmsghdr          = C.sizeof_struct_cmsghdr
+    SizeofICMPv6Filter     = C.sizeof_struct_icmp6_filter
 )
 
 // Routing and interface messages
 
 const (
-	SizeofIfMsghdr = C.sizeof_struct_if_msghdr
+    SizeofIfMsghdr = C.sizeof_struct_if_msghdr
 )
 
 type IfMsgHdr C.struct_if_msghdr
@@ -189,9 +189,9 @@ type Ustat_t C.struct_ustat
 type Sigset_t C.sigset_t
 
 const (
-	AT_FDCWD            = C.AT_FDCWD
-	AT_REMOVEDIR        = C.AT_REMOVEDIR
-	AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
+    AT_FDCWD            = C.AT_FDCWD
+    AT_REMOVEDIR        = C.AT_REMOVEDIR
+    AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
 )
 
 // Terminal handling
@@ -205,22 +205,22 @@ type Winsize C.struct_winsize
 //poll
 
 type PollFd struct {
-	Fd      int32
-	Events  uint16
-	Revents uint16
+    Fd      int32
+    Events  uint16
+    Revents uint16
 }
 
 const (
-	POLLERR    = C.POLLERR
-	POLLHUP    = C.POLLHUP
-	POLLIN     = C.POLLIN
-	POLLNVAL   = C.POLLNVAL
-	POLLOUT    = C.POLLOUT
-	POLLPRI    = C.POLLPRI
-	POLLRDBAND = C.POLLRDBAND
-	POLLRDNORM = C.POLLRDNORM
-	POLLWRBAND = C.POLLWRBAND
-	POLLWRNORM = C.POLLWRNORM
+    POLLERR    = C.POLLERR
+    POLLHUP    = C.POLLHUP
+    POLLIN     = C.POLLIN
+    POLLNVAL   = C.POLLNVAL
+    POLLOUT    = C.POLLOUT
+    POLLPRI    = C.POLLPRI
+    POLLRDBAND = C.POLLRDBAND
+    POLLRDNORM = C.POLLRDNORM
+    POLLWRBAND = C.POLLWRBAND
+    POLLWRNORM = C.POLLWRNORM
 )
 
 //flock_t

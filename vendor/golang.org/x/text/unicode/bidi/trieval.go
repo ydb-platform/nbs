@@ -6,35 +6,35 @@ package bidi
 type Class uint
 
 const (
-	L       Class = iota // LeftToRight
-	R                    // RightToLeft
-	EN                   // EuropeanNumber
-	ES                   // EuropeanSeparator
-	ET                   // EuropeanTerminator
-	AN                   // ArabicNumber
-	CS                   // CommonSeparator
-	B                    // ParagraphSeparator
-	S                    // SegmentSeparator
-	WS                   // WhiteSpace
-	ON                   // OtherNeutral
-	BN                   // BoundaryNeutral
-	NSM                  // NonspacingMark
-	AL                   // ArabicLetter
-	Control              // Control LRO - PDI
+    L       Class = iota // LeftToRight
+    R                    // RightToLeft
+    EN                   // EuropeanNumber
+    ES                   // EuropeanSeparator
+    ET                   // EuropeanTerminator
+    AN                   // ArabicNumber
+    CS                   // CommonSeparator
+    B                    // ParagraphSeparator
+    S                    // SegmentSeparator
+    WS                   // WhiteSpace
+    ON                   // OtherNeutral
+    BN                   // BoundaryNeutral
+    NSM                  // NonspacingMark
+    AL                   // ArabicLetter
+    Control              // Control LRO - PDI
 
-	numClass
+    numClass
 
-	LRO // LeftToRightOverride
-	RLO // RightToLeftOverride
-	LRE // LeftToRightEmbedding
-	RLE // RightToLeftEmbedding
-	PDF // PopDirectionalFormat
-	LRI // LeftToRightIsolate
-	RLI // RightToLeftIsolate
-	FSI // FirstStrongIsolate
-	PDI // PopDirectionalIsolate
+    LRO // LeftToRightOverride
+    RLO // RightToLeftOverride
+    LRE // LeftToRightEmbedding
+    RLE // RightToLeftEmbedding
+    PDF // PopDirectionalFormat
+    LRI // LeftToRightIsolate
+    RLI // RightToLeftIsolate
+    FSI // FirstStrongIsolate
+    PDI // PopDirectionalIsolate
 
-	unknownClass = ^Class(0)
+    unknownClass = ^Class(0)
 )
 
 // A trie entry has the following bits:
@@ -43,6 +43,6 @@ const (
 // 3..0  Class type
 
 const (
-	openMask     = 0x10
-	xorMaskShift = 5
+    openMask     = 0x10
+    xorMaskShift = 5
 )

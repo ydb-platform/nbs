@@ -1,0 +1,31 @@
+{
+    "Version": "v3.0.9",
+    "GoVersion": "1.13",
+    "Sum": "h1:pX++dCHoHUwq43kuwf3PyJfHlwIj4hXA7Vrifiq0IJY=",
+    "Packages": {
+        "github.com/pion/sdp/v3": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/randutil",
+                "io",
+                "net/url",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "reflect",
+                "strconv",
+                "testing"
+            ]
+        }
+    }
+}

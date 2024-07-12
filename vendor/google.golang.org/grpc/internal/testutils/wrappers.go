@@ -19,56 +19,56 @@
 package testutils
 
 import (
-	"net"
-	"testing"
+    "net"
+    "testing"
 )
 
 // ConnWrapper wraps a net.Conn and pushes on a channel when closed.
 type ConnWrapper struct {
-	net.Conn
-	CloseCh *Channel
+    net.Conn
+    CloseCh *Channel
 }
 
 // Close closes the connection and sends a value on the close channel.
 func (cw *ConnWrapper) Close() error {
-	err := cw.Conn.Close()
-	cw.CloseCh.Replace(nil)
-	return err
+    err := cw.Conn.Close()
+    cw.CloseCh.Replace(nil)
+    return err
 }
 
 // ListenerWrapper wraps a net.Listener and the returned net.Conn.
 //
 // It pushes on a channel whenever it accepts a new connection.
 type ListenerWrapper struct {
-	net.Listener
-	NewConnCh *Channel
+    net.Listener
+    NewConnCh *Channel
 }
 
 // Accept wraps the Listener Accept and sends the accepted connection on a
 // channel.
 func (l *ListenerWrapper) Accept() (net.Conn, error) {
-	c, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	closeCh := NewChannel()
-	conn := &ConnWrapper{Conn: c, CloseCh: closeCh}
-	l.NewConnCh.Send(conn)
-	return conn, nil
+    c, err := l.Listener.Accept()
+    if err != nil {
+        return nil, err
+    }
+    closeCh := NewChannel()
+    conn := &ConnWrapper{Conn: c, CloseCh: closeCh}
+    l.NewConnCh.Send(conn)
+    return conn, nil
 }
 
 // NewListenerWrapper returns a ListenerWrapper.
 func NewListenerWrapper(t *testing.T, lis net.Listener) *ListenerWrapper {
-	if lis == nil {
-		var err error
-		lis, err = LocalTCPListener()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+    if lis == nil {
+        var err error
+        lis, err = LocalTCPListener()
+        if err != nil {
+            t.Fatal(err)
+        }
+    }
 
-	return &ListenerWrapper{
-		Listener:  lis,
-		NewConnCh: NewChannel(),
-	}
+    return &ListenerWrapper{
+        Listener:  lis,
+        NewConnCh: NewChannel(),
+    }
 }

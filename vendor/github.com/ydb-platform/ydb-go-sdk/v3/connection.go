@@ -1,15 +1,15 @@
 package ydb
 
 import (
-	"context"
+    "context"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/coordination"
-	"github.com/ydb-platform/ydb-go-sdk/v3/discovery"
-	"github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
-	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
-	"github.com/ydb-platform/ydb-go-sdk/v3/scripting"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table"
-	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
+    "github.com/ydb-platform/ydb-go-sdk/v3/coordination"
+    "github.com/ydb-platform/ydb-go-sdk/v3/discovery"
+    "github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
+    "github.com/ydb-platform/ydb-go-sdk/v3/scheme"
+    "github.com/ydb-platform/ydb-go-sdk/v3/scripting"
+    "github.com/ydb-platform/ydb-go-sdk/v3/table"
+    "github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 // Connection interface provide access to YDB service clients
@@ -19,36 +19,36 @@ import (
 //
 //nolint:interfacebloat
 type Connection interface {
-	// Endpoint returns initial endpoint
-	Endpoint() string
+    // Endpoint returns initial endpoint
+    Endpoint() string
 
-	// Name returns database name
-	Name() string
+    // Name returns database name
+    Name() string
 
-	// Secure returns true if database connection is secure
-	Secure() bool
+    // Secure returns true if database connection is secure
+    Secure() bool
 
-	// Close closes connection and clear resources
-	Close(ctx context.Context) error
+    // Close closes connection and clear resources
+    Close(ctx context.Context) error
 
-	// Table returns table client
-	Table() table.Client
+    // Table returns table client
+    Table() table.Client
 
-	// Scheme returns scheme client
-	Scheme() scheme.Client
+    // Scheme returns scheme client
+    Scheme() scheme.Client
 
-	// Coordination returns coordination client
-	Coordination() coordination.Client
+    // Coordination returns coordination client
+    Coordination() coordination.Client
 
-	// Ratelimiter returns ratelimiter client
-	Ratelimiter() ratelimiter.Client
+    // Ratelimiter returns ratelimiter client
+    Ratelimiter() ratelimiter.Client
 
-	// Discovery returns discovery client
-	Discovery() discovery.Client
+    // Discovery returns discovery client
+    Discovery() discovery.Client
 
-	// Scripting returns scripting client
-	Scripting() scripting.Client
+    // Scripting returns scripting client
+    Scripting() scripting.Client
 
-	// Topic returns topic client
-	Topic() topic.Client
+    // Topic returns topic client
+    Topic() topic.Client
 }

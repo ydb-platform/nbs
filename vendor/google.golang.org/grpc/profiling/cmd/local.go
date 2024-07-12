@@ -19,50 +19,50 @@
 package main
 
 import (
-	"encoding/gob"
-	"fmt"
-	"os"
+    "encoding/gob"
+    "fmt"
+    "os"
 )
 
 func loadSnapshot(snapshotFileName string) (*snapshot, error) {
-	logger.Infof("opening snapshot file %s", snapshotFileName)
-	snapshotFile, err := os.Open(snapshotFileName)
-	if err != nil {
-		logger.Errorf("cannot open %s: %v", snapshotFileName, err)
-		return nil, err
-	}
-	defer snapshotFile.Close()
+    logger.Infof("opening snapshot file %s", snapshotFileName)
+    snapshotFile, err := os.Open(snapshotFileName)
+    if err != nil {
+        logger.Errorf("cannot open %s: %v", snapshotFileName, err)
+        return nil, err
+    }
+    defer snapshotFile.Close()
 
-	logger.Infof("decoding snapshot file %s", snapshotFileName)
-	s := &snapshot{}
-	decoder := gob.NewDecoder(snapshotFile)
-	if err = decoder.Decode(s); err != nil {
-		logger.Errorf("cannot decode %s: %v", snapshotFileName, err)
-		return nil, err
-	}
+    logger.Infof("decoding snapshot file %s", snapshotFileName)
+    s := &snapshot{}
+    decoder := gob.NewDecoder(snapshotFile)
+    if err = decoder.Decode(s); err != nil {
+        logger.Errorf("cannot decode %s: %v", snapshotFileName, err)
+        return nil, err
+    }
 
-	return s, nil
+    return s, nil
 }
 
 func localCommand() error {
-	if *flagSnapshot == "" {
-		return fmt.Errorf("-snapshot flag missing")
-	}
+    if *flagSnapshot == "" {
+        return fmt.Errorf("-snapshot flag missing")
+    }
 
-	s, err := loadSnapshot(*flagSnapshot)
-	if err != nil {
-		return err
-	}
+    s, err := loadSnapshot(*flagSnapshot)
+    if err != nil {
+        return err
+    }
 
-	if *flagStreamStatsCatapultJSON == "" {
-		return fmt.Errorf("snapshot file specified without an action to perform")
-	}
+    if *flagStreamStatsCatapultJSON == "" {
+        return fmt.Errorf("snapshot file specified without an action to perform")
+    }
 
-	if *flagStreamStatsCatapultJSON != "" {
-		if err = streamStatsCatapultJSON(s, *flagStreamStatsCatapultJSON); err != nil {
-			return err
-		}
-	}
+    if *flagStreamStatsCatapultJSON != "" {
+        if err = streamStatsCatapultJSON(s, *flagStreamStatsCatapultJSON); err != nil {
+            return err
+        }
+    }
 
-	return nil
+    return nil
 }

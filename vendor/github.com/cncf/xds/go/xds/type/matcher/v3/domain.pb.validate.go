@@ -4,68 +4,68 @@
 package v3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
 )
 
 // Validate checks the field values on ServerNameMatcher with the rules defined
 // in the proto definition for this message. If any rules are violated, an
 // error is returned.
 func (m *ServerNameMatcher) Validate() error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	for idx, item := range m.GetDomainMatchers() {
-		_, _ = idx, item
+    for idx, item := range m.GetDomainMatchers() {
+        _, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return ServerNameMatcherValidationError{
-					field:  fmt.Sprintf("DomainMatchers[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return ServerNameMatcherValidationError{
+                    field:  fmt.Sprintf("DomainMatchers[%v]", idx),
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	}
+    }
 
-	return nil
+    return nil
 }
 
 // ServerNameMatcherValidationError is the validation error returned by
 // ServerNameMatcher.Validate if the designated constraints aren't met.
 type ServerNameMatcherValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -82,75 +82,75 @@ func (e ServerNameMatcherValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ServerNameMatcherValidationError) ErrorName() string {
-	return "ServerNameMatcherValidationError"
+    return "ServerNameMatcherValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ServerNameMatcherValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sServerNameMatcher.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sServerNameMatcher.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ServerNameMatcherValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ServerNameMatcherValidationError{}
 
 // Validate checks the field values on ServerNameMatcher_DomainMatcher with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, an error is returned.
 func (m *ServerNameMatcher_DomainMatcher) Validate() error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	if len(m.GetDomains()) < 1 {
-		return ServerNameMatcher_DomainMatcherValidationError{
-			field:  "Domains",
-			reason: "value must contain at least 1 item(s)",
-		}
-	}
+    if len(m.GetDomains()) < 1 {
+        return ServerNameMatcher_DomainMatcherValidationError{
+            field:  "Domains",
+            reason: "value must contain at least 1 item(s)",
+        }
+    }
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ServerNameMatcher_DomainMatcherValidationError{
-				field:  "OnMatch",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return ServerNameMatcher_DomainMatcherValidationError{
+                field:  "OnMatch",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	return nil
+    return nil
 }
 
 // ServerNameMatcher_DomainMatcherValidationError is the validation error
 // returned by ServerNameMatcher_DomainMatcher.Validate if the designated
 // constraints aren't met.
 type ServerNameMatcher_DomainMatcherValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -167,35 +167,35 @@ func (e ServerNameMatcher_DomainMatcherValidationError) Key() bool { return e.ke
 
 // ErrorName returns error name.
 func (e ServerNameMatcher_DomainMatcherValidationError) ErrorName() string {
-	return "ServerNameMatcher_DomainMatcherValidationError"
+    return "ServerNameMatcher_DomainMatcherValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ServerNameMatcher_DomainMatcherValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sServerNameMatcher_DomainMatcher.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sServerNameMatcher_DomainMatcher.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ServerNameMatcher_DomainMatcherValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ServerNameMatcher_DomainMatcherValidationError{}

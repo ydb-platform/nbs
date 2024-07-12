@@ -27,18 +27,18 @@ package serviceconfig
 
 // Config represents an opaque data structure holding a service config.
 type Config interface {
-	isServiceConfig()
+    isServiceConfig()
 }
 
 // LoadBalancingConfig represents an opaque data structure holding a load
 // balancing config.
 type LoadBalancingConfig interface {
-	isLoadBalancingConfig()
+    isLoadBalancingConfig()
 }
 
 // ParseResult contains a service config or an error.  Exactly one must be
 // non-nil.
 type ParseResult struct {
-	Config Config
-	Err    error
+    Config Config
+    Err    error
 }

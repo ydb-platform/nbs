@@ -22,27 +22,27 @@
 package xdslbregistry
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 
-	v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+    v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 )
 
 var (
-	// m is a map from proto type to Converter.
-	m = make(map[string]Converter)
+    // m is a map from proto type to Converter.
+    m = make(map[string]Converter)
 )
 
 // Register registers the converter to the map keyed on a proto type. Must be
 // called at init time. Not thread safe.
 func Register(protoType string, c Converter) {
-	m[protoType] = c
+    m[protoType] = c
 }
 
 // SetRegistry sets the xDS LB registry. Must be called at init time. Not thread
 // safe.
 func SetRegistry(registry map[string]Converter) {
-	m = registry
+    m = registry
 }
 
 // Converter converts raw proto bytes into the internal Go JSON representation
@@ -56,30 +56,30 @@ type Converter func([]byte, int) (json.RawMessage, error)
 //   - there is more than 16 layers of recursion in the configuration
 //   - a failure occurs when converting the policy
 func ConvertToServiceConfig(lbPolicy *v3clusterpb.LoadBalancingPolicy, depth int) (json.RawMessage, error) {
-	// "Configurations that require more than 16 levels of recursion are
-	// considered invalid and should result in a NACK response." - A51
-	if depth > 15 {
-		return nil, fmt.Errorf("lb policy %v exceeds max depth supported: 16 layers", lbPolicy)
-	}
+    // "Configurations that require more than 16 levels of recursion are
+    // considered invalid and should result in a NACK response." - A51
+    if depth > 15 {
+        return nil, fmt.Errorf("lb policy %v exceeds max depth supported: 16 layers", lbPolicy)
+    }
 
-	// "This function iterate over the list of policy messages in
-	// LoadBalancingPolicy, attempting to convert each one to gRPC form,
-	// stopping at the first supported policy." - A52
-	for _, policy := range lbPolicy.GetPolicies() {
-		policy.GetTypedExtensionConfig().GetTypedConfig().GetTypeUrl()
-		converter := m[policy.GetTypedExtensionConfig().GetTypedConfig().GetTypeUrl()]
-		// "Any entry not in the above list is unsupported and will be skipped."
-		// - A52
-		// This includes Least Request as well, since grpc-go does not support
-		// the Least Request Load Balancing Policy.
-		if converter == nil {
-			continue
-		}
-		json, err := converter(policy.GetTypedExtensionConfig().GetTypedConfig().GetValue(), depth)
-		if json == nil && err == nil {
-			continue
-		}
-		return json, err
-	}
-	return nil, fmt.Errorf("no supported policy found in policy list +%v", lbPolicy)
+    // "This function iterate over the list of policy messages in
+    // LoadBalancingPolicy, attempting to convert each one to gRPC form,
+    // stopping at the first supported policy." - A52
+    for _, policy := range lbPolicy.GetPolicies() {
+        policy.GetTypedExtensionConfig().GetTypedConfig().GetTypeUrl()
+        converter := m[policy.GetTypedExtensionConfig().GetTypedConfig().GetTypeUrl()]
+        // "Any entry not in the above list is unsupported and will be skipped."
+        // - A52
+        // This includes Least Request as well, since grpc-go does not support
+        // the Least Request Load Balancing Policy.
+        if converter == nil {
+            continue
+        }
+        json, err := converter(policy.GetTypedExtensionConfig().GetTypedConfig().GetValue(), depth)
+        if json == nil && err == nil {
+            continue
+        }
+        return json, err
+    }
+    return nil, fmt.Errorf("no supported policy found in policy list +%v", lbPolicy)
 }

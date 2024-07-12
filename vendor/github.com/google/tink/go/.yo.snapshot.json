@@ -1,0 +1,1328 @@
+{
+    "Version": "v1.7.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:6Eox8zONGebBFcCBqkVmt60LaWZa6xg1cl/DwAh/J1w=",
+    "Packages": {
+        "github.com/google/tink/go/aead": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/internal/internalregistry",
+                "github.com/google/tink/go/internal/monitoringutil",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/monitoring",
+                "github.com/google/tink/go/proto/aes_ctr_go_proto",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_aead_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_siv_go_proto",
+                "github.com/google/tink/go/proto/chacha20_poly1305_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/kms_envelope_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/proto/xchacha20_poly1305_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/chacha20poly1305",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/internal/internalregistry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/monitoring",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_aead_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_siv_go_proto",
+                "github.com/google/tink/go/proto/chacha20_poly1305_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/proto/xchacha20_poly1305_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testing/fakekms",
+                "github.com/google/tink/go/testing/fakemonitoring",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/chacha20poly1305",
+                "google.golang.org/protobuf/proto",
+                "log",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/aead/subtle": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/subtle",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/internal/aead",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/chacha20poly1305",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/aes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/chacha20poly1305",
+                "math/rand",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/core/cryptofmt": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "github.com/google/tink/go/proto/tink_go_proto"
+            ],
+            "TestImports": [
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/core/primitiveset": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/proto/tink_go_proto"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/testutil",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/core/registry": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/aes_gcm_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/testing/fakekms",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/daead": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/daead/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/aes_siv_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/daead",
+                "github.com/google/tink/go/daead/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/aes_siv_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "log",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/daead/subtle": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/subtle",
+                "errors",
+                "fmt",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "github.com/google/tink/go/daead/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/hybrid": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/hybrid/internal/hpke",
+                "github.com/google/tink/go/hybrid/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_aead_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_go_proto",
+                "github.com/google/tink/go/proto/aes_siv_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/ecies_aead_hkdf_go_proto",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "math/big",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/daead",
+                "github.com/google/tink/go/hybrid",
+                "github.com/google/tink/go/hybrid/internal/hpke",
+                "github.com/google/tink/go/hybrid/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "log",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/hybrid/internal/hpke": {
+            "Imports": [
+                "crypto",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/internal/aead",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/chacha20poly1305",
+                "golang.org/x/crypto/hkdf",
+                "io",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "math",
+                "math/big",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/hybrid/subtle": {
+            "Imports": [
+                "bytes",
+                "crypto/elliptic",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/x509",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/hybrid",
+                "github.com/google/tink/go/hybrid/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "math/big",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/insecurecleartextkeyset": {
+            "Imports": [
+                "errors",
+                "github.com/google/tink/go/internal",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/tink_go_proto"
+            ],
+            "TestImports": [
+                "github.com/google/tink/go/insecurecleartextkeyset",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/integration/awskms": {
+            "Imports": [
+                "encoding/csv",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go/aws",
+                "github.com/aws/aws-sdk-go/aws/credentials",
+                "github.com/aws/aws-sdk-go/aws/session",
+                "github.com/aws/aws-sdk-go/service/kms",
+                "github.com/aws/aws-sdk-go/service/kms/kmsiface",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/tink",
+                "os",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/integration/awskms",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/integration/gcpkms": {
+            "Imports": [
+                "context",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google",
+                "google.golang.org/api/cloudkms/v1",
+                "google.golang.org/api/option",
+                "io/ioutil",
+                "net/http",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/integration/gcpkms",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "log",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/integration/hcvault": {
+            "Imports": [
+                "crypto/tls",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/tink",
+                "github.com/hashicorp/vault/api",
+                "net/http",
+                "net/url",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/tls",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/integration/hcvault",
+                "github.com/google/tink/go/keyset",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/internal": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/tink/go/internal/aead": {
+            "Imports": [
+                "bytes",
+                "crypto/aes",
+                "crypto/cipher",
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/chacha20poly1305"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/internal/aead",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "golang.org/x/crypto/chacha20poly1305",
+                "math/rand",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/internal/internalregistry": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tink/go/monitoring",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/tink/go/internal/internalregistry",
+                "github.com/google/tink/go/testing/fakemonitoring",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/internal/monitoringutil": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/monitoring",
+                "github.com/google/tink/go/proto/tink_go_proto"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/internal/monitoringutil",
+                "github.com/google/tink/go/monitoring",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/jwt": {
+            "Imports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/jwt_ecdsa_go_proto",
+                "github.com/google/tink/go/proto/jwt_hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature/subtle",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/structpb",
+                "math/rand",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/jwt",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/jwt_ecdsa_go_proto",
+                "github.com/google/tink/go/proto/jwt_hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/signature/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/known/structpb",
+                "log",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/tink/go/keyset": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/internal",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "io/ioutil"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/kwp/subtle": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "encoding/binary",
+                "fmt",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/google/tink/go/kwp/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/mac": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/aes_cmac_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/aes_cmac_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "log",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/mac/subtle": {
+            "Imports": [
+                "crypto/hmac",
+                "crypto/subtle",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/prf/subtle",
+                "github.com/google/tink/go/subtle",
+                "hash"
+            ],
+            "TestImports": [
+                "encoding/hex",
+                "encoding/json",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/monitoring": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/tink/go/prf": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/prf/subtle",
+                "github.com/google/tink/go/proto/aes_cmac_prf_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hkdf_prf_go_proto",
+                "github.com/google/tink/go/proto/hmac_prf_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/prf",
+                "github.com/google/tink/go/prf/subtle",
+                "github.com/google/tink/go/proto/aes_cmac_prf_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hkdf_prf_go_proto",
+                "github.com/google/tink/go/proto/hmac_prf_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "log",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/prf/subtle": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/hmac",
+                "crypto/subtle",
+                "fmt",
+                "github.com/google/tink/go/subtle",
+                "golang.org/x/crypto/hkdf",
+                "hash",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/prf/subtle",
+                "github.com/google/tink/go/testutil",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/proto/aes_cmac_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_cmac_prf_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_ctr_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_ctr_hmac_aead_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/aes_ctr_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_ctr_hmac_streaming_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_gcm_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_gcm_hkdf_streaming_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_gcm_siv_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/aes_siv_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/chacha20_poly1305_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/common_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/ecdsa_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/ecies_aead_hkdf_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/ed25519_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/hkdf_prf_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/hmac_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/hmac_prf_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/hpke_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/jwt_ecdsa_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/jwt_hmac_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/jwt_rsa_ssa_pkcs1_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/kms_envelope_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/rsa_ssa_pkcs1_go_proto": {
+            "Imports": [
+                "github.com/google/tink/go/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/tink_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/proto/xchacha20_poly1305_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/signature": {
+            "Imports": [
+                "crypto/ecdsa",
+                "crypto/rand",
+                "crypto/rsa",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/cryptofmt",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/ecdsa_go_proto",
+                "github.com/google/tink/go/proto/ed25519_go_proto",
+                "github.com/google/tink/go/proto/rsa_ssa_pkcs1_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature/internal",
+                "github.com/google/tink/go/signature/subtle",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/ed25519",
+                "google.golang.org/protobuf/proto",
+                "math/big"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/ecdsa_go_proto",
+                "github.com/google/tink/go/proto/ed25519_go_proto",
+                "github.com/google/tink/go/proto/rsa_ssa_pkcs1_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/signature",
+                "github.com/google/tink/go/signature/internal",
+                "github.com/google/tink/go/signature/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "log",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/signature/internal": {
+            "Imports": [
+                "crypto",
+                "crypto/rand",
+                "crypto/rsa",
+                "fmt",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/tink",
+                "hash"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "fmt",
+                "github.com/google/tink/go/signature/internal",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/signature/subtle": {
+            "Imports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "encoding/asn1",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/subtle",
+                "golang.org/x/crypto/ed25519",
+                "hash",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/rand",
+                "encoding/asn1",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/signature/subtle",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "golang.org/x/crypto/ed25519",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/streamingaead": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/core/primitiveset",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_streaming_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_hkdf_streaming_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/streamingaead/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "fmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_streaming_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_hkdf_streaming_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/streamingaead",
+                "github.com/google/tink/go/streamingaead/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/streamingaead/subtle": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/aead/subtle",
+                "github.com/google/tink/go/mac/subtle",
+                "github.com/google/tink/go/streamingaead/subtle/noncebased",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/streamingaead/subtle",
+                "github.com/google/tink/go/tink",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/streamingaead/subtle/noncebased": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "io",
+                "math"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "crypto/rand",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/streamingaead/subtle/noncebased",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/subtle": {
+            "Imports": [
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/curve25519",
+                "golang.org/x/crypto/hkdf",
+                "hash",
+                "io",
+                "math/big"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "golang.org/x/crypto/curve25519",
+                "hash",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/subtle/random": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/binary"
+            ],
+            "TestImports": [
+                "github.com/google/tink/go/subtle/random",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/testing/fakekms": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/google/tink/go/aead",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/testkeyset",
+                "github.com/google/tink/go/tink",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/tink/go/testing/fakekms",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/testing/fakemonitoring": {
+            "Imports": [
+                "github.com/google/tink/go/monitoring",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/tink/go/monitoring",
+                "github.com/google/tink/go/testing/fakemonitoring",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/testkeyset": {
+            "Imports": [
+                "errors",
+                "github.com/google/tink/go/internal",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/tink_go_proto"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tink/go/testutil": {
+            "Imports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/rand",
+                "encoding/gob",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/core/registry",
+                "github.com/google/tink/go/daead/subtle",
+                "github.com/google/tink/go/hybrid/subtle",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/mac",
+                "github.com/google/tink/go/proto/aes_cmac_go_proto",
+                "github.com/google/tink/go/proto/aes_cmac_prf_go_proto",
+                "github.com/google/tink/go/proto/aes_ctr_hmac_streaming_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_hkdf_streaming_go_proto",
+                "github.com/google/tink/go/proto/aes_gcm_siv_go_proto",
+                "github.com/google/tink/go/proto/aes_siv_go_proto",
+                "github.com/google/tink/go/proto/common_go_proto",
+                "github.com/google/tink/go/proto/ecdsa_go_proto",
+                "github.com/google/tink/go/proto/ecies_aead_hkdf_go_proto",
+                "github.com/google/tink/go/proto/ed25519_go_proto",
+                "github.com/google/tink/go/proto/hkdf_prf_go_proto",
+                "github.com/google/tink/go/proto/hmac_go_proto",
+                "github.com/google/tink/go/proto/hmac_prf_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/tink",
+                "golang.org/x/crypto/ed25519",
+                "google.golang.org/protobuf/proto",
+                "log",
+                "math",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "testing"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil",
+                "github.com/google/tink/go/tink",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/testutil/hybrid": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/tink/go/insecurecleartextkeyset",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/tink/go/hybrid",
+                "github.com/google/tink/go/insecurecleartextkeyset",
+                "github.com/google/tink/go/keyset",
+                "github.com/google/tink/go/proto/hpke_go_proto",
+                "github.com/google/tink/go/proto/tink_go_proto",
+                "github.com/google/tink/go/subtle/random",
+                "github.com/google/tink/go/testutil/hybrid",
+                "google.golang.org/protobuf/proto",
+                "testing"
+            ]
+        },
+        "github.com/google/tink/go/tink": {
+            "Imports": [
+                "io"
+            ],
+            "TestImports": null
+        }
+    }
+}

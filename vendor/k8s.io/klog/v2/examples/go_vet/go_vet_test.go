@@ -17,34 +17,34 @@ limitations under the License.
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path"
-	"testing"
+    "os"
+    "os/exec"
+    "path"
+    "testing"
 
-	"golang.org/x/tools/go/analysis/analysistest"
-	"golang.org/x/tools/go/analysis/passes/printf"
+    "golang.org/x/tools/go/analysis/analysistest"
+    "golang.org/x/tools/go/analysis/passes/printf"
 )
 
 // TestGoVet checks that "go vet" detects incorrect klog calls like
 // mismatched format specifiers and arguments.
 func TestGoVet(t *testing.T) {
-	testdata := analysistest.TestData()
-	src := path.Join(testdata, "src")
-	t.Cleanup(func() {
-		os.RemoveAll(src)
-	})
+    testdata := analysistest.TestData()
+    src := path.Join(testdata, "src")
+    t.Cleanup(func() {
+        os.RemoveAll(src)
+    })
 
-	// analysistest doesn't support using existing code
-	// via modules (https://github.com/golang/go/issues/37054).
-	// Populating the "testdata/src" directory with the
-	// result of "go mod vendor" is a workaround.
-	cmd := exec.Command("go", "mod", "vendor", "-o", src)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s failed: %v\nOutput: %s", cmd, err, string(out))
-	}
+    // analysistest doesn't support using existing code
+    // via modules (https://github.com/golang/go/issues/37054).
+    // Populating the "testdata/src" directory with the
+    // result of "go mod vendor" is a workaround.
+    cmd := exec.Command("go", "mod", "vendor", "-o", src)
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        t.Fatalf("%s failed: %v\nOutput: %s", cmd, err, string(out))
+    }
 
-	analyzer := printf.Analyzer
-	analysistest.Run(t, testdata, analyzer, "")
+    analyzer := printf.Analyzer
+    analysistest.Run(t, testdata, analyzer, "")
 }

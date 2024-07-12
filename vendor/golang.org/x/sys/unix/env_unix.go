@@ -11,21 +11,21 @@ package unix
 import "syscall"
 
 func Getenv(key string) (value string, found bool) {
-	return syscall.Getenv(key)
+    return syscall.Getenv(key)
 }
 
 func Setenv(key, value string) error {
-	return syscall.Setenv(key, value)
+    return syscall.Setenv(key, value)
 }
 
 func Clearenv() {
-	syscall.Clearenv()
+    syscall.Clearenv()
 }
 
 func Environ() []string {
-	return syscall.Environ()
+    return syscall.Environ()
 }
 
 func Unsetenv(key string) error {
-	return syscall.Unsetenv(key)
+    return syscall.Unsetenv(key)
 }

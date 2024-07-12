@@ -19,10 +19,10 @@
 package testutils
 
 import (
-	"fmt"
-	"sync"
+    "fmt"
+    "sync"
 
-	"google.golang.org/grpc/internal/wrr"
+    "google.golang.org/grpc/internal/wrr"
 )
 
 // testWRR is a deterministic WRR implementation.
@@ -32,42 +32,42 @@ import (
 //
 // With {a: 2, b: 3}, the Next() results will be {a, a, b, b, b}.
 type testWRR struct {
-	itemsWithWeight []struct {
-		item   interface{}
-		weight int64
-	}
-	length int
+    itemsWithWeight []struct {
+        item   interface{}
+        weight int64
+    }
+    length int
 
-	mu    sync.Mutex
-	idx   int   // The index of the item that will be picked
-	count int64 // The number of times the current item has been picked.
+    mu    sync.Mutex
+    idx   int   // The index of the item that will be picked
+    count int64 // The number of times the current item has been picked.
 }
 
 // NewTestWRR return a WRR for testing. It's deterministic instead of random.
 func NewTestWRR() wrr.WRR {
-	return &testWRR{}
+    return &testWRR{}
 }
 
 func (twrr *testWRR) Add(item interface{}, weight int64) {
-	twrr.itemsWithWeight = append(twrr.itemsWithWeight, struct {
-		item   interface{}
-		weight int64
-	}{item: item, weight: weight})
-	twrr.length++
+    twrr.itemsWithWeight = append(twrr.itemsWithWeight, struct {
+        item   interface{}
+        weight int64
+    }{item: item, weight: weight})
+    twrr.length++
 }
 
 func (twrr *testWRR) Next() interface{} {
-	twrr.mu.Lock()
-	iww := twrr.itemsWithWeight[twrr.idx]
-	twrr.count++
-	if twrr.count >= iww.weight {
-		twrr.idx = (twrr.idx + 1) % twrr.length
-		twrr.count = 0
-	}
-	twrr.mu.Unlock()
-	return iww.item
+    twrr.mu.Lock()
+    iww := twrr.itemsWithWeight[twrr.idx]
+    twrr.count++
+    if twrr.count >= iww.weight {
+        twrr.idx = (twrr.idx + 1) % twrr.length
+        twrr.count = 0
+    }
+    twrr.mu.Unlock()
+    return iww.item
 }
 
 func (twrr *testWRR) String() string {
-	return fmt.Sprint(twrr.itemsWithWeight)
+    return fmt.Sprint(twrr.itemsWithWeight)
 }

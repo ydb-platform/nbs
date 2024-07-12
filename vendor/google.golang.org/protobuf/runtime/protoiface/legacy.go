@@ -5,11 +5,11 @@
 package protoiface
 
 type MessageV1 interface {
-	Reset()
-	String() string
-	ProtoMessage()
+    Reset()
+    String() string
+    ProtoMessage()
 }
 
 type ExtensionRangeV1 struct {
-	Start, End int32 // both inclusive
+    Start, End int32 // both inclusive
 }

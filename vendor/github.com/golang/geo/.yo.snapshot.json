@@ -1,0 +1,110 @@
+{
+    "Version": "v0.0.0-20230421003525-6adc56603217",
+    "GoVersion": "1.18",
+    "Sum": "h1:HKlyj6in2JV6wVkmQ4XmG/EIm+SCYlPZ+V4GWit7Z+I=",
+    "Packages": {
+        "github.com/golang/geo/r1": {
+            "Imports": [
+                "fmt",
+                "math"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/golang/geo/r2": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/geo/r1",
+                "math"
+            ],
+            "TestImports": [
+                "github.com/golang/geo/r1",
+                "math",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/golang/geo/r3": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/geo/s1",
+                "math",
+                "math/big"
+            ],
+            "TestImports": [
+                "math",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/golang/geo/s1": {
+            "Imports": [
+                "math",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/golang/geo/s1",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/golang/geo/s2": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "container/heap",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/golang/geo/r1",
+                "github.com/golang/geo/r2",
+                "github.com/golang/geo/r3",
+                "github.com/golang/geo/s1",
+                "hash/adler32",
+                "io",
+                "math",
+                "math/big",
+                "math/bits",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "flag",
+                "fmt",
+                "github.com/golang/geo/r1",
+                "github.com/golang/geo/r2",
+                "github.com/golang/geo/r3",
+                "github.com/golang/geo/s1",
+                "github.com/golang/geo/s2",
+                "io",
+                "math",
+                "math/big",
+                "math/rand",
+                "os",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "testing",
+                "unsafe"
+            ]
+        },
+        "github.com/golang/geo/s2/s2intersect": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/geo/s2",
+                "sort"
+            ],
+            "TestImports": [
+                "math/rand"
+            ]
+        }
+    }
+}

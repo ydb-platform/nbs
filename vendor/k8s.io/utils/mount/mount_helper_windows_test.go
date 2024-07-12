@@ -20,47 +20,47 @@ limitations under the License.
 package mount
 
 import (
-	"testing"
+    "testing"
 )
 
 func TestNormalizeWindowsPath(t *testing.T) {
-	path := `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4/volumes/kubernetes.io~azure-disk`
-	normalizedPath := NormalizeWindowsPath(path)
-	if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path := `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4/volumes/kubernetes.io~azure-disk`
+    normalizedPath := NormalizeWindowsPath(path)
+    if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 
-	path = `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk`
-	normalizedPath = NormalizeWindowsPath(path)
-	if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path = `/var/lib/kubelet/pods/146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk`
+    normalizedPath = NormalizeWindowsPath(path)
+    if normalizedPath != `c:\var\lib\kubelet\pods\146f8428-83e7-11e7-8dd4-000d3a31dac4\volumes\kubernetes.io~azure-disk` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 
-	path = `/`
-	normalizedPath = NormalizeWindowsPath(path)
-	if normalizedPath != `c:\` {
-		t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
-	}
+    path = `/`
+    normalizedPath = NormalizeWindowsPath(path)
+    if normalizedPath != `c:\` {
+        t.Errorf("normizeWindowsPath test failed, normalizedPath : %q", normalizedPath)
+    }
 }
 
 func TestValidateDiskNumber(t *testing.T) {
-	diskNum := "0"
-	if err := ValidateDiskNumber(diskNum); err != nil {
-		t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
-	}
+    diskNum := "0"
+    if err := ValidateDiskNumber(diskNum); err != nil {
+        t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
+    }
 
-	diskNum = "99"
-	if err := ValidateDiskNumber(diskNum); err != nil {
-		t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
-	}
+    diskNum = "99"
+    if err := ValidateDiskNumber(diskNum); err != nil {
+        t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
+    }
 
-	diskNum = "ab"
-	if err := ValidateDiskNumber(diskNum); err == nil {
-		t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
-	}
+    diskNum = "ab"
+    if err := ValidateDiskNumber(diskNum); err == nil {
+        t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
+    }
 
-	diskNum = "100"
-	if err := ValidateDiskNumber(diskNum); err == nil {
-		t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
-	}
+    diskNum = "100"
+    if err := ValidateDiskNumber(diskNum); err == nil {
+        t.Errorf("TestValidateDiskNumber test failed, disk number : %s", diskNum)
+    }
 }

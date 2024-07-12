@@ -23,13 +23,13 @@ import core "google.golang.org/grpc/credentials/alts/internal"
 // NewOutCounter returns an outgoing counter initialized to the starting sequence
 // number for the client/server side of a connection.
 func NewOutCounter(s core.Side, overflowLen int) (c Counter) {
-	c.overflowLen = overflowLen
-	if s == core.ServerSide {
-		// Server counters in ALTS record have the little-endian high bit
-		// set.
-		c.value[counterLen-1] = 0x80
-	}
-	return
+    c.overflowLen = overflowLen
+    if s == core.ServerSide {
+        // Server counters in ALTS record have the little-endian high bit
+        // set.
+        c.value[counterLen-1] = 0x80
+    }
+    return
 }
 
 // NewInCounter returns an incoming counter initialized to the starting sequence
@@ -37,27 +37,27 @@ func NewOutCounter(s core.Side, overflowLen int) (c Counter) {
 // to check that incoming counters are as expected, since ALTS record guarantees
 // that messages are unwrapped in the same order that the peer wrapped them.
 func NewInCounter(s core.Side, overflowLen int) (c Counter) {
-	c.overflowLen = overflowLen
-	if s == core.ClientSide {
-		// Server counters in ALTS record have the little-endian high bit
-		// set.
-		c.value[counterLen-1] = 0x80
-	}
-	return
+    c.overflowLen = overflowLen
+    if s == core.ClientSide {
+        // Server counters in ALTS record have the little-endian high bit
+        // set.
+        c.value[counterLen-1] = 0x80
+    }
+    return
 }
 
 // CounterFromValue creates a new counter given an initial value.
 func CounterFromValue(value []byte, overflowLen int) (c Counter) {
-	c.overflowLen = overflowLen
-	copy(c.value[:], value)
-	return
+    c.overflowLen = overflowLen
+    copy(c.value[:], value)
+    return
 }
 
 // CounterSide returns the connection side (client/server) a sequence counter is
 // associated with.
 func CounterSide(c []byte) core.Side {
-	if c[counterLen-1]&0x80 == 0x80 {
-		return core.ServerSide
-	}
-	return core.ClientSide
+    if c[counterLen-1]&0x80 == 0x80 {
+        return core.ServerSide
+    }
+    return core.ClientSide
 }

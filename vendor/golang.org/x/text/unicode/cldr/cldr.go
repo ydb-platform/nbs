@@ -18,42 +18,42 @@
 package cldr // import "golang.org/x/text/unicode/cldr"
 
 import (
-	"fmt"
-	"sort"
+    "fmt"
+    "sort"
 )
 
 // CLDR provides access to parsed data of the Unicode Common Locale Data Repository.
 type CLDR struct {
-	parent   map[string][]string
-	locale   map[string]*LDML
-	resolved map[string]*LDML
-	bcp47    *LDMLBCP47
-	supp     *SupplementalData
+    parent   map[string][]string
+    locale   map[string]*LDML
+    resolved map[string]*LDML
+    bcp47    *LDMLBCP47
+    supp     *SupplementalData
 }
 
 func makeCLDR() *CLDR {
-	return &CLDR{
-		parent:   make(map[string][]string),
-		locale:   make(map[string]*LDML),
-		resolved: make(map[string]*LDML),
-		bcp47:    &LDMLBCP47{},
-		supp:     &SupplementalData{},
-	}
+    return &CLDR{
+        parent:   make(map[string][]string),
+        locale:   make(map[string]*LDML),
+        resolved: make(map[string]*LDML),
+        bcp47:    &LDMLBCP47{},
+        supp:     &SupplementalData{},
+    }
 }
 
 // BCP47 returns the parsed BCP47 LDML data. If no such data was parsed, nil is returned.
 func (cldr *CLDR) BCP47() *LDMLBCP47 {
-	return nil
+    return nil
 }
 
 // Draft indicates the draft level of an element.
 type Draft int
 
 const (
-	Approved Draft = iota
-	Contributed
-	Provisional
-	Unconfirmed
+    Approved Draft = iota
+    Contributed
+    Provisional
+    Unconfirmed
 )
 
 var drafts = []string{"unconfirmed", "provisional", "contributed", "approved", ""}
@@ -61,19 +61,19 @@ var drafts = []string{"unconfirmed", "provisional", "contributed", "approved", "
 // ParseDraft returns the Draft value corresponding to the given string. The
 // empty string corresponds to Approved.
 func ParseDraft(level string) (Draft, error) {
-	if level == "" {
-		return Approved, nil
-	}
-	for i, s := range drafts {
-		if level == s {
-			return Unconfirmed - Draft(i), nil
-		}
-	}
-	return Approved, fmt.Errorf("cldr: unknown draft level %q", level)
+    if level == "" {
+        return Approved, nil
+    }
+    for i, s := range drafts {
+        if level == s {
+            return Unconfirmed - Draft(i), nil
+        }
+    }
+    return Approved, fmt.Errorf("cldr: unknown draft level %q", level)
 }
 
 func (d Draft) String() string {
-	return drafts[len(drafts)-1-int(d)]
+    return drafts[len(drafts)-1-int(d)]
 }
 
 // SetDraftLevel sets which draft levels to include in the evaluated LDML.
@@ -83,14 +83,14 @@ func (d Draft) String() string {
 // the highest draft will be chosen.
 // It is assumed that the underlying LDML is canonicalized.
 func (cldr *CLDR) SetDraftLevel(lev Draft, preferDraft bool) {
-	// TODO: implement
-	cldr.resolved = make(map[string]*LDML)
+    // TODO: implement
+    cldr.resolved = make(map[string]*LDML)
 }
 
 // RawLDML returns the LDML XML for id in unresolved form.
 // id must be one of the strings returned by Locales.
 func (cldr *CLDR) RawLDML(loc string) *LDML {
-	return cldr.locale[loc]
+    return cldr.locale[loc]
 }
 
 // LDML returns the fully resolved LDML XML for loc, which must be one of
@@ -102,36 +102,36 @@ func (cldr *CLDR) RawLDML(loc string) *LDML {
 // practice data often represented in a way where knowledge of how it was
 // inherited is relevant.
 func (cldr *CLDR) LDML(loc string) (*LDML, error) {
-	return cldr.resolve(loc)
+    return cldr.resolve(loc)
 }
 
 // Supplemental returns the parsed supplemental data. If no such data was parsed,
 // nil is returned.
 func (cldr *CLDR) Supplemental() *SupplementalData {
-	return cldr.supp
+    return cldr.supp
 }
 
 // Locales returns the locales for which there exist files.
 // Valid sublocales for which there is no file are not included.
 // The root locale is always sorted first.
 func (cldr *CLDR) Locales() []string {
-	loc := []string{"root"}
-	hasRoot := false
-	for l, _ := range cldr.locale {
-		if l == "root" {
-			hasRoot = true
-			continue
-		}
-		loc = append(loc, l)
-	}
-	sort.Strings(loc[1:])
-	if !hasRoot {
-		return loc[1:]
-	}
-	return loc
+    loc := []string{"root"}
+    hasRoot := false
+    for l, _ := range cldr.locale {
+        if l == "root" {
+            hasRoot = true
+            continue
+        }
+        loc = append(loc, l)
+    }
+    sort.Strings(loc[1:])
+    if !hasRoot {
+        return loc[1:]
+    }
+    return loc
 }
 
 // Get fills in the fields of x based on the XPath path.
 func Get(e Elem, path string) (res Elem, err error) {
-	return walkXPath(e, path)
+    return walkXPath(e, path)
 }

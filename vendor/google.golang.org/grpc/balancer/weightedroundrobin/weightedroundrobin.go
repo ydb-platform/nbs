@@ -28,9 +28,9 @@
 package weightedroundrobin
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/resolver"
 )
 
 // attributeKey is the type used as the key to store AddrInfo in the
@@ -40,30 +40,30 @@ type attributeKey struct{}
 // AddrInfo will be stored in the BalancerAttributes field of Address in order
 // to use weighted roundrobin balancer.
 type AddrInfo struct {
-	Weight uint32
+    Weight uint32
 }
 
 // Equal allows the values to be compared by Attributes.Equal.
 func (a AddrInfo) Equal(o interface{}) bool {
-	oa, ok := o.(AddrInfo)
-	return ok && oa.Weight == a.Weight
+    oa, ok := o.(AddrInfo)
+    return ok && oa.Weight == a.Weight
 }
 
 // SetAddrInfo returns a copy of addr in which the BalancerAttributes field is
 // updated with addrInfo.
 func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
-	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(attributeKey{}, addrInfo)
-	return addr
+    addr.BalancerAttributes = addr.BalancerAttributes.WithValue(attributeKey{}, addrInfo)
+    return addr
 }
 
 // GetAddrInfo returns the AddrInfo stored in the BalancerAttributes field of
 // addr.
 func GetAddrInfo(addr resolver.Address) AddrInfo {
-	v := addr.BalancerAttributes.Value(attributeKey{})
-	ai, _ := v.(AddrInfo)
-	return ai
+    v := addr.BalancerAttributes.Value(attributeKey{})
+    ai, _ := v.(AddrInfo)
+    return ai
 }
 
 func (a AddrInfo) String() string {
-	return fmt.Sprintf("Weight: %d", a.Weight)
+    return fmt.Sprintf("Weight: %d", a.Weight)
 }

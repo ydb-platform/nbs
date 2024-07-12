@@ -1,23 +1,35 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
-SRCS(googlecloud.go)
+SRCS(
+    googlecloud.go
+)
 
 GO_TEST_SRCS(googlecloud_test.go)
 
 IF (OS_LINUX)
-    SRCS(manufacturer_linux.go)
+    SRCS(
+        manufacturer_linux.go
+    )
 ENDIF()
 
 IF (OS_DARWIN)
-    SRCS(manufacturer.go)
+    SRCS(
+        manufacturer.go
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(manufacturer_windows.go)
+    SRCS(
+        manufacturer_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

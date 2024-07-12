@@ -1,0 +1,15 @@
+{
+    "Version": "v0.0.1",
+    "GoVersion": "",
+    "Sum": "h1:n+XhsuGeVO6MEAp7xyEukFINEa+Quek5psIR/ylA6o0=",
+    "Packages": {
+        "github.com/mattn/go-pointer": {
+            "Imports": [
+                "C",
+                "sync",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

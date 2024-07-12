@@ -1,0 +1,3 @@
+../testdata/optional_args8:2:7-9 function has no parameter y
+
+foo(y=17)

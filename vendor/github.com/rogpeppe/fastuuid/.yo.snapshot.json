@@ -1,0 +1,21 @@
+{
+    "Version": "v1.2.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=",
+    "Packages": {
+        "github.com/rogpeppe/fastuuid": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "testing"
+            ]
+        }
+    }
+}

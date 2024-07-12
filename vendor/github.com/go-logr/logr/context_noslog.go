@@ -20,30 +20,30 @@ limitations under the License.
 package logr
 
 import (
-	"context"
+    "context"
 )
 
 // FromContext returns a Logger from ctx or an error if no Logger is found.
 func FromContext(ctx context.Context) (Logger, error) {
-	if v, ok := ctx.Value(contextKey{}).(Logger); ok {
-		return v, nil
-	}
+    if v, ok := ctx.Value(contextKey{}).(Logger); ok {
+        return v, nil
+    }
 
-	return Logger{}, notFoundError{}
+    return Logger{}, notFoundError{}
 }
 
 // FromContextOrDiscard returns a Logger from ctx.  If no Logger is found, this
 // returns a Logger that discards all log messages.
 func FromContextOrDiscard(ctx context.Context) Logger {
-	if v, ok := ctx.Value(contextKey{}).(Logger); ok {
-		return v
-	}
+    if v, ok := ctx.Value(contextKey{}).(Logger); ok {
+        return v
+    }
 
-	return Discard()
+    return Discard()
 }
 
 // NewContext returns a new Context, derived from ctx, which carries the
 // provided Logger.
 func NewContext(ctx context.Context, logger Logger) context.Context {
-	return context.WithValue(ctx, contextKey{}, logger)
+    return context.WithValue(ctx, contextKey{}, logger)
 }

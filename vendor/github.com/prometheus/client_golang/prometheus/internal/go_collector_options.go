@@ -16,8 +16,8 @@ package internal
 import "regexp"
 
 type GoCollectorRule struct {
-	Matcher *regexp.Regexp
-	Deny    bool
+    Matcher *regexp.Regexp
+    Deny    bool
 }
 
 // GoCollectorOptions should not be used be directly by anything, except `collectors` package.
@@ -26,7 +26,7 @@ type GoCollectorRule struct {
 //
 // This is internal, so external users only can use it via `collector.WithGoCollector*` methods
 type GoCollectorOptions struct {
-	DisableMemStatsLikeMetrics bool
-	RuntimeMetricSumForHist    map[string]string
-	RuntimeMetricRules         []GoCollectorRule
+    DisableMemStatsLikeMetrics bool
+    RuntimeMetricSumForHist    map[string]string
+    RuntimeMetricRules         []GoCollectorRule
 }

@@ -14,12 +14,12 @@
 package procfs
 
 import (
-	"bufio"
-	"fmt"
-	"io"
-	"os"
-	"strconv"
-	"strings"
+    "bufio"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
+    "strings"
 )
 
 // For the proc file format details,
@@ -29,17 +29,17 @@ import (
 // Constants for the various /proc/net/unix enumerations.
 // TODO: match against x/sys/unix or similar?
 const (
-	netUnixTypeStream    = 1
-	netUnixTypeDgram     = 2
-	netUnixTypeSeqpacket = 5
+    netUnixTypeStream    = 1
+    netUnixTypeDgram     = 2
+    netUnixTypeSeqpacket = 5
 
-	netUnixFlagDefault = 0
-	netUnixFlagListen  = 1 << 16
+    netUnixFlagDefault = 0
+    netUnixFlagListen  = 1 << 16
 
-	netUnixStateUnconnected  = 1
-	netUnixStateConnecting   = 2
-	netUnixStateConnected    = 3
-	netUnixStateDisconnected = 4
+    netUnixStateUnconnected  = 1
+    netUnixStateConnecting   = 2
+    netUnixStateConnected    = 3
+    netUnixStateDisconnected = 4
 )
 
 // NetUNIXType is the type of the type field.
@@ -53,205 +53,205 @@ type NetUNIXState uint64
 
 // NetUNIXLine represents a line of /proc/net/unix.
 type NetUNIXLine struct {
-	KernelPtr string
-	RefCount  uint64
-	Protocol  uint64
-	Flags     NetUNIXFlags
-	Type      NetUNIXType
-	State     NetUNIXState
-	Inode     uint64
-	Path      string
+    KernelPtr string
+    RefCount  uint64
+    Protocol  uint64
+    Flags     NetUNIXFlags
+    Type      NetUNIXType
+    State     NetUNIXState
+    Inode     uint64
+    Path      string
 }
 
 // NetUNIX holds the data read from /proc/net/unix.
 type NetUNIX struct {
-	Rows []*NetUNIXLine
+    Rows []*NetUNIXLine
 }
 
 // NetUNIX returns data read from /proc/net/unix.
 func (fs FS) NetUNIX() (*NetUNIX, error) {
-	return readNetUNIX(fs.proc.Path("net/unix"))
+    return readNetUNIX(fs.proc.Path("net/unix"))
 }
 
 // readNetUNIX reads data in /proc/net/unix format from the specified file.
 func readNetUNIX(file string) (*NetUNIX, error) {
-	// This file could be quite large and a streaming read is desirable versus
-	// reading the entire contents at once.
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+    // This file could be quite large and a streaming read is desirable versus
+    // reading the entire contents at once.
+    f, err := os.Open(file)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-	return parseNetUNIX(f)
+    return parseNetUNIX(f)
 }
 
 // parseNetUNIX creates a NetUnix structure from the incoming stream.
 func parseNetUNIX(r io.Reader) (*NetUNIX, error) {
-	// Begin scanning by checking for the existence of Inode.
-	s := bufio.NewScanner(r)
-	s.Scan()
+    // Begin scanning by checking for the existence of Inode.
+    s := bufio.NewScanner(r)
+    s.Scan()
 
-	// From the man page of proc(5), it does not contain an Inode field,
-	// but in actually it exists. This code works for both cases.
-	hasInode := strings.Contains(s.Text(), "Inode")
+    // From the man page of proc(5), it does not contain an Inode field,
+    // but in actually it exists. This code works for both cases.
+    hasInode := strings.Contains(s.Text(), "Inode")
 
-	// Expect a minimum number of fields, but Inode and Path are optional:
-	// Num       RefCount Protocol Flags    Type St Inode Path
-	minFields := 6
-	if hasInode {
-		minFields++
-	}
+    // Expect a minimum number of fields, but Inode and Path are optional:
+    // Num       RefCount Protocol Flags    Type St Inode Path
+    minFields := 6
+    if hasInode {
+        minFields++
+    }
 
-	var nu NetUNIX
-	for s.Scan() {
-		line := s.Text()
-		item, err := nu.parseLine(line, hasInode, minFields)
-		if err != nil {
-			return nil, fmt.Errorf("%s: /proc/net/unix encountered data %q: %w", ErrFileParse, line, err)
-		}
+    var nu NetUNIX
+    for s.Scan() {
+        line := s.Text()
+        item, err := nu.parseLine(line, hasInode, minFields)
+        if err != nil {
+            return nil, fmt.Errorf("%s: /proc/net/unix encountered data %q: %w", ErrFileParse, line, err)
+        }
 
-		nu.Rows = append(nu.Rows, item)
-	}
+        nu.Rows = append(nu.Rows, item)
+    }
 
-	if err := s.Err(); err != nil {
-		return nil, fmt.Errorf("%s: /proc/net/unix encountered data: %w", ErrFileParse, err)
-	}
+    if err := s.Err(); err != nil {
+        return nil, fmt.Errorf("%s: /proc/net/unix encountered data: %w", ErrFileParse, err)
+    }
 
-	return &nu, nil
+    return &nu, nil
 }
 
 func (u *NetUNIX) parseLine(line string, hasInode bool, min int) (*NetUNIXLine, error) {
-	fields := strings.Fields(line)
+    fields := strings.Fields(line)
 
-	l := len(fields)
-	if l < min {
-		return nil, fmt.Errorf("%w: expected at least %d fields but got %d", ErrFileParse, min, l)
-	}
+    l := len(fields)
+    if l < min {
+        return nil, fmt.Errorf("%w: expected at least %d fields but got %d", ErrFileParse, min, l)
+    }
 
-	// Field offsets are as follows:
-	// Num       RefCount Protocol Flags    Type St Inode Path
+    // Field offsets are as follows:
+    // Num       RefCount Protocol Flags    Type St Inode Path
 
-	kernelPtr := strings.TrimSuffix(fields[0], ":")
+    kernelPtr := strings.TrimSuffix(fields[0], ":")
 
-	users, err := u.parseUsers(fields[1])
-	if err != nil {
-		return nil, fmt.Errorf("%s: ref count %q: %w", ErrFileParse, fields[1], err)
-	}
+    users, err := u.parseUsers(fields[1])
+    if err != nil {
+        return nil, fmt.Errorf("%s: ref count %q: %w", ErrFileParse, fields[1], err)
+    }
 
-	flags, err := u.parseFlags(fields[3])
-	if err != nil {
-		return nil, fmt.Errorf("%s: Unable to parse flags %q: %w", ErrFileParse, fields[3], err)
-	}
+    flags, err := u.parseFlags(fields[3])
+    if err != nil {
+        return nil, fmt.Errorf("%s: Unable to parse flags %q: %w", ErrFileParse, fields[3], err)
+    }
 
-	typ, err := u.parseType(fields[4])
-	if err != nil {
-		return nil, fmt.Errorf("%s: Failed to parse type %q: %w", ErrFileParse, fields[4], err)
-	}
+    typ, err := u.parseType(fields[4])
+    if err != nil {
+        return nil, fmt.Errorf("%s: Failed to parse type %q: %w", ErrFileParse, fields[4], err)
+    }
 
-	state, err := u.parseState(fields[5])
-	if err != nil {
-		return nil, fmt.Errorf("%s: Failed to parse state %q: %w", ErrFileParse, fields[5], err)
-	}
+    state, err := u.parseState(fields[5])
+    if err != nil {
+        return nil, fmt.Errorf("%s: Failed to parse state %q: %w", ErrFileParse, fields[5], err)
+    }
 
-	var inode uint64
-	if hasInode {
-		inode, err = u.parseInode(fields[6])
-		if err != nil {
-			return nil, fmt.Errorf("%s failed to parse inode %q: %w", ErrFileParse, fields[6], err)
-		}
-	}
+    var inode uint64
+    if hasInode {
+        inode, err = u.parseInode(fields[6])
+        if err != nil {
+            return nil, fmt.Errorf("%s failed to parse inode %q: %w", ErrFileParse, fields[6], err)
+        }
+    }
 
-	n := &NetUNIXLine{
-		KernelPtr: kernelPtr,
-		RefCount:  users,
-		Type:      typ,
-		Flags:     flags,
-		State:     state,
-		Inode:     inode,
-	}
+    n := &NetUNIXLine{
+        KernelPtr: kernelPtr,
+        RefCount:  users,
+        Type:      typ,
+        Flags:     flags,
+        State:     state,
+        Inode:     inode,
+    }
 
-	// Path field is optional.
-	if l > min {
-		// Path occurs at either index 6 or 7 depending on whether inode is
-		// already present.
-		pathIdx := 7
-		if !hasInode {
-			pathIdx--
-		}
+    // Path field is optional.
+    if l > min {
+        // Path occurs at either index 6 or 7 depending on whether inode is
+        // already present.
+        pathIdx := 7
+        if !hasInode {
+            pathIdx--
+        }
 
-		n.Path = fields[pathIdx]
-	}
+        n.Path = fields[pathIdx]
+    }
 
-	return n, nil
+    return n, nil
 }
 
 func (u NetUNIX) parseUsers(s string) (uint64, error) {
-	return strconv.ParseUint(s, 16, 32)
+    return strconv.ParseUint(s, 16, 32)
 }
 
 func (u NetUNIX) parseType(s string) (NetUNIXType, error) {
-	typ, err := strconv.ParseUint(s, 16, 16)
-	if err != nil {
-		return 0, err
-	}
+    typ, err := strconv.ParseUint(s, 16, 16)
+    if err != nil {
+        return 0, err
+    }
 
-	return NetUNIXType(typ), nil
+    return NetUNIXType(typ), nil
 }
 
 func (u NetUNIX) parseFlags(s string) (NetUNIXFlags, error) {
-	flags, err := strconv.ParseUint(s, 16, 32)
-	if err != nil {
-		return 0, err
-	}
+    flags, err := strconv.ParseUint(s, 16, 32)
+    if err != nil {
+        return 0, err
+    }
 
-	return NetUNIXFlags(flags), nil
+    return NetUNIXFlags(flags), nil
 }
 
 func (u NetUNIX) parseState(s string) (NetUNIXState, error) {
-	st, err := strconv.ParseInt(s, 16, 8)
-	if err != nil {
-		return 0, err
-	}
+    st, err := strconv.ParseInt(s, 16, 8)
+    if err != nil {
+        return 0, err
+    }
 
-	return NetUNIXState(st), nil
+    return NetUNIXState(st), nil
 }
 
 func (u NetUNIX) parseInode(s string) (uint64, error) {
-	return strconv.ParseUint(s, 10, 64)
+    return strconv.ParseUint(s, 10, 64)
 }
 
 func (t NetUNIXType) String() string {
-	switch t {
-	case netUnixTypeStream:
-		return "stream"
-	case netUnixTypeDgram:
-		return "dgram"
-	case netUnixTypeSeqpacket:
-		return "seqpacket"
-	}
-	return "unknown"
+    switch t {
+    case netUnixTypeStream:
+        return "stream"
+    case netUnixTypeDgram:
+        return "dgram"
+    case netUnixTypeSeqpacket:
+        return "seqpacket"
+    }
+    return "unknown"
 }
 
 func (f NetUNIXFlags) String() string {
-	switch f {
-	case netUnixFlagListen:
-		return "listen"
-	default:
-		return "default"
-	}
+    switch f {
+    case netUnixFlagListen:
+        return "listen"
+    default:
+        return "default"
+    }
 }
 
 func (s NetUNIXState) String() string {
-	switch s {
-	case netUnixStateUnconnected:
-		return "unconnected"
-	case netUnixStateConnecting:
-		return "connecting"
-	case netUnixStateConnected:
-		return "connected"
-	case netUnixStateDisconnected:
-		return "disconnected"
-	}
-	return "unknown"
+    switch s {
+    case netUnixStateUnconnected:
+        return "unconnected"
+    case netUnixStateConnecting:
+        return "connecting"
+    case netUnixStateConnected:
+        return "connected"
+    case netUnixStateDisconnected:
+        return "disconnected"
+    }
+    return "unknown"
 }

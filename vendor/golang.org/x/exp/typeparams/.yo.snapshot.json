@@ -1,0 +1,127 @@
+{
+    "Version": "v0.0.0-20230307190834-24139beb5833",
+    "GoVersion": "1.18",
+    "Sum": "h1:jWGQJV4niP+CCmFW9ekjA9Zx8vYORzOUH2/Nl5WPuLQ=",
+    "Packages": {
+        "golang.org/x/exp/typeparams": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "go/ast",
+                "go/token",
+                "go/types",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "go/ast",
+                "go/build",
+                "go/importer",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/exp/typeparams",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/typeparams/example/findtypeparams": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/importer",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/genericmethods": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/exp/typeparams",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/implicit": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/instantiation": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/interfaces": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/methoddecls": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/importer",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/predicates": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/exp/typeparams",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/typeparams/example/typesets": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/exp/typeparams",
+                "log"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -1,0 +1,34 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:oYXJ5Je0218tXyJef1ri98HDEORPdToO4rM1C7D+1YI=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/configtls": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/fsnotify/fsnotify",
+                "go.opentelemetry.io/collector/config/configopaque",
+                "os",
+                "path/filepath",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/config/configopaque",
+                "io",
+                "os",
+                "path/filepath",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

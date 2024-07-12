@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -22,5 +24,7 @@ RECURSE(
 )
 
 IF (OS_LINUX)
-    RECURSE(grpclb_fallback)
+    RECURSE(
+        grpclb_fallback
+    )
 ENDIF()

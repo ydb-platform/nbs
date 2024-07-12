@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -15,6 +17,7 @@ SRCS(
     http2.go
     pipe.go
     server.go
+    testsync.go
     transport.go
     write.go
     writesched.go

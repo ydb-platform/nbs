@@ -1,0 +1,29 @@
+{
+    "Version": "v1.0.2",
+    "GoVersion": "1.12",
+    "Sum": "h1:jzhAVGtqPKbwpyCPELlgNWhE1znq+qwJtW5Oi2viEzc=",
+    "Packages": {
+        "github.com/hashicorp/go-rootcerts": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/mitchellh/go-homedir",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "crypto/sha256",
+                "crypto/x509",
+                "fmt",
+                "io/ioutil",
+                "path/filepath",
+                "testing"
+            ]
+        }
+    }
+}

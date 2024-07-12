@@ -1,0 +1,5 @@
+*.c
+*.h
+ZSTD_LICENSE
+travis_test_32.sh
+update.txt

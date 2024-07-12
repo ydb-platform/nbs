@@ -21,7 +21,7 @@
 package state
 
 import (
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/resolver"
 )
 
 // keyType is the key to use for storing State in Attributes.
@@ -31,21 +31,21 @@ const key = keyType("grpc.grpclb.state")
 
 // State contains gRPCLB-relevant data passed from the name resolver.
 type State struct {
-	// BalancerAddresses contains the remote load balancer address(es).  If
-	// set, overrides any resolver-provided addresses with Type of GRPCLB.
-	BalancerAddresses []resolver.Address
+    // BalancerAddresses contains the remote load balancer address(es).  If
+    // set, overrides any resolver-provided addresses with Type of GRPCLB.
+    BalancerAddresses []resolver.Address
 }
 
 // Set returns a copy of the provided state with attributes containing s.  s's
 // data should not be mutated after calling Set.
 func Set(state resolver.State, s *State) resolver.State {
-	state.Attributes = state.Attributes.WithValue(key, s)
-	return state
+    state.Attributes = state.Attributes.WithValue(key, s)
+    return state
 }
 
 // Get returns the grpclb State in the resolver.State, or nil if not present.
 // The returned data should not be mutated.
 func Get(state resolver.State) *State {
-	s, _ := state.Attributes.Value(key).(*State)
-	return s
+    s, _ := state.Attributes.Value(key).(*State)
+    return s
 }

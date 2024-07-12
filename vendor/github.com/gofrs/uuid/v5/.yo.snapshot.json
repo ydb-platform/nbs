@@ -1,0 +1,42 @@
+{
+    "Version": "v5.0.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:p544++a97kEL+svbcFbCQVM9KFu0Yo25UoISXGNNH9M=",
+    "Packages": {
+        "github.com/gofrs/uuid/v5": {
+            "Imports": [
+                "crypto/md5",
+                "crypto/rand",
+                "crypto/sha1",
+                "database/sql",
+                "database/sql/driver",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "hash",
+                "io",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

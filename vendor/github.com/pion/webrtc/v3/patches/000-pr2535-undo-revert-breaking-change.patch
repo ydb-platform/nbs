@@ -1,0 +1,41 @@
+commit 1d12dc8f765b19407fb1965240874e00d5a4f8cb
+Author: Hans Gylling <hans.gylling@axis.com>
+Date:   Fri Aug 18 19:05:41 2023 +0200
+
+    Revert breaking change in ICECandidateStats
+
+diff --git b/stats.go a/stats.go
+index 3d17fd6..ddf6a53 100644
+--- vendor/github.com/pion/webrtc/v3/stats.go
++++ vendor/github.com/pion/webrtc/v3/stats.go
+@@ -1895,7 +1895,7 @@ type ICECandidateStats struct {
+     //
+     // DEPRECATED. Although it may still work in some browsers, the networkType property was deprecated for
+     // preserving privacy.
+-    NetworkType NetworkType `json:"networkType,omitempty"`
++    NetworkType string `json:"networkType,omitempty"`
+
+     // IP is the IP address of the candidate, allowing for IPv4 addresses and
+     // IPv6 addresses, but fully qualified domain names (FQDNs) are not allowed.
+diff --git b/stats_go_test.go a/stats_go_test.go
+index 6e716c5..1462534 100644
+--- vendor/github.com/pion/webrtc/v3/stats_go_test.go
++++ vendor/github.com/pion/webrtc/v3/stats_go_test.go
+@@ -804,7 +804,7 @@ func getStatsSamples() []statSample {
+         Type:          StatsTypeLocalCandidate,
+         ID:            "ILO8S8KYr",
+         TransportID:   "T01",
+-        NetworkType:   NetworkTypeUDP4,
++        NetworkType:   "wifi",
+         IP:            "192.168.0.36",
+         Port:          65400,
+         Protocol:      "udp",
+@@ -820,7 +820,7 @@ func getStatsSamples() []statSample {
+   "type": "local-candidate",
+   "id": "ILO8S8KYr",
+   "transportId": "T01",
+-  "networkType": 1,
++  "networkType": "wifi",
+   "ip": "192.168.0.36",
+   "port": 65400,
+   "protocol": "udp",

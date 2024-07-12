@@ -1,0 +1,17 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:QWqDla4mE+pDV+97vnA8OpBxX4VJxllsi1DSMN2M0mo=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/configcompression": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        }
+    }
+}

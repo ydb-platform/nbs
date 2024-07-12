@@ -33,12 +33,12 @@
 package profiling
 
 import (
-	"errors"
-	"sync"
-	"sync/atomic"
-	"time"
+    "errors"
+    "sync"
+    "sync/atomic"
+    "time"
 
-	"google.golang.org/grpc/internal/profiling/buffer"
+    "google.golang.org/grpc/internal/profiling/buffer"
 )
 
 // 0 or 1 representing profiling off and on, respectively. Use IsEnabled and
@@ -47,7 +47,7 @@ var profilingEnabled uint32
 
 // IsEnabled returns whether or not profiling is enabled.
 func IsEnabled() bool {
-	return atomic.LoadUint32(&profilingEnabled) > 0
+    return atomic.LoadUint32(&profilingEnabled) > 0
 }
 
 // Enable turns profiling on and off.
@@ -60,31 +60,31 @@ func IsEnabled() bool {
 // it's a client stat or a server stat; so you should be able to filter for the
 // right type of stats in post-processing.
 func Enable(enabled bool) {
-	if enabled {
-		atomic.StoreUint32(&profilingEnabled, 1)
-	} else {
-		atomic.StoreUint32(&profilingEnabled, 0)
-	}
+    if enabled {
+        atomic.StoreUint32(&profilingEnabled, 1)
+    } else {
+        atomic.StoreUint32(&profilingEnabled, 0)
+    }
 }
 
 // A Timer represents the wall-clock beginning and ending of a logical
 // operation.
 type Timer struct {
-	// Tags is a comma-separated list of strings (usually forward-slash-separated
-	// hierarchical strings) used to categorize a Timer.
-	Tags string
-	// Begin marks the beginning of this timer. The timezone is unspecified, but
-	// must use the same timezone as End; this is so shave off the small, but
-	// non-zero time required to convert to a standard timezone such as UTC.
-	Begin time.Time
-	// End marks the end of a timer.
-	End time.Time
-	// Each Timer must be started and ended within the same goroutine; GoID
-	// captures this goroutine ID. The Go runtime does not typically expose this
-	// information, so this is set to zero in the typical case. However, a
-	// trivial patch to the runtime package can make this field useful. See
-	// goid_modified.go in this package for more details.
-	GoID int64
+    // Tags is a comma-separated list of strings (usually forward-slash-separated
+    // hierarchical strings) used to categorize a Timer.
+    Tags string
+    // Begin marks the beginning of this timer. The timezone is unspecified, but
+    // must use the same timezone as End; this is so shave off the small, but
+    // non-zero time required to convert to a standard timezone such as UTC.
+    Begin time.Time
+    // End marks the end of a timer.
+    End time.Time
+    // Each Timer must be started and ended within the same goroutine; GoID
+    // captures this goroutine ID. The Go runtime does not typically expose this
+    // information, so this is set to zero in the typical case. However, a
+    // trivial patch to the runtime package can make this field useful. See
+    // goid_modified.go in this package for more details.
+    GoID int64
 }
 
 // NewTimer creates and returns a new Timer object. This is useful when you
@@ -94,20 +94,20 @@ type Timer struct {
 //
 // Use AppendTimer to append the returned Timer to a Stat.
 func NewTimer(tags string) *Timer {
-	return &Timer{
-		Tags:  tags,
-		Begin: time.Now(),
-		GoID:  goid(),
-	}
+    return &Timer{
+        Tags:  tags,
+        Begin: time.Now(),
+        GoID:  goid(),
+    }
 }
 
 // Egress sets the End field of a timer to the current time.
 func (timer *Timer) Egress() {
-	if timer == nil {
-		return
-	}
+    if timer == nil {
+        return
+    }
 
-	timer.End = time.Now()
+    timer.End = time.Now()
 }
 
 // A Stat is a collection of Timers that represent timing information for
@@ -121,16 +121,16 @@ func (timer *Timer) Egress() {
 // the Stat's exported fields (which are exported for encoding reasons) may
 // lead to data races.
 type Stat struct {
-	// Tags is a comma-separated list of strings used to categorize a Stat.
-	Tags string
-	// Stats may also need to store other unstructured information specific to
-	// this stat. For example, a StreamStat will use these bytes to encode the
-	// connection ID and stream ID for each RPC to uniquely identify it. The
-	// encoding that must be used is unspecified.
-	Metadata []byte
-	// A collection of *Timers and a mutex for append operations on the slice.
-	mu     sync.Mutex
-	Timers []*Timer
+    // Tags is a comma-separated list of strings used to categorize a Stat.
+    Tags string
+    // Stats may also need to store other unstructured information specific to
+    // this stat. For example, a StreamStat will use these bytes to encode the
+    // connection ID and stream ID for each RPC to uniquely identify it. The
+    // encoding that must be used is unspecified.
+    Metadata []byte
+    // A collection of *Timers and a mutex for append operations on the slice.
+    mu     sync.Mutex
+    Timers []*Timer
 }
 
 // A power of two that's large enough to hold all timers within an average RPC
@@ -143,10 +143,10 @@ const defaultStatAllocatedTimers int32 = 128
 
 // NewStat creates and returns a new Stat object.
 func NewStat(tags string) *Stat {
-	return &Stat{
-		Tags:   tags,
-		Timers: make([]*Timer, 0, defaultStatAllocatedTimers),
-	}
+    return &Stat{
+        Tags:   tags,
+        Timers: make([]*Timer, 0, defaultStatAllocatedTimers),
+    }
 }
 
 // NewTimer creates a Timer object within the given stat if stat is non-nil.
@@ -155,19 +155,19 @@ func NewStat(tags string) *Stat {
 // time. The user is expected to call stat.Egress with the returned index as
 // argument to mark the end.
 func (stat *Stat) NewTimer(tags string) *Timer {
-	if stat == nil {
-		return nil
-	}
+    if stat == nil {
+        return nil
+    }
 
-	timer := &Timer{
-		Tags:  tags,
-		GoID:  goid(),
-		Begin: time.Now(),
-	}
-	stat.mu.Lock()
-	stat.Timers = append(stat.Timers, timer)
-	stat.mu.Unlock()
-	return timer
+    timer := &Timer{
+        Tags:  tags,
+        GoID:  goid(),
+        Begin: time.Now(),
+    }
+    stat.mu.Lock()
+    stat.Timers = append(stat.Timers, timer)
+    stat.mu.Unlock()
+    return timer
 }
 
 // AppendTimer appends a given Timer object to the internal slice of timers. A
@@ -175,13 +175,13 @@ func (stat *Stat) NewTimer(tags string) *Timer {
 // pointer) and the user is expected to lose their reference to the timer to
 // allow the Timer object to be garbage collected.
 func (stat *Stat) AppendTimer(timer *Timer) {
-	if stat == nil || timer == nil {
-		return
-	}
+    if stat == nil || timer == nil {
+        return
+    }
 
-	stat.mu.Lock()
-	stat.Timers = append(stat.Timers, timer)
-	stat.mu.Unlock()
+    stat.mu.Lock()
+    stat.Timers = append(stat.Timers, timer)
+    stat.mu.Unlock()
 }
 
 // statsInitialized is 0 before InitStats has been called. Changed to 1 by
@@ -205,19 +205,19 @@ var errAlreadyInitialized = errors.New("profiling may be initialized at most onc
 // once per lifetime of a process; calls after the first one will return an
 // error.
 func InitStats(streamStatsSize uint32) error {
-	var err error
-	if !atomic.CompareAndSwapInt32(&statsInitialized, 0, 1) {
-		return errAlreadyInitialized
-	}
+    var err error
+    if !atomic.CompareAndSwapInt32(&statsInitialized, 0, 1) {
+        return errAlreadyInitialized
+    }
 
-	if streamStatsSize == 0 {
-		streamStatsSize = defaultStreamStatsSize
-	}
+    if streamStatsSize == 0 {
+        streamStatsSize = defaultStreamStatsSize
+    }
 
-	StreamStats, err = buffer.NewCircularBuffer(streamStatsSize)
-	if err != nil {
-		return err
-	}
+    StreamStats, err = buffer.NewCircularBuffer(streamStatsSize)
+    if err != nil {
+        return err
+    }
 
-	return nil
+    return nil
 }

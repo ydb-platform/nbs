@@ -1,0 +1,96 @@
+{
+    "Version": "v4.5.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:7cYmW1XlMY7h7ii7UhUyChSgS5wUJEnm9uZVTGqOWzg=",
+    "Packages": {
+        "github.com/golang-jwt/jwt/v4": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/subtle",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "math",
+                "math/big",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/rsa",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang-jwt/jwt/v4",
+                "github.com/golang-jwt/jwt/v4/request",
+                "github.com/golang-jwt/jwt/v4/test",
+                "io",
+                "log",
+                "math",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang-jwt/jwt/v4/cmd/jwt": {
+            "Imports": [
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/golang-jwt/jwt/v4",
+                "io",
+                "os",
+                "regexp",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang-jwt/jwt/v4/request": {
+            "Imports": [
+                "errors",
+                "github.com/golang-jwt/jwt/v4",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/golang-jwt/jwt/v4",
+                "github.com/golang-jwt/jwt/v4/test",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/golang-jwt/jwt/v4/test": {
+            "Imports": [
+                "crypto",
+                "crypto/rsa",
+                "github.com/golang-jwt/jwt/v4",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

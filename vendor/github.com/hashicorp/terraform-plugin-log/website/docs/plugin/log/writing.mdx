@@ -1,0 +1,279 @@
+---
+page_title: 'Home - Plugin Development: Writing Log Output'
+description: >-
+  Write logs from your provider that help users debug issues and understand operations.
+---
+
+# Writing Log Output
+
+Use the [`tflog` package](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog) to write logs for your provider. SDKs like the `terraform-plugin-framework`, `terraform-plugin-go`, and `terraform-plugin-sdk/v2` set up logging for you, so you only need to write the logs themselves. You can write log output at varying verbosity levels, add fields to logs, and create subsystems to group logs that relate to distinct sections of code (e.g., the API client).
+
+!> **Warning:** Do not use `fmt.Println` and similar methods to log to standard output (stdout). They will not generate visible output in older versions of Terraform and are truncated in recent versions of Terraform.
+
+## Structured Logging
+
+The `tflog` package uses structured logging, based on [`go-hclog`](https://pkg.go.dev/github.com/hashicorp/go-hclog). Rather than writing logs as sentences with embedded fields and values, `tflog` takes a sentence describing the logging event and a set of fields to log. When fields are separate from the log description, you can use them to programmatically parse, filter, and search log output. This separation also allows other parts of the system to associate fields with downstream log output.
+
+### Requirements
+
+One of the following SDK versions is required to properly output structured logs with the `tflog` package:
+
+- [`terraform-plugin-framework`](/terraform/plugin/framework) version 0.6.0 or later
+- [`terraform-plugin-sdk`](/terraform/plugin/sdkv2) version 2.10.0 or later
+
+All calls to `tflog` package functionality must use an SDK provided `context.Context`, which stores the logging implementation. Every `terraform-plugin-framework` method implemented by providers automatically includes the correct `context.Context`. Providers written with `terraform-plugin-sdk` must use context-aware functionality, such as the [`helper/schema.Resource` type `ReadContext` field](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema#Resource.ReadContext).
+
+Follow the [legacy logging](#legacy-logging) instructions to write logs with older SDK versions or when context-aware functionality is not available, for instance [SchemaStateFunc](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-sdk/helper/schema#SchemaStateFunc).
+
+### Log Levels
+
+You must choose a verbosity level for each line of log output. This lets consumers [specify a type of log output](/terraform/plugin/log/managing#log-levels) to write from your provider. For example, you can use environment fields to set your provider to write only logs of type `Warn` during a Terraform run.
+
+#### Error
+
+The least verbose output that typically describes an unexpected condition prior to halting execution. It often provides more information about a user-facing error.
+
+```go
+tflog.Error(ctx, "Unrecognized API response body")
+```
+
+#### Warn
+
+Output that describes an unexpected condition, but not one that should halt execution. It often includes deprecations or environment issues.
+
+```go
+tflog.Warn(ctx, "Retrying due to API server-side error")
+```
+
+#### Info
+
+Output that describes a certain logic condition or event. It often includes details about the environment your provider is running in or how it has been configured to run.
+
+```go
+tflog.Info(ctx, "Using API token for authentication")
+```
+
+#### Debug
+
+Verbose output that typically describes important operational details like milestones in logic. It often describes behaviors that may confusing even though they are correct.
+
+```go
+tflog.Debug(ctx, "Two identical diagnostics in the response, deduplicating down to one")
+```
+
+#### Trace
+
+The most verbose output that describes the lowest level operational details, such as intra-function steps or raw data.
+
+```go
+tflog.Trace(ctx, "Creating the widget")
+```
+
+### Fields
+
+Use fields to attach information to specific logs or to an entire logger, which adds that information to all subsequent logs. You can also combine both methods to simplify your logging code.
+
+#### Single Log Fields
+
+To specify filterable fields in the log output, add a map of additional fields after the log message.
+
+The following example adds both a URL and a method for an API request.
+
+```go
+tflog.Trace(ctx, "executing API request", map[string]interface{}{
+    "url": "https://www.example.com/my/endpoint",
+    "method": "POST",
+})
+```
+
+You can also use other standard Go types for values.
+
+```go
+tflog.Trace(ctx, "executing API request", map[string]interface{}{
+    "url": "https://www.example.com/my/endpoint",
+    "method": "POST",
+    "size": 200,
+    "authenticated": true,
+    "headers": map[string][]string{"content-type": []string{"application/json"}},
+})
+```
+
+#### Multiple Log Fields
+
+Loggers are transported using a `context.Context` type, so injecting a field into a logger returns a new `context.Context` containing the modified logger. Subsequent calls to `tflog` with that logger will implicitly include the field.
+
+Use [`tflog.SetField()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SetField) to attach fields to a logger.
+
+```go
+// overwrite logger to include new `url` field
+ctx = tflog.SetField(ctx, "url", "https://www.example.com/my/endpoint")
+
+// will include the `url` field
+tflog.Debug(ctx, "Calling API")
+```
+
+You can also conditionally attach the fields by creating a new context and injecting it into the logger.
+
+```go
+// create new logger that includes `url` field
+apiContext := tflog.SetField(ctx, "url", "https://www.example.com/my/endpoint")
+
+// will not include the `url` field
+tflog.Debug(ctx, "Calling database")
+
+// will include the `url` field
+tflog.Debug(apiContext, "Calling API")
+```
+
+### Subsystems
+
+You can create a subsystem to manage loggers for sections of code that are large, complex, or have distinct functionality. You can then configure environment fields that allow each subsystem to be included or excluded from log output. For example, you may want to create a subsystem for logs that relate to the API client so that you can turn them off when when debugging an unrelated issue.
+
+#### Create Subsystems
+
+To create a new subsystem, pass context and the subsystem name to the `NewSubsystem()` method.
+
+```go
+// my-subsystem is the name of the logging subsystem
+// It will be available to subsequent calls via the tflog.Subsystem* functions.
+ctx = tflog.NewSubsystem(ctx, "my-subsystem")
+```
+
+Optionally, specify a [log level](#log-levels) for the subsystem.
+
+```go
+ctx = tflog.NewSubsystem(ctx, "my-subsystem", hclog.Debug)
+```
+
+You can also create an environment field to control the logging level instead of hardcoding it into the subsystem.
+
+```go
+// read the level from TF_LOG_PROVIDER_MYPROVIDER_CLIENT
+ctx = tflog.NewSubsystem(ctx, "my-subsystem",
+    tflog.WithLevelFromEnv("TF_LOG_PROVIDER_MYPROVIDER_CLIENT"))
+```
+
+#### Use Subsystems
+
+Logging or adding fields to subsystem loggers requires separate function calls for each [log level](#log-levels):
+
+* [`tflog.SubsystemError()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemError): Equivalent to [`tflog.Error()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#Error), but using a subsystem logger.
+* [`tflog.SubsystemWarn()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemWarn): Equivalent to [`tflog.Warn()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#Warn), but using a subsystem logger.
+* [`tflog.SubsystemInfo()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemInfo): Equivalent to [`tflog.Info()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#Info), but using a subsystem logger.
+* [`tflog.SubsystemDebug()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemDebug): Equivalent to [`tflog.Debug()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#Debug), but using a subsystem logger.
+* [`tflog.SubsystemTrace()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemTrace): Equivalent to [`tflog.Trace()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#Trace), but using a subsystem logger.
+* [`tflog.SubsystemSetField()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemSetField): Equivalent to [`tflog.SetField()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SetField), but using a subsystem logger.
+
+For example, use [`tflog.SubsystemDebug()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemDebug) to write a debug level log with a specific subsystem.
+
+```go
+tflog.SubsystemDebug(ctx, "my-subsystem", "writing to a subsystem", map[string]interface{}{
+    "meaning_of_life": 42,
+})
+```
+
+Use [`tflog.SubsystemSetField()`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-log/tflog#SubsystemSetField) to attach fields to a specific subsystem.
+
+```go
+// overwrite logger to include new `url` field
+ctx = tflog.SubsystemSetField(ctx, "my-subsystem", "url", "https://www.example.com/my/endpoint")
+
+// will include the `url` field
+tflog.SubsystemDebug(ctx, "my-subsystem", "Calling API")
+```
+
+You can also conditionally attach fields by creating a new context and injecting it into the logger.
+
+```go
+// create new logger that includes `url` field
+apiContext := tflog.SubsystemSetField(ctx, "my-subsystem", "url", "https://www.example.com/my/endpoint")
+
+// will not include the `url` field
+tflog.SubsystemDebug(ctx, "my-subsystem", "Calling database")
+
+// will include the `url` field
+tflog.SubsystemDebug(apiContext, "my-subsystem", "Calling API")
+```
+
+## Legacy Logging
+
+Providers on older SDK versions should write logs via the Go standard library [`log` package](https://pkg.go.dev/log). Only a log level and message are supported. There is no support for fields, filtering, or subsystems.
+
+### Legacy Log Levels
+
+You must choose a verbosity level for each line of log output. This lets consumers [specify a type of log output](/terraform/plugin/log/managing#log-levels) to write from your provider. For example, you can use environment fields to set your provider to write only logs at the warning or higher level during a Terraform run.
+
+Terraform has specific message formatting requirements to properly set the log level when using the `log` package:
+
+```go
+log.Printf("[LEVEL] MESSAGE")
+```
+
+#### Error
+
+The least verbose output that typically describes an unexpected condition prior to halting execution. It often provides more information about a user-facing error.
+
+```go
+log.Printf("[ERROR] Unrecognized API response body")
+```
+
+#### Warn
+
+Output that describes an unexpected condition, but not one that should halt execution. It often includes deprecations or environment issues.
+
+```go
+log.Printf("[WARN] Retrying due to API server-side error")
+```
+
+#### Info
+
+Output that describes a certain logic condition or event. It often includes details about the environment your provider is running in or how it has been configured to run.
+
+```go
+log.Printf("[INFO] Using API token for authentication")
+```
+
+#### Debug
+
+Verbose output that typically describes important operational details like milestones in logic. It often describes behaviors that may confusing even though they are correct.
+
+```go
+log.Printf("[DEBUG] Two identical diagnostics in the response, deduplicating down to one")
+```
+
+#### Trace
+
+The most verbose output that describes the lowest level operational details, such as intra-function steps or raw data.
+
+```go
+log.Printf("[TRACE] Creating the widget")
+```
+
+### Legacy Log Troubleshooting
+
+#### Duplicate Timestamp and Incorrect Level Messages
+
+Using the `log` package for logging can generate messages that look like the following in the output from Terraform:
+
+```
+2022-01-26T16:25:33.123-0800 [INFO] provider.terraform-provider-example: 2022/01/26 16:25:33 [DEBUG] Example message
+```
+
+Resolve this by adjusting the `log` package to not include a timestamp prefix via the [`log.SetFlags()` function](https://pkg.go.dev/log#SetFlags) before the provider server starts.
+
+This example shows an updated `main.go` implementation for a `terraform-plugin-sdk` based provider:
+
+```go
+func main() {
+    // ... potentially other provider server startup logic ...
+
+    // Remove any date and time prefix in log package function output to
+    // prevent duplicate timestamp and incorrect log level setting
+    log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
+
+    // Start the provider server
+    plugin.Serve(/* ... */)
+}
+```
+
+Also ensure the [`log.SetPrefix()` function](https://pkg.go.dev/log#SetPrefix) is not being used, as log messages must start with the `[LEVEL]` prefix.

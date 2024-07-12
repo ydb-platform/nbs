@@ -5,12 +5,12 @@
 package stsexchange
 
 import (
-	"net/http"
-	"net/url"
-	"reflect"
-	"testing"
+    "net/http"
+    "net/url"
+    "reflect"
+    "testing"
 
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 var clientID = "rbrgnognrhongo3bi4gb9ghg9g"
@@ -26,89 +26,89 @@ var scope = []string{"https://www.googleapis.com/auth/devstorage.full_control"}
 var ContentType = []string{"application/x-www-form-urlencoded"}
 
 func TestClientAuthentication_InjectHeaderAuthentication(t *testing.T) {
-	valuesH := url.Values{
-		"audience":             audience,
-		"grant_type":           grantType,
-		"requested_token_type": requestedTokenType,
-		"subject_token_type":   subjectTokenType,
-		"subject_token":        subjectToken,
-		"scope":                scope,
-	}
-	headerH := http.Header{
-		"Content-Type": ContentType,
-	}
+    valuesH := url.Values{
+        "audience":             audience,
+        "grant_type":           grantType,
+        "requested_token_type": requestedTokenType,
+        "subject_token_type":   subjectTokenType,
+        "subject_token":        subjectToken,
+        "scope":                scope,
+    }
+    headerH := http.Header{
+        "Content-Type": ContentType,
+    }
 
-	headerAuthentication := ClientAuthentication{
-		AuthStyle:    oauth2.AuthStyleInHeader,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-	}
-	headerAuthentication.InjectAuthentication(valuesH, headerH)
+    headerAuthentication := ClientAuthentication{
+        AuthStyle:    oauth2.AuthStyleInHeader,
+        ClientID:     clientID,
+        ClientSecret: clientSecret,
+    }
+    headerAuthentication.InjectAuthentication(valuesH, headerH)
 
-	if got, want := valuesH["audience"], audience; !reflect.DeepEqual(got, want) {
-		t.Errorf("audience = %q, want %q", got, want)
-	}
-	if got, want := valuesH["grant_type"], grantType; !reflect.DeepEqual(got, want) {
-		t.Errorf("grant_type = %q, want %q", got, want)
-	}
-	if got, want := valuesH["requested_token_type"], requestedTokenType; !reflect.DeepEqual(got, want) {
-		t.Errorf("requested_token_type = %q, want %q", got, want)
-	}
-	if got, want := valuesH["subject_token_type"], subjectTokenType; !reflect.DeepEqual(got, want) {
-		t.Errorf("subject_token_type = %q, want %q", got, want)
-	}
-	if got, want := valuesH["subject_token"], subjectToken; !reflect.DeepEqual(got, want) {
-		t.Errorf("subject_token = %q, want %q", got, want)
-	}
-	if got, want := valuesH["scope"], scope; !reflect.DeepEqual(got, want) {
-		t.Errorf("scope = %q, want %q", got, want)
-	}
-	if got, want := headerH["Authorization"], []string{"Basic cmJyZ25vZ25yaG9uZ28zYmk0Z2I5Z2hnOWc6bm90c29zZWNyZXQ="}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Authorization in header = %q, want %q", got, want)
-	}
+    if got, want := valuesH["audience"], audience; !reflect.DeepEqual(got, want) {
+        t.Errorf("audience = %q, want %q", got, want)
+    }
+    if got, want := valuesH["grant_type"], grantType; !reflect.DeepEqual(got, want) {
+        t.Errorf("grant_type = %q, want %q", got, want)
+    }
+    if got, want := valuesH["requested_token_type"], requestedTokenType; !reflect.DeepEqual(got, want) {
+        t.Errorf("requested_token_type = %q, want %q", got, want)
+    }
+    if got, want := valuesH["subject_token_type"], subjectTokenType; !reflect.DeepEqual(got, want) {
+        t.Errorf("subject_token_type = %q, want %q", got, want)
+    }
+    if got, want := valuesH["subject_token"], subjectToken; !reflect.DeepEqual(got, want) {
+        t.Errorf("subject_token = %q, want %q", got, want)
+    }
+    if got, want := valuesH["scope"], scope; !reflect.DeepEqual(got, want) {
+        t.Errorf("scope = %q, want %q", got, want)
+    }
+    if got, want := headerH["Authorization"], []string{"Basic cmJyZ25vZ25yaG9uZ28zYmk0Z2I5Z2hnOWc6bm90c29zZWNyZXQ="}; !reflect.DeepEqual(got, want) {
+        t.Errorf("Authorization in header = %q, want %q", got, want)
+    }
 }
 
 func TestClientAuthentication_ParamsAuthentication(t *testing.T) {
-	valuesP := url.Values{
-		"audience":             audience,
-		"grant_type":           grantType,
-		"requested_token_type": requestedTokenType,
-		"subject_token_type":   subjectTokenType,
-		"subject_token":        subjectToken,
-		"scope":                scope,
-	}
-	headerP := http.Header{
-		"Content-Type": ContentType,
-	}
-	paramsAuthentication := ClientAuthentication{
-		AuthStyle:    oauth2.AuthStyleInParams,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-	}
-	paramsAuthentication.InjectAuthentication(valuesP, headerP)
+    valuesP := url.Values{
+        "audience":             audience,
+        "grant_type":           grantType,
+        "requested_token_type": requestedTokenType,
+        "subject_token_type":   subjectTokenType,
+        "subject_token":        subjectToken,
+        "scope":                scope,
+    }
+    headerP := http.Header{
+        "Content-Type": ContentType,
+    }
+    paramsAuthentication := ClientAuthentication{
+        AuthStyle:    oauth2.AuthStyleInParams,
+        ClientID:     clientID,
+        ClientSecret: clientSecret,
+    }
+    paramsAuthentication.InjectAuthentication(valuesP, headerP)
 
-	if got, want := valuesP["audience"], audience; !reflect.DeepEqual(got, want) {
-		t.Errorf("audience = %q, want %q", got, want)
-	}
-	if got, want := valuesP["grant_type"], grantType; !reflect.DeepEqual(got, want) {
-		t.Errorf("grant_type = %q, want %q", got, want)
-	}
-	if got, want := valuesP["requested_token_type"], requestedTokenType; !reflect.DeepEqual(got, want) {
-		t.Errorf("requested_token_type = %q, want %q", got, want)
-	}
-	if got, want := valuesP["subject_token_type"], subjectTokenType; !reflect.DeepEqual(got, want) {
-		t.Errorf("subject_token_type = %q, want %q", got, want)
-	}
-	if got, want := valuesP["subject_token"], subjectToken; !reflect.DeepEqual(got, want) {
-		t.Errorf("subject_token = %q, want %q", got, want)
-	}
-	if got, want := valuesP["scope"], scope; !reflect.DeepEqual(got, want) {
-		t.Errorf("scope = %q, want %q", got, want)
-	}
-	if got, want := valuesP["client_id"], []string{clientID}; !reflect.DeepEqual(got, want) {
-		t.Errorf("client_id = %q, want %q", got, want)
-	}
-	if got, want := valuesP["client_secret"], []string{clientSecret}; !reflect.DeepEqual(got, want) {
-		t.Errorf("client_secret = %q, want %q", got, want)
-	}
+    if got, want := valuesP["audience"], audience; !reflect.DeepEqual(got, want) {
+        t.Errorf("audience = %q, want %q", got, want)
+    }
+    if got, want := valuesP["grant_type"], grantType; !reflect.DeepEqual(got, want) {
+        t.Errorf("grant_type = %q, want %q", got, want)
+    }
+    if got, want := valuesP["requested_token_type"], requestedTokenType; !reflect.DeepEqual(got, want) {
+        t.Errorf("requested_token_type = %q, want %q", got, want)
+    }
+    if got, want := valuesP["subject_token_type"], subjectTokenType; !reflect.DeepEqual(got, want) {
+        t.Errorf("subject_token_type = %q, want %q", got, want)
+    }
+    if got, want := valuesP["subject_token"], subjectToken; !reflect.DeepEqual(got, want) {
+        t.Errorf("subject_token = %q, want %q", got, want)
+    }
+    if got, want := valuesP["scope"], scope; !reflect.DeepEqual(got, want) {
+        t.Errorf("scope = %q, want %q", got, want)
+    }
+    if got, want := valuesP["client_id"], []string{clientID}; !reflect.DeepEqual(got, want) {
+        t.Errorf("client_id = %q, want %q", got, want)
+    }
+    if got, want := valuesP["client_secret"], []string{clientSecret}; !reflect.DeepEqual(got, want) {
+        t.Errorf("client_secret = %q, want %q", got, want)
+    }
 }

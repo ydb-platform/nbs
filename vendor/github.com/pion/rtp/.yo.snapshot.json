@@ -1,0 +1,86 @@
+{
+    "Version": "v1.8.5",
+    "GoVersion": "1.19",
+    "Sum": "h1:uYzINfaK+9yWs7r537z/Rc1SvT8ILjBcmDOpJcTB+OU=",
+    "Packages": {
+        "github.com/pion/rtp": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/randutil",
+                "github.com/pion/rtp/codecs/av1/obu",
+                "io",
+                "math",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/pion/rtp/codecs",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/rtp/codecs": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/randutil",
+                "github.com/pion/rtp/codecs/av1/obu"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "github.com/pion/rtp/codecs/av1/obu",
+                "math",
+                "math/rand",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/rtp/codecs/av1/frame": {
+            "Imports": [
+                "github.com/pion/rtp/codecs"
+            ],
+            "TestImports": [
+                "github.com/pion/rtp/codecs",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/rtp/codecs/av1/obu": {
+            "Imports": [
+                "errors"
+            ],
+            "TestImports": [
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/pion/rtp/pkg/frame": {
+            "Imports": [
+                "github.com/pion/rtp/codecs/av1/frame"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/rtp/pkg/obu": {
+            "Imports": [
+                "github.com/pion/rtp/codecs/av1/obu"
+            ],
+            "TestImports": null
+        }
+    }
+}

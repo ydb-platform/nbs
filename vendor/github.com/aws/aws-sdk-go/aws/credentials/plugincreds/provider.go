@@ -39,28 +39,28 @@
 //
 //   // Build: go build -o plugin.so -buildmode=plugin plugin.go
 //   func init() {
-//   	// Initialize a mock credential provider with stubs
-//   	myCredProvider = provider{"a","b","c"}
+//       // Initialize a mock credential provider with stubs
+//       myCredProvider = provider{"a","b","c"}
 //   }
 //
 //   // GetAWSSDKCredentialProvider is the symbol SDK will lookup and use to
 //   // get the credential provider's retrieve and isExpired functions.
 //   func GetAWSSDKCredentialProvider() (func() (key, secret, token string, err error), func() bool) {
-//   	return myCredProvider.Retrieve,	myCredProvider.IsExpired
+//       return myCredProvider.Retrieve,    myCredProvider.IsExpired
 //   }
 //
 //   // mock implementation of a type that returns retrieves credentials and
 //   // returns if they have expired.
 //   type provider struct {
-//   	key, secret, token string
+//       key, secret, token string
 //   }
 //
 //   func (p provider) Retrieve() (key, secret, token string, err error) {
-//   	return p.key, p.secret, p.token, nil
+//       return p.key, p.secret, p.token, nil
 //   }
 //
 //   func (p *provider) IsExpired() bool {
-//   	return false;
+//       return false;
 //   }
 //
 // Configuring SDK for Plugin Credentials
@@ -75,29 +75,29 @@
 //   // Open plugin, and load it into the process.
 //   p, err := plugin.Open("somefile.so")
 //   if err != nil {
-//   	return nil, err
+//       return nil, err
 //   }
 //
 //   // Create a new Credentials value which will source the provider's Retrieve
 //   // and IsExpired functions from the plugin.
 //   creds, err := plugincreds.NewCredentials(p)
 //   if err != nil {
-//   	return nil, err
+//       return nil, err
 //   }
 //
 //   // Example to configure a Session with the newly created credentials that
 //   // will be sourced using the plugin's functionality.
 //   sess := session.Must(session.NewSession(&aws.Config{
-//   	Credentials:  creds,
+//       Credentials:  creds,
 //   }))
 package plugincreds
 
 import (
-	"fmt"
-	"plugin"
+    "fmt"
+    "plugin"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
+    "github.com/aws/aws-sdk-go/aws/awserr"
+    "github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 // ProviderSymbolName the symbol name the SDK will use to lookup the plugin
@@ -109,67 +109,67 @@ const ProviderSymbolName = `GetAWSSDKCredentialProvider`
 const ProviderName = `PluginCredentialsProvider`
 
 const (
-	// ErrCodeLookupSymbolError failed to lookup symbol
-	ErrCodeLookupSymbolError = "LookupSymbolError"
+    // ErrCodeLookupSymbolError failed to lookup symbol
+    ErrCodeLookupSymbolError = "LookupSymbolError"
 
-	// ErrCodeInvalidSymbolError symbol invalid
-	ErrCodeInvalidSymbolError = "InvalidSymbolError"
+    // ErrCodeInvalidSymbolError symbol invalid
+    ErrCodeInvalidSymbolError = "InvalidSymbolError"
 
-	// ErrCodePluginRetrieveNil Retrieve function was nil
-	ErrCodePluginRetrieveNil = "PluginRetrieveNilError"
+    // ErrCodePluginRetrieveNil Retrieve function was nil
+    ErrCodePluginRetrieveNil = "PluginRetrieveNilError"
 
-	// ErrCodePluginIsExpiredNil IsExpired Function was nil
-	ErrCodePluginIsExpiredNil = "PluginIsExpiredNilError"
+    // ErrCodePluginIsExpiredNil IsExpired Function was nil
+    ErrCodePluginIsExpiredNil = "PluginIsExpiredNilError"
 
-	// ErrCodePluginProviderRetrieve plugin provider's retrieve returned error
-	ErrCodePluginProviderRetrieve = "PluginProviderRetrieveError"
+    // ErrCodePluginProviderRetrieve plugin provider's retrieve returned error
+    ErrCodePluginProviderRetrieve = "PluginProviderRetrieveError"
 )
 
 // Provider is the credentials provider that will use the plugin provided
 // Retrieve and IsExpired functions to retrieve credentials.
 type Provider struct {
-	RetrieveFn  func() (key, secret, token string, err error)
-	IsExpiredFn func() bool
+    RetrieveFn  func() (key, secret, token string, err error)
+    IsExpiredFn func() bool
 }
 
 // NewCredentials returns a new Credentials loader using the plugin provider.
 // If the symbol isn't found or is invalid in the plugin an error will be
 // returned.
 func NewCredentials(p *plugin.Plugin) (*credentials.Credentials, error) {
-	retrieve, isExpired, err := GetPluginProviderFns(p)
-	if err != nil {
-		return nil, err
-	}
+    retrieve, isExpired, err := GetPluginProviderFns(p)
+    if err != nil {
+        return nil, err
+    }
 
-	return credentials.NewCredentials(Provider{
-		RetrieveFn:  retrieve,
-		IsExpiredFn: isExpired,
-	}), nil
+    return credentials.NewCredentials(Provider{
+        RetrieveFn:  retrieve,
+        IsExpiredFn: isExpired,
+    }), nil
 }
 
 // Retrieve will return the credentials Value if they were successfully retrieved
 // from the underlying plugin provider. An error will be returned otherwise.
 func (p Provider) Retrieve() (credentials.Value, error) {
-	creds := credentials.Value{
-		ProviderName: ProviderName,
-	}
+    creds := credentials.Value{
+        ProviderName: ProviderName,
+    }
 
-	k, s, t, err := p.RetrieveFn()
-	if err != nil {
-		return creds, awserr.New(ErrCodePluginProviderRetrieve,
-			"failed to retrieve credentials with plugin provider", err)
-	}
+    k, s, t, err := p.RetrieveFn()
+    if err != nil {
+        return creds, awserr.New(ErrCodePluginProviderRetrieve,
+            "failed to retrieve credentials with plugin provider", err)
+    }
 
-	creds.AccessKeyID = k
-	creds.SecretAccessKey = s
-	creds.SessionToken = t
+    creds.AccessKeyID = k
+    creds.SecretAccessKey = s
+    creds.SessionToken = t
 
-	return creds, nil
+    return creds, nil
 }
 
 // IsExpired will return the expired state of the underlying plugin provider.
 func (p Provider) IsExpired() bool {
-	return p.IsExpiredFn()
+    return p.IsExpiredFn()
 }
 
 // GetPluginProviderFns returns the plugin's Retrieve and IsExpired functions
@@ -178,7 +178,7 @@ func (p Provider) IsExpired() bool {
 // Uses ProviderSymbolName as the symbol name when lookup up the symbol. If you
 // want to use a different symbol name, use GetPluginProviderFnsByName.
 func GetPluginProviderFns(p *plugin.Plugin) (func() (key, secret, token string, err error), func() bool, error) {
-	return GetPluginProviderFnsByName(p, ProviderSymbolName)
+    return GetPluginProviderFnsByName(p, ProviderSymbolName)
 }
 
 // GetPluginProviderFnsByName returns the plugin's Retrieve and IsExpired functions
@@ -186,27 +186,27 @@ func GetPluginProviderFns(p *plugin.Plugin) (func() (key, secret, token string, 
 //
 // Same as GetPluginProviderFns, but takes a custom symbolName to lookup with.
 func GetPluginProviderFnsByName(p *plugin.Plugin, symbolName string) (func() (key, secret, token string, err error), func() bool, error) {
-	sym, err := p.Lookup(symbolName)
-	if err != nil {
-		return nil, nil, awserr.New(ErrCodeLookupSymbolError,
-			fmt.Sprintf("failed to lookup %s plugin provider symbol", symbolName), err)
-	}
+    sym, err := p.Lookup(symbolName)
+    if err != nil {
+        return nil, nil, awserr.New(ErrCodeLookupSymbolError,
+            fmt.Sprintf("failed to lookup %s plugin provider symbol", symbolName), err)
+    }
 
-	fn, ok := sym.(func() (func() (key, secret, token string, err error), func() bool))
-	if !ok {
-		return nil, nil, awserr.New(ErrCodeInvalidSymbolError,
-			fmt.Sprintf("symbol %T, does not match the 'func() (func() (key, secret, token string, err error), func() bool)'  type", sym), nil)
-	}
+    fn, ok := sym.(func() (func() (key, secret, token string, err error), func() bool))
+    if !ok {
+        return nil, nil, awserr.New(ErrCodeInvalidSymbolError,
+            fmt.Sprintf("symbol %T, does not match the 'func() (func() (key, secret, token string, err error), func() bool)'  type", sym), nil)
+    }
 
-	retrieveFn, isExpiredFn := fn()
-	if retrieveFn == nil {
-		return nil, nil, awserr.New(ErrCodePluginRetrieveNil,
-			"the plugin provider retrieve function cannot be nil", nil)
-	}
-	if isExpiredFn == nil {
-		return nil, nil, awserr.New(ErrCodePluginIsExpiredNil,
-			"the plugin provider isExpired function cannot be nil", nil)
-	}
+    retrieveFn, isExpiredFn := fn()
+    if retrieveFn == nil {
+        return nil, nil, awserr.New(ErrCodePluginRetrieveNil,
+            "the plugin provider retrieve function cannot be nil", nil)
+    }
+    if isExpiredFn == nil {
+        return nil, nil, awserr.New(ErrCodePluginIsExpiredNil,
+            "the plugin provider isExpired function cannot be nil", nil)
+    }
 
-	return retrieveFn, isExpiredFn, nil
+    return retrieveFn, isExpiredFn, nil
 }

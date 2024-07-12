@@ -1,0 +1,101 @@
+{
+    "Version": "v0.0.0-20161109161721-4b31f3041d9a",
+    "GoVersion": "",
+    "Sum": "h1:Mi5lnNcpqYN2M2J52gy1uknSRhfA9BBAPVBd5XfHi+U=",
+    "Packages": {
+        "github.com/google/tiff": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "log",
+                "math",
+                "math/big",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/bigtiff": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/tiff",
+                "io",
+                "log",
+                "reflect",
+                "sync",
+                "text/tabwriter"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/dng": {
+            "Imports": [
+                "github.com/google/tiff"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/exif": {
+            "Imports": [
+                "fmt",
+                "github.com/google/tiff",
+                "io",
+                "log",
+                "math/big",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/geotiff": {
+            "Imports": [
+                "github.com/google/tiff"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/image": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/tiff",
+                "github.com/google/tiff/bigtiff",
+                "github.com/google/tiff/tiff85",
+                "image",
+                "image/color",
+                "io",
+                "math/big",
+                "sort",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/modi": {
+            "Imports": [
+                "github.com/google/tiff"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/tiff85": {
+            "Imports": [
+                "github.com/google/tiff"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/tiff/tiffep": {
+            "Imports": [
+                "github.com/google/tiff"
+            ],
+            "TestImports": null
+        }
+    }
+}

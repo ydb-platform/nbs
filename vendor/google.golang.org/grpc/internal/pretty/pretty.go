@@ -20,14 +20,14 @@
 package pretty
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
+    "bytes"
+    "encoding/json"
+    "fmt"
 
-	"github.com/golang/protobuf/jsonpb"
-	protov1 "github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/encoding/protojson"
-	protov2 "google.golang.org/protobuf/proto"
+    "github.com/golang/protobuf/jsonpb"
+    protov1 "github.com/golang/protobuf/proto"
+    "google.golang.org/protobuf/encoding/protojson"
+    protov2 "google.golang.org/protobuf/proto"
 )
 
 const jsonIndent = "  "
@@ -36,47 +36,47 @@ const jsonIndent = "  "
 //
 // If marshal fails, it falls back to fmt.Sprintf("%+v").
 func ToJSON(e interface{}) string {
-	switch ee := e.(type) {
-	case protov1.Message:
-		mm := jsonpb.Marshaler{Indent: jsonIndent}
-		ret, err := mm.MarshalToString(ee)
-		if err != nil {
-			// This may fail for proto.Anys, e.g. for xDS v2, LDS, the v2
-			// messages are not imported, and this will fail because the message
-			// is not found.
-			return fmt.Sprintf("%+v", ee)
-		}
-		return ret
-	case protov2.Message:
-		mm := protojson.MarshalOptions{
-			Multiline: true,
-			Indent:    jsonIndent,
-		}
-		ret, err := mm.Marshal(ee)
-		if err != nil {
-			// This may fail for proto.Anys, e.g. for xDS v2, LDS, the v2
-			// messages are not imported, and this will fail because the message
-			// is not found.
-			return fmt.Sprintf("%+v", ee)
-		}
-		return string(ret)
-	default:
-		ret, err := json.MarshalIndent(ee, "", jsonIndent)
-		if err != nil {
-			return fmt.Sprintf("%+v", ee)
-		}
-		return string(ret)
-	}
+    switch ee := e.(type) {
+    case protov1.Message:
+        mm := jsonpb.Marshaler{Indent: jsonIndent}
+        ret, err := mm.MarshalToString(ee)
+        if err != nil {
+            // This may fail for proto.Anys, e.g. for xDS v2, LDS, the v2
+            // messages are not imported, and this will fail because the message
+            // is not found.
+            return fmt.Sprintf("%+v", ee)
+        }
+        return ret
+    case protov2.Message:
+        mm := protojson.MarshalOptions{
+            Multiline: true,
+            Indent:    jsonIndent,
+        }
+        ret, err := mm.Marshal(ee)
+        if err != nil {
+            // This may fail for proto.Anys, e.g. for xDS v2, LDS, the v2
+            // messages are not imported, and this will fail because the message
+            // is not found.
+            return fmt.Sprintf("%+v", ee)
+        }
+        return string(ret)
+    default:
+        ret, err := json.MarshalIndent(ee, "", jsonIndent)
+        if err != nil {
+            return fmt.Sprintf("%+v", ee)
+        }
+        return string(ret)
+    }
 }
 
 // FormatJSON formats the input json bytes with indentation.
 //
 // If Indent fails, it returns the unchanged input as string.
 func FormatJSON(b []byte) string {
-	var out bytes.Buffer
-	err := json.Indent(&out, b, "", jsonIndent)
-	if err != nil {
-		return string(b)
-	}
-	return out.String()
+    var out bytes.Buffer
+    err := json.Indent(&out, b, "", jsonIndent)
+    if err != nil {
+        return string(b)
+    }
+    return out.String()
 }

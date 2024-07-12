@@ -1,23 +1,23 @@
 package xstring
 
 import (
-	"bytes"
-	"sync"
+    "bytes"
+    "sync"
 )
 
 type buffer struct {
-	bytes.Buffer
+    bytes.Buffer
 }
 
 var buffersPool = sync.Pool{New: func() interface{} {
-	return &buffer{}
+    return &buffer{}
 }}
 
 func (b *buffer) Free() {
-	b.Reset()
-	buffersPool.Put(b)
+    b.Reset()
+    buffersPool.Put(b)
 }
 
 func Buffer() *buffer {
-	return buffersPool.Get().(*buffer)
+    return buffersPool.Get().(*buffer)
 }

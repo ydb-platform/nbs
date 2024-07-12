@@ -1,0 +1,168 @@
+{
+    "Version": "v1.4.1-0.20200414143053-d3edf31b6320",
+    "GoVersion": "1.12",
+    "Sum": "h1:1/D3zfFHttUKaCaGKZ/dR2roBXv0vKbSCnssIldfQdI=",
+    "Packages": {
+        "github.com/hashicorp/go-cty/cty": {
+            "Imports": [
+                "bytes",
+                "encoding/gob",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty/set",
+                "golang.org/x/text/unicode/norm",
+                "hash/crc32",
+                "hash/crc64",
+                "math/big",
+                "reflect",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/gob",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-cty/cty",
+                "math/big",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/convert": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/function": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "runtime/debug"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/function/stdlib": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/csv",
+                "errors",
+                "fmt",
+                "github.com/apparentlymart/go-textseg/v12/textseg",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "github.com/hashicorp/go-cty/cty/function",
+                "github.com/hashicorp/go-cty/cty/gocty",
+                "github.com/hashicorp/go-cty/cty/json",
+                "io",
+                "math",
+                "math/big",
+                "reflect",
+                "regexp",
+                "regexp/syntax",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "math",
+                "math/big",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/gocty": {
+            "Imports": [
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "github.com/hashicorp/go-cty/cty/set",
+                "math",
+                "math/big",
+                "reflect"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/set",
+                "math/big",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/json": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "reflect",
+                "sort"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/msgpack": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "github.com/vmihailenco/msgpack",
+                "github.com/vmihailenco/msgpack/codes",
+                "io",
+                "math",
+                "math/big",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go-cty/cty/set": {
+            "Imports": [
+                "bytes",
+                "encoding/gob",
+                "fmt",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        }
+    }
+}

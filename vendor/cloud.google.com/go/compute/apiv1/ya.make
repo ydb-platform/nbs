@@ -1,0 +1,110 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(Apache-2.0)
+
+SRCS(
+    accelerator_types_client.go
+    addresses_client.go
+    autoscalers_client.go
+    auxiliary.go
+    backend_buckets_client.go
+    backend_services_client.go
+    disk_types_client.go
+    disks_client.go
+    doc.go
+    external_vpn_gateways_client.go
+    firewall_policies_client.go
+    firewalls_client.go
+    forwarding_rules_client.go
+    global_addresses_client.go
+    global_forwarding_rules_client.go
+    global_network_endpoint_groups_client.go
+    global_operations_client.go
+    global_organization_operations_client.go
+    global_public_delegated_prefixes_client.go
+    health_checks_client.go
+    image_family_views_client.go
+    images_client.go
+    instance_group_managers_client.go
+    instance_groups_client.go
+    instance_templates_client.go
+    instances_client.go
+    interconnect_attachments_client.go
+    interconnect_locations_client.go
+    interconnect_remote_locations_client.go
+    interconnects_client.go
+    license_codes_client.go
+    licenses_client.go
+    machine_images_client.go
+    machine_types_client.go
+    network_attachments_client.go
+    network_edge_security_services_client.go
+    network_endpoint_groups_client.go
+    network_firewall_policies_client.go
+    networks_client.go
+    node_groups_client.go
+    node_templates_client.go
+    node_types_client.go
+    operations.go
+    packet_mirrorings_client.go
+    projects_client.go
+    public_advertised_prefixes_client.go
+    public_delegated_prefixes_client.go
+    region_autoscalers_client.go
+    region_backend_services_client.go
+    region_commitments_client.go
+    region_disk_types_client.go
+    region_disks_client.go
+    region_health_check_services_client.go
+    region_health_checks_client.go
+    region_instance_group_managers_client.go
+    region_instance_groups_client.go
+    region_instance_templates_client.go
+    region_instances_client.go
+    region_network_endpoint_groups_client.go
+    region_network_firewall_policies_client.go
+    region_notification_endpoints_client.go
+    region_operations_client.go
+    region_security_policies_client.go
+    region_ssl_certificates_client.go
+    region_ssl_policies_client.go
+    region_target_http_proxies_client.go
+    region_target_https_proxies_client.go
+    region_target_tcp_proxies_client.go
+    region_url_maps_client.go
+    region_zones_client.go
+    regions_client.go
+    reservations_client.go
+    resource_policies_client.go
+    routers_client.go
+    routes_client.go
+    security_policies_client.go
+    service_attachments_client.go
+    snapshot_settings_client.go
+    snapshots_client.go
+    ssl_certificates_client.go
+    ssl_policies_client.go
+    subnetworks_client.go
+    target_grpc_proxies_client.go
+    target_http_proxies_client.go
+    target_https_proxies_client.go
+    target_instances_client.go
+    target_pools_client.go
+    target_ssl_proxies_client.go
+    target_tcp_proxies_client.go
+    target_vpn_gateways_client.go
+    url_maps_client.go
+    version.go
+    vpn_gateways_client.go
+    vpn_tunnels_client.go
+    zone_operations_client.go
+    zones_client.go
+)
+
+END()
+
+RECURSE(
+    computepb
+)

@@ -41,12 +41,12 @@
 package uuid
 
 import (
-	"encoding/binary"
-	"encoding/hex"
-	"fmt"
-	"io"
-	"strings"
-	"time"
+    "encoding/binary"
+    "encoding/hex"
+    "fmt"
+    "io"
+    "strings"
+    "time"
 )
 
 // Size of a UUID in bytes.
@@ -57,30 +57,30 @@ type UUID [Size]byte
 
 // UUID versions.
 const (
-	_  byte = iota
-	V1      // Version 1 (date-time and MAC address)
-	_       // Version 2 (date-time and MAC address, DCE security version) [removed]
-	V3      // Version 3 (namespace name-based)
-	V4      // Version 4 (random)
-	V5      // Version 5 (namespace name-based)
-	V6      // Version 6 (k-sortable timestamp and random data) [peabody draft]
-	V7      // Version 7 (k-sortable timestamp, with configurable precision, and random data) [peabody draft]
-	_       // Version 8 (k-sortable timestamp, meant for custom implementations) [peabody draft] [not implemented]
+    _  byte = iota
+    V1      // Version 1 (date-time and MAC address)
+    _       // Version 2 (date-time and MAC address, DCE security version) [removed]
+    V3      // Version 3 (namespace name-based)
+    V4      // Version 4 (random)
+    V5      // Version 5 (namespace name-based)
+    V6      // Version 6 (k-sortable timestamp and random data) [peabody draft]
+    V7      // Version 7 (k-sortable timestamp, with configurable precision, and random data) [peabody draft]
+    _       // Version 8 (k-sortable timestamp, meant for custom implementations) [peabody draft] [not implemented]
 )
 
 // UUID layout variants.
 const (
-	VariantNCS byte = iota
-	VariantRFC4122
-	VariantMicrosoft
-	VariantFuture
+    VariantNCS byte = iota
+    VariantRFC4122
+    VariantMicrosoft
+    VariantFuture
 )
 
 // UUID DCE domains.
 const (
-	DomainPerson = iota
-	DomainGroup
-	DomainOrg
+    DomainPerson = iota
+    DomainGroup
+    DomainOrg
 )
 
 // Timestamp is the count of 100-nanosecond intervals since 00:00:00.00,
@@ -92,25 +92,25 @@ const _100nsPerSecond = 10000000
 
 // Time returns the UTC time.Time representation of a Timestamp
 func (t Timestamp) Time() (time.Time, error) {
-	secs := uint64(t) / _100nsPerSecond
-	nsecs := 100 * (uint64(t) % _100nsPerSecond)
+    secs := uint64(t) / _100nsPerSecond
+    nsecs := 100 * (uint64(t) % _100nsPerSecond)
 
-	return time.Unix(int64(secs)-(epochStart/_100nsPerSecond), int64(nsecs)), nil
+    return time.Unix(int64(secs)-(epochStart/_100nsPerSecond), int64(nsecs)), nil
 }
 
 // TimestampFromV1 returns the Timestamp embedded within a V1 UUID.
 // Returns an error if the UUID is any version other than 1.
 func TimestampFromV1(u UUID) (Timestamp, error) {
-	if u.Version() != 1 {
-		err := fmt.Errorf("uuid: %s is version %d, not version 1", u, u.Version())
-		return 0, err
-	}
+    if u.Version() != 1 {
+        err := fmt.Errorf("uuid: %s is version %d, not version 1", u, u.Version())
+        return 0, err
+    }
 
-	low := binary.BigEndian.Uint32(u[0:4])
-	mid := binary.BigEndian.Uint16(u[4:6])
-	hi := binary.BigEndian.Uint16(u[6:8]) & 0xfff
+    low := binary.BigEndian.Uint32(u[0:4])
+    mid := binary.BigEndian.Uint16(u[4:6])
+    hi := binary.BigEndian.Uint16(u[6:8]) & 0xfff
 
-	return Timestamp(uint64(low) + (uint64(mid) << 32) + (uint64(hi) << 48)), nil
+    return Timestamp(uint64(low) + (uint64(mid) << 32) + (uint64(hi) << 48)), nil
 }
 
 // TimestampFromV6 returns the Timestamp embedded within a V6 UUID. This
@@ -122,21 +122,21 @@ func TimestampFromV1(u UUID) (Timestamp, error) {
 // not be considered a breaking change. They will happen as a minor version
 // releases until the spec is final.
 func TimestampFromV6(u UUID) (Timestamp, error) {
-	if u.Version() != 6 {
-		return 0, fmt.Errorf("uuid: %s is version %d, not version 6", u, u.Version())
-	}
+    if u.Version() != 6 {
+        return 0, fmt.Errorf("uuid: %s is version %d, not version 6", u, u.Version())
+    }
 
-	hi := binary.BigEndian.Uint32(u[0:4])
-	mid := binary.BigEndian.Uint16(u[4:6])
-	low := binary.BigEndian.Uint16(u[6:8]) & 0xfff
+    hi := binary.BigEndian.Uint32(u[0:4])
+    mid := binary.BigEndian.Uint16(u[4:6])
+    low := binary.BigEndian.Uint16(u[6:8]) & 0xfff
 
-	return Timestamp(uint64(low) + (uint64(mid) << 12) + (uint64(hi) << 28)), nil
+    return Timestamp(uint64(low) + (uint64(mid) << 12) + (uint64(hi) << 28)), nil
 }
 
 // String parse helpers.
 var (
-	urnPrefix  = []byte("urn:uuid:")
-	byteGroups = []int{8, 4, 4, 4, 12}
+    urnPrefix  = []byte("urn:uuid:")
+    byteGroups = []int{8, 4, 4, 4, 12}
 )
 
 // Nil is the nil UUID, as specified in RFC-4122, that has all 128 bits set to
@@ -145,59 +145,59 @@ var Nil = UUID{}
 
 // Predefined namespace UUIDs.
 var (
-	NamespaceDNS  = Must(FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
-	NamespaceURL  = Must(FromString("6ba7b811-9dad-11d1-80b4-00c04fd430c8"))
-	NamespaceOID  = Must(FromString("6ba7b812-9dad-11d1-80b4-00c04fd430c8"))
-	NamespaceX500 = Must(FromString("6ba7b814-9dad-11d1-80b4-00c04fd430c8"))
+    NamespaceDNS  = Must(FromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+    NamespaceURL  = Must(FromString("6ba7b811-9dad-11d1-80b4-00c04fd430c8"))
+    NamespaceOID  = Must(FromString("6ba7b812-9dad-11d1-80b4-00c04fd430c8"))
+    NamespaceX500 = Must(FromString("6ba7b814-9dad-11d1-80b4-00c04fd430c8"))
 )
 
 // IsNil returns if the UUID is equal to the nil UUID
 func (u UUID) IsNil() bool {
-	return u == Nil
+    return u == Nil
 }
 
 // Version returns the algorithm version used to generate the UUID.
 func (u UUID) Version() byte {
-	return u[6] >> 4
+    return u[6] >> 4
 }
 
 // Variant returns the UUID layout variant.
 func (u UUID) Variant() byte {
-	switch {
-	case (u[8] >> 7) == 0x00:
-		return VariantNCS
-	case (u[8] >> 6) == 0x02:
-		return VariantRFC4122
-	case (u[8] >> 5) == 0x06:
-		return VariantMicrosoft
-	case (u[8] >> 5) == 0x07:
-		fallthrough
-	default:
-		return VariantFuture
-	}
+    switch {
+    case (u[8] >> 7) == 0x00:
+        return VariantNCS
+    case (u[8] >> 6) == 0x02:
+        return VariantRFC4122
+    case (u[8] >> 5) == 0x06:
+        return VariantMicrosoft
+    case (u[8] >> 5) == 0x07:
+        fallthrough
+    default:
+        return VariantFuture
+    }
 }
 
 // Bytes returns a byte slice representation of the UUID.
 func (u UUID) Bytes() []byte {
-	return u[:]
+    return u[:]
 }
 
 // String returns a canonical RFC-4122 string representation of the UUID:
 // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
 func (u UUID) String() string {
-	buf := make([]byte, 36)
+    buf := make([]byte, 36)
 
-	hex.Encode(buf[0:8], u[0:4])
-	buf[8] = '-'
-	hex.Encode(buf[9:13], u[4:6])
-	buf[13] = '-'
-	hex.Encode(buf[14:18], u[6:8])
-	buf[18] = '-'
-	hex.Encode(buf[19:23], u[8:10])
-	buf[23] = '-'
-	hex.Encode(buf[24:], u[10:])
+    hex.Encode(buf[0:8], u[0:4])
+    buf[8] = '-'
+    hex.Encode(buf[9:13], u[4:6])
+    buf[13] = '-'
+    hex.Encode(buf[14:18], u[6:8])
+    buf[18] = '-'
+    hex.Encode(buf[19:23], u[8:10])
+    buf[23] = '-'
+    hex.Encode(buf[24:], u[10:])
 
-	return string(buf)
+    return string(buf)
 }
 
 // Format implements fmt.Formatter for UUID values.
@@ -210,74 +210,74 @@ func (u UUID) String() string {
 // All other verbs not handled directly by the fmt package (like '%p') are unsupported and will return
 // "%!verb(uuid.UUID=value)" as recommended by the fmt package.
 func (u UUID) Format(f fmt.State, c rune) {
-	switch c {
-	case 'x', 'X':
-		s := hex.EncodeToString(u.Bytes())
-		if c == 'X' {
-			s = strings.Map(toCapitalHexDigits, s)
-		}
-		_, _ = io.WriteString(f, s)
-	case 'v':
-		var s string
-		if f.Flag('#') {
-			s = fmt.Sprintf("%#v", [Size]byte(u))
-		} else {
-			s = u.String()
-		}
-		_, _ = io.WriteString(f, s)
-	case 's', 'S':
-		s := u.String()
-		if c == 'S' {
-			s = strings.Map(toCapitalHexDigits, s)
-		}
-		_, _ = io.WriteString(f, s)
-	case 'q':
-		_, _ = io.WriteString(f, `"`+u.String()+`"`)
-	default:
-		// invalid/unsupported format verb
-		fmt.Fprintf(f, "%%!%c(uuid.UUID=%s)", c, u.String())
-	}
+    switch c {
+    case 'x', 'X':
+        s := hex.EncodeToString(u.Bytes())
+        if c == 'X' {
+            s = strings.Map(toCapitalHexDigits, s)
+        }
+        _, _ = io.WriteString(f, s)
+    case 'v':
+        var s string
+        if f.Flag('#') {
+            s = fmt.Sprintf("%#v", [Size]byte(u))
+        } else {
+            s = u.String()
+        }
+        _, _ = io.WriteString(f, s)
+    case 's', 'S':
+        s := u.String()
+        if c == 'S' {
+            s = strings.Map(toCapitalHexDigits, s)
+        }
+        _, _ = io.WriteString(f, s)
+    case 'q':
+        _, _ = io.WriteString(f, `"`+u.String()+`"`)
+    default:
+        // invalid/unsupported format verb
+        fmt.Fprintf(f, "%%!%c(uuid.UUID=%s)", c, u.String())
+    }
 }
 
 func toCapitalHexDigits(ch rune) rune {
-	// convert a-f hex digits to A-F
-	switch ch {
-	case 'a':
-		return 'A'
-	case 'b':
-		return 'B'
-	case 'c':
-		return 'C'
-	case 'd':
-		return 'D'
-	case 'e':
-		return 'E'
-	case 'f':
-		return 'F'
-	default:
-		return ch
-	}
+    // convert a-f hex digits to A-F
+    switch ch {
+    case 'a':
+        return 'A'
+    case 'b':
+        return 'B'
+    case 'c':
+        return 'C'
+    case 'd':
+        return 'D'
+    case 'e':
+        return 'E'
+    case 'f':
+        return 'F'
+    default:
+        return ch
+    }
 }
 
 // SetVersion sets the version bits.
 func (u *UUID) SetVersion(v byte) {
-	u[6] = (u[6] & 0x0f) | (v << 4)
+    u[6] = (u[6] & 0x0f) | (v << 4)
 }
 
 // SetVariant sets the variant bits.
 func (u *UUID) SetVariant(v byte) {
-	switch v {
-	case VariantNCS:
-		u[8] = (u[8]&(0xff>>1) | (0x00 << 7))
-	case VariantRFC4122:
-		u[8] = (u[8]&(0xff>>2) | (0x02 << 6))
-	case VariantMicrosoft:
-		u[8] = (u[8]&(0xff>>3) | (0x06 << 5))
-	case VariantFuture:
-		fallthrough
-	default:
-		u[8] = (u[8]&(0xff>>3) | (0x07 << 5))
-	}
+    switch v {
+    case VariantNCS:
+        u[8] = (u[8]&(0xff>>1) | (0x00 << 7))
+    case VariantRFC4122:
+        u[8] = (u[8]&(0xff>>2) | (0x02 << 6))
+    case VariantMicrosoft:
+        u[8] = (u[8]&(0xff>>3) | (0x06 << 5))
+    case VariantFuture:
+        fallthrough
+    default:
+        u[8] = (u[8]&(0xff>>3) | (0x07 << 5))
+    }
 }
 
 // Must is a helper that wraps a call to a function returning (UUID, error)
@@ -285,8 +285,8 @@ func (u *UUID) SetVariant(v byte) {
 // initializations such as
 //  var packageUUID = uuid.Must(uuid.FromString("123e4567-e89b-12d3-a456-426655440000"))
 func Must(u UUID, err error) UUID {
-	if err != nil {
-		panic(err)
-	}
-	return u
+    if err != nil {
+        panic(err)
+    }
+    return u
 }

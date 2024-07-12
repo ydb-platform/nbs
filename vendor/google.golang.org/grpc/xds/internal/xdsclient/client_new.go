@@ -19,16 +19,16 @@
 package xdsclient
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"sync"
-	"time"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "sync"
+    "time"
 
-	"google.golang.org/grpc/internal/cache"
-	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+    "google.golang.org/grpc/internal/cache"
+    "google.golang.org/grpc/internal/grpcsync"
+    "google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 // New returns a new xDS client configured by the bootstrap file specified in env
@@ -43,7 +43,7 @@ import (
 // only when all references are released, and it is safe for the caller to
 // invoke this close function multiple times.
 func New() (XDSClient, func(), error) {
-	return newRefCountedWithConfig(nil)
+    return newRefCountedWithConfig(nil)
 }
 
 // NewWithConfig returns a new xDS client configured by the given config.
@@ -59,26 +59,26 @@ func New() (XDSClient, func(), error) {
 // This function should ONLY be used for internal (c2p resolver) and/or testing
 // purposese. DO NOT use this elsewhere. Use New() instead.
 func NewWithConfig(config *bootstrap.Config) (XDSClient, func(), error) {
-	return newRefCountedWithConfig(config)
+    return newRefCountedWithConfig(config)
 }
 
 // newWithConfig returns a new xdsClient with the given config.
 func newWithConfig(config *bootstrap.Config, watchExpiryTimeout time.Duration, idleAuthorityDeleteTimeout time.Duration) (*clientImpl, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &clientImpl{
-		done:               grpcsync.NewEvent(),
-		config:             config,
-		watchExpiryTimeout: watchExpiryTimeout,
-		serializer:         grpcsync.NewCallbackSerializer(ctx),
-		serializerClose:    cancel,
-		resourceTypes:      newResourceTypeRegistry(),
-		authorities:        make(map[string]*authority),
-		idleAuthorities:    cache.NewTimeoutCache(idleAuthorityDeleteTimeout),
-	}
+    ctx, cancel := context.WithCancel(context.Background())
+    c := &clientImpl{
+        done:               grpcsync.NewEvent(),
+        config:             config,
+        watchExpiryTimeout: watchExpiryTimeout,
+        serializer:         grpcsync.NewCallbackSerializer(ctx),
+        serializerClose:    cancel,
+        resourceTypes:      newResourceTypeRegistry(),
+        authorities:        make(map[string]*authority),
+        idleAuthorities:    cache.NewTimeoutCache(idleAuthorityDeleteTimeout),
+    }
 
-	c.logger = prefixLogger(c)
-	c.logger.Infof("Created client to xDS management server: %s", config.XDSServer)
-	return c, nil
+    c.logger = prefixLogger(c)
+    c.logger.Infof("Created client to xDS management server: %s", config.XDSServer)
+    return c, nil
 }
 
 // NewWithConfigForTesting returns an xDS client for the specified bootstrap
@@ -93,11 +93,11 @@ func newWithConfig(config *bootstrap.Config, watchExpiryTimeout time.Duration, i
 // This function should ONLY be used for testing purposes.
 // TODO(easwars): Document the new close func.
 func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout, authorityIdleTimeout time.Duration) (XDSClient, func(), error) {
-	cl, err := newWithConfig(config, watchExpiryTimeout, authorityIdleTimeout)
-	if err != nil {
-		return nil, nil, err
-	}
-	return cl, grpcsync.OnceFunc(cl.close), nil
+    cl, err := newWithConfig(config, watchExpiryTimeout, authorityIdleTimeout)
+    if err != nil {
+        return nil, nil, err
+    }
+    return cl, grpcsync.OnceFunc(cl.close), nil
 }
 
 // NewWithBootstrapContentsForTesting returns an xDS client for this config,
@@ -111,26 +111,26 @@ func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout, autho
 //
 // This function should ONLY be used for testing purposes.
 func NewWithBootstrapContentsForTesting(contents []byte) (XDSClient, func(), error) {
-	// Normalize the contents
-	buf := bytes.Buffer{}
-	err := json.Indent(&buf, contents, "", "")
-	if err != nil {
-		return nil, nil, fmt.Errorf("xds: error normalizing JSON: %v", err)
-	}
-	contents = bytes.TrimSpace(buf.Bytes())
+    // Normalize the contents
+    buf := bytes.Buffer{}
+    err := json.Indent(&buf, contents, "", "")
+    if err != nil {
+        return nil, nil, fmt.Errorf("xds: error normalizing JSON: %v", err)
+    }
+    contents = bytes.TrimSpace(buf.Bytes())
 
-	c, err := getOrMakeClientForTesting(contents)
-	if err != nil {
-		return nil, nil, err
-	}
-	return c, grpcsync.OnceFunc(func() {
-		clientsMu.Lock()
-		defer clientsMu.Unlock()
-		if c.decrRef() == 0 {
-			c.close()
-			delete(clients, string(contents))
-		}
-	}), nil
+    c, err := getOrMakeClientForTesting(contents)
+    if err != nil {
+        return nil, nil, err
+    }
+    return c, grpcsync.OnceFunc(func() {
+        clientsMu.Lock()
+        defer clientsMu.Unlock()
+        if c.decrRef() == 0 {
+            c.close()
+            delete(clients, string(contents))
+        }
+    }), nil
 }
 
 // getOrMakeClientForTesting creates a new reference counted client (separate
@@ -139,28 +139,28 @@ func NewWithBootstrapContentsForTesting(contents []byte) (XDSClient, func(), err
 // and leaves the caller responsible for decrementing the reference count once
 // the client is no longer needed.
 func getOrMakeClientForTesting(config []byte) (*clientRefCounted, error) {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+    clientsMu.Lock()
+    defer clientsMu.Unlock()
 
-	if c := clients[string(config)]; c != nil {
-		c.incrRef()
-		return c, nil
-	}
+    if c := clients[string(config)]; c != nil {
+        c.incrRef()
+        return c, nil
+    }
 
-	bcfg, err := bootstrap.NewConfigFromContentsForTesting(config)
-	if err != nil {
-		return nil, fmt.Errorf("bootstrap config %s: %v", string(config), err)
-	}
-	cImpl, err := newWithConfig(bcfg, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("creating xDS client: %v", err)
-	}
-	c := &clientRefCounted{clientImpl: cImpl, refCount: 1}
-	clients[string(config)] = c
-	return c, nil
+    bcfg, err := bootstrap.NewConfigFromContentsForTesting(config)
+    if err != nil {
+        return nil, fmt.Errorf("bootstrap config %s: %v", string(config), err)
+    }
+    cImpl, err := newWithConfig(bcfg, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
+    if err != nil {
+        return nil, fmt.Errorf("creating xDS client: %v", err)
+    }
+    c := &clientRefCounted{clientImpl: cImpl, refCount: 1}
+    clients[string(config)] = c
+    return c, nil
 }
 
 var (
-	clients   = map[string]*clientRefCounted{}
-	clientsMu sync.Mutex
+    clients   = map[string]*clientRefCounted{}
+    clientsMu sync.Mutex
 )

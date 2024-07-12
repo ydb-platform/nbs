@@ -1,0 +1,104 @@
+{
+    "Version": "v0.6.9-0.20230804172637-c7be7c783f49",
+    "GoVersion": "1.18",
+    "Sum": "h1:0VpGH+cDhbDtdcweoyCVsF3fhN8kejK6rFe/2FFX2nU=",
+    "Packages": {
+        "github.com/google/gnostic-models/compiler": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/gnostic-models/extensions",
+                "github.com/google/gnostic-models/jsonschema",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "gopkg.in/yaml.v3",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/url",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic-models/discovery": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/gnostic-models/compiler",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "gopkg.in/yaml.v3",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic-models/extensions": {
+            "Imports": [
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "io/ioutil",
+                "log",
+                "os",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic-models/jsonschema": {
+            "Imports": [
+                "encoding/base64",
+                "fmt",
+                "gopkg.in/yaml.v3",
+                "io/ioutil",
+                "log",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic-models/openapiv2": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic-models/compiler",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "gopkg.in/yaml.v3",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic-models/openapiv3": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic-models/compiler",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "gopkg.in/yaml.v3",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

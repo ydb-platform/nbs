@@ -1,0 +1,24 @@
+{
+    "Version": "v1.0.0-rcv0014",
+    "GoVersion": "1.19",
+    "Sum": "h1:C9o0mbP0MyygqFnKueVQK/v9jef6zvuttmTGlKaqhgw=",
+    "Packages": {
+        "go.opentelemetry.io/collector/featuregate": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "go.uber.org/multierr",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "sync/atomic",
+                "testing"
+            ]
+        }
+    }
+}

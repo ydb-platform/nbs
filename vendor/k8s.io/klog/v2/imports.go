@@ -17,7 +17,7 @@ limitations under the License.
 package klog
 
 import (
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // The reason for providing these aliases is to allow code to work with logr
@@ -33,6 +33,6 @@ type LogSink = logr.LogSink
 type RuntimeInfo = logr.RuntimeInfo
 
 var (
-	// New is an alias for logr.New.
-	New = logr.New
+    // New is an alias for logr.New.
+    New = logr.New
 )

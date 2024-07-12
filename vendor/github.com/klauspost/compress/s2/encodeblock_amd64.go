@@ -164,8 +164,8 @@ func calcBlockSizeSmall(src []byte) int
 //
 // It assumes that:
 //
-//	dst is long enough to hold the encoded bytes with margin of 0 bytes
-//	0 <= len(lit) && len(lit) <= math.MaxUint32
+//    dst is long enough to hold the encoded bytes with margin of 0 bytes
+//    0 <= len(lit) && len(lit) <= math.MaxUint32
 //
 //go:noescape
 func emitLiteral(dst []byte, lit []byte) int
@@ -180,9 +180,9 @@ func emitRepeat(dst []byte, offset int, length int) int
 //
 // It assumes that:
 //
-//	dst is long enough to hold the encoded bytes
-//	1 <= offset && offset <= math.MaxUint32
-//	4 <= length && length <= 1 << 24
+//    dst is long enough to hold the encoded bytes
+//    1 <= offset && offset <= math.MaxUint32
+//    4 <= length && length <= 1 << 24
 //
 //go:noescape
 func emitCopy(dst []byte, offset int, length int) int
@@ -191,9 +191,9 @@ func emitCopy(dst []byte, offset int, length int) int
 //
 // It assumes that:
 //
-//	dst is long enough to hold the encoded bytes
-//	1 <= offset && offset <= math.MaxUint32
-//	4 <= length && length <= 1 << 24
+//    dst is long enough to hold the encoded bytes
+//    1 <= offset && offset <= math.MaxUint32
+//    4 <= length && length <= 1 << 24
 //
 //go:noescape
 func emitCopyNoRepeat(dst []byte, offset int, length int) int
@@ -202,7 +202,7 @@ func emitCopyNoRepeat(dst []byte, offset int, length int) int
 //
 // It assumes that:
 //
-//	len(a) <= len(b)
+//    len(a) <= len(b)
 //
 //go:noescape
 func matchLen(a []byte, b []byte) int

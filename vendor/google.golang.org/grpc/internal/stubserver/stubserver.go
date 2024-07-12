@@ -21,81 +21,81 @@
 package stubserver
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"testing"
-	"time"
+    "context"
+    "fmt"
+    "net"
+    "testing"
+    "time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/resolver/manual"
-	"google.golang.org/grpc/serviceconfig"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/connectivity"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/resolver/manual"
+    "google.golang.org/grpc/serviceconfig"
 
-	testgrpc "google.golang.org/grpc/interop/grpc_testing"
-	testpb "google.golang.org/grpc/interop/grpc_testing"
+    testgrpc "google.golang.org/grpc/interop/grpc_testing"
+    testpb "google.golang.org/grpc/interop/grpc_testing"
 )
 
 // StubServer is a server that is easy to customize within individual test
 // cases.
 type StubServer struct {
-	// Guarantees we satisfy this interface; panics if unimplemented methods are called.
-	testgrpc.TestServiceServer
+    // Guarantees we satisfy this interface; panics if unimplemented methods are called.
+    testgrpc.TestServiceServer
 
-	// Customizable implementations of server handlers.
-	EmptyCallF      func(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error)
-	UnaryCallF      func(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error)
-	FullDuplexCallF func(stream testgrpc.TestService_FullDuplexCallServer) error
+    // Customizable implementations of server handlers.
+    EmptyCallF      func(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error)
+    UnaryCallF      func(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error)
+    FullDuplexCallF func(stream testgrpc.TestService_FullDuplexCallServer) error
 
-	// A client connected to this service the test may use.  Created in Start().
-	Client testgrpc.TestServiceClient
-	CC     *grpc.ClientConn
-	S      *grpc.Server
+    // A client connected to this service the test may use.  Created in Start().
+    Client testgrpc.TestServiceClient
+    CC     *grpc.ClientConn
+    S      *grpc.Server
 
-	// Parameters for Listen and Dial. Defaults will be used if these are empty
-	// before Start.
-	Network string
-	Address string
-	Target  string
+    // Parameters for Listen and Dial. Defaults will be used if these are empty
+    // before Start.
+    Network string
+    Address string
+    Target  string
 
-	cleanups []func() // Lambdas executed in Stop(); populated by Start().
+    cleanups []func() // Lambdas executed in Stop(); populated by Start().
 
-	// Set automatically if Target == ""
-	R *manual.Resolver
+    // Set automatically if Target == ""
+    R *manual.Resolver
 }
 
 // EmptyCall is the handler for testpb.EmptyCall
 func (ss *StubServer) EmptyCall(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error) {
-	return ss.EmptyCallF(ctx, in)
+    return ss.EmptyCallF(ctx, in)
 }
 
 // UnaryCall is the handler for testpb.UnaryCall
 func (ss *StubServer) UnaryCall(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
-	return ss.UnaryCallF(ctx, in)
+    return ss.UnaryCallF(ctx, in)
 }
 
 // FullDuplexCall is the handler for testpb.FullDuplexCall
 func (ss *StubServer) FullDuplexCall(stream testgrpc.TestService_FullDuplexCallServer) error {
-	return ss.FullDuplexCallF(stream)
+    return ss.FullDuplexCallF(stream)
 }
 
 // Start starts the server and creates a client connected to it.
 func (ss *StubServer) Start(sopts []grpc.ServerOption, dopts ...grpc.DialOption) error {
-	if err := ss.StartServer(sopts...); err != nil {
-		return err
-	}
-	if err := ss.StartClient(dopts...); err != nil {
-		ss.Stop()
-		return err
-	}
-	return nil
+    if err := ss.StartServer(sopts...); err != nil {
+        return err
+    }
+    if err := ss.StartClient(dopts...); err != nil {
+        ss.Stop()
+        return err
+    }
+    return nil
 }
 
 type registerServiceServerOption struct {
-	grpc.EmptyServerOption
-	f func(*grpc.Server)
+    grpc.EmptyServerOption
+    f func(*grpc.Server)
 }
 
 // RegisterServiceServerOption returns a ServerOption that will run f() in
@@ -103,122 +103,122 @@ type registerServiceServerOption struct {
 // allows other services to be registered on the test server (e.g. ORCA,
 // health, or reflection).
 func RegisterServiceServerOption(f func(*grpc.Server)) grpc.ServerOption {
-	return &registerServiceServerOption{f: f}
+    return &registerServiceServerOption{f: f}
 }
 
 // StartServer only starts the server. It does not create a client to it.
 func (ss *StubServer) StartServer(sopts ...grpc.ServerOption) error {
-	if ss.Network == "" {
-		ss.Network = "tcp"
-	}
-	if ss.Address == "" {
-		ss.Address = "localhost:0"
-	}
-	if ss.Target == "" {
-		ss.R = manual.NewBuilderWithScheme("whatever")
-	}
+    if ss.Network == "" {
+        ss.Network = "tcp"
+    }
+    if ss.Address == "" {
+        ss.Address = "localhost:0"
+    }
+    if ss.Target == "" {
+        ss.R = manual.NewBuilderWithScheme("whatever")
+    }
 
-	lis, err := net.Listen(ss.Network, ss.Address)
-	if err != nil {
-		return fmt.Errorf("net.Listen(%q, %q) = %v", ss.Network, ss.Address, err)
-	}
-	ss.Address = lis.Addr().String()
-	ss.cleanups = append(ss.cleanups, func() { lis.Close() })
+    lis, err := net.Listen(ss.Network, ss.Address)
+    if err != nil {
+        return fmt.Errorf("net.Listen(%q, %q) = %v", ss.Network, ss.Address, err)
+    }
+    ss.Address = lis.Addr().String()
+    ss.cleanups = append(ss.cleanups, func() { lis.Close() })
 
-	s := grpc.NewServer(sopts...)
-	for _, so := range sopts {
-		switch x := so.(type) {
-		case *registerServiceServerOption:
-			x.f(s)
-		}
-	}
+    s := grpc.NewServer(sopts...)
+    for _, so := range sopts {
+        switch x := so.(type) {
+        case *registerServiceServerOption:
+            x.f(s)
+        }
+    }
 
-	testgrpc.RegisterTestServiceServer(s, ss)
-	go s.Serve(lis)
-	ss.cleanups = append(ss.cleanups, s.Stop)
-	ss.S = s
-	return nil
+    testgrpc.RegisterTestServiceServer(s, ss)
+    go s.Serve(lis)
+    ss.cleanups = append(ss.cleanups, s.Stop)
+    ss.S = s
+    return nil
 }
 
 // StartClient creates a client connected to this service that the test may use.
 // The newly created client will be available in the Client field of StubServer.
 func (ss *StubServer) StartClient(dopts ...grpc.DialOption) error {
-	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, dopts...)
-	if ss.R != nil {
-		ss.Target = ss.R.Scheme() + ":///" + ss.Address
-		opts = append(opts, grpc.WithResolvers(ss.R))
-	}
+    opts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, dopts...)
+    if ss.R != nil {
+        ss.Target = ss.R.Scheme() + ":///" + ss.Address
+        opts = append(opts, grpc.WithResolvers(ss.R))
+    }
 
-	cc, err := grpc.Dial(ss.Target, opts...)
-	if err != nil {
-		return fmt.Errorf("grpc.Dial(%q) = %v", ss.Target, err)
-	}
-	ss.CC = cc
-	if ss.R != nil {
-		ss.R.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: ss.Address}}})
-	}
-	if err := waitForReady(cc); err != nil {
-		cc.Close()
-		return err
-	}
+    cc, err := grpc.Dial(ss.Target, opts...)
+    if err != nil {
+        return fmt.Errorf("grpc.Dial(%q) = %v", ss.Target, err)
+    }
+    ss.CC = cc
+    if ss.R != nil {
+        ss.R.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: ss.Address}}})
+    }
+    if err := waitForReady(cc); err != nil {
+        cc.Close()
+        return err
+    }
 
-	ss.cleanups = append(ss.cleanups, func() { cc.Close() })
+    ss.cleanups = append(ss.cleanups, func() { cc.Close() })
 
-	ss.Client = testgrpc.NewTestServiceClient(cc)
-	return nil
+    ss.Client = testgrpc.NewTestServiceClient(cc)
+    return nil
 }
 
 // NewServiceConfig applies sc to ss.Client using the resolver (if present).
 func (ss *StubServer) NewServiceConfig(sc string) {
-	if ss.R != nil {
-		ss.R.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: ss.Address}}, ServiceConfig: parseCfg(ss.R, sc)})
-	}
+    if ss.R != nil {
+        ss.R.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: ss.Address}}, ServiceConfig: parseCfg(ss.R, sc)})
+    }
 }
 
 func waitForReady(cc *grpc.ClientConn) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	for {
-		s := cc.GetState()
-		if s == connectivity.Ready {
-			return nil
-		}
-		if !cc.WaitForStateChange(ctx, s) {
-			// ctx got timeout or canceled.
-			return ctx.Err()
-		}
-	}
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    for {
+        s := cc.GetState()
+        if s == connectivity.Ready {
+            return nil
+        }
+        if !cc.WaitForStateChange(ctx, s) {
+            // ctx got timeout or canceled.
+            return ctx.Err()
+        }
+    }
 }
 
 // Stop stops ss and cleans up all resources it consumed.
 func (ss *StubServer) Stop() {
-	for i := len(ss.cleanups) - 1; i >= 0; i-- {
-		ss.cleanups[i]()
-	}
+    for i := len(ss.cleanups) - 1; i >= 0; i-- {
+        ss.cleanups[i]()
+    }
 }
 
 func parseCfg(r *manual.Resolver, s string) *serviceconfig.ParseResult {
-	g := r.CC.ParseServiceConfig(s)
-	if g.Err != nil {
-		panic(fmt.Sprintf("Error parsing config %q: %v", s, g.Err))
-	}
-	return g
+    g := r.CC.ParseServiceConfig(s)
+    if g.Err != nil {
+        panic(fmt.Sprintf("Error parsing config %q: %v", s, g.Err))
+    }
+    return g
 }
 
 // StartTestService spins up a stub server exposing the TestService on a local
 // port. If the passed in server is nil, a stub server that implements only the
 // EmptyCall and UnaryCall RPCs is started.
 func StartTestService(t *testing.T, server *StubServer) *StubServer {
-	if server == nil {
-		server = &StubServer{
-			EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) { return &testpb.Empty{}, nil },
-			UnaryCallF: func(context.Context, *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
-				return &testpb.SimpleResponse{}, nil
-			},
-		}
-	}
-	server.StartServer()
+    if server == nil {
+        server = &StubServer{
+            EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) { return &testpb.Empty{}, nil },
+            UnaryCallF: func(context.Context, *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
+                return &testpb.SimpleResponse{}, nil
+            },
+        }
+    }
+    server.StartServer()
 
-	t.Logf("Started test service backend at %q", server.Address)
-	return server
+    t.Logf("Started test service backend at %q", server.Address)
+    return server
 }

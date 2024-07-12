@@ -26,8 +26,8 @@
 package attributes
 
 import (
-	"fmt"
-	"strings"
+    "fmt"
+    "strings"
 )
 
 // Attributes is an immutable struct for storing and retrieving generic
@@ -37,12 +37,12 @@ import (
 // interface{}) bool', it will be called by (*Attributes).Equal to determine
 // whether two values with the same key should be considered equal.
 type Attributes struct {
-	m map[interface{}]interface{}
+    m map[interface{}]interface{}
 }
 
 // New returns a new Attributes containing the key/value pair.
 func New(key, value interface{}) *Attributes {
-	return &Attributes{m: map[interface{}]interface{}{key: value}}
+    return &Attributes{m: map[interface{}]interface{}{key: value}}
 }
 
 // WithValue returns a new Attributes containing the previous keys and values
@@ -50,24 +50,24 @@ func New(key, value interface{}) *Attributes {
 // last value overwrites all previous values for that key.  To remove an
 // existing key, use a nil value.  value should not be modified later.
 func (a *Attributes) WithValue(key, value interface{}) *Attributes {
-	if a == nil {
-		return New(key, value)
-	}
-	n := &Attributes{m: make(map[interface{}]interface{}, len(a.m)+1)}
-	for k, v := range a.m {
-		n.m[k] = v
-	}
-	n.m[key] = value
-	return n
+    if a == nil {
+        return New(key, value)
+    }
+    n := &Attributes{m: make(map[interface{}]interface{}, len(a.m)+1)}
+    for k, v := range a.m {
+        n.m[k] = v
+    }
+    n.m[key] = value
+    return n
 }
 
 // Value returns the value associated with these attributes for key, or nil if
 // no value is associated with key.  The returned value should not be modified.
 func (a *Attributes) Value(key interface{}) interface{} {
-	if a == nil {
-		return nil
-	}
-	return a.m[key]
+    if a == nil {
+        return nil
+    }
+    return a.m[key]
 }
 
 // Equal returns whether a and o are equivalent.  If 'Equal(o interface{})
@@ -78,53 +78,53 @@ func (a *Attributes) Value(key interface{}) interface{} {
 // default, so they must be wrapped in a struct, or in an alias type, with Equal
 // defined.
 func (a *Attributes) Equal(o *Attributes) bool {
-	if a == nil && o == nil {
-		return true
-	}
-	if a == nil || o == nil {
-		return false
-	}
-	if len(a.m) != len(o.m) {
-		return false
-	}
-	for k, v := range a.m {
-		ov, ok := o.m[k]
-		if !ok {
-			// o missing element of a
-			return false
-		}
-		if eq, ok := v.(interface{ Equal(o interface{}) bool }); ok {
-			if !eq.Equal(ov) {
-				return false
-			}
-		} else if v != ov {
-			// Fallback to a standard equality check if Value is unimplemented.
-			return false
-		}
-	}
-	return true
+    if a == nil && o == nil {
+        return true
+    }
+    if a == nil || o == nil {
+        return false
+    }
+    if len(a.m) != len(o.m) {
+        return false
+    }
+    for k, v := range a.m {
+        ov, ok := o.m[k]
+        if !ok {
+            // o missing element of a
+            return false
+        }
+        if eq, ok := v.(interface{ Equal(o interface{}) bool }); ok {
+            if !eq.Equal(ov) {
+                return false
+            }
+        } else if v != ov {
+            // Fallback to a standard equality check if Value is unimplemented.
+            return false
+        }
+    }
+    return true
 }
 
 // String prints the attribute map. If any key or values throughout the map
 // implement fmt.Stringer, it calls that method and appends.
 func (a *Attributes) String() string {
-	var sb strings.Builder
-	sb.WriteString("{")
-	first := true
-	for k, v := range a.m {
-		var key, val string
-		if str, ok := k.(interface{ String() string }); ok {
-			key = str.String()
-		}
-		if str, ok := v.(interface{ String() string }); ok {
-			val = str.String()
-		}
-		if !first {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(fmt.Sprintf("%q: %q, ", key, val))
-		first = false
-	}
-	sb.WriteString("}")
-	return sb.String()
+    var sb strings.Builder
+    sb.WriteString("{")
+    first := true
+    for k, v := range a.m {
+        var key, val string
+        if str, ok := k.(interface{ String() string }); ok {
+            key = str.String()
+        }
+        if str, ok := v.(interface{ String() string }); ok {
+            val = str.String()
+        }
+        if !first {
+            sb.WriteString(", ")
+        }
+        sb.WriteString(fmt.Sprintf("%q: %q, ", key, val))
+        first = false
+    }
+    sb.WriteString("}")
+    return sb.String()
 }

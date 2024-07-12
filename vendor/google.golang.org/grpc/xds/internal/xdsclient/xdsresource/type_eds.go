@@ -18,66 +18,66 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/xds/internal"
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/grpc/xds/internal"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // OverloadDropConfig contains the config to drop overloads.
 type OverloadDropConfig struct {
-	Category    string
-	Numerator   uint32
-	Denominator uint32
+    Category    string
+    Numerator   uint32
+    Denominator uint32
 }
 
 // EndpointHealthStatus represents the health status of an endpoint.
 type EndpointHealthStatus int32
 
 const (
-	// EndpointHealthStatusUnknown represents HealthStatus UNKNOWN.
-	EndpointHealthStatusUnknown EndpointHealthStatus = iota
-	// EndpointHealthStatusHealthy represents HealthStatus HEALTHY.
-	EndpointHealthStatusHealthy
-	// EndpointHealthStatusUnhealthy represents HealthStatus UNHEALTHY.
-	EndpointHealthStatusUnhealthy
-	// EndpointHealthStatusDraining represents HealthStatus DRAINING.
-	EndpointHealthStatusDraining
-	// EndpointHealthStatusTimeout represents HealthStatus TIMEOUT.
-	EndpointHealthStatusTimeout
-	// EndpointHealthStatusDegraded represents HealthStatus DEGRADED.
-	EndpointHealthStatusDegraded
+    // EndpointHealthStatusUnknown represents HealthStatus UNKNOWN.
+    EndpointHealthStatusUnknown EndpointHealthStatus = iota
+    // EndpointHealthStatusHealthy represents HealthStatus HEALTHY.
+    EndpointHealthStatusHealthy
+    // EndpointHealthStatusUnhealthy represents HealthStatus UNHEALTHY.
+    EndpointHealthStatusUnhealthy
+    // EndpointHealthStatusDraining represents HealthStatus DRAINING.
+    EndpointHealthStatusDraining
+    // EndpointHealthStatusTimeout represents HealthStatus TIMEOUT.
+    EndpointHealthStatusTimeout
+    // EndpointHealthStatusDegraded represents HealthStatus DEGRADED.
+    EndpointHealthStatusDegraded
 )
 
 // Endpoint contains information of an endpoint.
 type Endpoint struct {
-	Address      string
-	HealthStatus EndpointHealthStatus
-	Weight       uint32
+    Address      string
+    HealthStatus EndpointHealthStatus
+    Weight       uint32
 }
 
 // Locality contains information of a locality.
 type Locality struct {
-	Endpoints []Endpoint
-	ID        internal.LocalityID
-	Priority  uint32
-	Weight    uint32
+    Endpoints []Endpoint
+    ID        internal.LocalityID
+    Priority  uint32
+    Weight    uint32
 }
 
 // EndpointsUpdate contains an EDS update.
 type EndpointsUpdate struct {
-	Drops []OverloadDropConfig
-	// Localities in the EDS response with `load_balancing_weight` field not set
-	// or explicitly set to 0 are ignored while parsing the resource, and
-	// therefore do not show up here.
-	Localities []Locality
+    Drops []OverloadDropConfig
+    // Localities in the EDS response with `load_balancing_weight` field not set
+    // or explicitly set to 0 are ignored while parsing the resource, and
+    // therefore do not show up here.
+    Localities []Locality
 
-	// Raw is the resource from the xds response.
-	Raw *anypb.Any
+    // Raw is the resource from the xds response.
+    Raw *anypb.Any
 }
 
 // EndpointsUpdateErrTuple is a tuple with the update and error. It contains the
 // results from unmarshal functions. It's used to pass unmarshal results of
 // multiple resources together, e.g. in maps like `map[string]{Update,error}`.
 type EndpointsUpdateErrTuple struct {
-	Update EndpointsUpdate
-	Err    error
+    Update EndpointsUpdate
+    Err    error
 }

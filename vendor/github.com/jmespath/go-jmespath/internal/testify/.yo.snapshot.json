@@ -1,0 +1,133 @@
+{
+    "Version": "v1.5.1",
+    "GoVersion": "1.13",
+    "Sum": "h1:shLQSRRSCCPj3f2gpwzGwWFoC7ycTf1rcQZHOlsJ6N8=",
+    "Packages": {
+        "github.com/jmespath/go-jmespath/internal/testify": {
+            "Imports": [
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "github.com/jmespath/go-jmespath/internal/testify/http",
+                "github.com/jmespath/go-jmespath/internal/testify/mock"
+            ],
+            "TestImports": [
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/jmespath/go-jmespath/internal/testify/assert": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/pmezard/go-difflib/difflib",
+                "gopkg.in/yaml.v2",
+                "math",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "reflect",
+                "regexp",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "math",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/jmespath/go-jmespath/internal/testify/http": {
+            "Imports": [
+                "github.com/jmespath/go-jmespath/internal/testify/mock",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/jmespath/go-jmespath/internal/testify/mock": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "github.com/pmezard/go-difflib/difflib",
+                "github.com/stretchr/objx",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "github.com/jmespath/go-jmespath/internal/testify/require",
+                "regexp",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/jmespath/go-jmespath/internal/testify/require": {
+            "Imports": [
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "net/http",
+                "net/url",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "errors",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/jmespath/go-jmespath/internal/testify/suite": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "github.com/jmespath/go-jmespath/internal/testify/require",
+                "os",
+                "reflect",
+                "regexp",
+                "runtime/debug",
+                "sync",
+                "testing"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "github.com/jmespath/go-jmespath/internal/testify/require",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

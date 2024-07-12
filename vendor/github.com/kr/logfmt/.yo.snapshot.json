@@ -1,0 +1,30 @@
+{
+    "Version": "v0.0.0-20210122060352-19f9bcb100e6",
+    "GoVersion": "1.14",
+    "Sum": "h1:ZK1mH67KVyVW/zOLu0xLva+f6xJ8vt+LGrkQq5FJYLY=",
+    "Packages": {
+        "github.com/kr/logfmt": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "reflect",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/kr/logfmt",
+                "log",
+                "reflect",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

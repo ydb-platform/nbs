@@ -1,0 +1,48 @@
+{
+    "Version": "v1.6.2",
+    "GoVersion": "1.20",
+    "Sum": "h1:x6xsQXGSmW6frevwDA+vi/wqhp1ct18mVXYN08/93to=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/aws/smithy-go/logging",
+                "hash",
+                "hash/crc32",
+                "io",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io"
+            ],
+            "TestImports": null
+        }
+    }
+}

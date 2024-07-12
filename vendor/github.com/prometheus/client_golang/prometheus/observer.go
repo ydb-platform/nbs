@@ -16,7 +16,7 @@ package prometheus
 // Observer is the interface that wraps the Observe method, which is used by
 // Histogram and Summary to add observations.
 type Observer interface {
-	Observe(float64)
+    Observe(float64)
 }
 
 // The ObserverFunc type is an adapter to allow the use of ordinary
@@ -36,19 +36,19 @@ type ObserverFunc func(float64)
 
 // Observe calls f(value). It implements Observer.
 func (f ObserverFunc) Observe(value float64) {
-	f(value)
+    f(value)
 }
 
 // ObserverVec is an interface implemented by `HistogramVec` and `SummaryVec`.
 type ObserverVec interface {
-	GetMetricWith(Labels) (Observer, error)
-	GetMetricWithLabelValues(lvs ...string) (Observer, error)
-	With(Labels) Observer
-	WithLabelValues(...string) Observer
-	CurryWith(Labels) (ObserverVec, error)
-	MustCurryWith(Labels) ObserverVec
+    GetMetricWith(Labels) (Observer, error)
+    GetMetricWithLabelValues(lvs ...string) (Observer, error)
+    With(Labels) Observer
+    WithLabelValues(...string) Observer
+    CurryWith(Labels) (ObserverVec, error)
+    MustCurryWith(Labels) ObserverVec
 
-	Collector
+    Collector
 }
 
 // ExemplarObserver is implemented by Observers that offer the option of
@@ -60,5 +60,5 @@ type ObserverVec interface {
 // left in place. ObserveWithExemplar panics if any of the provided labels are
 // invalid or if the provided labels contain more than 128 runes in total.
 type ExemplarObserver interface {
-	ObserveWithExemplar(value float64, exemplar Labels)
+    ObserveWithExemplar(value float64, exemplar Labels)
 }

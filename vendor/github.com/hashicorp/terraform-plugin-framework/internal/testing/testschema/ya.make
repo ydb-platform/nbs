@@ -1,0 +1,62 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MPL-2.0)
+
+SRCS(
+    attribute.go
+    attributewithbooldefault.go
+    attributewithboolplanmodifiers.go
+    attributewithboolvalidators.go
+    attributewithfloat64default.go
+    attributewithfloat64planmodifiers.go
+    attributewithfloat64validators.go
+    attributewithint64default.go
+    attributewithint64planmodifiers.go
+    attributewithint64validators.go
+    attributewithlistdefault.go
+    attributewithlistplanmodifiers.go
+    attributewithlistvalidators.go
+    attributewithmapdefault.go
+    attributewithmapplanmodifiers.go
+    attributewithmapvalidators.go
+    attributewithnumberdefault.go
+    attributewithnumberplanmodifiers.go
+    attributewithnumbervalidators.go
+    attributewithobjectdefault.go
+    attributewithobjectplanmodifiers.go
+    attributewithobjectvalidators.go
+    attributewithsetdefault.go
+    attributewithsetplanmodifiers.go
+    attributewithsetvalidators.go
+    attributewithstringdefault.go
+    attributewithstringplanmodifiers.go
+    attributewithstringvalidators.go
+    block.go
+    blockwithlistplanmodifiers.go
+    blockwithlistvalidators.go
+    blockwithobjectplanmodifiers.go
+    blockwithobjectvalidators.go
+    blockwithsetplanmodifiers.go
+    blockwithsetvalidators.go
+    doc.go
+    nested_attribute.go
+    nested_attribute_object.go
+    nested_attribute_object_with_planmodifiers.go
+    nested_attribute_object_with_validators.go
+    nested_attribute_with_list_default.go
+    nested_attribute_with_list_plan_modifiers.go
+    nested_attribute_with_map_default.go
+    nested_attribute_with_map_plan_modifiers.go
+    nested_attribute_with_object_default.go
+    nested_attribute_with_object_plan_modifiers.go
+    nested_attribute_with_set_default.go
+    nested_attribute_with_set_plan_modifiers.go
+    nested_block_object.go
+    nested_block_object_with_plan_modifiers.go
+    nested_block_object_with_validators.go
+    schema.go
+)
+
+END()

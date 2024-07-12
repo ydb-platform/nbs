@@ -18,8 +18,8 @@
 package bootstrap
 
 import (
-	"net/url"
-	"strings"
+    "net/url"
+    "strings"
 )
 
 // PopulateResourceTemplate populates the given template using the target
@@ -28,20 +28,20 @@ import (
 // If the template starts with "xdstp:", the replaced string will be %-encoded.
 // But note that "/" is not percent encoded.
 func PopulateResourceTemplate(template, target string) string {
-	if !strings.Contains(template, "%s") {
-		return template
-	}
-	if strings.HasPrefix(template, "xdstp:") {
-		target = percentEncode(target)
-	}
-	return strings.Replace(template, "%s", target, -1)
+    if !strings.Contains(template, "%s") {
+        return template
+    }
+    if strings.HasPrefix(template, "xdstp:") {
+        target = percentEncode(target)
+    }
+    return strings.Replace(template, "%s", target, -1)
 }
 
 // percentEncode percent encode t, except for "/". See the tests for examples.
 func percentEncode(t string) string {
-	segs := strings.Split(t, "/")
-	for i := range segs {
-		segs[i] = url.PathEscape(segs[i])
-	}
-	return strings.Join(segs, "/")
+    segs := strings.Split(t, "/")
+    for i := range segs {
+        segs[i] = url.PathEscape(segs[i])
+    }
+    return strings.Join(segs, "/")
 }

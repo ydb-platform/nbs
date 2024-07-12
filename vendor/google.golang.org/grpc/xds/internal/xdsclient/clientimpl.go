@@ -19,13 +19,13 @@
 package xdsclient
 
 import (
-	"sync"
-	"time"
+    "sync"
+    "time"
 
-	"google.golang.org/grpc/internal/cache"
-	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+    "google.golang.org/grpc/internal/cache"
+    "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/internal/grpcsync"
+    "google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 var _ XDSClient = &clientImpl{}
@@ -33,57 +33,57 @@ var _ XDSClient = &clientImpl{}
 // clientImpl is the real implementation of the xds client. The exported Client
 // is a wrapper of this struct with a ref count.
 type clientImpl struct {
-	done               *grpcsync.Event
-	config             *bootstrap.Config
-	logger             *grpclog.PrefixLogger
-	watchExpiryTimeout time.Duration
-	serializer         *grpcsync.CallbackSerializer
-	serializerClose    func()
-	resourceTypes      *resourceTypeRegistry
+    done               *grpcsync.Event
+    config             *bootstrap.Config
+    logger             *grpclog.PrefixLogger
+    watchExpiryTimeout time.Duration
+    serializer         *grpcsync.CallbackSerializer
+    serializerClose    func()
+    resourceTypes      *resourceTypeRegistry
 
-	// authorityMu protects the authority fields. It's necessary because an
-	// authority is created when it's used.
-	authorityMu sync.Mutex
-	// authorities is a map from ServerConfig to authority. So that
-	// different authorities sharing the same ServerConfig can share the
-	// authority.
-	//
-	// The key is **ServerConfig.String()**, not the authority name.
-	//
-	// An authority is either in authorities, or idleAuthorities,
-	// never both.
-	authorities map[string]*authority
-	// idleAuthorities keeps the authorities that are not used (the last
-	// watch on it was canceled). They are kept in the cache and will be deleted
-	// after a timeout. The key is ServerConfig.String().
-	//
-	// An authority is either in authorities, or idleAuthorities,
-	// never both.
-	idleAuthorities *cache.TimeoutCache
+    // authorityMu protects the authority fields. It's necessary because an
+    // authority is created when it's used.
+    authorityMu sync.Mutex
+    // authorities is a map from ServerConfig to authority. So that
+    // different authorities sharing the same ServerConfig can share the
+    // authority.
+    //
+    // The key is **ServerConfig.String()**, not the authority name.
+    //
+    // An authority is either in authorities, or idleAuthorities,
+    // never both.
+    authorities map[string]*authority
+    // idleAuthorities keeps the authorities that are not used (the last
+    // watch on it was canceled). They are kept in the cache and will be deleted
+    // after a timeout. The key is ServerConfig.String().
+    //
+    // An authority is either in authorities, or idleAuthorities,
+    // never both.
+    idleAuthorities *cache.TimeoutCache
 }
 
 // BootstrapConfig returns the configuration read from the bootstrap file.
 // Callers must treat the return value as read-only.
 func (c *clientImpl) BootstrapConfig() *bootstrap.Config {
-	return c.config
+    return c.config
 }
 
 // close closes the gRPC connection to the management server.
 func (c *clientImpl) close() {
-	if c.done.HasFired() {
-		return
-	}
-	c.done.Fire()
-	// TODO: Should we invoke the registered callbacks here with an error that
-	// the client is closed?
+    if c.done.HasFired() {
+        return
+    }
+    c.done.Fire()
+    // TODO: Should we invoke the registered callbacks here with an error that
+    // the client is closed?
 
-	c.authorityMu.Lock()
-	for _, a := range c.authorities {
-		a.close()
-	}
-	c.idleAuthorities.Clear(true)
-	c.authorityMu.Unlock()
-	c.serializerClose()
+    c.authorityMu.Lock()
+    for _, a := range c.authorities {
+        a.close()
+    }
+    c.idleAuthorities.Clear(true)
+    c.authorityMu.Unlock()
+    c.serializerClose()
 
-	c.logger.Infof("Shutdown")
+    c.logger.Infof("Shutdown")
 }

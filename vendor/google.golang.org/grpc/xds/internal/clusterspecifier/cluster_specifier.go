@@ -21,7 +21,7 @@
 package clusterspecifier
 
 import (
-	"github.com/golang/protobuf/proto"
+    "github.com/golang/protobuf/proto"
 )
 
 // BalancerConfig is the Go Native JSON representation of a balancer
@@ -30,20 +30,20 @@ type BalancerConfig []map[string]interface{}
 
 // ClusterSpecifier defines the parsing functionality of a Cluster Specifier.
 type ClusterSpecifier interface {
-	// TypeURLs are the proto message types supported by this
-	// ClusterSpecifierPlugin. A ClusterSpecifierPlugin will be registered by
-	// each of its supported message types.
-	TypeURLs() []string
-	// ParseClusterSpecifierConfig parses the provided configuration
-	// proto.Message from the top level RDS configuration. The resulting
-	// BalancerConfig will be used as configuration for a child LB Policy of the
-	// Cluster Manager LB Policy. A nil BalancerConfig is invalid.
-	ParseClusterSpecifierConfig(proto.Message) (BalancerConfig, error)
+    // TypeURLs are the proto message types supported by this
+    // ClusterSpecifierPlugin. A ClusterSpecifierPlugin will be registered by
+    // each of its supported message types.
+    TypeURLs() []string
+    // ParseClusterSpecifierConfig parses the provided configuration
+    // proto.Message from the top level RDS configuration. The resulting
+    // BalancerConfig will be used as configuration for a child LB Policy of the
+    // Cluster Manager LB Policy. A nil BalancerConfig is invalid.
+    ParseClusterSpecifierConfig(proto.Message) (BalancerConfig, error)
 }
 
 var (
-	// m is a map from scheme to filter.
-	m = make(map[string]ClusterSpecifier)
+    // m is a map from scheme to filter.
+    m = make(map[string]ClusterSpecifier)
 )
 
 // Register registers the ClusterSpecifierPlugin to the ClusterSpecifier map.
@@ -54,19 +54,19 @@ var (
 // plugins are registered with the same type URL, the one registered last will
 // take effect.
 func Register(cs ClusterSpecifier) {
-	for _, u := range cs.TypeURLs() {
-		m[u] = cs
-	}
+    for _, u := range cs.TypeURLs() {
+        m[u] = cs
+    }
 }
 
 // Get returns the ClusterSpecifier registered with typeURL.
 //
 // If no cluster specifier is registered with typeURL, nil will be returned.
 func Get(typeURL string) ClusterSpecifier {
-	return m[typeURL]
+    return m[typeURL]
 }
 
 // UnregisterForTesting unregisters the ClusterSpecifier for testing purposes.
 func UnregisterForTesting(typeURL string) {
-	delete(m, typeURL)
+    delete(m, typeURL)
 }

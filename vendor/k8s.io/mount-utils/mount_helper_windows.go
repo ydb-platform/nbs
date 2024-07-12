@@ -20,13 +20,13 @@ limitations under the License.
 package mount
 
 import (
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
-	"syscall"
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+    "syscall"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 // following failure codes are from https://docs.microsoft.com/en-us/windows/desktop/debug/system-error-codes--1300-1699-
@@ -44,68 +44,68 @@ var errorNoList = [...]int{53, 54, 59, 64, 65, 66, 67, 1219, 1326, 10064}
 
 // IsCorruptedMnt return true if err is about corrupted mount point
 func IsCorruptedMnt(err error) bool {
-	if err == nil {
-		return false
-	}
+    if err == nil {
+        return false
+    }
 
-	var underlyingError error
-	switch pe := err.(type) {
-	case nil:
-		return false
-	case *os.PathError:
-		underlyingError = pe.Err
-	case *os.LinkError:
-		underlyingError = pe.Err
-	case *os.SyscallError:
-		underlyingError = pe.Err
-	}
+    var underlyingError error
+    switch pe := err.(type) {
+    case nil:
+        return false
+    case *os.PathError:
+        underlyingError = pe.Err
+    case *os.LinkError:
+        underlyingError = pe.Err
+    case *os.SyscallError:
+        underlyingError = pe.Err
+    }
 
-	if ee, ok := underlyingError.(syscall.Errno); ok {
-		for _, errno := range errorNoList {
-			if int(ee) == errno {
-				klog.Warningf("IsCorruptedMnt failed with error: %v, error code: %v", err, errno)
-				return true
-			}
-		}
-	}
+    if ee, ok := underlyingError.(syscall.Errno); ok {
+        for _, errno := range errorNoList {
+            if int(ee) == errno {
+                klog.Warningf("IsCorruptedMnt failed with error: %v, error code: %v", err, errno)
+                return true
+            }
+        }
+    }
 
-	return false
+    return false
 }
 
 // NormalizeWindowsPath makes sure the given path is a valid path on Windows
 // systems by making sure all instances of `/` are replaced with `\\`, and the
 // path beings with `c:`
 func NormalizeWindowsPath(path string) string {
-	normalizedPath := strings.Replace(path, "/", "\\", -1)
-	if strings.HasPrefix(normalizedPath, "\\") {
-		normalizedPath = "c:" + normalizedPath
-	}
-	return normalizedPath
+    normalizedPath := strings.Replace(path, "/", "\\", -1)
+    if strings.HasPrefix(normalizedPath, "\\") {
+        normalizedPath = "c:" + normalizedPath
+    }
+    return normalizedPath
 }
 
 // ValidateDiskNumber : disk number should be a number in [0, 99]
 func ValidateDiskNumber(disk string) error {
-	if _, err := strconv.Atoi(disk); err != nil {
-		return fmt.Errorf("wrong disk number format: %q, err: %v", disk, err)
-	}
-	return nil
+    if _, err := strconv.Atoi(disk); err != nil {
+        return fmt.Errorf("wrong disk number format: %q, err: %v", disk, err)
+    }
+    return nil
 }
 
 // isMountPointMatch determines if the mountpoint matches the dir
 func isMountPointMatch(mp MountPoint, dir string) bool {
-	return mp.Path == dir
+    return mp.Path == dir
 }
 
 // PathExists returns true if the specified path exists.
 // TODO: clean this up to use pkg/util/file/FileExists
 func PathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	} else if os.IsNotExist(err) {
-		return false, nil
-	} else if IsCorruptedMnt(err) {
-		return true, err
-	}
-	return false, err
+    _, err := os.Stat(path)
+    if err == nil {
+        return true, nil
+    } else if os.IsNotExist(err) {
+        return false, nil
+    } else if IsCorruptedMnt(err) {
+        return true, err
+    }
+    return false, err
 }

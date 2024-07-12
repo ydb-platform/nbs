@@ -24,49 +24,49 @@ package atomic
 
 // String is an atomic type-safe wrapper for string values.
 type String struct {
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v Value
+    v Value
 }
 
 var _zeroString string
 
 // NewString creates a new String.
 func NewString(val string) *String {
-	x := &String{}
-	if val != _zeroString {
-		x.Store(val)
-	}
-	return x
+    x := &String{}
+    if val != _zeroString {
+        x.Store(val)
+    }
+    return x
 }
 
 // Load atomically loads the wrapped string.
 func (x *String) Load() string {
-	return unpackString(x.v.Load())
+    return unpackString(x.v.Load())
 }
 
 // Store atomically stores the passed string.
 func (x *String) Store(val string) {
-	x.v.Store(packString(val))
+    x.v.Store(packString(val))
 }
 
 // CompareAndSwap is an atomic compare-and-swap for string values.
 func (x *String) CompareAndSwap(old, new string) (swapped bool) {
-	if x.v.CompareAndSwap(packString(old), packString(new)) {
-		return true
-	}
+    if x.v.CompareAndSwap(packString(old), packString(new)) {
+        return true
+    }
 
-	if old == _zeroString {
-		// If the old value is the empty value, then it's possible the
-		// underlying Value hasn't been set and is nil, so retry with nil.
-		return x.v.CompareAndSwap(nil, packString(new))
-	}
+    if old == _zeroString {
+        // If the old value is the empty value, then it's possible the
+        // underlying Value hasn't been set and is nil, so retry with nil.
+        return x.v.CompareAndSwap(nil, packString(new))
+    }
 
-	return false
+    return false
 }
 
 // Swap atomically stores the given string and returns the old
 // value.
 func (x *String) Swap(val string) (old string) {
-	return unpackString(x.v.Swap(packString(val)))
+    return unpackString(x.v.Swap(packString(val)))
 }

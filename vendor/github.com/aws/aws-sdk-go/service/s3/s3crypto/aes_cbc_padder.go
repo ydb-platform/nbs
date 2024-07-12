@@ -1,7 +1,7 @@
 package s3crypto
 
 const (
-	pkcs5BlockSize = 16
+    pkcs5BlockSize = 16
 )
 
 var aescbcPadding = aescbcPadder{pkcs7Padder{16}}
@@ -13,17 +13,17 @@ var aescbcPadding = aescbcPadder{pkcs7Padder{16}}
 var AESCBCPadder = Padder(aescbcPadding)
 
 type aescbcPadder struct {
-	padder pkcs7Padder
+    padder pkcs7Padder
 }
 
 func (padder aescbcPadder) Pad(b []byte, n int) ([]byte, error) {
-	return padder.padder.Pad(b, n)
+    return padder.padder.Pad(b, n)
 }
 
 func (padder aescbcPadder) Unpad(b []byte) ([]byte, error) {
-	return padder.padder.Unpad(b)
+    return padder.padder.Unpad(b)
 }
 
 func (padder aescbcPadder) Name() string {
-	return "PKCS5Padding"
+    return "PKCS5Padding"
 }

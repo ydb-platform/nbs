@@ -1,0 +1,37 @@
+{
+    "Version": "v1.3.2",
+    "GoVersion": "1.16",
+    "Sum": "h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=",
+    "Packages": {
+        "github.com/andybalholm/cascadia": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/html",
+                "golang.org/x/net/html/atom",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/net/html",
+                "io/ioutil",
+                "log",
+                "os",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/andybalholm/cascadia/fuzz": {
+            "Imports": [
+                "github.com/andybalholm/cascadia"
+            ],
+            "TestImports": null
+        }
+    }
+}

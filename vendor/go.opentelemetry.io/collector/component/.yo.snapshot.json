@@ -1,0 +1,54 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:RdeUDdX3prvkf0PFFbhMjWLsYUJdxy/d0oovOuObRDs=",
+    "Packages": {
+        "go.opentelemetry.io/collector/component": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "go.opentelemetry.io/collector/config/configtelemetry",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/pdata/pcommon",
+                "go.opentelemetry.io/otel/metric",
+                "go.opentelemetry.io/otel/trace",
+                "go.uber.org/multierr",
+                "go.uber.org/zap",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "reflect",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/component/componenttest": {
+            "Imports": [
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/config/configtelemetry",
+                "go.opentelemetry.io/collector/pdata/pcommon",
+                "go.opentelemetry.io/otel/metric/noop",
+                "go.opentelemetry.io/otel/trace",
+                "go.uber.org/multierr",
+                "go.uber.org/zap",
+                "reflect",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/config/configtelemetry",
+                "io",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

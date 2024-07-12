@@ -20,23 +20,23 @@
 package adaptive
 
 import (
-	"sync"
-	"time"
+    "sync"
+    "time"
 
-	"google.golang.org/grpc/internal/grpcrand"
+    "google.golang.org/grpc/internal/grpcrand"
 )
 
 // For overriding in unittests.
 var (
-	timeNowFunc = func() time.Time { return time.Now() }
-	randFunc    = func() float64 { return grpcrand.Float64() }
+    timeNowFunc = func() time.Time { return time.Now() }
+    randFunc    = func() float64 { return grpcrand.Float64() }
 )
 
 const (
-	defaultDuration        = 30 * time.Second
-	defaultBins            = 100
-	defaultRatioForAccepts = 2.0
-	defaultRequestsPadding = 8.0
+    defaultDuration        = 30 * time.Second
+    defaultBins            = 100
+    defaultRatioForAccepts = 2.0
+    defaultRequestsPadding = 8.0
 )
 
 // Throttler implements a client-side throttling recommendation system. All
@@ -68,29 +68,29 @@ const (
 // ShouldThrottle method) with probability given by:
 // (requests - RatioForAccepts * accepts) / (requests + RequestsPadding)
 type Throttler struct {
-	ratioForAccepts float64
-	requestsPadding float64
+    ratioForAccepts float64
+    requestsPadding float64
 
-	// Number of total accepts and throttles in the lookback period.
-	mu        sync.Mutex
-	accepts   *lookback
-	throttles *lookback
+    // Number of total accepts and throttles in the lookback period.
+    mu        sync.Mutex
+    accepts   *lookback
+    throttles *lookback
 }
 
 // New initializes a new adaptive throttler with the default values.
 func New() *Throttler {
-	return newWithArgs(defaultDuration, defaultBins, defaultRatioForAccepts, defaultRequestsPadding)
+    return newWithArgs(defaultDuration, defaultBins, defaultRatioForAccepts, defaultRequestsPadding)
 }
 
 // newWithArgs initializes a new adaptive throttler with the provided values.
 // Used only in unittests.
 func newWithArgs(duration time.Duration, bins int64, ratioForAccepts, requestsPadding float64) *Throttler {
-	return &Throttler{
-		ratioForAccepts: ratioForAccepts,
-		requestsPadding: requestsPadding,
-		accepts:         newLookback(bins, duration),
-		throttles:       newLookback(bins, duration),
-	}
+    return &Throttler{
+        ratioForAccepts: ratioForAccepts,
+        requestsPadding: requestsPadding,
+        accepts:         newLookback(bins, duration),
+        throttles:       newLookback(bins, duration),
+    }
 }
 
 // ShouldThrottle returns a probabilistic estimate of whether the server would
@@ -98,21 +98,21 @@ func newWithArgs(duration time.Duration, bins int64, ratioForAccepts, requestsPa
 // allowing it to hit the network. If the returned value is true, the request
 // should be aborted immediately (as if it had been throttled by the server).
 func (t *Throttler) ShouldThrottle() bool {
-	randomProbability := randFunc()
-	now := timeNowFunc()
+    randomProbability := randFunc()
+    now := timeNowFunc()
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
+    t.mu.Lock()
+    defer t.mu.Unlock()
 
-	accepts, throttles := float64(t.accepts.sum(now)), float64(t.throttles.sum(now))
-	requests := accepts + throttles
-	throttleProbability := (requests - t.ratioForAccepts*accepts) / (requests + t.requestsPadding)
-	if throttleProbability <= randomProbability {
-		return false
-	}
+    accepts, throttles := float64(t.accepts.sum(now)), float64(t.throttles.sum(now))
+    requests := accepts + throttles
+    throttleProbability := (requests - t.ratioForAccepts*accepts) / (requests + t.requestsPadding)
+    if throttleProbability <= randomProbability {
+        return false
+    }
 
-	t.throttles.add(now, 1)
-	return true
+    t.throttles.add(now, 1)
+    return true
 }
 
 // RegisterBackendResponse registers a response received from the backend for a
@@ -120,13 +120,13 @@ func (t *Throttler) ShouldThrottle() bool {
 // received from the backend (i.e., once for each request for which
 // ShouldThrottle returned false).
 func (t *Throttler) RegisterBackendResponse(throttled bool) {
-	now := timeNowFunc()
+    now := timeNowFunc()
 
-	t.mu.Lock()
-	if throttled {
-		t.throttles.add(now, 1)
-	} else {
-		t.accepts.add(now, 1)
-	}
-	t.mu.Unlock()
+    t.mu.Lock()
+    if throttled {
+        t.throttles.add(now, 1)
+    } else {
+        t.accepts.add(now, 1)
+    }
+    t.mu.Unlock()
 }

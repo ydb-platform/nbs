@@ -15,26 +15,26 @@
 package cobra
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
+    "bytes"
+    "fmt"
+    "io"
+    "os"
 )
 
 func (c *Command) genBashCompletion(w io.Writer, includeDesc bool) error {
-	buf := new(bytes.Buffer)
-	genBashComp(buf, c.Name(), includeDesc)
-	_, err := buf.WriteTo(w)
-	return err
+    buf := new(bytes.Buffer)
+    genBashComp(buf, c.Name(), includeDesc)
+    _, err := buf.WriteTo(w)
+    return err
 }
 
 func genBashComp(buf io.StringWriter, name string, includeDesc bool) {
-	compCmd := ShellCompRequestCmd
-	if !includeDesc {
-		compCmd = ShellCompNoDescRequestCmd
-	}
+    compCmd := ShellCompRequestCmd
+    if !includeDesc {
+        compCmd = ShellCompNoDescRequestCmd
+    }
 
-	WriteStringAndCheck(buf, fmt.Sprintf(`# bash completion V2 for %-36[1]s -*- shell-script -*-
+    WriteStringAndCheck(buf, fmt.Sprintf(`# bash completion V2 for %-36[1]s -*- shell-script -*-
 
 __%[1]s_debug()
 {
@@ -373,24 +373,24 @@ fi
 
 # ex: ts=4 sw=4 et filetype=sh
 `, name, compCmd,
-		ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
-		ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder,
-		activeHelpMarker))
+        ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
+        ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder,
+        activeHelpMarker))
 }
 
 // GenBashCompletionFileV2 generates Bash completion version 2.
 func (c *Command) GenBashCompletionFileV2(filename string, includeDesc bool) error {
-	outFile, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
+    outFile, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer outFile.Close()
 
-	return c.GenBashCompletionV2(outFile, includeDesc)
+    return c.GenBashCompletionV2(outFile, includeDesc)
 }
 
 // GenBashCompletionV2 generates Bash completion file version 2
 // and writes it to the passed writer.
 func (c *Command) GenBashCompletionV2(w io.Writer, includeDesc bool) error {
-	return c.genBashCompletion(w, includeDesc)
+    return c.genBashCompletion(w, includeDesc)
 }

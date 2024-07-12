@@ -1,0 +1,29 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    authentication
+    authz
+    cancellation
+    compression
+    deadline
+    debugging
+    encryption
+    error_details
+    error_handling
+    health
+    interceptor
+    keepalive
+    load_balancing
+    metadata
+    metadata_interceptor
+    multiplex
+    name_resolving
+    orca
+    proto
+    reflection
+    retry
+    stats_monitoring
+    unix_abstract
+    wait_for_ready
+    #xds
+)

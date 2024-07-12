@@ -1,0 +1,194 @@
+{
+    "Version": "v0.46.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:doXzt5ybi1HBKpsZOL0sSkaNHJJqkyfEWZGGqqScV0Y=",
+    "Packages": {
+        "github.com/prometheus/common/config": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/json",
+                "fmt",
+                "github.com/mwitkow/go-conntrack",
+                "golang.org/x/net/http/httpproxy",
+                "golang.org/x/net/http2",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/clientcredentials",
+                "gopkg.in/yaml.v2",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "gopkg.in/yaml.v2",
+                "io",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/common/expfmt": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
+                "github.com/prometheus/common/model",
+                "google.golang.org/protobuf/encoding/protodelim",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "math",
+                "mime",
+                "net/http",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "errors",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/common/model",
+                "google.golang.org/protobuf/encoding/protodelim",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "io",
+                "math",
+                "net/http",
+                "os",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg": {
+            "Imports": [
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/prometheus/common/model": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "math",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "math",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/common/promlog": {
+            "Imports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/go-kit/log/level",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/go-kit/log/level",
+                "gopkg.in/yaml.v2",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/common/promlog/flag": {
+            "Imports": [
+                "github.com/alecthomas/kingpin/v2",
+                "github.com/prometheus/common/promlog",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/common/route": {
+            "Imports": [
+                "context",
+                "github.com/julienschmidt/httprouter",
+                "net/http"
+            ],
+            "TestImports": [
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/common/server": {
+            "Imports": [
+                "net/http",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/common/version": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": null
+        }
+    }
+}

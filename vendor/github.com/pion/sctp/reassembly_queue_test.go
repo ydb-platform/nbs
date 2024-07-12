@@ -1,0 +1,559 @@
+// SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+// SPDX-License-Identifier: MIT
+
+package sctp
+
+import (
+    "io"
+    "testing"
+
+    "github.com/stretchr/testify/assert"
+)
+
+func TestReassemblyQueue(t *testing.T) {
+    t.Run("ordered fragments", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            tsn:                  1,
+            streamSequenceNumber: 0,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            endingFragment:       true,
+            tsn:                  2,
+            streamSequenceNumber: 0,
+            userData:             []byte("DEFG"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 7, rq.getNumBytes(), "num bytes mismatch")
+
+        buf := make([]byte, 16)
+
+        n, ppi, err := rq.read(buf)
+        assert.Nil(t, err, "read() should succeed")
+        assert.Equal(t, 7, n, "should received 7 bytes")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+        assert.Equal(t, ppi, orgPpi, "should have valid ppi")
+        assert.Equal(t, string(buf[:n]), "ABCDEFG", "data should match")
+    })
+
+    t.Run("ordered fragments", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            beginningFragment:    true,
+            tsn:                  1,
+            streamSequenceNumber: 0,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            tsn:                  2,
+            streamSequenceNumber: 0,
+            userData:             []byte("DEFG"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 7, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            endingFragment:       true,
+            tsn:                  3,
+            streamSequenceNumber: 0,
+            userData:             []byte("H"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 8, rq.getNumBytes(), "num bytes mismatch")
+
+        buf := make([]byte, 16)
+
+        n, ppi, err := rq.read(buf)
+        assert.Nil(t, err, "read() should succeed")
+        assert.Equal(t, 8, n, "should received 8 bytes")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+        assert.Equal(t, ppi, orgPpi, "should have valid ppi")
+        assert.Equal(t, string(buf[:n]), "ABCDEFGH", "data should match")
+    })
+
+    t.Run("ordered and unordered in the mix", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  1,
+            streamSequenceNumber: 0,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  2,
+            streamSequenceNumber: 1,
+            userData:             []byte("DEF"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 6, rq.getNumBytes(), "num bytes mismatch")
+
+        //
+        // Now we have two complete chunks ready to read in the reassemblyQueue.
+        //
+
+        buf := make([]byte, 16)
+
+        // Should read unordered chunks first
+        n, ppi, err := rq.read(buf)
+        assert.Nil(t, err, "read() should succeed")
+        assert.Equal(t, 3, n, "should received 3 bytes")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+        assert.Equal(t, ppi, orgPpi, "should have valid ppi")
+        assert.Equal(t, string(buf[:n]), "DEF", "data should match")
+
+        // Next should read ordered chunks
+        n, ppi, err = rq.read(buf)
+        assert.Nil(t, err, "read() should succeed")
+        assert.Equal(t, 3, n, "should received 3 bytes")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+        assert.Equal(t, ppi, orgPpi, "should have valid ppi")
+        assert.Equal(t, string(buf[:n]), "ABC", "data should match")
+    })
+
+    t.Run("unordered complete skips incomplete", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            beginningFragment:    true,
+            tsn:                  10,
+            streamSequenceNumber: 0,
+            userData:             []byte("IN"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 2, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            endingFragment:       true,
+            tsn:                  12, // <- incongiguous
+            streamSequenceNumber: 1,
+            userData:             []byte("COMPLETE"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 10, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  13,
+            streamSequenceNumber: 1,
+            userData:             []byte("GOOD"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 14, rq.getNumBytes(), "num bytes mismatch")
+
+        //
+        // Now we have two complete chunks ready to read in the reassemblyQueue.
+        //
+
+        buf := make([]byte, 16)
+
+        // Should pick the one that has "GOOD"
+        n, ppi, err := rq.read(buf)
+        assert.Nil(t, err, "read() should succeed")
+        assert.Equal(t, 4, n, "should receive 4 bytes")
+        assert.Equal(t, 10, rq.getNumBytes(), "num bytes mismatch")
+        assert.Equal(t, ppi, orgPpi, "should have valid ppi")
+        assert.Equal(t, string(buf[:n]), "GOOD", "data should match")
+    })
+
+    t.Run("ignores chunk with wrong SI", func(t *testing.T) {
+        rq := newReassemblyQueue(123)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            streamIdentifier:     124,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  10,
+            streamSequenceNumber: 0,
+            userData:             []byte("IN"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk should be ignored")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("ignores chunk with stale SSN", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+        rq.nextSSN = 7 // forcibly set expected SSN to 7
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  10,
+            streamSequenceNumber: 6, // <-- stale
+            userData:             []byte("IN"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk should not be ignored")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("should fail to read incomplete chunk", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            tsn:                  123,
+            streamSequenceNumber: 0,
+            userData:             []byte("IN"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "the set should not be complete")
+        assert.Equal(t, 2, rq.getNumBytes(), "num bytes mismatch")
+
+        buf := make([]byte, 16)
+        _, _, err := rq.read(buf)
+        assert.NotNil(t, err, "read() should not succeed")
+        assert.Equal(t, 2, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("should fail to read if the next SSN is not ready", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  123,
+            streamSequenceNumber: 1,
+            userData:             []byte("IN"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "the set should be complete")
+        assert.Equal(t, 2, rq.getNumBytes(), "num bytes mismatch")
+
+        buf := make([]byte, 16)
+        _, _, err := rq.read(buf)
+        assert.NotNil(t, err, "read() should not succeed")
+        assert.Equal(t, 2, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("detect buffer too short", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  123,
+            streamSequenceNumber: 0,
+            userData:             []byte("0123456789"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "the set should be complete")
+        assert.Equal(t, 10, rq.getNumBytes(), "num bytes mismatch")
+
+        buf := make([]byte, 8) // <- passing buffer too short
+        _, _, err := rq.read(buf)
+        assert.Equal(t, io.ErrShortBuffer, err, "read() should not succeed")
+        assert.Equal(t, 0, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("forwardTSN for ordered fragments", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+        var ssnComplete uint16 = 5
+        var ssnDropped uint16 = 6
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            endingFragment:       true,
+            tsn:                  10,
+            streamSequenceNumber: ssnComplete,
+            userData:             []byte("123"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            tsn:                  11,
+            streamSequenceNumber: ssnDropped,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 6, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            tsn:                  12,
+            streamSequenceNumber: ssnDropped,
+            userData:             []byte("DEF"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 9, rq.getNumBytes(), "num bytes mismatch")
+
+        rq.forwardTSNForOrdered(ssnDropped)
+
+        assert.Equal(t, 1, len(rq.ordered), "there should be one chunk left")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("forwardTSN for unordered fragments", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+        var ssnDropped uint16 = 6
+        var ssnKept uint16 = 7
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            beginningFragment:    true,
+            tsn:                  11,
+            streamSequenceNumber: ssnDropped,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            tsn:                  12,
+            streamSequenceNumber: ssnDropped,
+            userData:             []byte("DEF"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 6, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            unordered:            true,
+            tsn:                  14,
+            beginningFragment:    true,
+            streamSequenceNumber: ssnKept,
+            userData:             []byte("SOS"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 9, rq.getNumBytes(), "num bytes mismatch")
+
+        // At this point, there are 3 chunks in the rq.unorderedChunks.
+        // This call should remove chunks with tsn equals to 13 or older.
+        rq.forwardTSNForUnordered(13)
+
+        // As a result, there should be one chunk (tsn=14)
+        assert.Equal(t, 1, len(rq.unorderedChunks), "there should be one chunk kept")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+    })
+
+    t.Run("fragmented and unfragmented chunks with the same ssn", func(t *testing.T) {
+        rq := newReassemblyQueue(0)
+
+        orgPpi := PayloadTypeWebRTCBinary
+
+        var chunk *chunkPayloadData
+        var complete bool
+        var ssn uint16 = 6
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            tsn:                  12,
+            beginningFragment:    true,
+            endingFragment:       true,
+            streamSequenceNumber: ssn,
+            userData:             []byte("DEF"),
+        }
+
+        complete = rq.push(chunk)
+        assert.True(t, complete, "chunk set should be complete")
+        assert.Equal(t, 3, rq.getNumBytes(), "num bytes mismatch")
+
+        chunk = &chunkPayloadData{
+            payloadType:          orgPpi,
+            beginningFragment:    true,
+            tsn:                  11,
+            streamSequenceNumber: ssn,
+            userData:             []byte("ABC"),
+        }
+
+        complete = rq.push(chunk)
+        assert.False(t, complete, "chunk set should not be complete yet")
+        assert.Equal(t, 6, rq.getNumBytes(), "num bytes mismatch")
+
+        assert.Equal(t, 2, len(rq.ordered), "there should be two chunks")
+        assert.Equal(t, 6, rq.getNumBytes(), "num bytes mismatch")
+    })
+}
+
+func TestChunkSet(t *testing.T) {
+    t.Run("Empty chunkSet", func(t *testing.T) {
+        cset := newChunkSet(0, 0)
+        assert.False(t, cset.isComplete(), "empty chunkSet cannot be complete")
+    })
+
+    t.Run("Push dup chunks to chunkSet", func(t *testing.T) {
+        cset := newChunkSet(0, 0)
+        cset.push(&chunkPayloadData{
+            tsn:               100,
+            beginningFragment: true,
+        })
+        complete := cset.push(&chunkPayloadData{
+            tsn:            100,
+            endingFragment: true,
+        })
+        assert.False(t, complete, "chunk with dup TSN is not complete")
+        nChunks := len(cset.chunks)
+        assert.Equal(t, 1, nChunks, "chunk with dup TSN should be ignored")
+    })
+
+    t.Run("Incomplete chunkSet: no beginning", func(t *testing.T) {
+        cset := &chunkSet{
+            ssn:    0,
+            ppi:    0,
+            chunks: []*chunkPayloadData{{}},
+        }
+        assert.False(t, cset.isComplete(),
+            "chunkSet not starting with B=1 cannot be complete")
+    })
+
+    t.Run("Incomplete chunkSet: no contiguous tsn", func(t *testing.T) {
+        cset := &chunkSet{
+            ssn: 0,
+            ppi: 0,
+            chunks: []*chunkPayloadData{
+                {
+                    tsn:               100,
+                    beginningFragment: true,
+                },
+                {
+                    tsn: 101,
+                },
+                {
+                    tsn:            103,
+                    endingFragment: true,
+                },
+            },
+        }
+        assert.False(t, cset.isComplete(),
+            "chunkSet not starting with incontiguous tsn cannot be complete")
+    })
+}

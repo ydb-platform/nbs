@@ -1,0 +1,72 @@
+{
+    "Version": "v1.16.1",
+    "GoVersion": "1.20",
+    "Sum": "h1:FVJ0r5XTHSmIHJV6KuDmdYhEpvlHpiSd38RQWhut5J4=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/feature/ec2/imds": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/transport/http",
+                "github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/io",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/hex",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config": {
+            "Imports": [
+                "fmt",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

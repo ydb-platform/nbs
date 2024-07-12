@@ -1,0 +1,80 @@
+{
+    "Version": "v0.0.0-20190617161244-0dc95cdf6f31",
+    "GoVersion": "",
+    "Sum": "h1:DE4LcMKyqAVa6a0CGmVxANbnVb7stzMmPkQiieyNmfQ=",
+    "Packages": {
+        "github.com/rogpeppe/go-charset/charset": {
+            "Imports": [
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/rogpeppe/go-charset/charset",
+                "github.com/rogpeppe/go-charset/data",
+                "io",
+                "io/ioutil",
+                "log",
+                "strings",
+                "testing",
+                "testing/iotest",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/rogpeppe/go-charset/charset/iconv": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "github.com/rogpeppe/go-charset/charset",
+                "runtime",
+                "strings",
+                "sync",
+                "syscall",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/rogpeppe/go-charset/charset",
+                "github.com/rogpeppe/go-charset/charset/iconv",
+                "io",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/rogpeppe/go-charset/cmd/tcs": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/rogpeppe/go-charset/charset",
+                "github.com/rogpeppe/go-charset/charset/iconv",
+                "io",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/rogpeppe/go-charset/data": {
+            "Imports": [
+                "github.com/rogpeppe/go-charset/charset",
+                "io",
+                "io/ioutil",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

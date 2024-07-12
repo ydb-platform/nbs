@@ -10,5 +10,5 @@ import "testing"
 
 // AllocsPerRun wraps testing.AllocsPerRun.
 func AllocsPerRun(runs int, f func()) (avg float64) {
-	return testing.AllocsPerRun(runs, f)
+    return testing.AllocsPerRun(runs, f)
 }

@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 IF (OS_WINDOWS)
@@ -24,6 +26,7 @@ IF (OS_WINDOWS)
     )
 
     GO_XTEST_SRCS(
+        env_windows_test.go
         syscall_test.go
         syscall_windows_test.go
     )

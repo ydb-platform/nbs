@@ -22,34 +22,34 @@
 package nop
 
 import (
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/balancer/base"
-	"google.golang.org/grpc/connectivity"
+    "google.golang.org/grpc/balancer"
+    "google.golang.org/grpc/balancer/base"
+    "google.golang.org/grpc/connectivity"
 )
 
 // bal is a balancer with all of its balancer operations as no-ops, other than
 // returning a Transient Failure Picker on a Client Conn update.
 type bal struct {
-	cc  balancer.ClientConn
-	err error
+    cc  balancer.ClientConn
+    err error
 }
 
 // NewBalancer returns a no-op balancer.
 func NewBalancer(cc balancer.ClientConn, err error) balancer.Balancer {
-	return &bal{
-		cc:  cc,
-		err: err,
-	}
+    return &bal{
+        cc:  cc,
+        err: err,
+    }
 }
 
 // UpdateClientConnState updates the bal's Client Conn with an Error Picker
 // and a Connectivity State of TRANSIENT_FAILURE.
 func (b *bal) UpdateClientConnState(_ balancer.ClientConnState) error {
-	b.cc.UpdateState(balancer.State{
-		Picker:            base.NewErrPicker(b.err),
-		ConnectivityState: connectivity.TransientFailure,
-	})
-	return nil
+    b.cc.UpdateState(balancer.State{
+        Picker:            base.NewErrPicker(b.err),
+        ConnectivityState: connectivity.TransientFailure,
+    })
+    return nil
 }
 
 // ResolverError is a no-op.

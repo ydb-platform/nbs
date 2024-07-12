@@ -1,0 +1,146 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "1.13",
+    "Sum": "h1:NxTsoOBQ1zibxf6NDtzrjPbK56hDAteIcOTSINZHtow=",
+    "Packages": {
+        "github.com/rogpeppe/testscript": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "github.com/rogpeppe/testscript/internal/imports",
+                "github.com/rogpeppe/testscript/internal/os/execpath",
+                "github.com/rogpeppe/testscript/internal/par",
+                "github.com/rogpeppe/testscript/internal/testenv",
+                "github.com/rogpeppe/testscript/internal/textutil",
+                "github.com/rogpeppe/testscript/txtar",
+                "gopkg.in/errgo.v2/fmt/errors",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync/atomic",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "os/signal",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/rogpeppe/testscript/internal/imports": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "github.com/rogpeppe/testscript/internal/testenv",
+                "io",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/rogpeppe/testscript/internal/os/execpath": {
+            "Imports": [
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/rogpeppe/testscript/internal/par": {
+            "Imports": [
+                "math/rand",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/rogpeppe/testscript/internal/testenv": {
+            "Imports": [
+                "errors",
+                "flag",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/rogpeppe/testscript/internal/textutil": {
+            "Imports": [
+                "fmt",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/rogpeppe/testscript/internal/textutil",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/rogpeppe/testscript/txtar": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io/ioutil",
+                "os",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

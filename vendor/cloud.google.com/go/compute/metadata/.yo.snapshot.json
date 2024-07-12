@@ -1,0 +1,44 @@
+{
+    "Version": "v0.2.4-0.20230617002413-005d2dfb6b68",
+    "GoVersion": "1.19",
+    "Sum": "h1:aRVqY1p2IJaBGStWMsQMpkAa83cPkCDLl80eOj0Rbz4=",
+    "Packages": {
+        "cloud.google.com/go/compute/metadata": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "runtime",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "cloud.google.com/go/compute/metadata",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "os",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "cloud.google.com/go/compute/metadata/internal": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

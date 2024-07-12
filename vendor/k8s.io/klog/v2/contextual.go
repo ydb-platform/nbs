@@ -17,9 +17,9 @@ limitations under the License.
 package klog
 
 import (
-	"context"
+    "context"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // This file provides the implementation of
@@ -34,9 +34,9 @@ import (
 // mutex locking.
 
 var (
-	// klogLogger is used as fallback for logging through the normal klog code
-	// when no Logger is set.
-	klogLogger logr.Logger = logr.New(&klogger{})
+    // klogLogger is used as fallback for logging through the normal klog code
+    // when no Logger is set.
+    klogLogger logr.Logger = logr.New(&klogger{})
 )
 
 // SetLogger sets a Logger implementation that will be used as backing
@@ -48,8 +48,8 @@ var (
 // redirected to the logr implementation.
 // Use as:
 //
-//	...
-//	klog.SetLogger(zapr.NewLogger(zapLog))
+//    ...
+//    klog.SetLogger(zapr.NewLogger(zapLog))
 //
 // To remove a backing logr implemention, use ClearLogger. Setting an
 // empty logger with SetLogger(logr.Logger{}) does not work.
@@ -57,7 +57,7 @@ var (
 // Modifying the logger is not thread-safe and should be done while no other
 // goroutines invoke log calls, usually during program initialization.
 func SetLogger(logger logr.Logger) {
-	SetLoggerWithOptions(logger)
+    SetLoggerWithOptions(logger)
 }
 
 // SetLoggerWithOptions is a more flexible version of SetLogger. Without
@@ -70,30 +70,30 @@ func SetLogger(logger logr.Logger) {
 // routing log entries through klogr into klog and then into the actual Logger
 // backend.
 func SetLoggerWithOptions(logger logr.Logger, opts ...LoggerOption) {
-	logging.loggerOptions = loggerOptions{}
-	for _, opt := range opts {
-		opt(&logging.loggerOptions)
-	}
-	logging.logger = &logWriter{
-		Logger:          logger,
-		writeKlogBuffer: logging.loggerOptions.writeKlogBuffer,
-	}
+    logging.loggerOptions = loggerOptions{}
+    for _, opt := range opts {
+        opt(&logging.loggerOptions)
+    }
+    logging.logger = &logWriter{
+        Logger:          logger,
+        writeKlogBuffer: logging.loggerOptions.writeKlogBuffer,
+    }
 }
 
 // ContextualLogger determines whether the logger passed to
 // SetLoggerWithOptions may also get called directly. Such a logger cannot rely
 // on verbosity checking in klog.
 func ContextualLogger(enabled bool) LoggerOption {
-	return func(o *loggerOptions) {
-		o.contextualLogger = enabled
-	}
+    return func(o *loggerOptions) {
+        o.contextualLogger = enabled
+    }
 }
 
 // FlushLogger provides a callback for flushing data buffered by the logger.
 func FlushLogger(flush func()) LoggerOption {
-	return func(o *loggerOptions) {
-		o.flush = flush
-	}
+    return func(o *loggerOptions) {
+        o.flush = flush
+    }
 }
 
 // WriteKlogBuffer sets a callback that will be invoked by klog to write output
@@ -107,9 +107,9 @@ func FlushLogger(flush func()) LoggerOption {
 // Without such a callback, klog will call the logger's Info or Error method
 // with just the message string (i.e. no header).
 func WriteKlogBuffer(write func([]byte)) LoggerOption {
-	return func(o *loggerOptions) {
-		o.writeKlogBuffer = write
-	}
+    return func(o *loggerOptions) {
+        o.writeKlogBuffer = write
+    }
 }
 
 // LoggerOption implements the functional parameter paradigm for
@@ -117,15 +117,15 @@ func WriteKlogBuffer(write func([]byte)) LoggerOption {
 type LoggerOption func(o *loggerOptions)
 
 type loggerOptions struct {
-	contextualLogger bool
-	flush            func()
-	writeKlogBuffer  func([]byte)
+    contextualLogger bool
+    flush            func()
+    writeKlogBuffer  func([]byte)
 }
 
 // logWriter combines a logger (always set) with a write callback (optional).
 type logWriter struct {
-	Logger
-	writeKlogBuffer func([]byte)
+    Logger
+    writeKlogBuffer func([]byte)
 }
 
 // ClearLogger removes a backing Logger implementation if one was set earlier
@@ -134,8 +134,8 @@ type logWriter struct {
 // Modifying the logger is not thread-safe and should be done while no other
 // goroutines invoke log calls, usually during program initialization.
 func ClearLogger() {
-	logging.logger = nil
-	logging.loggerOptions = loggerOptions{}
+    logging.logger = nil
+    logging.loggerOptions = loggerOptions{}
 }
 
 // EnableContextualLogging controls whether contextual logging is enabled.
@@ -147,27 +147,27 @@ func ClearLogger() {
 //
 // This must be called during initialization before goroutines are started.
 func EnableContextualLogging(enabled bool) {
-	logging.contextualLoggingEnabled = enabled
+    logging.contextualLoggingEnabled = enabled
 }
 
 // FromContext retrieves a logger set by the caller or, if not set,
 // falls back to the program's global logger (a Logger instance or klog
 // itself).
 func FromContext(ctx context.Context) Logger {
-	if logging.contextualLoggingEnabled {
-		if logger, err := logr.FromContext(ctx); err == nil {
-			return logger
-		}
-	}
+    if logging.contextualLoggingEnabled {
+        if logger, err := logr.FromContext(ctx); err == nil {
+            return logger
+        }
+    }
 
-	return Background()
+    return Background()
 }
 
 // TODO can be used as a last resort by code that has no means of
 // receiving a logger from its caller. FromContext or an explicit logger
 // parameter should be used instead.
 func TODO() Logger {
-	return Background()
+    return Background()
 }
 
 // Background retrieves the fallback logger. It should not be called before
@@ -175,38 +175,38 @@ func TODO() Logger {
 // better receive a logger via its parameters. TODO can be used as a temporary
 // solution for such code.
 func Background() Logger {
-	if logging.loggerOptions.contextualLogger {
-		// Is non-nil because logging.loggerOptions.contextualLogger is
-		// only true if a logger was set.
-		return logging.logger.Logger
-	}
+    if logging.loggerOptions.contextualLogger {
+        // Is non-nil because logging.loggerOptions.contextualLogger is
+        // only true if a logger was set.
+        return logging.logger.Logger
+    }
 
-	return klogLogger
+    return klogLogger
 }
 
 // LoggerWithValues returns logger.WithValues(...kv) when
 // contextual logging is enabled, otherwise the logger.
 func LoggerWithValues(logger Logger, kv ...interface{}) Logger {
-	if logging.contextualLoggingEnabled {
-		return logger.WithValues(kv...)
-	}
-	return logger
+    if logging.contextualLoggingEnabled {
+        return logger.WithValues(kv...)
+    }
+    return logger
 }
 
 // LoggerWithName returns logger.WithName(name) when contextual logging is
 // enabled, otherwise the logger.
 func LoggerWithName(logger Logger, name string) Logger {
-	if logging.contextualLoggingEnabled {
-		return logger.WithName(name)
-	}
-	return logger
+    if logging.contextualLoggingEnabled {
+        return logger.WithName(name)
+    }
+    return logger
 }
 
 // NewContext returns logr.NewContext(ctx, logger) when
 // contextual logging is enabled, otherwise ctx.
 func NewContext(ctx context.Context, logger Logger) context.Context {
-	if logging.contextualLoggingEnabled {
-		return logr.NewContext(ctx, logger)
-	}
-	return ctx
+    if logging.contextualLoggingEnabled {
+        return logr.NewContext(ctx, logger)
+    }
+    return ctx
 }

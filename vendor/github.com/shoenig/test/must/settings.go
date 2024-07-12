@@ -3,7 +3,7 @@
 package must
 
 import (
-	"github.com/google/go-cmp/cmp"
+    "github.com/google/go-cmp/cmp"
 )
 
 // Settings are used to manage a collection of Setting values used to modify
@@ -14,8 +14,8 @@ import (
 //
 // Use Sprint, Sprintf, Values, Func for specifying custom failure output messages.
 type Settings struct {
-	postScripts []PostScript
-	cmpOptions  []cmp.Option
+    postScripts []PostScript
+    cmpOptions  []cmp.Option
 }
 
 // A Setting changes the behavior of a test case assertion.
@@ -27,23 +27,23 @@ type Setting func(s *Settings)
 //
 // https://github.com/google/go-cmp/blob/master/cmp/options.go#L16
 func Cmp(options ...cmp.Option) Setting {
-	return func(s *Settings) {
-		s.cmpOptions = append(s.cmpOptions, options...)
-	}
+    return func(s *Settings) {
+        s.cmpOptions = append(s.cmpOptions, options...)
+    }
 }
 
 func options(settings ...Setting) []cmp.Option {
-	s := new(Settings)
-	for _, setting := range settings {
-		setting(s)
-	}
-	return s.cmpOptions
+    s := new(Settings)
+    for _, setting := range settings {
+        setting(s)
+    }
+    return s.cmpOptions
 }
 
 func scripts(settings ...Setting) []PostScript {
-	s := new(Settings)
-	for _, setting := range settings {
-		setting(s)
-	}
-	return s.postScripts
+    s := new(Settings)
+    for _, setting := range settings {
+        setting(s)
+    }
+    return s.postScripts
 }

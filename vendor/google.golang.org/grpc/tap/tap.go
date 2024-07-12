@@ -26,15 +26,15 @@
 package tap
 
 import (
-	"context"
+    "context"
 )
 
 // Info defines the relevant information needed by the handles.
 type Info struct {
-	// FullMethodName is the string of grpc method (in the format of
-	// /package.service/method).
-	FullMethodName string
-	// TODO: More to be added.
+    // FullMethodName is the string of grpc method (in the format of
+    // /package.service/method).
+    FullMethodName string
+    // TODO: More to be added.
 }
 
 // ServerInHandle defines the function which runs before a new stream is

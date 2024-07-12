@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -12,4 +14,6 @@ GO_TEST_SRCS(json_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

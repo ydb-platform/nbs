@@ -12,5 +12,5 @@ package mousetrap
 //
 // On non-Windows platforms, it always returns false.
 func StartedByExplorer() bool {
-	return false
+    return false
 }

@@ -1,7 +1,7 @@
 package defaults
 
 import (
-	"github.com/aws/aws-sdk-go/internal/shareddefaults"
+    "github.com/aws/aws-sdk-go/internal/shareddefaults"
 )
 
 // SharedCredentialsFilename returns the SDK's default file path
@@ -12,7 +12,7 @@ import (
 //   - Linux/Unix: $HOME/.aws/credentials
 //   - Windows: %USERPROFILE%\.aws\credentials
 func SharedCredentialsFilename() string {
-	return shareddefaults.SharedCredentialsFilename()
+    return shareddefaults.SharedCredentialsFilename()
 }
 
 // SharedConfigFilename returns the SDK's default file path for
@@ -23,5 +23,5 @@ func SharedCredentialsFilename() string {
 //   - Linux/Unix: $HOME/.aws/config
 //   - Windows: %USERPROFILE%\.aws\config
 func SharedConfigFilename() string {
-	return shareddefaults.SharedConfigFilename()
+    return shareddefaults.SharedConfigFilename()
 }

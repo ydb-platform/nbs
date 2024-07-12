@@ -9,25 +9,25 @@ to refresh the credentials will be synchronized. But, the SDK is unable to
 ensure synchronous usage of the AssumeRoleProvider if the value is shared
 between multiple Credentials, Sessions or service clients.
 
-Assume Role
+# Assume Role
 
 To assume an IAM role using STS with the SDK you can create a new Credentials
 with the SDKs's stscreds package.
 
-	// Initial credentials loaded from SDK's default credential chain. Such as
-	// the environment, shared credentials (~/.aws/credentials), or EC2 Instance
-	// Role. These credentials will be used to to make the STS Assume Role API.
-	sess := session.Must(session.NewSession())
+    // Initial credentials loaded from SDK's default credential chain. Such as
+    // the environment, shared credentials (~/.aws/credentials), or EC2 Instance
+    // Role. These credentials will be used to to make the STS Assume Role API.
+    sess := session.Must(session.NewSession())
 
-	// Create the credentials from AssumeRoleProvider to assume the role
-	// referenced by the "myRoleARN" ARN.
-	creds := stscreds.NewCredentials(sess, "myRoleArn")
+    // Create the credentials from AssumeRoleProvider to assume the role
+    // referenced by the "myRoleARN" ARN.
+    creds := stscreds.NewCredentials(sess, "myRoleArn")
 
-	// Create service client value configured for credentials
-	// from assumed role.
-	svc := s3.New(sess, &aws.Config{Credentials: creds})
+    // Create service client value configured for credentials
+    // from assumed role.
+    svc := s3.New(sess, &aws.Config{Credentials: creds})
 
-Assume Role with static MFA Token
+# Assume Role with static MFA Token
 
 To assume an IAM role with a MFA token you can either specify a MFA token code
 directly or provide a function to prompt the user each time the credentials
@@ -38,18 +38,18 @@ not want to have direct control over the user provides their MFA token.
 With TokenCode the AssumeRoleProvider will be not be able to refresh the role's
 credentials.
 
-	// Create the credentials from AssumeRoleProvider to assume the role
-	// referenced by the "myRoleARN" ARN using the MFA token code provided.
-	creds := stscreds.NewCredentials(sess, "myRoleArn", func(p *stscreds.AssumeRoleProvider) {
-		p.SerialNumber = aws.String("myTokenSerialNumber")
-		p.TokenCode = aws.String("00000000")
-	})
+    // Create the credentials from AssumeRoleProvider to assume the role
+    // referenced by the "myRoleARN" ARN using the MFA token code provided.
+    creds := stscreds.NewCredentials(sess, "myRoleArn", func(p *stscreds.AssumeRoleProvider) {
+        p.SerialNumber = aws.String("myTokenSerialNumber")
+        p.TokenCode = aws.String("00000000")
+    })
 
-	// Create service client value configured for credentials
-	// from assumed role.
-	svc := s3.New(sess, &aws.Config{Credentials: creds})
+    // Create service client value configured for credentials
+    // from assumed role.
+    svc := s3.New(sess, &aws.Config{Credentials: creds})
 
-Assume Role with MFA Token Provider
+# Assume Role with MFA Token Provider
 
 To assume an IAM role with MFA for longer running tasks where the credentials
 may need to be refreshed setting the TokenProvider field of AssumeRoleProvider
@@ -64,32 +64,31 @@ Using StdinTokenProvider with multiple AssumeRoleProviders, or Credentials will
 have undesirable results as the StdinTokenProvider will not be synchronized. A
 single Credentials with an AssumeRoleProvider can be shared safely.
 
-	// Create the credentials from AssumeRoleProvider to assume the role
-	// referenced by the "myRoleARN" ARN. Prompting for MFA token from stdin.
-	creds := stscreds.NewCredentials(sess, "myRoleArn", func(p *stscreds.AssumeRoleProvider) {
-		p.SerialNumber = aws.String("myTokenSerialNumber")
-		p.TokenProvider = stscreds.StdinTokenProvider
-	})
+    // Create the credentials from AssumeRoleProvider to assume the role
+    // referenced by the "myRoleARN" ARN. Prompting for MFA token from stdin.
+    creds := stscreds.NewCredentials(sess, "myRoleArn", func(p *stscreds.AssumeRoleProvider) {
+        p.SerialNumber = aws.String("myTokenSerialNumber")
+        p.TokenProvider = stscreds.StdinTokenProvider
+    })
 
-	// Create service client value configured for credentials
-	// from assumed role.
-	svc := s3.New(sess, &aws.Config{Credentials: creds})
-
+    // Create service client value configured for credentials
+    // from assumed role.
+    svc := s3.New(sess, &aws.Config{Credentials: creds})
 */
 package stscreds
 
 import (
-	"fmt"
-	"os"
-	"time"
+    "fmt"
+    "os"
+    "time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/internal/sdkrand"
-	"github.com/aws/aws-sdk-go/service/sts"
+    "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/awserr"
+    "github.com/aws/aws-sdk-go/aws/client"
+    "github.com/aws/aws-sdk-go/aws/credentials"
+    "github.com/aws/aws-sdk-go/aws/request"
+    "github.com/aws/aws-sdk-go/internal/sdkrand"
+    "github.com/aws/aws-sdk-go/service/sts"
 )
 
 // StdinTokenProvider will prompt on stderr and read from stdin for a string value.
@@ -104,11 +103,11 @@ import (
 //
 // Will wait forever until something is provided on the stdin.
 func StdinTokenProvider() (string, error) {
-	var v string
-	fmt.Fprintf(os.Stderr, "Assume Role MFA token code: ")
-	_, err := fmt.Scanln(&v)
+    var v string
+    fmt.Fprintf(os.Stderr, "Assume Role MFA token code: ")
+    _, err := fmt.Scanln(&v)
 
-	return v, err
+    return v, err
 }
 
 // ProviderName provides a name of AssumeRole provider
@@ -116,11 +115,11 @@ const ProviderName = "AssumeRoleProvider"
 
 // AssumeRoler represents the minimal subset of the STS client API used by this provider.
 type AssumeRoler interface {
-	AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
+    AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
 }
 
 type assumeRolerWithContext interface {
-	AssumeRoleWithContext(aws.Context, *sts.AssumeRoleInput, ...request.Option) (*sts.AssumeRoleOutput, error)
+    AssumeRoleWithContext(aws.Context, *sts.AssumeRoleInput, ...request.Option) (*sts.AssumeRoleOutput, error)
 }
 
 // DefaultDuration is the default amount of time in minutes that the credentials
@@ -138,110 +137,114 @@ var DefaultDuration = time.Duration(15) * time.Minute
 // to share this value across multiple Credentials, Sessions, or service clients
 // without also sharing the same Credentials instance.
 type AssumeRoleProvider struct {
-	credentials.Expiry
+    credentials.Expiry
 
-	// STS client to make assume role request with.
-	Client AssumeRoler
+    // STS client to make assume role request with.
+    Client AssumeRoler
 
-	// Role to be assumed.
-	RoleARN string
+    // Role to be assumed.
+    RoleARN string
 
-	// Session name, if you wish to reuse the credentials elsewhere.
-	RoleSessionName string
+    // Session name, if you wish to reuse the credentials elsewhere.
+    RoleSessionName string
 
-	// Optional, you can pass tag key-value pairs to your session. These tags are called session tags.
-	Tags []*sts.Tag
+    // Optional, you can pass tag key-value pairs to your session. These tags are called session tags.
+    Tags []*sts.Tag
 
-	// A list of keys for session tags that you want to set as transitive.
-	// If you set a tag key as transitive, the corresponding key and value passes to subsequent sessions in a role chain.
-	TransitiveTagKeys []*string
+    // A list of keys for session tags that you want to set as transitive.
+    // If you set a tag key as transitive, the corresponding key and value passes to subsequent sessions in a role chain.
+    TransitiveTagKeys []*string
 
-	// Expiry duration of the STS credentials. Defaults to 15 minutes if not set.
-	Duration time.Duration
+    // Expiry duration of the STS credentials. Defaults to 15 minutes if not set.
+    Duration time.Duration
 
-	// Optional ExternalID to pass along, defaults to nil if not set.
-	ExternalID *string
+    // Optional ExternalID to pass along, defaults to nil if not set.
+    ExternalID *string
 
-	// The policy plain text must be 2048 bytes or shorter. However, an internal
-	// conversion compresses it into a packed binary format with a separate limit.
-	// The PackedPolicySize response element indicates by percentage how close to
-	// the upper size limit the policy is, with 100% equaling the maximum allowed
-	// size.
-	Policy *string
+    // The policy plain text must be 2048 bytes or shorter. However, an internal
+    // conversion compresses it into a packed binary format with a separate limit.
+    // The PackedPolicySize response element indicates by percentage how close to
+    // the upper size limit the policy is, with 100% equaling the maximum allowed
+    // size.
+    Policy *string
 
-	// The ARNs of IAM managed policies you want to use as managed session policies.
-	// The policies must exist in the same account as the role.
-	//
-	// This parameter is optional. You can provide up to 10 managed policy ARNs.
-	// However, the plain text that you use for both inline and managed session
-	// policies can't exceed 2,048 characters.
-	//
-	// An AWS conversion compresses the passed session policies and session tags
-	// into a packed binary format that has a separate limit. Your request can fail
-	// for this limit even if your plain text meets the other requirements. The
-	// PackedPolicySize response element indicates by percentage how close the policies
-	// and tags for your request are to the upper size limit.
-	//
-	// Passing policies to this operation returns new temporary credentials. The
-	// resulting session's permissions are the intersection of the role's identity-based
-	// policy and the session policies. You can use the role's temporary credentials
-	// in subsequent AWS API calls to access resources in the account that owns
-	// the role. You cannot use session policies to grant more permissions than
-	// those allowed by the identity-based policy of the role that is being assumed.
-	// For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	PolicyArns []*sts.PolicyDescriptorType
+    // The ARNs of IAM managed policies you want to use as managed session policies.
+    // The policies must exist in the same account as the role.
+    //
+    // This parameter is optional. You can provide up to 10 managed policy ARNs.
+    // However, the plain text that you use for both inline and managed session
+    // policies can't exceed 2,048 characters.
+    //
+    // An AWS conversion compresses the passed session policies and session tags
+    // into a packed binary format that has a separate limit. Your request can fail
+    // for this limit even if your plain text meets the other requirements. The
+    // PackedPolicySize response element indicates by percentage how close the policies
+    // and tags for your request are to the upper size limit.
+    //
+    // Passing policies to this operation returns new temporary credentials. The
+    // resulting session's permissions are the intersection of the role's identity-based
+    // policy and the session policies. You can use the role's temporary credentials
+    // in subsequent AWS API calls to access resources in the account that owns
+    // the role. You cannot use session policies to grant more permissions than
+    // those allowed by the identity-based policy of the role that is being assumed.
+    // For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    PolicyArns []*sts.PolicyDescriptorType
 
-	// The identification number of the MFA device that is associated with the user
-	// who is making the AssumeRole call. Specify this value if the trust policy
-	// of the role being assumed includes a condition that requires MFA authentication.
-	// The value is either the serial number for a hardware device (such as GAHT12345678)
-	// or an Amazon Resource Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
-	SerialNumber *string
+    // The identification number of the MFA device that is associated with the user
+    // who is making the AssumeRole call. Specify this value if the trust policy
+    // of the role being assumed includes a condition that requires MFA authentication.
+    // The value is either the serial number for a hardware device (such as GAHT12345678)
+    // or an Amazon Resource Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
+    SerialNumber *string
 
-	// The value provided by the MFA device, if the trust policy of the role being
-	// assumed requires MFA (that is, if the policy includes a condition that tests
-	// for MFA). If the role being assumed requires MFA and if the TokenCode value
-	// is missing or expired, the AssumeRole call returns an "access denied" error.
-	//
-	// If SerialNumber is set and neither TokenCode nor TokenProvider are also
-	// set an error will be returned.
-	TokenCode *string
+    // The SourceIdentity which is used to identity a persistent identity through the whole session.
+    // For more details see https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html
+    SourceIdentity *string
 
-	// Async method of providing MFA token code for assuming an IAM role with MFA.
-	// The value returned by the function will be used as the TokenCode in the Retrieve
-	// call. See StdinTokenProvider for a provider that prompts and reads from stdin.
-	//
-	// This token provider will be called when ever the assumed role's
-	// credentials need to be refreshed when SerialNumber is also set and
-	// TokenCode is not set.
-	//
-	// If both TokenCode and TokenProvider is set, TokenProvider will be used and
-	// TokenCode is ignored.
-	TokenProvider func() (string, error)
+    // The value provided by the MFA device, if the trust policy of the role being
+    // assumed requires MFA (that is, if the policy includes a condition that tests
+    // for MFA). If the role being assumed requires MFA and if the TokenCode value
+    // is missing or expired, the AssumeRole call returns an "access denied" error.
+    //
+    // If SerialNumber is set and neither TokenCode nor TokenProvider are also
+    // set an error will be returned.
+    TokenCode *string
 
-	// ExpiryWindow will allow the credentials to trigger refreshing prior to
-	// the credentials actually expiring. This is beneficial so race conditions
-	// with expiring credentials do not cause request to fail unexpectedly
-	// due to ExpiredTokenException exceptions.
-	//
-	// So a ExpiryWindow of 10s would cause calls to IsExpired() to return true
-	// 10 seconds before the credentials are actually expired.
-	//
-	// If ExpiryWindow is 0 or less it will be ignored.
-	ExpiryWindow time.Duration
+    // Async method of providing MFA token code for assuming an IAM role with MFA.
+    // The value returned by the function will be used as the TokenCode in the Retrieve
+    // call. See StdinTokenProvider for a provider that prompts and reads from stdin.
+    //
+    // This token provider will be called when ever the assumed role's
+    // credentials need to be refreshed when SerialNumber is also set and
+    // TokenCode is not set.
+    //
+    // If both TokenCode and TokenProvider is set, TokenProvider will be used and
+    // TokenCode is ignored.
+    TokenProvider func() (string, error)
 
-	// MaxJitterFrac reduces the effective Duration of each credential requested
-	// by a random percentage between 0 and MaxJitterFraction. MaxJitterFrac must
-	// have a value between 0 and 1. Any other value may lead to expected behavior.
-	// With a MaxJitterFrac value of 0, default) will no jitter will be used.
-	//
-	// For example, with a Duration of 30m and a MaxJitterFrac of 0.1, the
-	// AssumeRole call will be made with an arbitrary Duration between 27m and
-	// 30m.
-	//
-	// MaxJitterFrac should not be negative.
-	MaxJitterFrac float64
+    // ExpiryWindow will allow the credentials to trigger refreshing prior to
+    // the credentials actually expiring. This is beneficial so race conditions
+    // with expiring credentials do not cause request to fail unexpectedly
+    // due to ExpiredTokenException exceptions.
+    //
+    // So a ExpiryWindow of 10s would cause calls to IsExpired() to return true
+    // 10 seconds before the credentials are actually expired.
+    //
+    // If ExpiryWindow is 0 or less it will be ignored.
+    ExpiryWindow time.Duration
+
+    // MaxJitterFrac reduces the effective Duration of each credential requested
+    // by a random percentage between 0 and MaxJitterFraction. MaxJitterFrac must
+    // have a value between 0 and 1. Any other value may lead to expected behavior.
+    // With a MaxJitterFrac value of 0, default) will no jitter will be used.
+    //
+    // For example, with a Duration of 30m and a MaxJitterFrac of 0.1, the
+    // AssumeRole call will be made with an arbitrary Duration between 27m and
+    // 30m.
+    //
+    // MaxJitterFrac should not be negative.
+    MaxJitterFrac float64
 }
 
 // NewCredentials returns a pointer to a new Credentials value wrapping the
@@ -257,17 +260,17 @@ type AssumeRoleProvider struct {
 // service clients. All access to the credentials and refreshing them
 // will be synchronized.
 func NewCredentials(c client.ConfigProvider, roleARN string, options ...func(*AssumeRoleProvider)) *credentials.Credentials {
-	p := &AssumeRoleProvider{
-		Client:   sts.New(c),
-		RoleARN:  roleARN,
-		Duration: DefaultDuration,
-	}
+    p := &AssumeRoleProvider{
+        Client:   sts.New(c),
+        RoleARN:  roleARN,
+        Duration: DefaultDuration,
+    }
 
-	for _, option := range options {
-		option(p)
-	}
+    for _, option := range options {
+        option(p)
+    }
 
-	return credentials.NewCredentials(p)
+    return credentials.NewCredentials(p)
 }
 
 // NewCredentialsWithClient returns a pointer to a new Credentials value wrapping the
@@ -282,86 +285,87 @@ func NewCredentials(c client.ConfigProvider, roleARN string, options ...func(*As
 // service clients. All access to the credentials and refreshing them
 // will be synchronized.
 func NewCredentialsWithClient(svc AssumeRoler, roleARN string, options ...func(*AssumeRoleProvider)) *credentials.Credentials {
-	p := &AssumeRoleProvider{
-		Client:   svc,
-		RoleARN:  roleARN,
-		Duration: DefaultDuration,
-	}
+    p := &AssumeRoleProvider{
+        Client:   svc,
+        RoleARN:  roleARN,
+        Duration: DefaultDuration,
+    }
 
-	for _, option := range options {
-		option(p)
-	}
+    for _, option := range options {
+        option(p)
+    }
 
-	return credentials.NewCredentials(p)
+    return credentials.NewCredentials(p)
 }
 
 // Retrieve generates a new set of temporary credentials using STS.
 func (p *AssumeRoleProvider) Retrieve() (credentials.Value, error) {
-	return p.RetrieveWithContext(aws.BackgroundContext())
+    return p.RetrieveWithContext(aws.BackgroundContext())
 }
 
 // RetrieveWithContext generates a new set of temporary credentials using STS.
 func (p *AssumeRoleProvider) RetrieveWithContext(ctx credentials.Context) (credentials.Value, error) {
-	// Apply defaults where parameters are not set.
-	if p.RoleSessionName == "" {
-		// Try to work out a role name that will hopefully end up unique.
-		p.RoleSessionName = fmt.Sprintf("%d", time.Now().UTC().UnixNano())
-	}
-	if p.Duration == 0 {
-		// Expire as often as AWS permits.
-		p.Duration = DefaultDuration
-	}
-	jitter := time.Duration(sdkrand.SeededRand.Float64() * p.MaxJitterFrac * float64(p.Duration))
-	input := &sts.AssumeRoleInput{
-		DurationSeconds:   aws.Int64(int64((p.Duration - jitter) / time.Second)),
-		RoleArn:           aws.String(p.RoleARN),
-		RoleSessionName:   aws.String(p.RoleSessionName),
-		ExternalId:        p.ExternalID,
-		Tags:              p.Tags,
-		PolicyArns:        p.PolicyArns,
-		TransitiveTagKeys: p.TransitiveTagKeys,
-	}
-	if p.Policy != nil {
-		input.Policy = p.Policy
-	}
-	if p.SerialNumber != nil {
-		if p.TokenCode != nil {
-			input.SerialNumber = p.SerialNumber
-			input.TokenCode = p.TokenCode
-		} else if p.TokenProvider != nil {
-			input.SerialNumber = p.SerialNumber
-			code, err := p.TokenProvider()
-			if err != nil {
-				return credentials.Value{ProviderName: ProviderName}, err
-			}
-			input.TokenCode = aws.String(code)
-		} else {
-			return credentials.Value{ProviderName: ProviderName},
-				awserr.New("AssumeRoleTokenNotAvailable",
-					"assume role with MFA enabled, but neither TokenCode nor TokenProvider are set", nil)
-		}
-	}
+    // Apply defaults where parameters are not set.
+    if p.RoleSessionName == "" {
+        // Try to work out a role name that will hopefully end up unique.
+        p.RoleSessionName = fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+    }
+    if p.Duration == 0 {
+        // Expire as often as AWS permits.
+        p.Duration = DefaultDuration
+    }
+    jitter := time.Duration(sdkrand.SeededRand.Float64() * p.MaxJitterFrac * float64(p.Duration))
+    input := &sts.AssumeRoleInput{
+        DurationSeconds:   aws.Int64(int64((p.Duration - jitter) / time.Second)),
+        RoleArn:           aws.String(p.RoleARN),
+        RoleSessionName:   aws.String(p.RoleSessionName),
+        ExternalId:        p.ExternalID,
+        Tags:              p.Tags,
+        PolicyArns:        p.PolicyArns,
+        TransitiveTagKeys: p.TransitiveTagKeys,
+        SourceIdentity:    p.SourceIdentity,
+    }
+    if p.Policy != nil {
+        input.Policy = p.Policy
+    }
+    if p.SerialNumber != nil {
+        if p.TokenCode != nil {
+            input.SerialNumber = p.SerialNumber
+            input.TokenCode = p.TokenCode
+        } else if p.TokenProvider != nil {
+            input.SerialNumber = p.SerialNumber
+            code, err := p.TokenProvider()
+            if err != nil {
+                return credentials.Value{ProviderName: ProviderName}, err
+            }
+            input.TokenCode = aws.String(code)
+        } else {
+            return credentials.Value{ProviderName: ProviderName},
+                awserr.New("AssumeRoleTokenNotAvailable",
+                    "assume role with MFA enabled, but neither TokenCode nor TokenProvider are set", nil)
+        }
+    }
 
-	var roleOutput *sts.AssumeRoleOutput
-	var err error
+    var roleOutput *sts.AssumeRoleOutput
+    var err error
 
-	if c, ok := p.Client.(assumeRolerWithContext); ok {
-		roleOutput, err = c.AssumeRoleWithContext(ctx, input)
-	} else {
-		roleOutput, err = p.Client.AssumeRole(input)
-	}
+    if c, ok := p.Client.(assumeRolerWithContext); ok {
+        roleOutput, err = c.AssumeRoleWithContext(ctx, input)
+    } else {
+        roleOutput, err = p.Client.AssumeRole(input)
+    }
 
-	if err != nil {
-		return credentials.Value{ProviderName: ProviderName}, err
-	}
+    if err != nil {
+        return credentials.Value{ProviderName: ProviderName}, err
+    }
 
-	// We will proactively generate new credentials before they expire.
-	p.SetExpiration(*roleOutput.Credentials.Expiration, p.ExpiryWindow)
+    // We will proactively generate new credentials before they expire.
+    p.SetExpiration(*roleOutput.Credentials.Expiration, p.ExpiryWindow)
 
-	return credentials.Value{
-		AccessKeyID:     *roleOutput.Credentials.AccessKeyId,
-		SecretAccessKey: *roleOutput.Credentials.SecretAccessKey,
-		SessionToken:    *roleOutput.Credentials.SessionToken,
-		ProviderName:    ProviderName,
-	}, nil
+    return credentials.Value{
+        AccessKeyID:     *roleOutput.Credentials.AccessKeyId,
+        SecretAccessKey: *roleOutput.Credentials.SecretAccessKey,
+        SessionToken:    *roleOutput.Credentials.SessionToken,
+        ProviderName:    ProviderName,
+    }, nil
 }

@@ -1,0 +1,550 @@
+{
+    "Version": "v1.20.2",
+    "GoVersion": "1.20",
+    "Sum": "h1:tbp628ireGtzcHDDmLT/6ADHidqnwgF57XOXZe6tp4Q=",
+    "Packages": {
+        "github.com/aws/smithy-go": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/auth": {
+            "Imports": [
+                "context",
+                "github.com/aws/smithy-go",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/aws/smithy-go",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/auth/bearer": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/context",
+                "github.com/aws/smithy-go/internal/sync/singleflight",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/transport/http",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/container/private/cache": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/container/private/cache/lru": {
+            "Imports": [
+                "container/list",
+                "github.com/aws/smithy-go/container/private/cache"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/context": {
+            "Imports": [
+                "context"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/document": {
+            "Imports": [
+                "fmt",
+                "math/big",
+                "reflect",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/document/cbor": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/document/internal/serde",
+                "github.com/aws/smithy-go/encoding/cbor",
+                "math/big",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/aws/smithy-go/encoding/cbor",
+                "github.com/aws/smithy-go/ptr",
+                "math",
+                "math/big",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/document/internal/serde": {
+            "Imports": [
+                "github.com/aws/smithy-go/document",
+                "math/big",
+                "reflect",
+                "sort",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/document/json": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/document/internal/serde",
+                "github.com/aws/smithy-go/encoding/json",
+                "math/big",
+                "reflect"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/document/internal/serde",
+                "github.com/aws/smithy-go/document/json",
+                "github.com/aws/smithy-go/ptr",
+                "math",
+                "math/big",
+                "reflect",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/encoding": {
+            "Imports": [
+                "fmt",
+                "math",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/encoding/cbor": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "math",
+                "math/big",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "math",
+                "math/big",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/encoding/httpbinding": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "math",
+                "math/big",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "math/big",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/encoding/json": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/aws/smithy-go/encoding",
+                "io",
+                "math/big",
+                "strconv",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "github.com/aws/smithy-go/encoding/json",
+                "github.com/aws/smithy-go/testing",
+                "math",
+                "math/big",
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/encoding/xml": {
+            "Imports": [
+                "encoding/base64",
+                "encoding/xml",
+                "fmt",
+                "github.com/aws/smithy-go/encoding",
+                "io",
+                "math/big",
+                "strconv",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/xml",
+                "fmt",
+                "github.com/aws/smithy-go/encoding/xml",
+                "io",
+                "log",
+                "math",
+                "math/big",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/endpoints": {
+            "Imports": [
+                "github.com/aws/smithy-go",
+                "net/http",
+                "net/url"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/endpoints/private/rulesfn": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/smithy-go/transport/http",
+                "net",
+                "net/url",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/aws/smithy-go/ptr",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/internal/sync/singleflight": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "runtime",
+                "runtime/debug",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "os",
+                "os/exec",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/io": {
+            "Imports": [
+                "bytes",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "io/ioutil",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/logging": {
+            "Imports": [
+                "context",
+                "io",
+                "log"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/logging",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/middleware": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/logging",
+                "io",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "io/ioutil",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/private/protocol": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "net/http",
+                "strconv"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/testing",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/private/requestcompression": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net/http"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/ptr": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/rand": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/hex",
+                "fmt",
+                "io",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/aws/smithy-go/rand",
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/sync": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/smithy-go/testing": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/encoding/cbor",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/testing/xml",
+                "io",
+                "io/ioutil",
+                "math",
+                "net/http",
+                "reflect",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "io",
+                "io/ioutil",
+                "math",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/testing/xml": {
+            "Imports": [
+                "bytes",
+                "encoding/xml",
+                "fmt",
+                "io",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/time": {
+            "Imports": [
+                "context",
+                "fmt",
+                "math/big",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "math",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/smithy-go/transport/http": {
+            "Imports": [
+                "context",
+                "crypto/md5",
+                "encoding/base64",
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/time",
+                "github.com/aws/smithy-go/transport/http/internal/io",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/http/httputil",
+                "net/url",
+                "strconv",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/io",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/transport/http/internal/io": {
+            "Imports": [
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/aws/smithy-go/waiter": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/rand",
+                "math",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/aws/smithy-go/rand",
+                "math/rand",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

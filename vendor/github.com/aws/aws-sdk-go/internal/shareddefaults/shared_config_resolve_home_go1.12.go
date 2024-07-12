@@ -4,10 +4,10 @@
 package shareddefaults
 
 import (
-	"os"
+    "os"
 )
 
 func userHomeDir() string {
-	home, _ := os.UserHomeDir()
-	return home
+    home, _ := os.UserHomeDir()
+    return home
 }

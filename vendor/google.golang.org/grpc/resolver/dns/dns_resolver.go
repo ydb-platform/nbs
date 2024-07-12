@@ -24,13 +24,13 @@
 package dns
 
 import (
-	"google.golang.org/grpc/internal/resolver/dns"
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/internal/resolver/dns"
+    "google.golang.org/grpc/resolver"
 )
 
 // NewBuilder creates a dnsBuilder which is used to factory DNS resolvers.
 //
 // Deprecated: import grpc and use resolver.Get("dns") instead.
 func NewBuilder() resolver.Builder {
-	return dns.NewBuilder()
+    return dns.NewBuilder()
 }

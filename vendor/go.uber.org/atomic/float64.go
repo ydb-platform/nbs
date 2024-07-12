@@ -23,55 +23,55 @@
 package atomic
 
 import (
-	"encoding/json"
-	"math"
+    "encoding/json"
+    "math"
 )
 
 // Float64 is an atomic type-safe wrapper for float64 values.
 type Float64 struct {
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v Uint64
+    v Uint64
 }
 
 var _zeroFloat64 float64
 
 // NewFloat64 creates a new Float64.
 func NewFloat64(val float64) *Float64 {
-	x := &Float64{}
-	if val != _zeroFloat64 {
-		x.Store(val)
-	}
-	return x
+    x := &Float64{}
+    if val != _zeroFloat64 {
+        x.Store(val)
+    }
+    return x
 }
 
 // Load atomically loads the wrapped float64.
 func (x *Float64) Load() float64 {
-	return math.Float64frombits(x.v.Load())
+    return math.Float64frombits(x.v.Load())
 }
 
 // Store atomically stores the passed float64.
 func (x *Float64) Store(val float64) {
-	x.v.Store(math.Float64bits(val))
+    x.v.Store(math.Float64bits(val))
 }
 
 // Swap atomically stores the given float64 and returns the old
 // value.
 func (x *Float64) Swap(val float64) (old float64) {
-	return math.Float64frombits(x.v.Swap(math.Float64bits(val)))
+    return math.Float64frombits(x.v.Swap(math.Float64bits(val)))
 }
 
 // MarshalJSON encodes the wrapped float64 into JSON.
 func (x *Float64) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.Load())
+    return json.Marshal(x.Load())
 }
 
 // UnmarshalJSON decodes a float64 from JSON.
 func (x *Float64) UnmarshalJSON(b []byte) error {
-	var v float64
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-	x.Store(v)
-	return nil
+    var v float64
+    if err := json.Unmarshal(b, &v); err != nil {
+        return err
+    }
+    x.Store(v)
+    return nil
 }

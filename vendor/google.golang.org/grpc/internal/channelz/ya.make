@@ -1,5 +1,10 @@
 GO_LIBRARY()
 
+SUBSCRIBER(
+    g:contrib
+    g:go-contrib
+)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -34,4 +39,6 @@ ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

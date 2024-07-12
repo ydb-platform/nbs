@@ -1,5 +1,10 @@
 GO_LIBRARY()
 
+SUBSCRIBER(
+    g:go-contrib
+    g:marketsre
+)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -28,4 +33,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

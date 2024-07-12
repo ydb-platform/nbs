@@ -1,0 +1,57 @@
+{
+    "Version": "v0.0.11",
+    "GoVersion": "1.17",
+    "Sum": "h1:eJXea6R6IFlL1QMKNMzDvvHv/hwGrnvyig4N+0+XiMM=",
+    "Packages": {
+        "github.com/mattn/goveralls": {
+            "Imports": [
+                "bytes",
+                "crypto/sha512",
+                "crypto/tls",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "go/build",
+                "golang.org/x/mod/modfile",
+                "golang.org/x/tools/cover",
+                "golang.org/x/tools/go/buildutil",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "golang.org/x/tools/cover",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/mattn/goveralls/tester": {
+            "Imports": [
+                "os"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        }
+    }
+}

@@ -7,6 +7,6 @@
 package unix
 
 const (
-	MremapFixed   = mremapFixed
-	MremapMaymove = mremapMaymove
+    MremapFixed   = mremapFixed
+    MremapMaymove = mremapMaymove
 )

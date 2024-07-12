@@ -1,0 +1,246 @@
+{
+    "Version": "v2.2.4",
+    "GoVersion": "1.12",
+    "Sum": "h1:41JJK6DZQYSeVLxILA2+F4ZkKb4Xd/tFJZRFZQ9QAlo=",
+    "Packages": {
+        "github.com/pion/transport/v2": {
+            "Imports": [
+                "errors",
+                "io",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/transport/v2/connctx": {
+            "Imports": [
+                "context",
+                "errors",
+                "io",
+                "net",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/deadline": {
+            "Imports": [
+                "context",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/dpipe": {
+            "Imports": [
+                "context",
+                "github.com/pion/transport/v2/deadline",
+                "io",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/nettest",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/examples/vnet-udpproxy": {
+            "Imports": [
+                "flag",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/vnet",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/transport/v2/netctx": {
+            "Imports": [
+                "context",
+                "errors",
+                "io",
+                "net",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/packetio": {
+            "Imports": [
+                "errors",
+                "github.com/pion/transport/v2/deadline",
+                "io",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/replaydetector": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": [
+                "fmt",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/transport/v2/stdnet": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/transport/v2",
+                "net"
+            ],
+            "TestImports": [
+                "github.com/pion/logging",
+                "github.com/stretchr/testify/assert",
+                "net",
+                "testing"
+            ]
+        },
+        "github.com/pion/transport/v2/test": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "github.com/pion/transport/v2/deadline",
+                "github.com/pion/transport/v2/netctx",
+                "io",
+                "math/rand",
+                "net",
+                "os",
+                "runtime",
+                "runtime/pprof",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/net/nettest",
+                "io",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/udp": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/pion/transport/v2/deadline",
+                "github.com/pion/transport/v2/packetio",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/ipv6",
+                "io",
+                "net",
+                "runtime",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/pion/transport/v2/test",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "net",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/transport/v2/utils/xor": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "fmt",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/transport/v2/vnet": {
+            "Imports": [
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2",
+                "io",
+                "math",
+                "math/rand",
+                "net",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2",
+                "github.com/pion/transport/v2/test",
+                "github.com/stretchr/testify/assert",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

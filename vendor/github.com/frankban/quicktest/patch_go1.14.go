@@ -18,7 +18,7 @@ import "testing"
 // The top level Patch function is only available on Go >= 1.14. Use (*C).Patch
 // when on prior versions.
 func Patch(t testing.TB, dest, value interface{}) {
-	New(t).Patch(dest, value)
+    New(t).Patch(dest, value)
 }
 
 // Setenv sets an environment variable to a temporary value for the duration of
@@ -30,7 +30,7 @@ func Patch(t testing.TB, dest, value interface{}) {
 // The top level Setenv function is only available on Go >= 1.14. Use
 // (*C).Setenv when on prior versions.
 func Setenv(t testing.TB, name, val string) {
-	New(t).Setenv(name, val)
+    New(t).Setenv(name, val)
 }
 
 // Unsetenv unsets an environment variable for the duration of a test.
@@ -38,5 +38,5 @@ func Setenv(t testing.TB, name, val string) {
 // The top level Unsetenv function is only available on Go >= 1.14. Use
 // (*C).Unsetenv when on prior versions.
 func Unsetenv(t testing.TB, name string) {
-	New(t).Unsetenv(name)
+    New(t).Unsetenv(name)
 }

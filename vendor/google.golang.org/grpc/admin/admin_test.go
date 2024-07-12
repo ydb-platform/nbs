@@ -19,16 +19,16 @@
 package admin_test
 
 import (
-	"testing"
+    "testing"
 
-	"google.golang.org/grpc/admin/test"
-	"google.golang.org/grpc/codes"
+    "google.golang.org/grpc/admin/test"
+    "google.golang.org/grpc/codes"
 )
 
 func TestRegisterNoCSDS(t *testing.T) {
-	test.RunRegisterTests(t, test.ExpectedStatusCodes{
-		ChannelzCode: codes.OK,
-		// CSDS is not registered because xDS isn't imported.
-		CSDSCode: codes.Unimplemented,
-	})
+    test.RunRegisterTests(t, test.ExpectedStatusCodes{
+        ChannelzCode: codes.OK,
+        // CSDS is not registered because xDS isn't imported.
+        CSDSCode: codes.Unimplemented,
+    })
 }

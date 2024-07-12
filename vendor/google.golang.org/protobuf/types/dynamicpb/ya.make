@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -7,11 +9,4 @@ SRCS(
     types.go
 )
 
-GO_XTEST_SRCS(
-    dynamic_test.go
-    types_test.go
-)
-
 END()
-
-RECURSE(gotest)

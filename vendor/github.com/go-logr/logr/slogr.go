@@ -20,8 +20,8 @@ limitations under the License.
 package logr
 
 import (
-	"context"
-	"log/slog"
+    "context"
+    "log/slog"
 )
 
 // FromSlogHandler returns a Logger which writes to the slog.Handler.
@@ -29,13 +29,13 @@ import (
 // The logr verbosity level is mapped to slog levels such that V(0) becomes
 // slog.LevelInfo and V(4) becomes slog.LevelDebug.
 func FromSlogHandler(handler slog.Handler) Logger {
-	if handler, ok := handler.(*slogHandler); ok {
-		if handler.sink == nil {
-			return Discard()
-		}
-		return New(handler.sink).V(int(handler.levelBias))
-	}
-	return New(&slogSink{handler: handler})
+    if handler, ok := handler.(*slogHandler); ok {
+        if handler.sink == nil {
+            return Discard()
+        }
+        return New(handler.sink).V(int(handler.levelBias))
+    }
+    return New(&slogSink{handler: handler})
 }
 
 // ToSlogHandler returns a slog.Handler which writes to the same sink as the Logger.
@@ -44,28 +44,28 @@ func FromSlogHandler(handler slog.Handler) Logger {
 // error log entries with LogSink.Error, regardless of the verbosity level of
 // the Logger:
 //
-//	logger := <some Logger with 0 as verbosity level>
-//	slog.New(ToSlogHandler(logger.V(10))).Error(...) -> logSink.Error(...)
+//    logger := <some Logger with 0 as verbosity level>
+//    slog.New(ToSlogHandler(logger.V(10))).Error(...) -> logSink.Error(...)
 //
 // The level of all other records gets reduced by the verbosity
 // level of the Logger and the result is negated. If it happens
 // to be negative, then it gets replaced by zero because a LogSink
 // is not expected to handled negative levels:
 //
-//	slog.New(ToSlogHandler(logger)).Debug(...) -> logger.GetSink().Info(level=4, ...)
-//	slog.New(ToSlogHandler(logger)).Warning(...) -> logger.GetSink().Info(level=0, ...)
-//	slog.New(ToSlogHandler(logger)).Info(...) -> logger.GetSink().Info(level=0, ...)
-//	slog.New(ToSlogHandler(logger.V(4))).Info(...) -> logger.GetSink().Info(level=4, ...)
+//    slog.New(ToSlogHandler(logger)).Debug(...) -> logger.GetSink().Info(level=4, ...)
+//    slog.New(ToSlogHandler(logger)).Warning(...) -> logger.GetSink().Info(level=0, ...)
+//    slog.New(ToSlogHandler(logger)).Info(...) -> logger.GetSink().Info(level=0, ...)
+//    slog.New(ToSlogHandler(logger.V(4))).Info(...) -> logger.GetSink().Info(level=4, ...)
 func ToSlogHandler(logger Logger) slog.Handler {
-	if sink, ok := logger.GetSink().(*slogSink); ok && logger.GetV() == 0 {
-		return sink.handler
-	}
+    if sink, ok := logger.GetSink().(*slogSink); ok && logger.GetV() == 0 {
+        return sink.handler
+    }
 
-	handler := &slogHandler{sink: logger.GetSink(), levelBias: slog.Level(logger.GetV())}
-	if slogSink, ok := handler.sink.(SlogSink); ok {
-		handler.slogSink = slogSink
-	}
-	return handler
+    handler := &slogHandler{sink: logger.GetSink(), levelBias: slog.Level(logger.GetV())}
+    if slogSink, ok := handler.sink.(SlogSink); ok {
+        handler.slogSink = slogSink
+    }
+    return handler
 }
 
 // SlogSink is an optional interface that a LogSink can implement to support
@@ -92,9 +92,9 @@ func ToSlogHandler(logger Logger) slog.Handler {
 // additional interfaces would be needed to convert between those types in FromSlogHandler
 // and ToSlogHandler.
 type SlogSink interface {
-	LogSink
+    LogSink
 
-	Handle(ctx context.Context, record slog.Record) error
-	WithAttrs(attrs []slog.Attr) SlogSink
-	WithGroup(name string) SlogSink
+    Handle(ctx context.Context, record slog.Record) error
+    WithAttrs(attrs []slog.Attr) SlogSink
+    WithGroup(name string) SlogSink
 }

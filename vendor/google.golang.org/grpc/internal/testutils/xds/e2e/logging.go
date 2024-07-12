@@ -19,9 +19,9 @@
 package e2e
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/grpclog"
 )
 
 var logger = grpclog.Component("xds-e2e")
@@ -31,18 +31,18 @@ var logger = grpclog.Component("xds-e2e")
 type serverLogger struct{}
 
 func (l serverLogger) Debugf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	logger.InfoDepth(1, msg)
+    msg := fmt.Sprintf(format, args...)
+    logger.InfoDepth(1, msg)
 }
 func (l serverLogger) Infof(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	logger.InfoDepth(1, msg)
+    msg := fmt.Sprintf(format, args...)
+    logger.InfoDepth(1, msg)
 }
 func (l serverLogger) Warnf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	logger.WarningDepth(1, msg)
+    msg := fmt.Sprintf(format, args...)
+    logger.WarningDepth(1, msg)
 }
 func (l serverLogger) Errorf(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	logger.ErrorDepth(1, msg)
+    msg := fmt.Sprintf(format, args...)
+    logger.ErrorDepth(1, msg)
 }

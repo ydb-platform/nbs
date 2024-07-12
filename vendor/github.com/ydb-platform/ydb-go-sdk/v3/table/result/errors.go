@@ -1,7 +1,7 @@
 package result
 
 import (
-	"errors"
+    "errors"
 )
 
 var ErrTruncated = errors.New("truncated result")

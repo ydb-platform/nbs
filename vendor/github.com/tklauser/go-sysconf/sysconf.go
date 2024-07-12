@@ -17,5 +17,5 @@ var errInvalid = errors.New("invalid parameter value")
 // implementation is GOOS-specific and certain SC_* constants might not be
 // defined for all GOOSes.
 func Sysconf(name int) (int64, error) {
-	return sysconf(name)
+    return sysconf(name)
 }

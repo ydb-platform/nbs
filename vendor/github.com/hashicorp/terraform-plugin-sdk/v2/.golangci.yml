@@ -1,0 +1,27 @@
+issues:
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: 'SA1019: schema.SchemaValidateFunc is deprecated'
+  max-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  disable-all: true
+  enable:
+    - durationcheck
+    - errcheck
+    - exportloopref
+    - gofmt
+    - gosimple
+    - ineffassign
+    - makezero
+    - nilerr
+    # - paralleltest # Reference: https://github.com/kunwardeep/paralleltest/issues/14
+    - predeclared
+    - staticcheck
+    - tenv
+    - unconvert
+    - unparam
+    - unused
+    - vet

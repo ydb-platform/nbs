@@ -32,29 +32,29 @@ var services []func(grpc.ServiceRegistrar) (func(), error)
 // If multiple services with the same service name are added (e.g. two services
 // for `grpc.channelz.v1.Channelz`), the server will panic on `Register()`.
 func AddService(f func(grpc.ServiceRegistrar) (func(), error)) {
-	services = append(services, f)
+    services = append(services, f)
 }
 
 // Register registers the set of admin services to the given server.
 func Register(s grpc.ServiceRegistrar) (cleanup func(), _ error) {
-	var cleanups []func()
-	for _, f := range services {
-		cleanup, err := f(s)
-		if err != nil {
-			callFuncs(cleanups)
-			return nil, err
-		}
-		if cleanup != nil {
-			cleanups = append(cleanups, cleanup)
-		}
-	}
-	return func() {
-		callFuncs(cleanups)
-	}, nil
+    var cleanups []func()
+    for _, f := range services {
+        cleanup, err := f(s)
+        if err != nil {
+            callFuncs(cleanups)
+            return nil, err
+        }
+        if cleanup != nil {
+            cleanups = append(cleanups, cleanup)
+        }
+    }
+    return func() {
+        callFuncs(cleanups)
+    }, nil
 }
 
 func callFuncs(fs []func()) {
-	for _, f := range fs {
-		f()
-	}
+    for _, f := range fs {
+        f()
+    }
 }

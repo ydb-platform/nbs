@@ -22,17 +22,17 @@ package atomic
 
 {{ with .Imports }}
 import (
-	{{ range . -}}
-		{{ printf "%q" . }}
-	{{ end }}
+    {{ range . -}}
+        {{ printf "%q" . }}
+    {{ end }}
 )
 {{ end }}
 
 // {{ .Name }} is an atomic type-safe wrapper for {{ .Type }} values.
 type {{ .Name }} struct{
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v {{ .Wrapped }}
+    v {{ .Wrapped }}
 }
 
 var _zero{{ .Name }} {{ .Type }}
@@ -40,81 +40,81 @@ var _zero{{ .Name }} {{ .Type }}
 
 // New{{ .Name }} creates a new {{ .Name }}.
 func New{{ .Name }}(val {{ .Type }}) *{{ .Name }} {
-	x := &{{ .Name }}{}
-	if val != _zero{{ .Name }} {
-		x.Store(val)
-	}
-	return x
+    x := &{{ .Name }}{}
+    if val != _zero{{ .Name }} {
+        x.Store(val)
+    }
+    return x
 }
 
 // Load atomically loads the wrapped {{ .Type }}.
 func (x *{{ .Name }}) Load() {{ .Type }} {
-	{{ if .Unpack -}}
-		return {{ .Unpack }}(x.v.Load())
-	{{- else -}}
-		if v := x.v.Load(); v != nil {
-			return v.({{ .Type }})
-		}
-		return _zero{{ .Name }}
-	{{- end }}
+    {{ if .Unpack -}}
+        return {{ .Unpack }}(x.v.Load())
+    {{- else -}}
+        if v := x.v.Load(); v != nil {
+            return v.({{ .Type }})
+        }
+        return _zero{{ .Name }}
+    {{- end }}
 }
 
 // Store atomically stores the passed {{ .Type }}.
 func (x *{{ .Name }}) Store(val {{ .Type }}) {
-	x.v.Store({{ .Pack }}(val))
+    x.v.Store({{ .Pack }}(val))
 }
 
 {{ if .CAS -}}
-	// CAS is an atomic compare-and-swap for {{ .Type }} values.
-	//
-	// Deprecated: Use CompareAndSwap.
-	func (x *{{ .Name }}) CAS(old, new {{ .Type }}) (swapped bool) {
-		return x.CompareAndSwap(old, new)
-	}
+    // CAS is an atomic compare-and-swap for {{ .Type }} values.
+    //
+    // Deprecated: Use CompareAndSwap.
+    func (x *{{ .Name }}) CAS(old, new {{ .Type }}) (swapped bool) {
+        return x.CompareAndSwap(old, new)
+    }
 {{- end }}
 
 {{ if .CompareAndSwap -}}
-	// CompareAndSwap is an atomic compare-and-swap for {{ .Type }} values.
-	func (x *{{ .Name }}) CompareAndSwap(old, new {{ .Type }}) (swapped bool) {
-	 	{{ if eq .Wrapped "Value" -}}
-			if x.v.CompareAndSwap({{ .Pack }}(old), {{ .Pack }}(new)) {
-				return true
-			}
+    // CompareAndSwap is an atomic compare-and-swap for {{ .Type }} values.
+    func (x *{{ .Name }}) CompareAndSwap(old, new {{ .Type }}) (swapped bool) {
+         {{ if eq .Wrapped "Value" -}}
+            if x.v.CompareAndSwap({{ .Pack }}(old), {{ .Pack }}(new)) {
+                return true
+            }
 
-			if old == _zero{{ .Name }} {
-				// If the old value is the empty value, then it's possible the 
-				// underlying Value hasn't been set and is nil, so retry with nil.
-				return x.v.CompareAndSwap(nil, {{ .Pack }}(new))
-			}
+            if old == _zero{{ .Name }} {
+                // If the old value is the empty value, then it's possible the
+                // underlying Value hasn't been set and is nil, so retry with nil.
+                return x.v.CompareAndSwap(nil, {{ .Pack }}(new))
+            }
 
-			return false
-		{{- else -}}
-			return x.v.CompareAndSwap({{ .Pack }}(old), {{ .Pack }}(new))
-		{{- end }}
-	}
+            return false
+        {{- else -}}
+            return x.v.CompareAndSwap({{ .Pack }}(old), {{ .Pack }}(new))
+        {{- end }}
+    }
 {{- end }}
 
 {{ if .Swap -}}
-	// Swap atomically stores the given {{ .Type }} and returns the old
-	// value.
-	func (x *{{ .Name }}) Swap(val {{ .Type }}) (old {{ .Type }}) {
-		return {{ .Unpack }}(x.v.Swap({{ .Pack }}(val)))
-	}
+    // Swap atomically stores the given {{ .Type }} and returns the old
+    // value.
+    func (x *{{ .Name }}) Swap(val {{ .Type }}) (old {{ .Type }}) {
+        return {{ .Unpack }}(x.v.Swap({{ .Pack }}(val)))
+    }
 {{- end }}
 
 {{ if .JSON -}}
-	// MarshalJSON encodes the wrapped {{ .Type }} into JSON.
-	func (x *{{ .Name }}) MarshalJSON() ([]byte, error) {
-		return json.Marshal(x.Load())
-	}
+    // MarshalJSON encodes the wrapped {{ .Type }} into JSON.
+    func (x *{{ .Name }}) MarshalJSON() ([]byte, error) {
+        return json.Marshal(x.Load())
+    }
 
-	// UnmarshalJSON decodes a {{ .Type }} from JSON.
-	func (x *{{ .Name }}) UnmarshalJSON(b []byte) error {
-		var v {{ .Type }}
-		if err := json.Unmarshal(b, &v); err != nil {
-			return err
-		}
-		x.Store(v)
-		return nil
-	}
+    // UnmarshalJSON decodes a {{ .Type }} from JSON.
+    func (x *{{ .Name }}) UnmarshalJSON(b []byte) error {
+        var v {{ .Type }}
+        if err := json.Unmarshal(b, &v); err != nil {
+            return err
+        }
+        x.Store(v)
+        return nil
+    }
 {{- end }}

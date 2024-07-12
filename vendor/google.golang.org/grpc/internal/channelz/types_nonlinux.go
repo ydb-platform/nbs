@@ -22,7 +22,7 @@
 package channelz
 
 import (
-	"sync"
+    "sync"
 )
 
 var once sync.Once
@@ -37,7 +37,7 @@ type SocketOptionData struct {
 // It is to be passed to syscall.RawConn.Control().
 // Windows OS doesn't support Socket Option
 func (s *SocketOptionData) Getsockopt(fd uintptr) {
-	once.Do(func() {
-		logger.Warning("Channelz: socket options are not supported on non-linux environments")
-	})
+    once.Do(func() {
+        logger.Warning("Channelz: socket options are not supported on non-linux environments")
+    })
 }

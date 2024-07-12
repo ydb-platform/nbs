@@ -17,64 +17,64 @@ limitations under the License.
 package klog_test
 
 import (
-	"encoding/json"
-	"fmt"
-	"strings"
-	"testing"
+    "encoding/json"
+    "fmt"
+    "strings"
+    "testing"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 func TestFormat(t *testing.T) {
-	obj := config{
-		TypeMeta: TypeMeta{
-			Kind: "config",
-		},
-		RealField: 42,
-	}
+    obj := config{
+        TypeMeta: TypeMeta{
+            Kind: "config",
+        },
+        RealField: 42,
+    }
 
-	assertEqual(t, "kind is config", obj.String(), "config.String()")
-	assertEqual(t, `{
+    assertEqual(t, "kind is config", obj.String(), "config.String()")
+    assertEqual(t, `{
   "Kind": "config",
   "RealField": 42
 }
 `, klog.Format(obj).(fmt.Stringer).String(), "Format(config).String()")
-	// fmt.Sprintf would call String if it was available.
-	str := fmt.Sprintf("%s", klog.Format(obj).(logr.Marshaler).MarshalLog())
-	if strings.Contains(str, "kind is config") {
-		t.Errorf("fmt.Sprintf called TypeMeta.String for klog.Format(obj).MarshalLog():\n%s", str)
-	}
+    // fmt.Sprintf would call String if it was available.
+    str := fmt.Sprintf("%s", klog.Format(obj).(logr.Marshaler).MarshalLog())
+    if strings.Contains(str, "kind is config") {
+        t.Errorf("fmt.Sprintf called TypeMeta.String for klog.Format(obj).MarshalLog():\n%s", str)
+    }
 
-	structured, err := json.Marshal(klog.Format(obj).(logr.Marshaler).MarshalLog())
-	if err != nil {
-		t.Errorf("JSON Marshal: %v", err)
-	} else {
-		assertEqual(t, `{"Kind":"config","RealField":42}`, string(structured), "json.Marshal(klog.Format(obj).MarshalLog())")
-	}
+    structured, err := json.Marshal(klog.Format(obj).(logr.Marshaler).MarshalLog())
+    if err != nil {
+        t.Errorf("JSON Marshal: %v", err)
+    } else {
+        assertEqual(t, `{"Kind":"config","RealField":42}`, string(structured), "json.Marshal(klog.Format(obj).MarshalLog())")
+    }
 }
 
 func assertEqual(t *testing.T, expected, actual, what string) {
-	if expected != actual {
-		t.Errorf("%s:\nExpected\n%s\nActual\n%s\n", what, expected, actual)
-	}
+    if expected != actual {
+        t.Errorf("%s:\nExpected\n%s\nActual\n%s\n", what, expected, actual)
+    }
 }
 
 type TypeMeta struct {
-	Kind string
+    Kind string
 }
 
 func (t TypeMeta) String() string {
-	return "kind is " + t.Kind
+    return "kind is " + t.Kind
 }
 
 func (t TypeMeta) MarshalLog() interface{} {
-	return t.Kind
+    return t.Kind
 }
 
 type config struct {
-	TypeMeta
+    TypeMeta
 
-	RealField int
+    RealField int
 }

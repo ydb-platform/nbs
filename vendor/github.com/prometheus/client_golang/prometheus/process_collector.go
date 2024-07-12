@@ -14,43 +14,43 @@
 package prometheus
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
+    "errors"
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
 )
 
 type processCollector struct {
-	collectFn       func(chan<- Metric)
-	pidFn           func() (int, error)
-	reportErrors    bool
-	cpuTotal        *Desc
-	openFDs, maxFDs *Desc
-	vsize, maxVsize *Desc
-	rss             *Desc
-	startTime       *Desc
+    collectFn       func(chan<- Metric)
+    pidFn           func() (int, error)
+    reportErrors    bool
+    cpuTotal        *Desc
+    openFDs, maxFDs *Desc
+    vsize, maxVsize *Desc
+    rss             *Desc
+    startTime       *Desc
 }
 
 // ProcessCollectorOpts defines the behavior of a process metrics collector
 // created with NewProcessCollector.
 type ProcessCollectorOpts struct {
-	// PidFn returns the PID of the process the collector collects metrics
-	// for. It is called upon each collection. By default, the PID of the
-	// current process is used, as determined on construction time by
-	// calling os.Getpid().
-	PidFn func() (int, error)
-	// If non-empty, each of the collected metrics is prefixed by the
-	// provided string and an underscore ("_").
-	Namespace string
-	// If true, any error encountered during collection is reported as an
-	// invalid metric (see NewInvalidMetric). Otherwise, errors are ignored
-	// and the collected metrics will be incomplete. (Possibly, no metrics
-	// will be collected at all.) While that's usually not desired, it is
-	// appropriate for the common "mix-in" of process metrics, where process
-	// metrics are nice to have, but failing to collect them should not
-	// disrupt the collection of the remaining metrics.
-	ReportErrors bool
+    // PidFn returns the PID of the process the collector collects metrics
+    // for. It is called upon each collection. By default, the PID of the
+    // current process is used, as determined on construction time by
+    // calling os.Getpid().
+    PidFn func() (int, error)
+    // If non-empty, each of the collected metrics is prefixed by the
+    // provided string and an underscore ("_").
+    Namespace string
+    // If true, any error encountered during collection is reported as an
+    // invalid metric (see NewInvalidMetric). Otherwise, errors are ignored
+    // and the collected metrics will be incomplete. (Possibly, no metrics
+    // will be collected at all.) While that's usually not desired, it is
+    // appropriate for the common "mix-in" of process metrics, where process
+    // metrics are nice to have, but failing to collect them should not
+    // disrupt the collection of the remaining metrics.
+    ReportErrors bool
 }
 
 // NewProcessCollector is the obsolete version of collectors.NewProcessCollector.
@@ -58,107 +58,107 @@ type ProcessCollectorOpts struct {
 //
 // Deprecated: Use collectors.NewProcessCollector instead.
 func NewProcessCollector(opts ProcessCollectorOpts) Collector {
-	ns := ""
-	if len(opts.Namespace) > 0 {
-		ns = opts.Namespace + "_"
-	}
+    ns := ""
+    if len(opts.Namespace) > 0 {
+        ns = opts.Namespace + "_"
+    }
 
-	c := &processCollector{
-		reportErrors: opts.ReportErrors,
-		cpuTotal: NewDesc(
-			ns+"process_cpu_seconds_total",
-			"Total user and system CPU time spent in seconds.",
-			nil, nil,
-		),
-		openFDs: NewDesc(
-			ns+"process_open_fds",
-			"Number of open file descriptors.",
-			nil, nil,
-		),
-		maxFDs: NewDesc(
-			ns+"process_max_fds",
-			"Maximum number of open file descriptors.",
-			nil, nil,
-		),
-		vsize: NewDesc(
-			ns+"process_virtual_memory_bytes",
-			"Virtual memory size in bytes.",
-			nil, nil,
-		),
-		maxVsize: NewDesc(
-			ns+"process_virtual_memory_max_bytes",
-			"Maximum amount of virtual memory available in bytes.",
-			nil, nil,
-		),
-		rss: NewDesc(
-			ns+"process_resident_memory_bytes",
-			"Resident memory size in bytes.",
-			nil, nil,
-		),
-		startTime: NewDesc(
-			ns+"process_start_time_seconds",
-			"Start time of the process since unix epoch in seconds.",
-			nil, nil,
-		),
-	}
+    c := &processCollector{
+        reportErrors: opts.ReportErrors,
+        cpuTotal: NewDesc(
+            ns+"process_cpu_seconds_total",
+            "Total user and system CPU time spent in seconds.",
+            nil, nil,
+        ),
+        openFDs: NewDesc(
+            ns+"process_open_fds",
+            "Number of open file descriptors.",
+            nil, nil,
+        ),
+        maxFDs: NewDesc(
+            ns+"process_max_fds",
+            "Maximum number of open file descriptors.",
+            nil, nil,
+        ),
+        vsize: NewDesc(
+            ns+"process_virtual_memory_bytes",
+            "Virtual memory size in bytes.",
+            nil, nil,
+        ),
+        maxVsize: NewDesc(
+            ns+"process_virtual_memory_max_bytes",
+            "Maximum amount of virtual memory available in bytes.",
+            nil, nil,
+        ),
+        rss: NewDesc(
+            ns+"process_resident_memory_bytes",
+            "Resident memory size in bytes.",
+            nil, nil,
+        ),
+        startTime: NewDesc(
+            ns+"process_start_time_seconds",
+            "Start time of the process since unix epoch in seconds.",
+            nil, nil,
+        ),
+    }
 
-	if opts.PidFn == nil {
-		c.pidFn = getPIDFn()
-	} else {
-		c.pidFn = opts.PidFn
-	}
+    if opts.PidFn == nil {
+        c.pidFn = getPIDFn()
+    } else {
+        c.pidFn = opts.PidFn
+    }
 
-	// Set up process metric collection if supported by the runtime.
-	if canCollectProcess() {
-		c.collectFn = c.processCollect
-	} else {
-		c.collectFn = func(ch chan<- Metric) {
-			c.reportError(ch, nil, errors.New("process metrics not supported on this platform"))
-		}
-	}
+    // Set up process metric collection if supported by the runtime.
+    if canCollectProcess() {
+        c.collectFn = c.processCollect
+    } else {
+        c.collectFn = func(ch chan<- Metric) {
+            c.reportError(ch, nil, errors.New("process metrics not supported on this platform"))
+        }
+    }
 
-	return c
+    return c
 }
 
 // Describe returns all descriptions of the collector.
 func (c *processCollector) Describe(ch chan<- *Desc) {
-	ch <- c.cpuTotal
-	ch <- c.openFDs
-	ch <- c.maxFDs
-	ch <- c.vsize
-	ch <- c.maxVsize
-	ch <- c.rss
-	ch <- c.startTime
+    ch <- c.cpuTotal
+    ch <- c.openFDs
+    ch <- c.maxFDs
+    ch <- c.vsize
+    ch <- c.maxVsize
+    ch <- c.rss
+    ch <- c.startTime
 }
 
 // Collect returns the current state of all metrics of the collector.
 func (c *processCollector) Collect(ch chan<- Metric) {
-	c.collectFn(ch)
+    c.collectFn(ch)
 }
 
 func (c *processCollector) reportError(ch chan<- Metric, desc *Desc, err error) {
-	if !c.reportErrors {
-		return
-	}
-	if desc == nil {
-		desc = NewInvalidDesc(err)
-	}
-	ch <- NewInvalidMetric(desc, err)
+    if !c.reportErrors {
+        return
+    }
+    if desc == nil {
+        desc = NewInvalidDesc(err)
+    }
+    ch <- NewInvalidMetric(desc, err)
 }
 
 // NewPidFileFn returns a function that retrieves a pid from the specified file.
 // It is meant to be used for the PidFn field in ProcessCollectorOpts.
 func NewPidFileFn(pidFilePath string) func() (int, error) {
-	return func() (int, error) {
-		content, err := os.ReadFile(pidFilePath)
-		if err != nil {
-			return 0, fmt.Errorf("can't read pid file %q: %w", pidFilePath, err)
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
-		if err != nil {
-			return 0, fmt.Errorf("can't parse pid file %q: %w", pidFilePath, err)
-		}
+    return func() (int, error) {
+        content, err := os.ReadFile(pidFilePath)
+        if err != nil {
+            return 0, fmt.Errorf("can't read pid file %q: %w", pidFilePath, err)
+        }
+        pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+        if err != nil {
+            return 0, fmt.Errorf("can't parse pid file %q: %w", pidFilePath, err)
+        }
 
-		return pid, nil
-	}
+        return pid, nil
+    }
 }

@@ -19,54 +19,54 @@
 package grpcutil
 
 import (
-	"regexp"
-	"testing"
+    "regexp"
+    "testing"
 )
 
 func TestFullMatchWithRegex(t *testing.T) {
-	tests := []struct {
-		name     string
-		regexStr string
-		string   string
-		want     bool
-	}{
-		{
-			name:     "not match because only partial",
-			regexStr: "^a+$",
-			string:   "ab",
-			want:     false,
-		},
-		{
-			name:     "match because fully match",
-			regexStr: "^a+$",
-			string:   "aa",
-			want:     true,
-		},
-		{
-			name:     "longest",
-			regexStr: "a(|b)",
-			string:   "ab",
-			want:     true,
-		},
-		{
-			name:     "match all",
-			regexStr: ".*",
-			string:   "",
-			want:     true,
-		},
-		{
-			name:     "matches non-empty strings",
-			regexStr: ".+",
-			string:   "",
-			want:     false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hrm := regexp.MustCompile(tt.regexStr)
-			if got := FullMatchWithRegex(hrm, tt.string); got != tt.want {
-				t.Errorf("match() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+    tests := []struct {
+        name     string
+        regexStr string
+        string   string
+        want     bool
+    }{
+        {
+            name:     "not match because only partial",
+            regexStr: "^a+$",
+            string:   "ab",
+            want:     false,
+        },
+        {
+            name:     "match because fully match",
+            regexStr: "^a+$",
+            string:   "aa",
+            want:     true,
+        },
+        {
+            name:     "longest",
+            regexStr: "a(|b)",
+            string:   "ab",
+            want:     true,
+        },
+        {
+            name:     "match all",
+            regexStr: ".*",
+            string:   "",
+            want:     true,
+        },
+        {
+            name:     "matches non-empty strings",
+            regexStr: ".+",
+            string:   "",
+            want:     false,
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            hrm := regexp.MustCompile(tt.regexStr)
+            if got := FullMatchWithRegex(hrm, tt.string); got != tt.want {
+                t.Errorf("match() = %v, want %v", got, tt.want)
+            }
+        })
+    }
 }

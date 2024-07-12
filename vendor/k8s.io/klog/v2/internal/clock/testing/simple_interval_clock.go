@@ -17,28 +17,28 @@ limitations under the License.
 package testing
 
 import (
-	"time"
+    "time"
 
-	"k8s.io/klog/v2/internal/clock"
+    "k8s.io/klog/v2/internal/clock"
 )
 
 var (
-	_ = clock.PassiveClock(&SimpleIntervalClock{})
+    _ = clock.PassiveClock(&SimpleIntervalClock{})
 )
 
 // SimpleIntervalClock implements clock.PassiveClock, but each invocation of Now steps the clock forward the specified duration
 type SimpleIntervalClock struct {
-	Time     time.Time
-	Duration time.Duration
+    Time     time.Time
+    Duration time.Duration
 }
 
 // Now returns i's time.
 func (i *SimpleIntervalClock) Now() time.Time {
-	i.Time = i.Time.Add(i.Duration)
-	return i.Time
+    i.Time = i.Time.Add(i.Duration)
+    return i.Time
 }
 
 // Since returns time since the time in i.
 func (i *SimpleIntervalClock) Since(ts time.Time) time.Duration {
-	return i.Time.Sub(ts)
+    return i.Time.Sub(ts)
 }

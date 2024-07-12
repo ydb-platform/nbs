@@ -23,10 +23,10 @@ package atomic
 // nocmp is an uncomparable struct. Embed this inside another struct to make
 // it uncomparable.
 //
-//	type Foo struct {
-//	  nocmp
-//	  // ...
-//	}
+//    type Foo struct {
+//      nocmp
+//      // ...
+//    }
 //
 // This DOES NOT:
 //

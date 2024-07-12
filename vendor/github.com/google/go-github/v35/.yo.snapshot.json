@@ -1,0 +1,168 @@
+{
+    "Version": "v35.3.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:fU+WBzuukn0VssbayTT+Zo3/ESKX9JYWjbZTLOTEyho=",
+    "Packages": {
+        "github.com/google/go-github/v35/example/appengine": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/oauth2",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/log",
+                "net/http",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/basicauth": {
+            "Imports": [
+                "bufio",
+                "context",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/crypto/ssh/terminal",
+                "os",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/commitpr": {
+            "Imports": [
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/oauth2",
+                "io/ioutil",
+                "log",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/migrations": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/newrepo": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/oauth2",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/simple": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v35/github"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/tokenauth": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/crypto/ssh/terminal",
+                "golang.org/x/oauth2",
+                "log",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/example/topics": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v35/github"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/github": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/hmac",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-querystring/query",
+                "golang.org/x/crypto/openpgp",
+                "hash",
+                "io",
+                "io/ioutil",
+                "mime",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/crypto/openpgp",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-github/v35/test/fields": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v35/github",
+                "golang.org/x/oauth2",
+                "os",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v35/test/integration": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

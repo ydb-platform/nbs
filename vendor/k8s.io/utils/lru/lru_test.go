@@ -32,101 +32,101 @@ limitations under the License.
 package lru
 
 import (
-	"testing"
-	"time"
+    "testing"
+    "time"
 )
 
 type simpleStruct struct {
-	int
-	string
+    int
+    string
 }
 
 type complexStruct struct {
-	int
-	simpleStruct
+    int
+    simpleStruct
 }
 
 var getTests = []struct {
-	name       string
-	keyToAdd   interface{}
-	keyToGet   interface{}
-	expectedOk bool
+    name       string
+    keyToAdd   interface{}
+    keyToGet   interface{}
+    expectedOk bool
 }{
-	{"string_hit", "myKey", "myKey", true},
-	{"string_miss", "myKey", "nonsense", false},
-	{"simple_struct_hit", simpleStruct{1, "two"}, simpleStruct{1, "two"}, true},
-	{"simple_struct_miss", simpleStruct{1, "two"}, simpleStruct{0, "noway"}, false},
-	{"complex_struct_hit", complexStruct{1, simpleStruct{2, "three"}},
-		complexStruct{1, simpleStruct{2, "three"}}, true},
+    {"string_hit", "myKey", "myKey", true},
+    {"string_miss", "myKey", "nonsense", false},
+    {"simple_struct_hit", simpleStruct{1, "two"}, simpleStruct{1, "two"}, true},
+    {"simple_struct_miss", simpleStruct{1, "two"}, simpleStruct{0, "noway"}, false},
+    {"complex_struct_hit", complexStruct{1, simpleStruct{2, "three"}},
+        complexStruct{1, simpleStruct{2, "three"}}, true},
 }
 
 func TestGet(t *testing.T) {
-	for _, tt := range getTests {
-		lru := New(0)
-		lru.Add(tt.keyToAdd, 1234)
-		val, ok := lru.Get(tt.keyToGet)
-		if ok != tt.expectedOk {
-			t.Fatalf("%s: cache hit = %v; want %v", tt.name, ok, !ok)
-		} else if ok && val != 1234 {
-			t.Fatalf("%s expected get to return 1234 but got %v", tt.name, val)
-		}
-	}
+    for _, tt := range getTests {
+        lru := New(0)
+        lru.Add(tt.keyToAdd, 1234)
+        val, ok := lru.Get(tt.keyToGet)
+        if ok != tt.expectedOk {
+            t.Fatalf("%s: cache hit = %v; want %v", tt.name, ok, !ok)
+        } else if ok && val != 1234 {
+            t.Fatalf("%s expected get to return 1234 but got %v", tt.name, val)
+        }
+    }
 }
 
 func TestRemove(t *testing.T) {
-	lru := New(0)
-	lru.Add("myKey", 1234)
-	if val, ok := lru.Get("myKey"); !ok {
-		t.Fatal("TestRemove returned no match")
-	} else if val != 1234 {
-		t.Fatalf("TestRemove failed.  Expected %d, got %v", 1234, val)
-	}
+    lru := New(0)
+    lru.Add("myKey", 1234)
+    if val, ok := lru.Get("myKey"); !ok {
+        t.Fatal("TestRemove returned no match")
+    } else if val != 1234 {
+        t.Fatalf("TestRemove failed.  Expected %d, got %v", 1234, val)
+    }
 
-	lru.Remove("myKey")
-	if _, ok := lru.Get("myKey"); ok {
-		t.Fatal("TestRemove returned a removed entry")
-	}
+    lru.Remove("myKey")
+    if _, ok := lru.Get("myKey"); ok {
+        t.Fatal("TestRemove returned a removed entry")
+    }
 }
 
 func TestGetRace(t *testing.T) {
-	// size to force eviction and exercise next,curr,prev list behavior
-	lru := New(25)
+    // size to force eviction and exercise next,curr,prev list behavior
+    lru := New(25)
 
-	stop := make(chan struct{})
-	defer close(stop)
+    stop := make(chan struct{})
+    defer close(stop)
 
-	// set up parallel getters/writers on 2x len keys
-	for key := 0; key < 50; key++ {
-		go func(key int) {
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-					lru.Get(key)
-					lru.Add(key, 1)
-					lru.Get(key)
-				}
-			}
-		}(key)
-	}
-	// let them run
-	time.Sleep(5 * time.Second)
+    // set up parallel getters/writers on 2x len keys
+    for key := 0; key < 50; key++ {
+        go func(key int) {
+            for {
+                select {
+                case <-stop:
+                    return
+                default:
+                    lru.Get(key)
+                    lru.Add(key, 1)
+                    lru.Get(key)
+                }
+            }
+        }(key)
+    }
+    // let them run
+    time.Sleep(5 * time.Second)
 }
 
 func TestEviction(t *testing.T) {
-	var seenKey Key
-	var seenVal interface{}
+    var seenKey Key
+    var seenVal interface{}
 
-	lru := NewWithEvictionFunc(1, func(key Key, value interface{}) {
-		seenKey = key
-		seenVal = value
-	})
+    lru := NewWithEvictionFunc(1, func(key Key, value interface{}) {
+        seenKey = key
+        seenVal = value
+    })
 
-	lru.Add(1, 2)
-	lru.Add(3, 4)
+    lru.Add(1, 2)
+    lru.Add(3, 4)
 
-	if seenKey != 1 || seenVal != 2 {
-		t.Errorf("unexpected eviction data: key=%v val=%v", seenKey, seenVal)
-	}
+    if seenKey != 1 || seenVal != 2 {
+        t.Errorf("unexpected eviction data: key=%v val=%v", seenKey, seenVal)
+    }
 }

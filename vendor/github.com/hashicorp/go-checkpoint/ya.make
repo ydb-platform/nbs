@@ -1,0 +1,13 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MPL-2.0)
+
+SRCS(
+    check.go
+    telemetry.go
+    versions.go
+)
+
+END()

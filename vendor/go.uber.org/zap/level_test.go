@@ -21,120 +21,120 @@
 package zap
 
 import (
-	"sync"
-	"testing"
+    "sync"
+    "testing"
 
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/zapcore"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestLevelEnablerFunc(t *testing.T) {
-	enab := LevelEnablerFunc(func(l zapcore.Level) bool { return l == zapcore.InfoLevel })
-	tests := []struct {
-		level   zapcore.Level
-		enabled bool
-	}{
-		{DebugLevel, false},
-		{InfoLevel, true},
-		{WarnLevel, false},
-		{ErrorLevel, false},
-		{DPanicLevel, false},
-		{PanicLevel, false},
-		{FatalLevel, false},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.enabled, enab.Enabled(tt.level), "Unexpected result applying LevelEnablerFunc to %s", tt.level)
-	}
+    enab := LevelEnablerFunc(func(l zapcore.Level) bool { return l == zapcore.InfoLevel })
+    tests := []struct {
+        level   zapcore.Level
+        enabled bool
+    }{
+        {DebugLevel, false},
+        {InfoLevel, true},
+        {WarnLevel, false},
+        {ErrorLevel, false},
+        {DPanicLevel, false},
+        {PanicLevel, false},
+        {FatalLevel, false},
+    }
+    for _, tt := range tests {
+        assert.Equal(t, tt.enabled, enab.Enabled(tt.level), "Unexpected result applying LevelEnablerFunc to %s", tt.level)
+    }
 }
 
 func TestNewAtomicLevel(t *testing.T) {
-	lvl := NewAtomicLevel()
-	assert.Equal(t, InfoLevel, lvl.Level(), "Unexpected initial level.")
-	lvl.SetLevel(ErrorLevel)
-	assert.Equal(t, ErrorLevel, lvl.Level(), "Unexpected level after SetLevel.")
-	lvl = NewAtomicLevelAt(WarnLevel)
-	assert.Equal(t, WarnLevel, lvl.Level(), "Unexpected level after SetLevel.")
+    lvl := NewAtomicLevel()
+    assert.Equal(t, InfoLevel, lvl.Level(), "Unexpected initial level.")
+    lvl.SetLevel(ErrorLevel)
+    assert.Equal(t, ErrorLevel, lvl.Level(), "Unexpected level after SetLevel.")
+    lvl = NewAtomicLevelAt(WarnLevel)
+    assert.Equal(t, WarnLevel, lvl.Level(), "Unexpected level after SetLevel.")
 }
 
 func TestParseAtomicLevel(t *testing.T) {
-	tests := []struct {
-		text  string
-		level AtomicLevel
-		err   string
-	}{
-		{"info", NewAtomicLevel(), ""},
-		{"DEBUG", NewAtomicLevelAt(DebugLevel), ""},
-		{"FOO", NewAtomicLevel(), `unrecognized level: "FOO"`},
-	}
+    tests := []struct {
+        text  string
+        level AtomicLevel
+        err   string
+    }{
+        {"info", NewAtomicLevel(), ""},
+        {"DEBUG", NewAtomicLevelAt(DebugLevel), ""},
+        {"FOO", NewAtomicLevel(), `unrecognized level: "FOO"`},
+    }
 
-	for _, tt := range tests {
-		parsedAtomicLevel, err := ParseAtomicLevel(tt.text)
-		if len(tt.err) == 0 {
-			require.NoError(t, err)
-			assert.Equal(t, tt.level, parsedAtomicLevel)
-		} else {
-			assert.ErrorContains(t, err, tt.err)
-		}
-	}
+    for _, tt := range tests {
+        parsedAtomicLevel, err := ParseAtomicLevel(tt.text)
+        if len(tt.err) == 0 {
+            require.NoError(t, err)
+            assert.Equal(t, tt.level, parsedAtomicLevel)
+        } else {
+            assert.ErrorContains(t, err, tt.err)
+        }
+    }
 }
 
 func TestAtomicLevelMutation(t *testing.T) {
-	lvl := NewAtomicLevel()
-	lvl.SetLevel(WarnLevel)
-	// Trigger races for non-atomic level mutations.
-	proceed := make(chan struct{})
-	wg := &sync.WaitGroup{}
-	runConcurrently(10, 100, wg, func() {
-		<-proceed
-		assert.Equal(t, WarnLevel, lvl.Level())
-	})
-	runConcurrently(10, 100, wg, func() {
-		<-proceed
-		lvl.SetLevel(WarnLevel)
-	})
-	close(proceed)
-	wg.Wait()
+    lvl := NewAtomicLevel()
+    lvl.SetLevel(WarnLevel)
+    // Trigger races for non-atomic level mutations.
+    proceed := make(chan struct{})
+    wg := &sync.WaitGroup{}
+    runConcurrently(10, 100, wg, func() {
+        <-proceed
+        assert.Equal(t, WarnLevel, lvl.Level())
+    })
+    runConcurrently(10, 100, wg, func() {
+        <-proceed
+        lvl.SetLevel(WarnLevel)
+    })
+    close(proceed)
+    wg.Wait()
 }
 
 func TestAtomicLevelText(t *testing.T) {
-	tests := []struct {
-		text   string
-		expect zapcore.Level
-		err    bool
-	}{
-		{"debug", DebugLevel, false},
-		{"info", InfoLevel, false},
-		{"", InfoLevel, false},
-		{"warn", WarnLevel, false},
-		{"error", ErrorLevel, false},
-		{"dpanic", DPanicLevel, false},
-		{"panic", PanicLevel, false},
-		{"fatal", FatalLevel, false},
-		{"foobar", InfoLevel, true},
-	}
+    tests := []struct {
+        text   string
+        expect zapcore.Level
+        err    bool
+    }{
+        {"debug", DebugLevel, false},
+        {"info", InfoLevel, false},
+        {"", InfoLevel, false},
+        {"warn", WarnLevel, false},
+        {"error", ErrorLevel, false},
+        {"dpanic", DPanicLevel, false},
+        {"panic", PanicLevel, false},
+        {"fatal", FatalLevel, false},
+        {"foobar", InfoLevel, true},
+    }
 
-	for _, tt := range tests {
-		var lvl AtomicLevel
-		// Test both initial unmarshaling and overwriting existing value.
-		for i := 0; i < 2; i++ {
-			if tt.err {
-				assert.Error(t, lvl.UnmarshalText([]byte(tt.text)), "Expected unmarshaling %q to fail.", tt.text)
-			} else {
-				assert.NoError(t, lvl.UnmarshalText([]byte(tt.text)), "Expected unmarshaling %q to succeed.", tt.text)
-			}
-			assert.Equal(t, tt.expect, lvl.Level(), "Unexpected level after unmarshaling.")
-			lvl.SetLevel(InfoLevel)
-		}
+    for _, tt := range tests {
+        var lvl AtomicLevel
+        // Test both initial unmarshaling and overwriting existing value.
+        for i := 0; i < 2; i++ {
+            if tt.err {
+                assert.Error(t, lvl.UnmarshalText([]byte(tt.text)), "Expected unmarshaling %q to fail.", tt.text)
+            } else {
+                assert.NoError(t, lvl.UnmarshalText([]byte(tt.text)), "Expected unmarshaling %q to succeed.", tt.text)
+            }
+            assert.Equal(t, tt.expect, lvl.Level(), "Unexpected level after unmarshaling.")
+            lvl.SetLevel(InfoLevel)
+        }
 
-		// Test marshalling
-		if tt.text != "" && !tt.err {
-			lvl.SetLevel(tt.expect)
-			marshaled, err := lvl.MarshalText()
-			assert.NoError(t, err, `Unexpected error marshalling level "%v" to text.`, tt.expect)
-			assert.Equal(t, tt.text, string(marshaled), "Expected marshaled text to match")
-			assert.Equal(t, tt.text, lvl.String(), "Expected Stringer call to match")
-		}
-	}
+        // Test marshalling
+        if tt.text != "" && !tt.err {
+            lvl.SetLevel(tt.expect)
+            marshaled, err := lvl.MarshalText()
+            assert.NoError(t, err, `Unexpected error marshalling level "%v" to text.`, tt.expect)
+            assert.Equal(t, tt.text, string(marshaled), "Expected marshaled text to match")
+            assert.Equal(t, tt.text, lvl.String(), "Expected Stringer call to match")
+        }
+    }
 }

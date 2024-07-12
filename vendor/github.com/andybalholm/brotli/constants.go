@@ -50,7 +50,7 @@ const maxNdirect = 120
 const maxDistanceBits = 24
 
 func distanceAlphabetSize(NPOSTFIX uint, NDIRECT uint, MAXNBITS uint) uint {
-	return numDistanceShortCodes + NDIRECT + uint(MAXNBITS<<(NPOSTFIX+1))
+    return numDistanceShortCodes + NDIRECT + uint(MAXNBITS<<(NPOSTFIX+1))
 }
 
 /* numDistanceSymbols == 1128 */
@@ -73,5 +73,5 @@ const distanceContextBits = 2
 const windowGap = 16
 
 func maxBackwardLimit(W uint) uint {
-	return (uint(1) << W) - windowGap
+    return (uint(1) << W) - windowGap
 }

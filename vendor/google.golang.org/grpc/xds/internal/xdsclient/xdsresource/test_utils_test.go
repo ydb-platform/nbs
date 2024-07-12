@@ -18,28 +18,28 @@
 package xdsresource
 
 import (
-	"testing"
-	"time"
+    "testing"
+    "time"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"google.golang.org/grpc/internal/grpctest"
-	"google.golang.org/protobuf/testing/protocmp"
+    "github.com/google/go-cmp/cmp"
+    "github.com/google/go-cmp/cmp/cmpopts"
+    "google.golang.org/grpc/internal/grpctest"
+    "google.golang.org/protobuf/testing/protocmp"
 )
 
 type s struct {
-	grpctest.Tester
+    grpctest.Tester
 }
 
 func Test(t *testing.T) {
-	grpctest.RunSubTests(t, s{})
+    grpctest.RunSubTests(t, s{})
 }
 
 var (
-	cmpOpts = cmp.Options{
-		cmpopts.EquateEmpty(),
-		cmp.FilterValues(func(x, y error) bool { return true }, cmpopts.EquateErrors()),
-		cmp.Comparer(func(a, b time.Time) bool { return true }),
-		protocmp.Transform(),
-	}
+    cmpOpts = cmp.Options{
+        cmpopts.EquateEmpty(),
+        cmp.FilterValues(func(x, y error) bool { return true }, cmpopts.EquateErrors()),
+        cmp.Comparer(func(a, b time.Time) bool { return true }),
+        protocmp.Transform(),
+    }
 )

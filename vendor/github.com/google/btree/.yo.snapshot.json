@@ -1,0 +1,26 @@
+{
+    "Version": "v1.1.2",
+    "GoVersion": "1.18",
+    "Sum": "h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=",
+    "Packages": {
+        "github.com/google/btree": {
+            "Imports": [
+                "fmt",
+                "io",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "math/rand",
+                "reflect",
+                "sort",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -21,9 +21,9 @@ limitations under the License.
 package main
 
 import (
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 func doSlog(log logr.Logger) {
-	log.Error(nil, "Sorry, slog is not supported on this version of Go")
+    log.Error(nil, "Sorry, slog is not supported on this version of Go")
 }

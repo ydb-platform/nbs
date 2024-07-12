@@ -1,0 +1,26 @@
+{
+    "Version": "v2.0.8",
+    "GoVersion": "1.13",
+    "Sum": "h1:lT38cE//uyf6KcFok0rlgXtGFBWxkI6h/qg4tbFyDnA=",
+    "Packages": {
+        "github.com/karlseguin/ccache/v2": {
+            "Imports": [
+                "container/list",
+                "hash/fnv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/karlseguin/expect",
+                "math",
+                "sort",
+                "strconv",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -1,0 +1,326 @@
+{
+    "Version": "v0.20.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:WG4TTSARuV7bSm4PMB4ohjxe33IHT5WVTrJSU33uT4g=",
+    "Packages": {
+        "github.com/google/go-jsonnet": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/md5",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/astgen",
+                "github.com/google/go-jsonnet/internal/errors",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/internal/program",
+                "io",
+                "io/ioutil",
+                "math",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime/debug",
+                "sigs.k8s.io/yaml",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/internal/testutils",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/google/go-jsonnet/ast": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "reflect",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/astgen": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/c-bindings": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/formatter",
+                "io/ioutil",
+                "os",
+                "path",
+                "sort",
+                "strings",
+                "sync",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/cmd/dumpstdlibast": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/dump",
+                "github.com/google/go-jsonnet/internal/program",
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/cmd/internal/cmd": {
+            "Imports": [
+                "fmt",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "runtime",
+                "runtime/pprof",
+                "strconv"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/cmd/jsonnet": {
+            "Imports": [
+                "fmt",
+                "github.com/fatih/color",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/cmd/internal/cmd",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/cmd/jsonnet-deps": {
+            "Imports": [
+                "fmt",
+                "github.com/fatih/color",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/cmd/internal/cmd",
+                "io",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/cmd/jsonnet-lint": {
+            "Imports": [
+                "fmt",
+                "github.com/fatih/color",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/cmd/internal/cmd",
+                "github.com/google/go-jsonnet/linter",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/cmd/jsonnetfmt": {
+            "Imports": [
+                "fmt",
+                "github.com/fatih/color",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/cmd/internal/cmd",
+                "github.com/google/go-jsonnet/internal/formatter",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/formatter": {
+            "Imports": [
+                "github.com/google/go-jsonnet/internal/formatter"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/internal/dump": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "io",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/internal/errors": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-jsonnet/ast"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/internal/formatter": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/internal/pass",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/internal/parser": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/errors",
+                "strconv",
+                "strings",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "github.com/google/go-jsonnet/ast",
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/internal/pass": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/internal/program": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/errors",
+                "github.com/google/go-jsonnet/internal/parser",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/google/go-jsonnet/ast",
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/internal/testutils": {
+            "Imports": [
+                "bytes",
+                "github.com/sergi/go-diff/diffmatchpatch",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/linter": {
+            "Imports": [
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/errors",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/linter/internal/common",
+                "github.com/google/go-jsonnet/linter/internal/traversal",
+                "github.com/google/go-jsonnet/linter/internal/types",
+                "github.com/google/go-jsonnet/linter/internal/variables",
+                "io"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-jsonnet",
+                "github.com/google/go-jsonnet/internal/testutils",
+                "io/ioutil",
+                "path/filepath",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-jsonnet/linter/internal/common": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/errors"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/linter/internal/traversal": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/linter/internal/common"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/linter/internal/types": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/linter/internal/common",
+                "math",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/linter/internal/variables": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser",
+                "github.com/google/go-jsonnet/linter/internal/common"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-jsonnet/toolutils": {
+            "Imports": [
+                "github.com/google/go-jsonnet/ast",
+                "github.com/google/go-jsonnet/internal/parser"
+            ],
+            "TestImports": null
+        }
+    }
+}

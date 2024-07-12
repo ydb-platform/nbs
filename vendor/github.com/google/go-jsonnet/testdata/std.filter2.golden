@@ -1,0 +1,13 @@
+RUNTIME ERROR: x
+-------------------------------------------------
+    testdata/std.filter2:1:12-21    thunk from <$>
+
+std.filter(error "x", [])
+
+-------------------------------------------------
+    testdata/std.filter2:1:1-26    $
+
+std.filter(error "x", [])
+
+-------------------------------------------------
+    During evaluation

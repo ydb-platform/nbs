@@ -4,42 +4,42 @@
 package corev3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on ProxyProtocolPassThroughTLVs with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ProxyProtocolPassThroughTLVs) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ProxyProtocolPassThroughTLVs with the
@@ -47,39 +47,39 @@ func (m *ProxyProtocolPassThroughTLVs) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ProxyProtocolPassThroughTLVsMultiError, or nil if none found.
 func (m *ProxyProtocolPassThroughTLVs) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ProxyProtocolPassThroughTLVs) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for MatchType
+    // no validation rules for MatchType
 
-	for idx, item := range m.GetTlvType() {
-		_, _ = idx, item
+    for idx, item := range m.GetTlvType() {
+        _, _ = idx, item
 
-		if item >= 256 {
-			err := ProxyProtocolPassThroughTLVsValidationError{
-				field:  fmt.Sprintf("TlvType[%v]", idx),
-				reason: "value must be less than 256",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+        if item >= 256 {
+            err := ProxyProtocolPassThroughTLVsValidationError{
+                field:  fmt.Sprintf("TlvType[%v]", idx),
+                reason: "value must be less than 256",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-	}
+    }
 
-	if len(errors) > 0 {
-		return ProxyProtocolPassThroughTLVsMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ProxyProtocolPassThroughTLVsMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ProxyProtocolPassThroughTLVsMultiError is an error wrapping multiple
@@ -89,11 +89,11 @@ type ProxyProtocolPassThroughTLVsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolPassThroughTLVsMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -103,10 +103,10 @@ func (m ProxyProtocolPassThroughTLVsMultiError) AllErrors() []error { return m }
 // by ProxyProtocolPassThroughTLVs.Validate if the designated constraints
 // aren't met.
 type ProxyProtocolPassThroughTLVsValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -123,44 +123,44 @@ func (e ProxyProtocolPassThroughTLVsValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ProxyProtocolPassThroughTLVsValidationError) ErrorName() string {
-	return "ProxyProtocolPassThroughTLVsValidationError"
+    return "ProxyProtocolPassThroughTLVsValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ProxyProtocolPassThroughTLVsValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sProxyProtocolPassThroughTLVs.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sProxyProtocolPassThroughTLVs.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ProxyProtocolPassThroughTLVsValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ProxyProtocolPassThroughTLVsValidationError{}
 
 // Validate checks the field values on ProxyProtocolConfig with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ProxyProtocolConfig) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ProxyProtocolConfig with the rules
@@ -168,52 +168,52 @@ func (m *ProxyProtocolConfig) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ProxyProtocolConfigMultiError, or nil if none found.
 func (m *ProxyProtocolConfig) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ProxyProtocolConfig) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for Version
+    // no validation rules for Version
 
-	if all {
-		switch v := interface{}(m.GetPassThroughTlvs()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ProxyProtocolConfigValidationError{
-					field:  "PassThroughTlvs",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ProxyProtocolConfigValidationError{
-					field:  "PassThroughTlvs",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetPassThroughTlvs()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ProxyProtocolConfigValidationError{
-				field:  "PassThroughTlvs",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetPassThroughTlvs()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, ProxyProtocolConfigValidationError{
+                    field:  "PassThroughTlvs",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, ProxyProtocolConfigValidationError{
+                    field:  "PassThroughTlvs",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetPassThroughTlvs()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return ProxyProtocolConfigValidationError{
+                field:  "PassThroughTlvs",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if len(errors) > 0 {
-		return ProxyProtocolConfigMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ProxyProtocolConfigMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ProxyProtocolConfigMultiError is an error wrapping multiple validation
@@ -223,11 +223,11 @@ type ProxyProtocolConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolConfigMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -236,10 +236,10 @@ func (m ProxyProtocolConfigMultiError) AllErrors() []error { return m }
 // ProxyProtocolConfigValidationError is the validation error returned by
 // ProxyProtocolConfig.Validate if the designated constraints aren't met.
 type ProxyProtocolConfigValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -256,35 +256,35 @@ func (e ProxyProtocolConfigValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ProxyProtocolConfigValidationError) ErrorName() string {
-	return "ProxyProtocolConfigValidationError"
+    return "ProxyProtocolConfigValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ProxyProtocolConfigValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sProxyProtocolConfig.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sProxyProtocolConfig.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ProxyProtocolConfigValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ProxyProtocolConfigValidationError{}

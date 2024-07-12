@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -7,4 +9,10 @@ SRCS(
     logsink_fatal.go
 )
 
+GO_XTEST_SRCS(logsink_test.go)
+
 END()
+
+RECURSE(
+    gotest
+)

@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type string, expected number
+-------------------------------------------------
+    testdata/std.modulo2:1:1-22    $
+
+std.modulo("xxx", 42)
+
+-------------------------------------------------
+    During evaluation

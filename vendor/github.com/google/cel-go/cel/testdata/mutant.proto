@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package cel.testdata;
+
+message Mutant {
+  string name = 1;
+  int32 level = 2;
+  string super_power = 3;
+}

@@ -1,0 +1,217 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:xyshTMElkpCJRCbg9OyGL41f7ToCr+PRBJKuAbGR17I=",
+    "Packages": {
+        "go.opentelemetry.io/collector/confmap": {
+            "Imports": [
+                "context",
+                "encoding",
+                "errors",
+                "fmt",
+                "github.com/knadh/koanf/maps",
+                "github.com/knadh/koanf/providers/confmap",
+                "github.com/knadh/koanf/v2",
+                "github.com/mitchellh/mapstructure",
+                "go.opentelemetry.io/collector/confmap/internal/mapstructure",
+                "go.opentelemetry.io/collector/featuregate",
+                "go.uber.org/multierr",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "gopkg.in/yaml.v3",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/confmaptest": {
+            "Imports": [
+                "fmt",
+                "go.opentelemetry.io/collector/confmap",
+                "gopkg.in/yaml.v3",
+                "os",
+                "path/filepath",
+                "regexp"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/converter/expandconverter": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/confmap",
+                "os"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/confmaptest",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/internal/mapstructure": {
+            "Imports": [
+                "encoding",
+                "errors",
+                "fmt",
+                "github.com/mitchellh/mapstructure",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "encoding",
+                "errors",
+                "github.com/mitchellh/mapstructure",
+                "github.com/stretchr/testify/require",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/envprovider": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/confmaptest",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/fileprovider": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/confmaptest",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/httpprovider": {
+            "Imports": [
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal/configurablehttpprovider"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/httpsprovider": {
+            "Imports": [
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal/configurablehttpprovider"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/internal": {
+            "Imports": [
+                "go.opentelemetry.io/collector/confmap",
+                "gopkg.in/yaml.v3"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/internal/configurablehttpprovider": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal",
+                "io",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/pem",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/confmap/confmaptest",
+                "math/big",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "testing",
+                "time"
+            ]
+        },
+        "go.opentelemetry.io/collector/confmap/provider/yamlprovider": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/confmap",
+                "go.opentelemetry.io/collector/confmap/provider/internal",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/collector/confmap/confmaptest",
+                "testing"
+            ]
+        }
+    }
+}

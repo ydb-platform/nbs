@@ -1,7 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MPL-2.0)
 
-SRCS(assertions.go)
+SRCS(
+    assertions.go
+)
 
 END()

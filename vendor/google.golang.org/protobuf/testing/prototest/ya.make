@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -7,8 +9,4 @@ SRCS(
     message.go
 )
 
-GO_XTEST_SRCS(prototest_test.go)
-
 END()
-
-RECURSE(gotest)

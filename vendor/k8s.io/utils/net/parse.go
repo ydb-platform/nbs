@@ -17,7 +17,7 @@ limitations under the License.
 package net
 
 import (
-	forkednet "k8s.io/utils/internal/third_party/forked/golang/net"
+    forkednet "k8s.io/utils/internal/third_party/forked/golang/net"
 )
 
 // ParseIPSloppy is identical to Go's standard net.ParseIP, except that it allows

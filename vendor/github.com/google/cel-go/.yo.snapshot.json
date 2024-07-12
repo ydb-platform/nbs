@@ -1,0 +1,598 @@
+{
+    "Version": "v0.20.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:nDx9r8S3L4pE61eDdt8igGj8rf5kjYR3ILxWIpWNi84=",
+    "Packages": {
+        "github.com/google/cel-go/cel": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/stdlib",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/pb",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/interpreter",
+                "github.com/google/cel-go/parser",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "math",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/google/cel-go/cel",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/ext",
+                "github.com/google/cel-go/interpreter",
+                "github.com/google/cel-go/parser",
+                "github.com/google/cel-go/test",
+                "github.com/google/cel-go/test/proto2pb",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "io/ioutil",
+                "log",
+                "math",
+                "reflect",
+                "sort",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/checker": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/debug",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/stdlib",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/parser",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "math",
+                "reflect",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/stdlib",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/parser",
+                "github.com/google/cel-go/test",
+                "github.com/google/cel-go/test/proto2pb",
+                "github.com/google/cel-go/test/proto3pb",
+                "math",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/checker/decls": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/structpb"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/common/runes",
+                "golang.org/x/text/width",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "sort",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-go/common/ast": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/types/known/structpb"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/stdlib",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/parser",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/common/containers": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/common/ast",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/cel-go/common/ast",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-go/common/debug": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/decls": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/common/functions": {
+            "Imports": [
+                "github.com/google/cel-go/common/types/ref"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/operators": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/overloads": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/runes": {
+            "Imports": [
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/google/cel-go/common/stdlib": {
+            "Imports": [
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/types": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types/pb",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/stoewer/go-strcase",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types/pb",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/common/types/pb": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect"
+            ],
+            "TestImports": [
+                "github.com/google/cel-go/checker/decls",
+                "github.com/google/cel-go/test/proto2pb",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/common/types/ref": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/common/types/traits": {
+            "Imports": [
+                "github.com/google/cel-go/common/types/ref"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/examples": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "github.com/google/cel-go/cel",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "log"
+            ]
+        },
+        "github.com/google/cel-go/ext": {
+            "Imports": [
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/cel",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/pb",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/interpreter",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/known/structpb",
+                "math",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/cel-go/cel",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/pb",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/test",
+                "github.com/google/cel-go/test/proto2pb",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "time",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/google/cel-go/interpreter": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "math",
+                "regexp",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/checker",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/containers",
+                "github.com/google/cel-go/common/decls",
+                "github.com/google/cel-go/common/functions",
+                "github.com/google/cel-go/common/overloads",
+                "github.com/google/cel-go/common/stdlib",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/common/types/traits",
+                "github.com/google/cel-go/parser",
+                "github.com/google/cel-go/test",
+                "github.com/google/cel-go/test/proto2pb",
+                "github.com/google/cel-go/test/proto3pb",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "math/rand",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/cel-go/interpreter/functions": {
+            "Imports": [
+                "github.com/google/cel-go/common/functions"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/parser": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/antlr4-go/antlr/v4",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/runes",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/parser/gen",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/cel-go/common",
+                "github.com/google/cel-go/common/ast",
+                "github.com/google/cel-go/common/debug",
+                "github.com/google/cel-go/common/operators",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/test",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "reflect",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-go/parser/gen": {
+            "Imports": [
+                "fmt",
+                "github.com/antlr4-go/antlr/v4",
+                "strconv",
+                "sync",
+                "unicode"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/test": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/common/operators",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/structpb",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/test/bench": {
+            "Imports": [
+                "fmt",
+                "github.com/google/cel-go/cel",
+                "github.com/google/cel-go/common/types",
+                "github.com/google/cel-go/common/types/ref",
+                "github.com/google/cel-go/ext",
+                "testing"
+            ],
+            "TestImports": [
+                "github.com/google/cel-go/cel",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-go/test/proto2pb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-go/test/proto3pb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

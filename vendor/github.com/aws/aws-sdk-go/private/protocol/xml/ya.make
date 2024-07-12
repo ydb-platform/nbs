@@ -1,1 +1,5 @@
-RECURSE(xmlutil)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    xmlutil
+)

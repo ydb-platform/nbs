@@ -23,48 +23,48 @@
 package logging
 
 import (
-	src "cloud.google.com/go/logging/apiv2/loggingpb"
-	grpc "google.golang.org/grpc"
+    src "cloud.google.com/go/logging/apiv2/loggingpb"
+    grpc "google.golang.org/grpc"
 )
 
 // Deprecated: Please use consts in: cloud.google.com/go/logging/apiv2/loggingpb
 const (
-	LifecycleState_ACTIVE                                     = src.LifecycleState_ACTIVE
-	LifecycleState_DELETE_REQUESTED                           = src.LifecycleState_DELETE_REQUESTED
-	LifecycleState_LIFECYCLE_STATE_UNSPECIFIED                = src.LifecycleState_LIFECYCLE_STATE_UNSPECIFIED
-	LogMetric_V1                                              = src.LogMetric_V1
-	LogMetric_V2                                              = src.LogMetric_V2
-	LogSink_V1                                                = src.LogSink_V1
-	LogSink_V2                                                = src.LogSink_V2
-	LogSink_VERSION_FORMAT_UNSPECIFIED                        = src.LogSink_VERSION_FORMAT_UNSPECIFIED
-	OperationState_OPERATION_STATE_CANCELLED                  = src.OperationState_OPERATION_STATE_CANCELLED
-	OperationState_OPERATION_STATE_FAILED                     = src.OperationState_OPERATION_STATE_FAILED
-	OperationState_OPERATION_STATE_RUNNING                    = src.OperationState_OPERATION_STATE_RUNNING
-	OperationState_OPERATION_STATE_SCHEDULED                  = src.OperationState_OPERATION_STATE_SCHEDULED
-	OperationState_OPERATION_STATE_SUCCEEDED                  = src.OperationState_OPERATION_STATE_SUCCEEDED
-	OperationState_OPERATION_STATE_UNSPECIFIED                = src.OperationState_OPERATION_STATE_UNSPECIFIED
-	OperationState_OPERATION_STATE_WAITING_FOR_PERMISSIONS    = src.OperationState_OPERATION_STATE_WAITING_FOR_PERMISSIONS
-	TailLogEntriesResponse_SuppressionInfo_NOT_CONSUMED       = src.TailLogEntriesResponse_SuppressionInfo_NOT_CONSUMED
-	TailLogEntriesResponse_SuppressionInfo_RATE_LIMIT         = src.TailLogEntriesResponse_SuppressionInfo_RATE_LIMIT
-	TailLogEntriesResponse_SuppressionInfo_REASON_UNSPECIFIED = src.TailLogEntriesResponse_SuppressionInfo_REASON_UNSPECIFIED
+    LifecycleState_ACTIVE                                     = src.LifecycleState_ACTIVE
+    LifecycleState_DELETE_REQUESTED                           = src.LifecycleState_DELETE_REQUESTED
+    LifecycleState_LIFECYCLE_STATE_UNSPECIFIED                = src.LifecycleState_LIFECYCLE_STATE_UNSPECIFIED
+    LogMetric_V1                                              = src.LogMetric_V1
+    LogMetric_V2                                              = src.LogMetric_V2
+    LogSink_V1                                                = src.LogSink_V1
+    LogSink_V2                                                = src.LogSink_V2
+    LogSink_VERSION_FORMAT_UNSPECIFIED                        = src.LogSink_VERSION_FORMAT_UNSPECIFIED
+    OperationState_OPERATION_STATE_CANCELLED                  = src.OperationState_OPERATION_STATE_CANCELLED
+    OperationState_OPERATION_STATE_FAILED                     = src.OperationState_OPERATION_STATE_FAILED
+    OperationState_OPERATION_STATE_RUNNING                    = src.OperationState_OPERATION_STATE_RUNNING
+    OperationState_OPERATION_STATE_SCHEDULED                  = src.OperationState_OPERATION_STATE_SCHEDULED
+    OperationState_OPERATION_STATE_SUCCEEDED                  = src.OperationState_OPERATION_STATE_SUCCEEDED
+    OperationState_OPERATION_STATE_UNSPECIFIED                = src.OperationState_OPERATION_STATE_UNSPECIFIED
+    OperationState_OPERATION_STATE_WAITING_FOR_PERMISSIONS    = src.OperationState_OPERATION_STATE_WAITING_FOR_PERMISSIONS
+    TailLogEntriesResponse_SuppressionInfo_NOT_CONSUMED       = src.TailLogEntriesResponse_SuppressionInfo_NOT_CONSUMED
+    TailLogEntriesResponse_SuppressionInfo_RATE_LIMIT         = src.TailLogEntriesResponse_SuppressionInfo_RATE_LIMIT
+    TailLogEntriesResponse_SuppressionInfo_REASON_UNSPECIFIED = src.TailLogEntriesResponse_SuppressionInfo_REASON_UNSPECIFIED
 )
 
 // Deprecated: Please use vars in: cloud.google.com/go/logging/apiv2/loggingpb
 var (
-	File_google_logging_v2_log_entry_proto              = src.File_google_logging_v2_log_entry_proto
-	File_google_logging_v2_logging_config_proto         = src.File_google_logging_v2_logging_config_proto
-	File_google_logging_v2_logging_metrics_proto        = src.File_google_logging_v2_logging_metrics_proto
-	File_google_logging_v2_logging_proto                = src.File_google_logging_v2_logging_proto
-	LifecycleState_name                                 = src.LifecycleState_name
-	LifecycleState_value                                = src.LifecycleState_value
-	LogMetric_ApiVersion_name                           = src.LogMetric_ApiVersion_name
-	LogMetric_ApiVersion_value                          = src.LogMetric_ApiVersion_value
-	LogSink_VersionFormat_name                          = src.LogSink_VersionFormat_name
-	LogSink_VersionFormat_value                         = src.LogSink_VersionFormat_value
-	OperationState_name                                 = src.OperationState_name
-	OperationState_value                                = src.OperationState_value
-	TailLogEntriesResponse_SuppressionInfo_Reason_name  = src.TailLogEntriesResponse_SuppressionInfo_Reason_name
-	TailLogEntriesResponse_SuppressionInfo_Reason_value = src.TailLogEntriesResponse_SuppressionInfo_Reason_value
+    File_google_logging_v2_log_entry_proto              = src.File_google_logging_v2_log_entry_proto
+    File_google_logging_v2_logging_config_proto         = src.File_google_logging_v2_logging_config_proto
+    File_google_logging_v2_logging_metrics_proto        = src.File_google_logging_v2_logging_metrics_proto
+    File_google_logging_v2_logging_proto                = src.File_google_logging_v2_logging_proto
+    LifecycleState_name                                 = src.LifecycleState_name
+    LifecycleState_value                                = src.LifecycleState_value
+    LogMetric_ApiVersion_name                           = src.LogMetric_ApiVersion_name
+    LogMetric_ApiVersion_value                          = src.LogMetric_ApiVersion_value
+    LogSink_VersionFormat_name                          = src.LogSink_VersionFormat_name
+    LogSink_VersionFormat_value                         = src.LogSink_VersionFormat_value
+    OperationState_name                                 = src.OperationState_name
+    OperationState_value                                = src.OperationState_value
+    TailLogEntriesResponse_SuppressionInfo_Reason_name  = src.TailLogEntriesResponse_SuppressionInfo_Reason_name
+    TailLogEntriesResponse_SuppressionInfo_Reason_value = src.TailLogEntriesResponse_SuppressionInfo_Reason_value
 )
 
 // Options that change functionality of a sink exporting data to BigQuery.
@@ -512,30 +512,30 @@ type WriteLogEntriesResponse = src.WriteLogEntriesResponse
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func NewConfigServiceV2Client(cc grpc.ClientConnInterface) ConfigServiceV2Client {
-	return src.NewConfigServiceV2Client(cc)
+    return src.NewConfigServiceV2Client(cc)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func NewLoggingServiceV2Client(cc grpc.ClientConnInterface) LoggingServiceV2Client {
-	return src.NewLoggingServiceV2Client(cc)
+    return src.NewLoggingServiceV2Client(cc)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func NewMetricsServiceV2Client(cc grpc.ClientConnInterface) MetricsServiceV2Client {
-	return src.NewMetricsServiceV2Client(cc)
+    return src.NewMetricsServiceV2Client(cc)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func RegisterConfigServiceV2Server(s *grpc.Server, srv ConfigServiceV2Server) {
-	src.RegisterConfigServiceV2Server(s, srv)
+    src.RegisterConfigServiceV2Server(s, srv)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func RegisterLoggingServiceV2Server(s *grpc.Server, srv LoggingServiceV2Server) {
-	src.RegisterLoggingServiceV2Server(s, srv)
+    src.RegisterLoggingServiceV2Server(s, srv)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/logging/apiv2/loggingpb
 func RegisterMetricsServiceV2Server(s *grpc.Server, srv MetricsServiceV2Server) {
-	src.RegisterMetricsServiceV2Server(s, srv)
+    src.RegisterMetricsServiceV2Server(s, srv)
 }

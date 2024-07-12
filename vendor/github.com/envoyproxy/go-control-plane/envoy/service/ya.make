@@ -1,0 +1,24 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    accesslog
+    auth
+    cluster
+    discovery
+    endpoint
+    event_reporting
+    ext_proc
+    extension
+    health
+    listener
+    load_stats
+    metrics
+    rate_limit_quota
+    ratelimit
+    route
+    runtime
+    secret
+    status
+    tap
+    trace
+)

@@ -5,64 +5,64 @@
 package teststructs
 
 import (
-	"time"
+    "time"
 
-	pb "github.com/google/go-cmp/cmp/internal/testprotos"
+    pb "github.com/google/go-cmp/cmp/internal/testprotos"
 )
 
 // This is an sanitized example of equality from a real use-case.
 // The original equality function was as follows:
 /*
 func equalCartel(x, y Cartel) bool {
-	if !(equalHeadquarter(x.Headquarter, y.Headquarter) &&
-		x.Source() == y.Source() &&
-		x.CreationDate().Equal(y.CreationDate()) &&
-		x.Boss() == y.Boss() &&
-		x.LastCrimeDate().Equal(y.LastCrimeDate())) {
-		return false
-	}
-	if len(x.Poisons()) != len(y.Poisons()) {
-		return false
-	}
-	for i := range x.Poisons() {
-		if !equalPoison(*x.Poisons()[i], *y.Poisons()[i]) {
-			return false
-		}
-	}
-	return true
+    if !(equalHeadquarter(x.Headquarter, y.Headquarter) &&
+        x.Source() == y.Source() &&
+        x.CreationDate().Equal(y.CreationDate()) &&
+        x.Boss() == y.Boss() &&
+        x.LastCrimeDate().Equal(y.LastCrimeDate())) {
+        return false
+    }
+    if len(x.Poisons()) != len(y.Poisons()) {
+        return false
+    }
+    for i := range x.Poisons() {
+        if !equalPoison(*x.Poisons()[i], *y.Poisons()[i]) {
+            return false
+        }
+    }
+    return true
 }
 func equalHeadquarter(x, y Headquarter) bool {
-	xr, yr := x.Restrictions(), y.Restrictions()
-	return x.ID() == y.ID() &&
-		x.Location() == y.Location() &&
-		reflect.DeepEqual(x.SubDivisions(), y.SubDivisions()) &&
-		x.IncorporatedDate().Equal(y.IncorporatedDate()) &&
-		pb.Equal(x.MetaData(), y.MetaData()) &&
-		bytes.Equal(x.PrivateMessage(), y.PrivateMessage()) &&
-		bytes.Equal(x.PublicMessage(), y.PublicMessage()) &&
-		x.HorseBack() == y.HorseBack() &&
-		x.Rattle() == y.Rattle() &&
-		x.Convulsion() == y.Convulsion() &&
-		x.Expansion() == y.Expansion() &&
-		x.Status() == y.Status() &&
-		pb.Equal(&xr, &yr) &&
-		x.CreationTime().Equal(y.CreationTime())
+    xr, yr := x.Restrictions(), y.Restrictions()
+    return x.ID() == y.ID() &&
+        x.Location() == y.Location() &&
+        reflect.DeepEqual(x.SubDivisions(), y.SubDivisions()) &&
+        x.IncorporatedDate().Equal(y.IncorporatedDate()) &&
+        pb.Equal(x.MetaData(), y.MetaData()) &&
+        bytes.Equal(x.PrivateMessage(), y.PrivateMessage()) &&
+        bytes.Equal(x.PublicMessage(), y.PublicMessage()) &&
+        x.HorseBack() == y.HorseBack() &&
+        x.Rattle() == y.Rattle() &&
+        x.Convulsion() == y.Convulsion() &&
+        x.Expansion() == y.Expansion() &&
+        x.Status() == y.Status() &&
+        pb.Equal(&xr, &yr) &&
+        x.CreationTime().Equal(y.CreationTime())
 }
 func equalPoison(x, y Poison) bool {
-	return x.PoisonType() == y.PoisonType() &&
-		x.Expiration().Equal(y.Expiration()) &&
-		x.Manufacturer() == y.Manufacturer() &&
-		x.Potency() == y.Potency()
+    return x.PoisonType() == y.PoisonType() &&
+        x.Expiration().Equal(y.Expiration()) &&
+        x.Manufacturer() == y.Manufacturer() &&
+        x.Potency() == y.Potency()
 }
 */
 
 type Cartel struct {
-	Headquarter
-	source        string
-	creationDate  time.Time
-	boss          string
-	lastCrimeDate time.Time
-	poisons       []*Poison
+    Headquarter
+    source        string
+    creationDate  time.Time
+    boss          string
+    lastCrimeDate time.Time
+    poisons       []*Poison
 }
 
 func (p Cartel) Source() string           { return p.source }
@@ -78,20 +78,20 @@ func (p *Cartel) SetLastCrimeDate(x time.Time) { p.lastCrimeDate = x }
 func (p *Cartel) SetPoisons(x []*Poison)       { p.poisons = x }
 
 type Headquarter struct {
-	id               uint64
-	location         string
-	subDivisions     []string
-	incorporatedDate time.Time
-	metaData         *pb.MetaData
-	privateMessage   []byte
-	publicMessage    []byte
-	horseBack        string
-	rattle           string
-	convulsion       bool
-	expansion        uint64
-	status           pb.HoneyStatus
-	restrictions     pb.Restrictions
-	creationTime     time.Time
+    id               uint64
+    location         string
+    subDivisions     []string
+    incorporatedDate time.Time
+    metaData         *pb.MetaData
+    privateMessage   []byte
+    publicMessage    []byte
+    horseBack        string
+    rattle           string
+    convulsion       bool
+    expansion        uint64
+    status           pb.HoneyStatus
+    restrictions     pb.Restrictions
+    creationTime     time.Time
 }
 
 func (hq Headquarter) ID() uint64                    { return hq.id }
@@ -125,10 +125,10 @@ func (hq *Headquarter) SetRestrictions(x pb.Restrictions) { hq.restrictions = x 
 func (hq *Headquarter) SetCreationTime(x time.Time)       { hq.creationTime = x }
 
 type Poison struct {
-	poisonType   pb.PoisonType
-	expiration   time.Time
-	manufacturer string
-	potency      int
+    poisonType   pb.PoisonType
+    expiration   time.Time
+    manufacturer string
+    potency      int
 }
 
 func (p Poison) PoisonType() pb.PoisonType { return p.poisonType }

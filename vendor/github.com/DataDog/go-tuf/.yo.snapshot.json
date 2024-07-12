@@ -1,0 +1,371 @@
+{
+    "Version": "v0.3.0--fix-localmeta-fork",
+    "GoVersion": "1.16",
+    "Sum": "h1:yBq5PrAtrM4yVeSzQ+bn050+Ysp++RKF1QmtkL4VqvU=",
+    "Packages": {
+        "github.com/DataDog/go-tuf": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/encrypted",
+                "github.com/DataDog/go-tuf/internal/roles",
+                "github.com/DataDog/go-tuf/internal/sets",
+                "github.com/DataDog/go-tuf/internal/signer",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/DataDog/go-tuf/pkg/targets",
+                "github.com/DataDog/go-tuf/sign",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/DataDog/go-tuf/verify",
+                "io",
+                "io/fs",
+                "io/ioutil",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto",
+                "crypto/rand",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/encrypted",
+                "github.com/DataDog/go-tuf/internal/sets",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/DataDog/go-tuf/pkg/targets",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/DataDog/go-tuf/verify",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "github.com/stretchr/testify/assert",
+                "golang.org/x/crypto/ed25519",
+                "gopkg.in/check.v1",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/DataDog/go-tuf/client": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/internal/roles",
+                "github.com/DataDog/go-tuf/pkg/targets",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/DataDog/go-tuf/verify",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "path",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/sha256",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf",
+                "github.com/DataDog/go-tuf/client/testdata/go-tuf/generator",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/internal/sets",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/DataDog/go-tuf/sign",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/DataDog/go-tuf/verify",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "github.com/stretchr/testify/assert",
+                "gopkg.in/check.v1",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/DataDog/go-tuf/client/leveldbstore": {
+            "Imports": [
+                "encoding/json",
+                "github.com/DataDog/go-tuf/client",
+                "github.com/syndtr/goleveldb/leveldb",
+                "github.com/syndtr/goleveldb/leveldb/storage"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "gopkg.in/check.v1",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/client/python_interop": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/DataDog/go-tuf",
+                "github.com/DataDog/go-tuf/client",
+                "github.com/DataDog/go-tuf/util",
+                "gopkg.in/check.v1",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/client/testdata/go-tuf/generator": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/go-tuf",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/go-tuf/cmd/tuf": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/flynn/go-docopt",
+                "golang.org/x/term",
+                "log",
+                "os",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/go-tuf/cmd/tuf-client": {
+            "Imports": [
+                "fmt",
+                "github.com/DataDog/go-tuf/client",
+                "github.com/DataDog/go-tuf/client/leveldbstore",
+                "github.com/DataDog/go-tuf/util",
+                "github.com/dustin/go-humanize",
+                "github.com/flynn/go-docopt",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "text/tabwriter"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/go-tuf/data": {
+            "Imports": [
+                "crypto/sha256",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "path/filepath",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "github.com/stretchr/testify/assert",
+                "gopkg.in/check.v1",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/encrypted": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/nacl/secretbox",
+                "golang.org/x/crypto/scrypt",
+                "io"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "gopkg.in/check.v1",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/internal/roles": {
+            "Imports": [
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/internal/sets": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/internal/signer": {
+            "Imports": [
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "sort"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/internal/signer",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/pkg/keys": {
+            "Imports": [
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha256",
+                "crypto/x509",
+                "encoding/asn1",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "math/big",
+                "sync"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/DataDog/go-tuf/data",
+                "gopkg.in/check.v1",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/pkg/targets": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/internal/sets",
+                "github.com/DataDog/go-tuf/verify",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/verify",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/sign": {
+            "Imports": [
+                "encoding/json",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/go-tuf/util": {
+            "Imports": [
+                "bytes",
+                "crypto/hmac",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "hash",
+                "io",
+                "io/ioutil",
+                "os",
+                "path",
+                "path/filepath",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "github.com/DataDog/go-tuf/data",
+                "gopkg.in/check.v1",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/go-tuf/verify": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/internal/roles",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/secure-systems-lab/go-securesystemslib/cjson",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha256",
+                "encoding/json",
+                "errors",
+                "github.com/DataDog/go-tuf/data",
+                "github.com/DataDog/go-tuf/pkg/keys",
+                "github.com/DataDog/go-tuf/sign",
+                "github.com/stretchr/testify/assert",
+                "golang.org/x/crypto/ed25519",
+                "gopkg.in/check.v1",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

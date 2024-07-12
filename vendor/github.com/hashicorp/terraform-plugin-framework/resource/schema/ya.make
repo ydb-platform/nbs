@@ -1,0 +1,79 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MPL-2.0)
+
+SRCS(
+    attribute.go
+    block.go
+    bool_attribute.go
+    doc.go
+    float64_attribute.go
+    int64_attribute.go
+    list_attribute.go
+    list_nested_attribute.go
+    list_nested_block.go
+    map_attribute.go
+    map_nested_attribute.go
+    nested_attribute.go
+    nested_attribute_object.go
+    nested_block_object.go
+    number_attribute.go
+    object_attribute.go
+    schema.go
+    set_attribute.go
+    set_nested_attribute.go
+    set_nested_block.go
+    single_nested_attribute.go
+    single_nested_block.go
+    string_attribute.go
+)
+
+GO_XTEST_SRCS(
+    bool_attribute_test.go
+    float64_attribute_test.go
+    int64_attribute_test.go
+    list_attribute_test.go
+    list_nested_attribute_test.go
+    list_nested_block_test.go
+    map_attribute_test.go
+    map_nested_attribute_test.go
+    nested_attribute_object_test.go
+    nested_block_object_test.go
+    number_attribute_test.go
+    object_attribute_test.go
+    schema_test.go
+    set_attribute_test.go
+    set_nested_attribute_test.go
+    set_nested_block_test.go
+    single_nested_attribute_test.go
+    single_nested_block_test.go
+    string_attribute_test.go
+)
+
+END()
+
+RECURSE(
+    booldefault
+    boolplanmodifier
+    defaults
+    float64default
+    float64planmodifier
+    gotest
+    int64default
+    int64planmodifier
+    listdefault
+    listplanmodifier
+    mapdefault
+    mapplanmodifier
+    numberdefault
+    numberplanmodifier
+    objectdefault
+    objectplanmodifier
+    planmodifier
+    setdefault
+    setplanmodifier
+    stringdefault
+    stringplanmodifier
+)

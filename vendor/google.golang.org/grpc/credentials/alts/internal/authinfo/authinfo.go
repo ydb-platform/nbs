@@ -20,8 +20,8 @@
 package authinfo
 
 import (
-	"google.golang.org/grpc/credentials"
-	altspb "google.golang.org/grpc/credentials/alts/internal/proto/grpc_gcp"
+    "google.golang.org/grpc/credentials"
+    altspb "google.golang.org/grpc/credentials/alts/internal/proto/grpc_gcp"
 )
 
 var _ credentials.AuthInfo = (*altsAuthInfo)(nil)
@@ -29,67 +29,67 @@ var _ credentials.AuthInfo = (*altsAuthInfo)(nil)
 // altsAuthInfo exposes security information from the ALTS handshake to the
 // application. altsAuthInfo is immutable and implements credentials.AuthInfo.
 type altsAuthInfo struct {
-	p *altspb.AltsContext
-	credentials.CommonAuthInfo
+    p *altspb.AltsContext
+    credentials.CommonAuthInfo
 }
 
 // New returns a new altsAuthInfo object given handshaker results.
 func New(result *altspb.HandshakerResult) credentials.AuthInfo {
-	return newAuthInfo(result)
+    return newAuthInfo(result)
 }
 
 func newAuthInfo(result *altspb.HandshakerResult) *altsAuthInfo {
-	return &altsAuthInfo{
-		p: &altspb.AltsContext{
-			ApplicationProtocol: result.GetApplicationProtocol(),
-			RecordProtocol:      result.GetRecordProtocol(),
-			// TODO: assign security level from result.
-			SecurityLevel:       altspb.SecurityLevel_INTEGRITY_AND_PRIVACY,
-			PeerServiceAccount:  result.GetPeerIdentity().GetServiceAccount(),
-			LocalServiceAccount: result.GetLocalIdentity().GetServiceAccount(),
-			PeerRpcVersions:     result.GetPeerRpcVersions(),
-			PeerAttributes:      result.GetPeerIdentity().GetAttributes(),
-		},
-		CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity},
-	}
+    return &altsAuthInfo{
+        p: &altspb.AltsContext{
+            ApplicationProtocol: result.GetApplicationProtocol(),
+            RecordProtocol:      result.GetRecordProtocol(),
+            // TODO: assign security level from result.
+            SecurityLevel:       altspb.SecurityLevel_INTEGRITY_AND_PRIVACY,
+            PeerServiceAccount:  result.GetPeerIdentity().GetServiceAccount(),
+            LocalServiceAccount: result.GetLocalIdentity().GetServiceAccount(),
+            PeerRpcVersions:     result.GetPeerRpcVersions(),
+            PeerAttributes:      result.GetPeerIdentity().GetAttributes(),
+        },
+        CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity},
+    }
 }
 
 // AuthType identifies the context as providing ALTS authentication information.
 func (s *altsAuthInfo) AuthType() string {
-	return "alts"
+    return "alts"
 }
 
 // ApplicationProtocol returns the context's application protocol.
 func (s *altsAuthInfo) ApplicationProtocol() string {
-	return s.p.GetApplicationProtocol()
+    return s.p.GetApplicationProtocol()
 }
 
 // RecordProtocol returns the context's record protocol.
 func (s *altsAuthInfo) RecordProtocol() string {
-	return s.p.GetRecordProtocol()
+    return s.p.GetRecordProtocol()
 }
 
 // SecurityLevel returns the context's security level.
 func (s *altsAuthInfo) SecurityLevel() altspb.SecurityLevel {
-	return s.p.GetSecurityLevel()
+    return s.p.GetSecurityLevel()
 }
 
 // PeerServiceAccount returns the context's peer service account.
 func (s *altsAuthInfo) PeerServiceAccount() string {
-	return s.p.GetPeerServiceAccount()
+    return s.p.GetPeerServiceAccount()
 }
 
 // LocalServiceAccount returns the context's local service account.
 func (s *altsAuthInfo) LocalServiceAccount() string {
-	return s.p.GetLocalServiceAccount()
+    return s.p.GetLocalServiceAccount()
 }
 
 // PeerRPCVersions returns the context's peer RPC versions.
 func (s *altsAuthInfo) PeerRPCVersions() *altspb.RpcProtocolVersions {
-	return s.p.GetPeerRpcVersions()
+    return s.p.GetPeerRpcVersions()
 }
 
 // PeerAttributes returns the context's peer attributes.
 func (s *altsAuthInfo) PeerAttributes() map[string]string {
-	return s.p.GetPeerAttributes()
+    return s.p.GetPeerAttributes()
 }

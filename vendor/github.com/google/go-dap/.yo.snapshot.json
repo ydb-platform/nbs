@@ -1,0 +1,69 @@
+{
+    "Version": "v0.11.0",
+    "GoVersion": "1.13",
+    "Sum": "h1:SpAZJL41rOOvd85PuLCCLE1dteTQOyKNnn0H3DBHywo=",
+    "Packages": {
+        "github.com/google/go-dap": {
+            "Imports": [
+                "bufio",
+                "encoding/json",
+                "fmt",
+                "io",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "io",
+                "io/ioutil",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-dap/cmd/gentypes": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "go/format",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "os",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-dap/cmd/mockserver": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "github.com/google/go-dap",
+                "io",
+                "log",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "github.com/google/go-dap",
+                "io/ioutil",
+                "log",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

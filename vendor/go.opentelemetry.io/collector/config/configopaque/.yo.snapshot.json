@@ -1,0 +1,21 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:FdQCf88Vq2yX7kiRswN00t/oGY+BbRCaAd0paG0if1A=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/configopaque": {
+            "Imports": [
+                "encoding"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/config/configopaque",
+                "gopkg.in/yaml.v3",
+                "testing"
+            ]
+        }
+    }
+}

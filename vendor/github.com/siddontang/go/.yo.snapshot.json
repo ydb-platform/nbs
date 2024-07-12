@@ -1,0 +1,288 @@
+{
+    "Version": "v0.0.0-20180604090527-bdc77568d726",
+    "GoVersion": "",
+    "Sum": "h1:xT+JlYxNGqyT+XcU8iUrN18JYed2TvG9yN5ULG2jATM=",
+    "Packages": {
+        "github.com/siddontang/go/arena": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/bson": {
+            "Imports": [
+                "crypto/md5",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "math",
+                "net/url",
+                "os",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "gopkg.in/check.v1",
+                "gopkg.in/mgo.v2/bson",
+                "net/url",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/bytes2": {
+            "Imports": [
+                "fmt",
+                "github.com/siddontang/go/hack",
+                "io",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/cache": {
+            "Imports": [
+                "container/list",
+                "fmt",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/config": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/exec2": {
+            "Imports": [
+                "os/exec",
+                "time"
+            ],
+            "TestImports": [
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/filelock": {
+            "Imports": [
+                "io",
+                "os",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/hack": {
+            "Imports": [
+                "reflect",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/ioutil2": {
+            "Imports": [
+                "errors",
+                "io",
+                "io/ioutil",
+                "os",
+                "path"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/list2": {
+            "Imports": null,
+            "TestImports": [
+                "container/list",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/log": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "io",
+                "net",
+                "os",
+                "path",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/num": {
+            "Imports": [
+                "encoding/binary",
+                "strconv"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/ring": {
+            "Imports": [
+                "errors"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/rpc": {
+            "Imports": [
+                "bytes",
+                "container/list",
+                "encoding/binary",
+                "encoding/gob",
+                "fmt",
+                "io",
+                "net",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/snappy": {
+            "Imports": [
+                "encoding/binary",
+                "errors"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go/sync2": {
+            "Imports": [
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/tb": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "io/ioutil",
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go/time2": {
+            "Imports": [
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/timingwheel": {
+            "Imports": [
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go/websocket": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/rand",
+                "crypto/sha1",
+                "encoding/base64",
+                "encoding/binary",
+                "errors",
+                "io",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/url",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/gorilla/websocket",
+                "net",
+                "net/http",
+                "net/url",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

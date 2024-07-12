@@ -19,38 +19,38 @@
 package credentials
 
 import (
-	"net"
-	"syscall"
-	"testing"
+    "net"
+    "syscall"
+    "testing"
 )
 
 func (*syscallConn) SyscallConn() (syscall.RawConn, error) {
-	return nil, nil
+    return nil, nil
 }
 
 type nonSyscallConn struct {
-	net.Conn
+    net.Conn
 }
 
 func (s) TestWrapSyscallConn(t *testing.T) {
-	sc := &syscallConn{}
-	nsc := &nonSyscallConn{}
+    sc := &syscallConn{}
+    nsc := &nonSyscallConn{}
 
-	wrapConn := WrapSyscallConn(sc, nsc)
-	if _, ok := wrapConn.(syscall.Conn); !ok {
-		t.Errorf("returned conn (type %T) doesn't implement syscall.Conn, want implement", wrapConn)
-	}
+    wrapConn := WrapSyscallConn(sc, nsc)
+    if _, ok := wrapConn.(syscall.Conn); !ok {
+        t.Errorf("returned conn (type %T) doesn't implement syscall.Conn, want implement", wrapConn)
+    }
 }
 
 func (s) TestWrapSyscallConnNoWrap(t *testing.T) {
-	nscRaw := &nonSyscallConn{}
-	nsc := &nonSyscallConn{}
+    nscRaw := &nonSyscallConn{}
+    nsc := &nonSyscallConn{}
 
-	wrapConn := WrapSyscallConn(nscRaw, nsc)
-	if _, ok := wrapConn.(syscall.Conn); ok {
-		t.Errorf("returned conn (type %T) implements syscall.Conn, want not implement", wrapConn)
-	}
-	if wrapConn != nsc {
-		t.Errorf("returned conn is %p, want %p (the passed-in newConn)", wrapConn, nsc)
-	}
+    wrapConn := WrapSyscallConn(nscRaw, nsc)
+    if _, ok := wrapConn.(syscall.Conn); ok {
+        t.Errorf("returned conn (type %T) implements syscall.Conn, want not implement", wrapConn)
+    }
+    if wrapConn != nsc {
+        t.Errorf("returned conn is %p, want %p (the passed-in newConn)", wrapConn, nsc)
+    }
 }

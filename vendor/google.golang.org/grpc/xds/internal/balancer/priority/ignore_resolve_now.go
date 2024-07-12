@@ -19,40 +19,40 @@
 package priority
 
 import (
-	"sync/atomic"
+    "sync/atomic"
 
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/balancer"
+    "google.golang.org/grpc/resolver"
 )
 
 // ignoreResolveNowClientConn wraps a balancer.ClientConn and overrides the
 // ResolveNow() method to ignore those calls if the ignoreResolveNow bit is set.
 type ignoreResolveNowClientConn struct {
-	balancer.ClientConn
-	ignoreResolveNow *uint32
+    balancer.ClientConn
+    ignoreResolveNow *uint32
 }
 
 func newIgnoreResolveNowClientConn(cc balancer.ClientConn, ignore bool) *ignoreResolveNowClientConn {
-	ret := &ignoreResolveNowClientConn{
-		ClientConn:       cc,
-		ignoreResolveNow: new(uint32),
-	}
-	ret.updateIgnoreResolveNow(ignore)
-	return ret
+    ret := &ignoreResolveNowClientConn{
+        ClientConn:       cc,
+        ignoreResolveNow: new(uint32),
+    }
+    ret.updateIgnoreResolveNow(ignore)
+    return ret
 }
 
 func (i *ignoreResolveNowClientConn) updateIgnoreResolveNow(b bool) {
-	if b {
-		atomic.StoreUint32(i.ignoreResolveNow, 1)
-		return
-	}
-	atomic.StoreUint32(i.ignoreResolveNow, 0)
+    if b {
+        atomic.StoreUint32(i.ignoreResolveNow, 1)
+        return
+    }
+    atomic.StoreUint32(i.ignoreResolveNow, 0)
 
 }
 
 func (i ignoreResolveNowClientConn) ResolveNow(o resolver.ResolveNowOptions) {
-	if atomic.LoadUint32(i.ignoreResolveNow) != 0 {
-		return
-	}
-	i.ClientConn.ResolveNow(o)
+    if atomic.LoadUint32(i.ignoreResolveNow) != 0 {
+        return
+    }
+    i.ClientConn.ResolveNow(o)
 }

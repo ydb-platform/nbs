@@ -1,1 +1,5 @@
-RECURSE(xxh32)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    xxh32
+)

@@ -19,8 +19,8 @@ package prometheus
 import "os"
 
 func getPIDFn() func() (int, error) {
-	pid := os.Getpid()
-	return func() (int, error) {
-		return pid, nil
-	}
+    pid := os.Getpid()
+    return func() (int, error) {
+        return pid, nil
+    }
 }

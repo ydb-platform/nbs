@@ -23,29 +23,29 @@
 package spew
 
 import (
-	"reflect"
-	"unsafe"
+    "reflect"
+    "unsafe"
 )
 
 const (
-	// UnsafeDisabled is a build-time constant which specifies whether or
-	// not access to the unsafe package is available.
-	UnsafeDisabled = false
+    // UnsafeDisabled is a build-time constant which specifies whether or
+    // not access to the unsafe package is available.
+    UnsafeDisabled = false
 
-	// ptrSize is the size of a pointer on the current arch.
-	ptrSize = unsafe.Sizeof((*byte)(nil))
+    // ptrSize is the size of a pointer on the current arch.
+    ptrSize = unsafe.Sizeof((*byte)(nil))
 )
 
 type flag uintptr
 
 var (
-	// flagRO indicates whether the value field of a reflect.Value
-	// is read-only.
-	flagRO flag
+    // flagRO indicates whether the value field of a reflect.Value
+    // is read-only.
+    flagRO flag
 
-	// flagAddr indicates whether the address of the reflect.Value's
-	// value may be taken.
-	flagAddr flag
+    // flagAddr indicates whether the address of the reflect.Value's
+    // value may be taken.
+    flagAddr flag
 )
 
 // flagKindMask holds the bits that make up the kind
@@ -57,28 +57,28 @@ const flagKindMask = flag(0x1f)
 // bit layouts for the flags type. This table
 // records the known combinations.
 var okFlags = []struct {
-	ro, addr flag
+    ro, addr flag
 }{{
-	// From Go 1.4 to 1.5
-	ro:   1 << 5,
-	addr: 1 << 7,
+    // From Go 1.4 to 1.5
+    ro:   1 << 5,
+    addr: 1 << 7,
 }, {
-	// Up to Go tip.
-	ro:   1<<5 | 1<<6,
-	addr: 1 << 8,
+    // Up to Go tip.
+    ro:   1<<5 | 1<<6,
+    addr: 1 << 8,
 }}
 
 var flagValOffset = func() uintptr {
-	field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
-	if !ok {
-		panic("reflect.Value has no flag field")
-	}
-	return field.Offset
+    field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
+    if !ok {
+        panic("reflect.Value has no flag field")
+    }
+    return field.Offset
 }()
 
 // flagField returns a pointer to the flag field of a reflect.Value.
 func flagField(v *reflect.Value) *flag {
-	return (*flag)(unsafe.Pointer(uintptr(unsafe.Pointer(v)) + flagValOffset))
+    return (*flag)(unsafe.Pointer(uintptr(unsafe.Pointer(v)) + flagValOffset))
 }
 
 // unsafeReflectValue converts the passed reflect.Value into a one that bypasses
@@ -91,55 +91,55 @@ func flagField(v *reflect.Value) *flag {
 // interfaces to be used for pretty printing ordinarily unaddressable and
 // inaccessible values such as unexported struct fields.
 func unsafeReflectValue(v reflect.Value) reflect.Value {
-	if !v.IsValid() || (v.CanInterface() && v.CanAddr()) {
-		return v
-	}
-	flagFieldPtr := flagField(&v)
-	*flagFieldPtr &^= flagRO
-	*flagFieldPtr |= flagAddr
-	return v
+    if !v.IsValid() || (v.CanInterface() && v.CanAddr()) {
+        return v
+    }
+    flagFieldPtr := flagField(&v)
+    *flagFieldPtr &^= flagRO
+    *flagFieldPtr |= flagAddr
+    return v
 }
 
 // Sanity checks against future reflect package changes
 // to the type or semantics of the Value.flag field.
 func init() {
-	field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
-	if !ok {
-		panic("reflect.Value has no flag field")
-	}
-	if field.Type.Kind() != reflect.TypeOf(flag(0)).Kind() {
-		panic("reflect.Value flag field has changed kind")
-	}
-	type t0 int
-	var t struct {
-		A t0
-		// t0 will have flagEmbedRO set.
-		t0
-		// a will have flagStickyRO set
-		a t0
-	}
-	vA := reflect.ValueOf(t).FieldByName("A")
-	va := reflect.ValueOf(t).FieldByName("a")
-	vt0 := reflect.ValueOf(t).FieldByName("t0")
+    field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
+    if !ok {
+        panic("reflect.Value has no flag field")
+    }
+    if field.Type.Kind() != reflect.TypeOf(flag(0)).Kind() {
+        panic("reflect.Value flag field has changed kind")
+    }
+    type t0 int
+    var t struct {
+        A t0
+        // t0 will have flagEmbedRO set.
+        t0
+        // a will have flagStickyRO set
+        a t0
+    }
+    vA := reflect.ValueOf(t).FieldByName("A")
+    va := reflect.ValueOf(t).FieldByName("a")
+    vt0 := reflect.ValueOf(t).FieldByName("t0")
 
-	// Infer flagRO from the difference between the flags
-	// for the (otherwise identical) fields in t.
-	flagPublic := *flagField(&vA)
-	flagWithRO := *flagField(&va) | *flagField(&vt0)
-	flagRO = flagPublic ^ flagWithRO
+    // Infer flagRO from the difference between the flags
+    // for the (otherwise identical) fields in t.
+    flagPublic := *flagField(&vA)
+    flagWithRO := *flagField(&va) | *flagField(&vt0)
+    flagRO = flagPublic ^ flagWithRO
 
-	// Infer flagAddr from the difference between a value
-	// taken from a pointer and not.
-	vPtrA := reflect.ValueOf(&t).Elem().FieldByName("A")
-	flagNoPtr := *flagField(&vA)
-	flagPtr := *flagField(&vPtrA)
-	flagAddr = flagNoPtr ^ flagPtr
+    // Infer flagAddr from the difference between a value
+    // taken from a pointer and not.
+    vPtrA := reflect.ValueOf(&t).Elem().FieldByName("A")
+    flagNoPtr := *flagField(&vA)
+    flagPtr := *flagField(&vPtrA)
+    flagAddr = flagNoPtr ^ flagPtr
 
-	// Check that the inferred flags tally with one of the known versions.
-	for _, f := range okFlags {
-		if flagRO == f.ro && flagAddr == f.addr {
-			return
-		}
-	}
-	panic("reflect.Value read-only flag has changed semantics")
+    // Check that the inferred flags tally with one of the known versions.
+    for _, f := range okFlags {
+        if flagRO == f.ro && flagAddr == f.addr {
+            return
+        }
+    }
+    panic("reflect.Value read-only flag has changed semantics")
 }

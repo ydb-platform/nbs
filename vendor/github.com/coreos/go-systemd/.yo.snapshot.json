@@ -1,0 +1,224 @@
+{
+    "Version": "v0.0.0-20191104093116-d3cd4ed1dbcf",
+    "GoVersion": "",
+    "Sum": "h1:iW4rZ826su+pqaw19uhpSCzhj44qo35pNgKFGqzDKkU=",
+    "Packages": {
+        "github.com/coreos/go-systemd/activation": {
+            "Imports": [
+                "crypto/tls",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "net",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/daemon": {
+            "Imports": [
+                "fmt",
+                "net",
+                "os",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "net",
+                "os",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/dbus": {
+            "Imports": [
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/godbus/dbus",
+                "log",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/godbus/dbus",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/import1": {
+            "Imports": [
+                "fmt",
+                "github.com/godbus/dbus",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "log",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/internal/dlopen": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/journal": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/login1": {
+            "Imports": [
+                "fmt",
+                "github.com/godbus/dbus",
+                "os",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "os/user",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/machine1": {
+            "Imports": [
+                "fmt",
+                "github.com/coreos/go-systemd/dbus",
+                "github.com/godbus/dbus",
+                "os",
+                "strconv",
+                "syscall"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/coreos/go-systemd/dbus",
+                "github.com/godbus/dbus",
+                "math/rand",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/sdjournal": {
+            "Imports": [
+                "C",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/coreos/go-systemd/internal/dlopen",
+                "io",
+                "log",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/coreos/go-systemd/journal",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/unit": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "strconv",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io/ioutil",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/util": {
+            "Imports": [
+                "C",
+                "fmt",
+                "github.com/coreos/go-systemd/internal/dlopen",
+                "io/ioutil",
+                "os",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        }
+    }
+}

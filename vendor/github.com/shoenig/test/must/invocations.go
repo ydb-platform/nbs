@@ -4,24 +4,24 @@
 package must
 
 import (
-	"strings"
+    "strings"
 
-	"github.com/shoenig/test/internal/assertions"
+    "github.com/shoenig/test/internal/assertions"
 )
 
 func passing(result string) bool {
-	return result == ""
+    return result == ""
 }
 
 func fail(t T, msg string, scripts ...PostScript) {
-	c := assertions.Caller()
-	s := c + msg + "\n" + run(scripts...)
-	errorf(t, "\n"+strings.TrimSpace(s)+"\n")
+    c := assertions.Caller()
+    s := c + msg + "\n" + run(scripts...)
+    errorf(t, "\n"+strings.TrimSpace(s)+"\n")
 }
 
 func invoke(t T, result string, settings ...Setting) {
-	result = strings.TrimSpace(result)
-	if !passing(result) {
-		fail(t, result, scripts(settings...)...)
-	}
+    result = strings.TrimSpace(result)
+    if !passing(result) {
+        fail(t, result, scripts(settings...)...)
+    }
 }

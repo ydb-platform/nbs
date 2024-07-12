@@ -23,16 +23,16 @@
 package test_test
 
 import (
-	"testing"
+    "testing"
 
-	"google.golang.org/grpc/admin/test"
-	"google.golang.org/grpc/codes"
-	_ "google.golang.org/grpc/xds"
+    "google.golang.org/grpc/admin/test"
+    "google.golang.org/grpc/codes"
+    _ "google.golang.org/grpc/xds"
 )
 
 func TestRegisterWithCSDS(t *testing.T) {
-	test.RunRegisterTests(t, test.ExpectedStatusCodes{
-		ChannelzCode: codes.OK,
-		CSDSCode:     codes.OK,
-	})
+    test.RunRegisterTests(t, test.ExpectedStatusCodes{
+        ChannelzCode: codes.OK,
+        CSDSCode:     codes.OK,
+    })
 }

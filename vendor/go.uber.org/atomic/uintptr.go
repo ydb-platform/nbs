@@ -23,87 +23,87 @@
 package atomic
 
 import (
-	"encoding/json"
-	"strconv"
-	"sync/atomic"
+    "encoding/json"
+    "strconv"
+    "sync/atomic"
 )
 
 // Uintptr is an atomic wrapper around uintptr.
 type Uintptr struct {
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v uintptr
+    v uintptr
 }
 
 // NewUintptr creates a new Uintptr.
 func NewUintptr(val uintptr) *Uintptr {
-	return &Uintptr{v: val}
+    return &Uintptr{v: val}
 }
 
 // Load atomically loads the wrapped value.
 func (i *Uintptr) Load() uintptr {
-	return atomic.LoadUintptr(&i.v)
+    return atomic.LoadUintptr(&i.v)
 }
 
 // Add atomically adds to the wrapped uintptr and returns the new value.
 func (i *Uintptr) Add(delta uintptr) uintptr {
-	return atomic.AddUintptr(&i.v, delta)
+    return atomic.AddUintptr(&i.v, delta)
 }
 
 // Sub atomically subtracts from the wrapped uintptr and returns the new value.
 func (i *Uintptr) Sub(delta uintptr) uintptr {
-	return atomic.AddUintptr(&i.v, ^(delta - 1))
+    return atomic.AddUintptr(&i.v, ^(delta - 1))
 }
 
 // Inc atomically increments the wrapped uintptr and returns the new value.
 func (i *Uintptr) Inc() uintptr {
-	return i.Add(1)
+    return i.Add(1)
 }
 
 // Dec atomically decrements the wrapped uintptr and returns the new value.
 func (i *Uintptr) Dec() uintptr {
-	return i.Sub(1)
+    return i.Sub(1)
 }
 
 // CAS is an atomic compare-and-swap.
 //
 // Deprecated: Use CompareAndSwap.
 func (i *Uintptr) CAS(old, new uintptr) (swapped bool) {
-	return i.CompareAndSwap(old, new)
+    return i.CompareAndSwap(old, new)
 }
 
 // CompareAndSwap is an atomic compare-and-swap.
 func (i *Uintptr) CompareAndSwap(old, new uintptr) (swapped bool) {
-	return atomic.CompareAndSwapUintptr(&i.v, old, new)
+    return atomic.CompareAndSwapUintptr(&i.v, old, new)
 }
 
 // Store atomically stores the passed value.
 func (i *Uintptr) Store(val uintptr) {
-	atomic.StoreUintptr(&i.v, val)
+    atomic.StoreUintptr(&i.v, val)
 }
 
 // Swap atomically swaps the wrapped uintptr and returns the old value.
 func (i *Uintptr) Swap(val uintptr) (old uintptr) {
-	return atomic.SwapUintptr(&i.v, val)
+    return atomic.SwapUintptr(&i.v, val)
 }
 
 // MarshalJSON encodes the wrapped uintptr into JSON.
 func (i *Uintptr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(i.Load())
+    return json.Marshal(i.Load())
 }
 
 // UnmarshalJSON decodes JSON into the wrapped uintptr.
 func (i *Uintptr) UnmarshalJSON(b []byte) error {
-	var v uintptr
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-	i.Store(v)
-	return nil
+    var v uintptr
+    if err := json.Unmarshal(b, &v); err != nil {
+        return err
+    }
+    i.Store(v)
+    return nil
 }
 
 // String encodes the wrapped value as a string.
 func (i *Uintptr) String() string {
-	v := i.Load()
-	return strconv.FormatUint(uint64(v), 10)
+    v := i.Load()
+    return strconv.FormatUint(uint64(v), 10)
 }

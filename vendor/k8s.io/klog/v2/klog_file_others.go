@@ -4,16 +4,16 @@
 package klog
 
 import (
-	"os/user"
+    "os/user"
 )
 
 func getUserName() string {
-	userNameOnce.Do(func() {
-		current, err := user.Current()
-		if err == nil {
-			userName = current.Username
-		}
-	})
+    userNameOnce.Do(func() {
+        current, err := user.Current()
+        if err == nil {
+            userName = current.Username
+        }
+    })
 
-	return userName
+    return userName
 }

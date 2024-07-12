@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+SUBSCRIBER(g:go-contrib)
+
 PEERDIR(contrib/libs/zstd)
 
 ADDINCL(contrib/libs/zstd/include)

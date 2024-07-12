@@ -1,9 +1,9 @@
 package shareddefaults
 
 const (
-	// ECSCredsProviderEnvVar is an environmental variable key used to
-	// determine which path needs to be hit.
-	ECSCredsProviderEnvVar = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"
+    // ECSCredsProviderEnvVar is an environmental variable key used to
+    // determine which path needs to be hit.
+    ECSCredsProviderEnvVar = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"
 )
 
 // ECSContainerCredentialsURI is the endpoint to retrieve container

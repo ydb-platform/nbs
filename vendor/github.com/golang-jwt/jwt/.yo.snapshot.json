@@ -1,0 +1,89 @@
+{
+    "Version": "v3.2.2+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:IfV12K8xAKAnZqdXVzCZ+TOjboZ2keLg81eXfW3O+oY=",
+    "Packages": {
+        "github.com/golang-jwt/jwt": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/subtle",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "math/big",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/rsa",
+                "encoding/json",
+                "fmt",
+                "github.com/golang-jwt/jwt",
+                "github.com/golang-jwt/jwt/request",
+                "github.com/golang-jwt/jwt/test",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang-jwt/jwt/cmd/jwt": {
+            "Imports": [
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/golang-jwt/jwt",
+                "io",
+                "io/ioutil",
+                "os",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang-jwt/jwt/request": {
+            "Imports": [
+                "errors",
+                "github.com/golang-jwt/jwt",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/golang-jwt/jwt",
+                "github.com/golang-jwt/jwt/test",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/golang-jwt/jwt/test": {
+            "Imports": [
+                "crypto/rsa",
+                "github.com/golang-jwt/jwt",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        }
+    }
+}

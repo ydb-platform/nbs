@@ -20,12 +20,12 @@ limitations under the License.
 package mount
 
 import (
-	"errors"
+    "errors"
 )
 
 // Mounter implements mount.Interface for unsupported platforms
 type Mounter struct {
-	mounterPath string
+    mounterPath string
 }
 
 var errUnsupported = errors.New("util/mount on this platform is not supported")
@@ -34,45 +34,45 @@ var errUnsupported = errors.New("util/mount on this platform is not supported")
 // It provides options to override the default mounter behavior.
 // mounterPath allows using an alternative to `/bin/mount` for mounting.
 func New(mounterPath string) Interface {
-	return &Mounter{
-		mounterPath: mounterPath,
-	}
+    return &Mounter{
+        mounterPath: mounterPath,
+    }
 }
 
 // Mount always returns an error on unsupported platforms
 func (mounter *Mounter) Mount(source string, target string, fstype string, options []string) error {
-	return errUnsupported
+    return errUnsupported
 }
 
 // Mount always returns an error on unsupported platforms
 func (mounter *Mounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return errUnsupported
+    return errUnsupported
 }
 
 // Unmount always returns an error on unsupported platforms
 func (mounter *Mounter) Unmount(target string) error {
-	return errUnsupported
+    return errUnsupported
 }
 
 // List always returns an error on unsupported platforms
 func (mounter *Mounter) List() ([]MountPoint, error) {
-	return []MountPoint{}, errUnsupported
+    return []MountPoint{}, errUnsupported
 }
 
 // IsLikelyNotMountPoint always returns an error on unsupported platforms
 func (mounter *Mounter) IsLikelyNotMountPoint(file string) (bool, error) {
-	return true, errUnsupported
+    return true, errUnsupported
 }
 
 // GetMountRefs always returns an error on unsupported platforms
 func (mounter *Mounter) GetMountRefs(pathname string) ([]string, error) {
-	return nil, errUnsupported
+    return nil, errUnsupported
 }
 
 func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
-	return mounter.Interface.Mount(source, target, fstype, options)
+    return mounter.Interface.Mount(source, target, fstype, options)
 }
 
 func (mounter *SafeFormatAndMount) diskLooksUnformatted(disk string) (bool, error) {
-	return true, errUnsupported
+    return true, errUnsupported
 }

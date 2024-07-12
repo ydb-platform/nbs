@@ -1,0 +1,183 @@
+{
+    "Version": "v1.42.2",
+    "GoVersion": "1.19",
+    "Sum": "h1:NnduxUd9+Fq9DcCDdJK8v6l9lR1xDX4usvog+JuQAno=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/s3": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/defaults",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/xml",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/aws/transport/http",
+                "github.com/aws/aws-sdk-go-v2/internal/auth",
+                "github.com/aws/aws-sdk-go-v2/internal/auth/smithy",
+                "github.com/aws/aws-sdk-go-v2/internal/configsources",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/awsrulesfn",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a",
+                "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+                "github.com/aws/aws-sdk-go-v2/service/internal/checksum",
+                "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+                "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+                "github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config",
+                "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations",
+                "github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/encoding/xml",
+                "github.com/aws/smithy-go/endpoints",
+                "github.com/aws/smithy-go/endpoints/private/rulesfn",
+                "github.com/aws/smithy-go/io",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/sync",
+                "github.com/aws/smithy-go/time",
+                "github.com/aws/smithy-go/transport/http",
+                "github.com/aws/smithy-go/waiter",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/endpoints",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/transport/http",
+                "github.com/google/go-cmp/cmp",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/s3/internal/arn": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/arn",
+                "github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/xml",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a",
+                "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+                "github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn",
+                "github.com/aws/aws-sdk-go-v2/service/s3/internal/arn",
+                "github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/encoding/xml",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/url",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting/unit",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a",
+                "github.com/aws/aws-sdk-go-v2/service/s3",
+                "github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/transport/http",
+                "github.com/google/go-cmp/cmp",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+                "github.com/aws/smithy-go/logging",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/s3/internal/s3testing": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/internal/sdkio",
+                "math/rand"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/service/s3/types": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/document",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/service/s3/types"
+            ]
+        }
+    }
+}

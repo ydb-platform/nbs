@@ -1,0 +1,89 @@
+{
+    "Version": "v4.1.18",
+    "GoVersion": "1.14",
+    "Sum": "h1:xaKrnTkyoqfh1YItXl56+6KJNVYWlEEPuAQW9xsplYQ=",
+    "Packages": {
+        "github.com/pierrec/lz4/v4": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/pierrec/lz4/v4/internal/lz4block",
+                "github.com/pierrec/lz4/v4/internal/lz4errors",
+                "github.com/pierrec/lz4/v4/internal/lz4stream",
+                "io",
+                "reflect",
+                "runtime",
+                "strconv"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/pierrec/lz4/v4",
+                "github.com/pierrec/lz4/v4/internal/lz4block",
+                "io",
+                "io/ioutil",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/pierrec/lz4/v4/internal/lz4block": {
+            "Imports": [
+                "encoding/binary",
+                "github.com/pierrec/lz4/v4/internal/lz4errors",
+                "math/bits",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/pierrec/lz4/v4",
+                "github.com/pierrec/lz4/v4/internal/lz4block",
+                "github.com/pierrec/lz4/v4/internal/lz4errors",
+                "io/ioutil",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/pierrec/lz4/v4/internal/lz4errors": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pierrec/lz4/v4/internal/lz4stream": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "github.com/pierrec/lz4/v4/internal/lz4block",
+                "github.com/pierrec/lz4/v4/internal/lz4errors",
+                "github.com/pierrec/lz4/v4/internal/xxh32",
+                "io",
+                "io/ioutil",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/pierrec/lz4/v4/internal/lz4block",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/pierrec/lz4/v4/internal/xxh32": {
+            "Imports": [
+                "encoding/binary"
+            ],
+            "TestImports": [
+                "encoding/binary",
+                "github.com/pierrec/lz4/v4/internal/xxh32",
+                "hash/crc32",
+                "hash/fnv",
+                "testing"
+            ]
+        }
+    }
+}

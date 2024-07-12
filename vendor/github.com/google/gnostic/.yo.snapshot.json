@@ -1,0 +1,667 @@
+{
+    "Version": "v0.7.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:d7EpuFp8vVdML+y0JJJYiKeOLjKTdH/GvVkLOBWqJpw=",
+    "Packages": {
+        "github.com/google/gnostic": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/lib",
+                "os"
+            ],
+            "TestImports": [
+                "github.com/google/gnostic/lib",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/cmd/disco": {
+            "Imports": [
+                "fmt",
+                "github.com/docopt/docopt-go",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/conversions",
+                "github.com/google/gnostic/discovery",
+                "io/ioutil",
+                "log",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/parse-linter-output": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/gnostic/metrics/lint",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/petstore-builder": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "io/ioutil",
+                "os",
+                "path"
+            ],
+            "TestImports": [
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/cmd/protoc-gen-jsonschema": {
+            "Imports": [
+                "flag",
+                "github.com/google/gnostic/cmd/protoc-gen-jsonschema/generator",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/types/pluginpb"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/flowstack/go-jsonschema",
+                "os",
+                "os/exec",
+                "path",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/cmd/protoc-gen-jsonschema/generator": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/jsonschema",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "log",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/protoc-gen-openapi": {
+            "Imports": [
+                "flag",
+                "github.com/google/gnostic/cmd/protoc-gen-openapi/generator",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/types/pluginpb",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "io",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/cmd/protoc-gen-openapi/generator": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/cmd/protoc-gen-openapi/generator/wellknown",
+                "github.com/google/gnostic/openapiv3",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/known/anypb",
+                "log",
+                "net/url",
+                "regexp",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/protoc-gen-openapi/generator/wellknown": {
+            "Imports": [
+                "github.com/google/gnostic/openapiv3",
+                "google.golang.org/protobuf/reflect/protoreflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/report": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/printer",
+                "io/ioutil",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/report-messages": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/plugins",
+                "github.com/google/gnostic/printer",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/cmd/vocabulary-operations": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/metrics",
+                "github.com/google/gnostic/metrics/vocabulary",
+                "io/ioutil",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/compiler": {
+            "Imports": [
+                "github.com/google/gnostic-models/compiler"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/conversions": {
+            "Imports": [
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "log",
+                "net/url",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/discovery": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/gnostic-models/discovery",
+                "github.com/google/gnostic/compiler",
+                "gopkg.in/yaml.v3",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/extensions": {
+            "Imports": [
+                "github.com/google/gnostic-models/extensions",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "io/ioutil",
+                "log",
+                "os"
+            ],
+            "TestImports": [
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/generate-gnostic": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/gnostic/compiler",
+                "github.com/google/gnostic/jsonschema",
+                "github.com/google/gnostic/printer",
+                "golang.org/x/tools/imports",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "sort",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/jsonschema": {
+            "Imports": [
+                "encoding/base64",
+                "fmt",
+                "gopkg.in/yaml.v3",
+                "io/ioutil",
+                "log",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/jsonwriter": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "gopkg.in/yaml.v3",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/gnostic/compiler",
+                "github.com/google/gnostic/jsonwriter",
+                "gopkg.in/yaml.v3",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/lib": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/compiler",
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/jsonwriter",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "github.com/google/gnostic/surface",
+                "gopkg.in/yaml.v3",
+                "io",
+                "log",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/linters/go/gnostic-lint-descriptions": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/linters/go/gnostic-lint-paths": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/metrics": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/metrics/lint": {
+            "Imports": [
+                "bufio",
+                "encoding/json",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/metrics/rules",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io/ioutil",
+                "log",
+                "os",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/metrics/metrics": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/metrics/rules": {
+            "Imports": [
+                "fmt",
+                "github.com/stoewer/go-strcase",
+                "regexp",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/metrics/sourceinfo": {
+            "Imports": [
+                "fmt",
+                "gopkg.in/yaml.v3",
+                "io/ioutil",
+                "strconv"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/metrics/vocabulary": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/metrics",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "google.golang.org/protobuf/proto",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/metrics",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/openapiv2": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/gnostic-models/openapiv2",
+                "github.com/google/gnostic/compiler",
+                "gopkg.in/yaml.v3",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/openapiv3": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/gnostic-models/openapiv3",
+                "github.com/google/gnostic/compiler",
+                "gopkg.in/yaml.v3",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/openapiv3/schema-generator": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/gnostic/jsonschema",
+                "io/ioutil",
+                "log",
+                "os",
+                "regexp",
+                "sort",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins": {
+            "Imports": [
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/surface",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path",
+                "reflect",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/plugins/gnostic-analyze": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "github.com/google/gnostic/plugins/gnostic-analyze/statistics",
+                "os",
+                "path",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-analyze/statistics": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-analyze/summarize": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/gnostic/plugins/gnostic-analyze/statistics",
+                "io/ioutil",
+                "os",
+                "path",
+                "path/filepath",
+                "sort"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-complexity": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/metrics",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/plugins/gnostic-linter": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/metrics/lint",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-plugin-request": {
+            "Imports": [
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "github.com/google/gnostic/surface",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-process-plugin-response": {
+            "Imports": [
+                "flag",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/plugins",
+                "io/ioutil",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-summary": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "github.com/google/gnostic/printer",
+                "log",
+                "path/filepath"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/plugins/gnostic-vocabulary": {
+            "Imports": [
+                "encoding/json",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gnostic/discovery",
+                "github.com/google/gnostic/metrics",
+                "github.com/google/gnostic/metrics/vocabulary",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/gnostic/plugins",
+                "log",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/printer": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/surface": {
+            "Imports": [
+                "github.com/google/gnostic/compiler",
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "log",
+                "net/http",
+                "net/url",
+                "path",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/gnostic/openapiv2",
+                "github.com/google/gnostic/openapiv3",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/testing/protocmp",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/gnostic/tools/format-schema": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/jsonschema",
+                "os",
+                "path"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/gnostic/tools/j2y2j": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gnostic/jsonschema",
+                "gopkg.in/yaml.v3",
+                "io/ioutil",
+                "log",
+                "os",
+                "path"
+            ],
+            "TestImports": null
+        }
+    }
+}

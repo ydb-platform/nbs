@@ -1,0 +1,14 @@
+{
+    "Version": "v0.1.2",
+    "GoVersion": "1.16",
+    "Sum": "h1:p4AKXPPS24tO8Wc8i1gLvSKdmkiSY5xuju57czJ/IJQ=",
+    "Packages": {
+        "github.com/hashicorp/go-secure-stdlib/mlock": {
+            "Imports": [
+                "golang.org/x/sys/unix",
+                "syscall"
+            ],
+            "TestImports": null
+        }
+    }
+}

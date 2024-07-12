@@ -19,8 +19,8 @@
 package main
 
 import (
-	"flag"
-	"fmt"
+    "flag"
+    "fmt"
 )
 
 var flagAddress = flag.String("address", "", "address of a remote gRPC server with profiling turned on to retrieve stats from")
@@ -36,42 +36,42 @@ var flagStreamStatsCatapultJSON = flag.String("stream-stats-catapult-json", "", 
 var flagStreamStatsFilter = flag.String("stream-stats-filter", "server,client", "comma-separated list of stat tags to filter for")
 
 func exactlyOneOf(opts ...bool) bool {
-	first := true
-	for _, o := range opts {
-		if !o {
-			continue
-		}
+    first := true
+    for _, o := range opts {
+        if !o {
+            continue
+        }
 
-		if first {
-			first = false
-		} else {
-			return false
-		}
-	}
+        if first {
+            first = false
+        } else {
+            return false
+        }
+    }
 
-	return !first
+    return !first
 }
 
 func parseArgs() error {
-	flag.Parse()
+    flag.Parse()
 
-	if *flagAddress != "" {
-		if !exactlyOneOf(*flagEnableProfiling, *flagDisableProfiling, *flagRetrieveSnapshot) {
-			return fmt.Errorf("when -address is specified, you must include exactly only one of -enable-profiling, -disable-profiling, and -retrieve-snapshot")
-		}
+    if *flagAddress != "" {
+        if !exactlyOneOf(*flagEnableProfiling, *flagDisableProfiling, *flagRetrieveSnapshot) {
+            return fmt.Errorf("when -address is specified, you must include exactly only one of -enable-profiling, -disable-profiling, and -retrieve-snapshot")
+        }
 
-		if *flagStreamStatsCatapultJSON != "" {
-			return fmt.Errorf("when -address is specified, you must not include -stream-stats-catapult-json")
-		}
-	} else {
-		if *flagEnableProfiling || *flagDisableProfiling || *flagRetrieveSnapshot {
-			return fmt.Errorf("when -address isn't specified, you must not include any of -enable-profiling, -disable-profiling, and -retrieve-snapshot")
-		}
+        if *flagStreamStatsCatapultJSON != "" {
+            return fmt.Errorf("when -address is specified, you must not include -stream-stats-catapult-json")
+        }
+    } else {
+        if *flagEnableProfiling || *flagDisableProfiling || *flagRetrieveSnapshot {
+            return fmt.Errorf("when -address isn't specified, you must not include any of -enable-profiling, -disable-profiling, and -retrieve-snapshot")
+        }
 
-		if *flagStreamStatsCatapultJSON == "" {
-			return fmt.Errorf("when -address isn't specified, you must include -stream-stats-catapult-json")
-		}
-	}
+        if *flagStreamStatsCatapultJSON == "" {
+            return fmt.Errorf("when -address isn't specified, you must include -stream-stats-catapult-json")
+        }
+    }
 
-	return nil
+    return nil
 }

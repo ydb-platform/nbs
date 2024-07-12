@@ -1,0 +1,106 @@
+{
+    "Version": "v1.3.7",
+    "GoVersion": "1.20",
+    "Sum": "h1:/FUtT3xsoHO3cfh+I/kCbcMCN98QZRsiFet/V8QkWSs=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/internal/v4a": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha256",
+                "encoding/hex",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/auth",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "hash",
+                "math/big",
+                "net/http",
+                "net/textproto",
+                "net/url",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "math/big",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto": {
+            "Imports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/hmac",
+                "encoding/asn1",
+                "encoding/binary",
+                "fmt",
+                "hash",
+                "math",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha256",
+                "io",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4": {
+            "Imports": [
+                "crypto/hmac",
+                "crypto/sha256",
+                "github.com/aws/aws-sdk-go-v2/internal/strings",
+                "net/http",
+                "net/url",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        }
+    }
+}

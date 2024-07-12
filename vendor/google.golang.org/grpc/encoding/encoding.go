@@ -26,10 +26,10 @@
 package encoding
 
 import (
-	"io"
-	"strings"
+    "io"
+    "strings"
 
-	"google.golang.org/grpc/internal/grpcutil"
+    "google.golang.org/grpc/internal/grpcutil"
 )
 
 // Identity specifies the optional encoding for uncompressed streams.
@@ -39,27 +39,27 @@ const Identity = "identity"
 // Compressor is used for compressing and decompressing when sending or
 // receiving messages.
 type Compressor interface {
-	// Compress writes the data written to wc to w after compressing it.  If an
-	// error occurs while initializing the compressor, that error is returned
-	// instead.
-	Compress(w io.Writer) (io.WriteCloser, error)
-	// Decompress reads data from r, decompresses it, and provides the
-	// uncompressed data via the returned io.Reader.  If an error occurs while
-	// initializing the decompressor, that error is returned instead.
-	Decompress(r io.Reader) (io.Reader, error)
-	// Name is the name of the compression codec and is used to set the content
-	// coding header.  The result must be static; the result cannot change
-	// between calls.
-	Name() string
-	// If a Compressor implements
-	// DecompressedSize(compressedBytes []byte) int, gRPC will call it
-	// to determine the size of the buffer allocated for the result of decompression.
-	// Return -1 to indicate unknown size.
-	//
-	// Experimental
-	//
-	// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-	// later release.
+    // Compress writes the data written to wc to w after compressing it.  If an
+    // error occurs while initializing the compressor, that error is returned
+    // instead.
+    Compress(w io.Writer) (io.WriteCloser, error)
+    // Decompress reads data from r, decompresses it, and provides the
+    // uncompressed data via the returned io.Reader.  If an error occurs while
+    // initializing the decompressor, that error is returned instead.
+    Decompress(r io.Reader) (io.Reader, error)
+    // Name is the name of the compression codec and is used to set the content
+    // coding header.  The result must be static; the result cannot change
+    // between calls.
+    Name() string
+    // If a Compressor implements
+    // DecompressedSize(compressedBytes []byte) int, gRPC will call it
+    // to determine the size of the buffer allocated for the result of decompression.
+    // Return -1 to indicate unknown size.
+    //
+    // Experimental
+    //
+    // Notice: This API is EXPERIMENTAL and may be changed or removed in a
+    // later release.
 }
 
 var registeredCompressor = make(map[string]Compressor)
@@ -74,29 +74,29 @@ var registeredCompressor = make(map[string]Compressor)
 // an init() function), and is not thread-safe.  If multiple Compressors are
 // registered with the same name, the one registered last will take effect.
 func RegisterCompressor(c Compressor) {
-	registeredCompressor[c.Name()] = c
-	if !grpcutil.IsCompressorNameRegistered(c.Name()) {
-		grpcutil.RegisteredCompressorNames = append(grpcutil.RegisteredCompressorNames, c.Name())
-	}
+    registeredCompressor[c.Name()] = c
+    if !grpcutil.IsCompressorNameRegistered(c.Name()) {
+        grpcutil.RegisteredCompressorNames = append(grpcutil.RegisteredCompressorNames, c.Name())
+    }
 }
 
 // GetCompressor returns Compressor for the given compressor name.
 func GetCompressor(name string) Compressor {
-	return registeredCompressor[name]
+    return registeredCompressor[name]
 }
 
 // Codec defines the interface gRPC uses to encode and decode messages.  Note
 // that implementations of this interface must be thread safe; a Codec's
 // methods can be called from concurrent goroutines.
 type Codec interface {
-	// Marshal returns the wire format of v.
-	Marshal(v interface{}) ([]byte, error)
-	// Unmarshal parses the wire format into v.
-	Unmarshal(data []byte, v interface{}) error
-	// Name returns the name of the Codec implementation. The returned string
-	// will be used as part of content type in transmission.  The result must be
-	// static; the result cannot change between calls.
-	Name() string
+    // Marshal returns the wire format of v.
+    Marshal(v interface{}) ([]byte, error)
+    // Unmarshal parses the wire format into v.
+    Unmarshal(data []byte, v interface{}) error
+    // Name returns the name of the Codec implementation. The returned string
+    // will be used as part of content type in transmission.  The result must be
+    // static; the result cannot change between calls.
+    Name() string
 }
 
 var registeredCodecs = make(map[string]Codec)
@@ -116,14 +116,14 @@ var registeredCodecs = make(map[string]Codec)
 // an init() function), and is not thread-safe.  If multiple Codecs are
 // registered with the same name, the one registered last will take effect.
 func RegisterCodec(codec Codec) {
-	if codec == nil {
-		panic("cannot register a nil Codec")
-	}
-	if codec.Name() == "" {
-		panic("cannot register Codec with empty string result for Name()")
-	}
-	contentSubtype := strings.ToLower(codec.Name())
-	registeredCodecs[contentSubtype] = codec
+    if codec == nil {
+        panic("cannot register a nil Codec")
+    }
+    if codec.Name() == "" {
+        panic("cannot register Codec with empty string result for Name()")
+    }
+    contentSubtype := strings.ToLower(codec.Name())
+    registeredCodecs[contentSubtype] = codec
 }
 
 // GetCodec gets a registered Codec by content-subtype, or nil if no Codec is
@@ -131,5 +131,5 @@ func RegisterCodec(codec Codec) {
 //
 // The content-subtype is expected to be lowercase.
 func GetCodec(contentSubtype string) Codec {
-	return registeredCodecs[contentSubtype]
+    return registeredCodecs[contentSubtype]
 }

@@ -1,0 +1,47 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:izKozTZ4vOnYdMGhu0ROV69hXCptH6DI8JVkN/ZOEJQ=",
+    "Packages": {
+        "go.opentelemetry.io/collector/extension": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/confmap"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/extension/experimental/storage": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/extension"
+            ],
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/extension/extensiontest": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/extension"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "testing"
+            ]
+        }
+    }
+}

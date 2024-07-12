@@ -1,0 +1,37 @@
+{
+    "Version": "v1.5.2",
+    "GoVersion": "1.14",
+    "Sum": "h1:vUG4lAyuPCXO0TLbXvPv7EB7cNK1QV/luu55UHLrrn8=",
+    "Packages": {
+        "github.com/DataDog/zstd": {
+            "Imports": [
+                "C",
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "runtime",
+                "sync",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "os",
+                "regexp",
+                "runtime/debug",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

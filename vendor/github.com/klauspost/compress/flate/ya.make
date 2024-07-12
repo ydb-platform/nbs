@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(
     Apache-2.0 AND
     BSD-3-Clause AND
@@ -39,13 +41,22 @@ GO_TEST_SRCS(
 )
 
 IF (ARCH_X86_64)
-    SRCS(regmask_amd64.go)
+    SRCS(
+        matchlen_amd64.go
+        matchlen_amd64.s
+        regmask_amd64.go
+    )
 ENDIF()
 
 IF (ARCH_ARM64)
-    SRCS(regmask_other.go)
+    SRCS(
+        matchlen_generic.go
+        regmask_other.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

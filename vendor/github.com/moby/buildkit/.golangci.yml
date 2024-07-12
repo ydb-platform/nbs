@@ -1,0 +1,81 @@
+run:
+  timeout: 10m
+  skip-files:
+    - ".*\\.pb\\.go$"
+
+  modules-download-mode: vendor
+
+  build-tags:
+    - dfrunsecurity
+
+linters:
+  enable:
+    - depguard
+    - gofmt
+    - goimports
+    - gosimple
+    - revive
+    - govet
+    - importas
+    - ineffassign
+    - misspell
+    - staticcheck
+    - typecheck
+    - unused
+    - bodyclose
+    - errname
+    - makezero
+    - whitespace
+    - nolintlint
+    - gosec
+    - forbidigo
+  disable-all: true
+
+linters-settings:
+  depguard:
+    list-type: blacklist
+    include-go-root: true
+    packages:
+      # The io/ioutil package has been deprecated.
+      # https://go.dev/doc/go1.16#ioutil
+      - io/ioutil
+  forbidigo:
+    forbid:
+      - '^fmt\.Errorf(# use errors\.Errorf instead)?$'
+      - 'logrus\.(Trace|Debug|Info|Warn|Warning|Error|Fatal)(f|ln)?\((# use bklog\.G\(ctx\) instead of logrus directly)?'
+  importas:
+    alias:
+      - pkg: "github.com/opencontainers/image-spec/specs-go/v1"
+        alias: "ocispecs"
+      - pkg: "github.com/opencontainers/go-digest"
+        alias: "digest"
+    no-unaliased: true
+  gosec:
+    excludes:
+      - G101  # Potential hardcoded credentials (false positives)
+      - G402  # TLS MinVersion too low
+      - G601  # Implicit memory aliasing in for loop (false positives)
+      - G504  # Import blocklist: net/http/cgi
+    config:
+      G306: "0644"
+
+issues:
+  exclude-rules:
+    - linters:
+        - revive
+      text: "stutters"
+    - linters:
+        - revive
+      text: "empty-block"
+    - linters:
+        - revive
+      text: "superfluous-else"
+    - linters:
+        - revive
+      text: "unused-parameter"
+    - linters:
+        - revive
+      text: "redefines-builtin-id"
+    - linters:
+        - revive
+      text: "if-return"

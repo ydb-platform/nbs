@@ -1,0 +1,28 @@
+{
+    "Version": "v2.6.5",
+    "GoVersion": "1.20",
+    "Sum": "h1:PG1F3OD1szkuQPzDw3CIQsRIrtTlUC3lP84taWzHlq0=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/smithy-go/logging",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+                "github.com/aws/smithy-go/logging",
+                "log",
+                "reflect",
+                "regexp",
+                "strconv",
+                "testing"
+            ]
+        }
+    }
+}

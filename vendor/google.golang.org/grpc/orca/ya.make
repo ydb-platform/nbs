@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -11,7 +13,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
-    #server_metrics_test.go
+    # server_metrics_test.go
 )
 
 GO_XTEST_SRCS(

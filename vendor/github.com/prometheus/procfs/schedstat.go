@@ -14,16 +14,16 @@
 package procfs
 
 import (
-	"bufio"
-	"errors"
-	"os"
-	"regexp"
-	"strconv"
+    "bufio"
+    "errors"
+    "os"
+    "regexp"
+    "strconv"
 )
 
 var (
-	cpuLineRE  = regexp.MustCompile(`cpu(\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)`)
-	procLineRE = regexp.MustCompile(`(\d+) (\d+) (\d+)`)
+    cpuLineRE  = regexp.MustCompile(`cpu(\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)`)
+    procLineRE = regexp.MustCompile(`(\d+) (\d+) (\d+)`)
 )
 
 // Schedstat contains scheduler statistics from /proc/schedstat
@@ -37,85 +37,85 @@ var (
 // introduction of CFS. A fix to the documentation is pending. See
 // https://lore.kernel.org/patchwork/project/lkml/list/?series=403473
 type Schedstat struct {
-	CPUs []*SchedstatCPU
+    CPUs []*SchedstatCPU
 }
 
 // SchedstatCPU contains the values from one "cpu<N>" line.
 type SchedstatCPU struct {
-	CPUNum string
+    CPUNum string
 
-	RunningNanoseconds uint64
-	WaitingNanoseconds uint64
-	RunTimeslices      uint64
+    RunningNanoseconds uint64
+    WaitingNanoseconds uint64
+    RunTimeslices      uint64
 }
 
 // ProcSchedstat contains the values from `/proc/<pid>/schedstat`.
 type ProcSchedstat struct {
-	RunningNanoseconds uint64
-	WaitingNanoseconds uint64
-	RunTimeslices      uint64
+    RunningNanoseconds uint64
+    WaitingNanoseconds uint64
+    RunTimeslices      uint64
 }
 
 // Schedstat reads data from `/proc/schedstat`.
 func (fs FS) Schedstat() (*Schedstat, error) {
-	file, err := os.Open(fs.proc.Path("schedstat"))
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+    file, err := os.Open(fs.proc.Path("schedstat"))
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
 
-	stats := &Schedstat{}
-	scanner := bufio.NewScanner(file)
+    stats := &Schedstat{}
+    scanner := bufio.NewScanner(file)
 
-	for scanner.Scan() {
-		match := cpuLineRE.FindStringSubmatch(scanner.Text())
-		if match != nil {
-			cpu := &SchedstatCPU{}
-			cpu.CPUNum = match[1]
+    for scanner.Scan() {
+        match := cpuLineRE.FindStringSubmatch(scanner.Text())
+        if match != nil {
+            cpu := &SchedstatCPU{}
+            cpu.CPUNum = match[1]
 
-			cpu.RunningNanoseconds, err = strconv.ParseUint(match[8], 10, 64)
-			if err != nil {
-				continue
-			}
+            cpu.RunningNanoseconds, err = strconv.ParseUint(match[8], 10, 64)
+            if err != nil {
+                continue
+            }
 
-			cpu.WaitingNanoseconds, err = strconv.ParseUint(match[9], 10, 64)
-			if err != nil {
-				continue
-			}
+            cpu.WaitingNanoseconds, err = strconv.ParseUint(match[9], 10, 64)
+            if err != nil {
+                continue
+            }
 
-			cpu.RunTimeslices, err = strconv.ParseUint(match[10], 10, 64)
-			if err != nil {
-				continue
-			}
+            cpu.RunTimeslices, err = strconv.ParseUint(match[10], 10, 64)
+            if err != nil {
+                continue
+            }
 
-			stats.CPUs = append(stats.CPUs, cpu)
-		}
-	}
+            stats.CPUs = append(stats.CPUs, cpu)
+        }
+    }
 
-	return stats, nil
+    return stats, nil
 }
 
 func parseProcSchedstat(contents string) (ProcSchedstat, error) {
-	var (
-		stats ProcSchedstat
-		err   error
-	)
-	match := procLineRE.FindStringSubmatch(contents)
+    var (
+        stats ProcSchedstat
+        err   error
+    )
+    match := procLineRE.FindStringSubmatch(contents)
 
-	if match != nil {
-		stats.RunningNanoseconds, err = strconv.ParseUint(match[1], 10, 64)
-		if err != nil {
-			return stats, err
-		}
+    if match != nil {
+        stats.RunningNanoseconds, err = strconv.ParseUint(match[1], 10, 64)
+        if err != nil {
+            return stats, err
+        }
 
-		stats.WaitingNanoseconds, err = strconv.ParseUint(match[2], 10, 64)
-		if err != nil {
-			return stats, err
-		}
+        stats.WaitingNanoseconds, err = strconv.ParseUint(match[2], 10, 64)
+        if err != nil {
+            return stats, err
+        }
 
-		stats.RunTimeslices, err = strconv.ParseUint(match[3], 10, 64)
-		return stats, err
-	}
+        stats.RunTimeslices, err = strconv.ParseUint(match[3], 10, 64)
+        return stats, err
+    }
 
-	return stats, errors.New("could not parse schedstat")
+    return stats, errors.New("could not parse schedstat")
 }

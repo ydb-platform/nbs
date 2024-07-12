@@ -6,5 +6,5 @@ type TopicReaderMessageBuilder = topicreaderinternal.PublicMessageBuilder
 
 // NewTopicReaderMessageBuilder create builder, which can create Message (use for tests only)
 func NewTopicReaderMessageBuilder() *TopicReaderMessageBuilder {
-	return topicreaderinternal.NewPublicMessageBuilder()
+    return topicreaderinternal.NewPublicMessageBuilder()
 }

@@ -1,0 +1,24 @@
+{
+    "Version": "v1.0.1-0.20181226105442-5d4384ee4fb2",
+    "GoVersion": "",
+    "Sum": "h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=",
+    "Packages": {
+        "github.com/pmezard/go-difflib/difflib": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "io",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "math",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

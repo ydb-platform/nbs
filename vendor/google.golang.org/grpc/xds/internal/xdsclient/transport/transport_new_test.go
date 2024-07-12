@@ -18,89 +18,89 @@
 package transport_test
 
 import (
-	"strings"
-	"testing"
+    "strings"
+    "testing"
 
-	"google.golang.org/grpc/xds/internal/testutils"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/transport"
+    "google.golang.org/grpc/xds/internal/testutils"
+    "google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+    "google.golang.org/grpc/xds/internal/xdsclient/transport"
 
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 )
 
 // TestNew covers that New() returns an error if the input *ServerConfig
 // contains invalid content.
 func (s) TestNew(t *testing.T) {
-	tests := []struct {
-		name       string
-		opts       transport.Options
-		wantErrStr string
-	}{
-		{
-			name:       "missing server URI",
-			opts:       transport.Options{ServerCfg: bootstrap.ServerConfig{}},
-			wantErrStr: "missing server URI when creating a new transport",
-		},
-		{
-			name:       "missing credentials",
-			opts:       transport.Options{ServerCfg: bootstrap.ServerConfig{ServerURI: "server-address"}},
-			wantErrStr: "missing credentials when creating a new transport",
-		},
-		{
-			name: "missing onRecv handler",
-			opts: transport.Options{
-				ServerCfg: *testutils.ServerConfigForAddress(t, "server-address"),
-				NodeProto: &v3corepb.Node{},
-			},
-			wantErrStr: "missing OnRecv callback handler when creating a new transport",
-		},
-		{
-			name: "missing onError handler",
-			opts: transport.Options{
-				ServerCfg:     *testutils.ServerConfigForAddress(t, "server-address"),
-				NodeProto:     &v3corepb.Node{},
-				OnRecvHandler: func(transport.ResourceUpdate) error { return nil },
-				OnSendHandler: func(*transport.ResourceSendInfo) {},
-			},
-			wantErrStr: "missing OnError callback handler when creating a new transport",
-		},
+    tests := []struct {
+        name       string
+        opts       transport.Options
+        wantErrStr string
+    }{
+        {
+            name:       "missing server URI",
+            opts:       transport.Options{ServerCfg: bootstrap.ServerConfig{}},
+            wantErrStr: "missing server URI when creating a new transport",
+        },
+        {
+            name:       "missing credentials",
+            opts:       transport.Options{ServerCfg: bootstrap.ServerConfig{ServerURI: "server-address"}},
+            wantErrStr: "missing credentials when creating a new transport",
+        },
+        {
+            name: "missing onRecv handler",
+            opts: transport.Options{
+                ServerCfg: *testutils.ServerConfigForAddress(t, "server-address"),
+                NodeProto: &v3corepb.Node{},
+            },
+            wantErrStr: "missing OnRecv callback handler when creating a new transport",
+        },
+        {
+            name: "missing onError handler",
+            opts: transport.Options{
+                ServerCfg:     *testutils.ServerConfigForAddress(t, "server-address"),
+                NodeProto:     &v3corepb.Node{},
+                OnRecvHandler: func(transport.ResourceUpdate) error { return nil },
+                OnSendHandler: func(*transport.ResourceSendInfo) {},
+            },
+            wantErrStr: "missing OnError callback handler when creating a new transport",
+        },
 
-		{
-			name: "missing onSend handler",
-			opts: transport.Options{
-				ServerCfg:      *testutils.ServerConfigForAddress(t, "server-address"),
-				NodeProto:      &v3corepb.Node{},
-				OnRecvHandler:  func(transport.ResourceUpdate) error { return nil },
-				OnErrorHandler: func(error) {},
-			},
-			wantErrStr: "missing OnSend callback handler when creating a new transport",
-		},
-		{
-			name: "happy case",
-			opts: transport.Options{
-				ServerCfg:      *testutils.ServerConfigForAddress(t, "server-address"),
-				NodeProto:      &v3corepb.Node{},
-				OnRecvHandler:  func(transport.ResourceUpdate) error { return nil },
-				OnErrorHandler: func(error) {},
-				OnSendHandler:  func(*transport.ResourceSendInfo) {},
-			},
-		},
-	}
+        {
+            name: "missing onSend handler",
+            opts: transport.Options{
+                ServerCfg:      *testutils.ServerConfigForAddress(t, "server-address"),
+                NodeProto:      &v3corepb.Node{},
+                OnRecvHandler:  func(transport.ResourceUpdate) error { return nil },
+                OnErrorHandler: func(error) {},
+            },
+            wantErrStr: "missing OnSend callback handler when creating a new transport",
+        },
+        {
+            name: "happy case",
+            opts: transport.Options{
+                ServerCfg:      *testutils.ServerConfigForAddress(t, "server-address"),
+                NodeProto:      &v3corepb.Node{},
+                OnRecvHandler:  func(transport.ResourceUpdate) error { return nil },
+                OnErrorHandler: func(error) {},
+                OnSendHandler:  func(*transport.ResourceSendInfo) {},
+            },
+        },
+    }
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			c, err := transport.New(test.opts)
-			defer func() {
-				if c != nil {
-					c.Close()
-				}
-			}()
-			if (err != nil) != (test.wantErrStr != "") {
-				t.Fatalf("New(%+v) = %v, wantErr: %v", test.opts, err, test.wantErrStr)
-			}
-			if err != nil && !strings.Contains(err.Error(), test.wantErrStr) {
-				t.Fatalf("New(%+v) = %v, wantErr: %v", test.opts, err, test.wantErrStr)
-			}
-		})
-	}
+    for _, test := range tests {
+        t.Run(test.name, func(t *testing.T) {
+            c, err := transport.New(test.opts)
+            defer func() {
+                if c != nil {
+                    c.Close()
+                }
+            }()
+            if (err != nil) != (test.wantErrStr != "") {
+                t.Fatalf("New(%+v) = %v, wantErr: %v", test.opts, err, test.wantErrStr)
+            }
+            if err != nil && !strings.Contains(err.Error(), test.wantErrStr) {
+                t.Fatalf("New(%+v) = %v, wantErr: %v", test.opts, err, test.wantErrStr)
+            }
+        })
+    }
 }

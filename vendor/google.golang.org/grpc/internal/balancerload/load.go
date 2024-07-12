@@ -19,13 +19,13 @@
 package balancerload
 
 import (
-	"google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/metadata"
 )
 
 // Parser converts loads from metadata into a concrete type.
 type Parser interface {
-	// Parse parses loads from metadata.
-	Parse(md metadata.MD) interface{}
+    // Parse parses loads from metadata.
+    Parse(md metadata.MD) interface{}
 }
 
 var parser Parser
@@ -34,13 +34,13 @@ var parser Parser
 //
 // Not mutex-protected, should be called before any gRPC functions.
 func SetParser(lr Parser) {
-	parser = lr
+    parser = lr
 }
 
 // Parse calls parser.Read().
 func Parse(md metadata.MD) interface{} {
-	if parser == nil {
-		return nil
-	}
-	return parser.Parse(md)
+    if parser == nil {
+        return nil
+    }
+    return parser.Parse(md)
 }

@@ -1,0 +1,1056 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:6Z+In5DXHiUfZvIZdMx7e2loL1PPyDjA4bVh9ZTIAhs=",
+    "Packages": {
+        "github.com/hashicorp/vault/sdk/database/dbplugin": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/golang/protobuf/ptypes",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/pluginutil",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "net/url",
+                "reflect",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/database/dbplugin/v5": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/golang/protobuf/ptypes",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/vault/sdk/database/dbplugin/v5/proto",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/pluginutil",
+                "github.com/hashicorp/vault/sdk/logical",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/types/known/structpb",
+                "math",
+                "net/url",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/ptypes",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/database/dbplugin/v5/proto",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/pluginutil",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/stretchr/testify/mock",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "net/url",
+                "reflect",
+                "strings",
+                "testing",
+                "time",
+                "unicode"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/database/dbplugin/v5/proto": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/database/dbplugin/v5/testing": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/vault/sdk/database/dbplugin/v5",
+                "os",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/database/helper/connutil": {
+            "Imports": [
+                "context",
+                "database/sql",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-secure-stdlib/parseutil",
+                "github.com/hashicorp/vault/sdk/database/dbplugin",
+                "github.com/hashicorp/vault/sdk/database/helper/dbutil",
+                "github.com/mitchellh/mapstructure",
+                "net/url",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/database/helper/credsutil": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/base62",
+                "github.com/hashicorp/vault/sdk/database/dbplugin",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/database/helper/dbutil": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/vault/sdk/database/dbplugin",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "net",
+                "net/url",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/vault/sdk/database/dbplugin",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/framework": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/evanphx/json-patch/v5",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-kms-wrapping/entropy/v2",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-secure-stdlib/parseutil",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/identitytpl",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/helper/license",
+                "github.com/hashicorp/vault/sdk/helper/logging",
+                "github.com/hashicorp/vault/sdk/helper/salt",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/version",
+                "github.com/mitchellh/mapstructure",
+                "github.com/ryanuber/go-glob",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "text/template",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "github.com/go-test/deep",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/helper/salt",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/version",
+                "github.com/stretchr/testify/require",
+                "io/ioutil",
+                "net/http",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strings",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/authmetadata": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/vault/sdk/framework",
+                "github.com/hashicorp/vault/sdk/logical",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/framework",
+                "github.com/hashicorp/vault/sdk/logical",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/base62": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/base62",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/certutil": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/dsa",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/asn1",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/mitchellh/mapstructure",
+                "golang.org/x/crypto/cryptobyte",
+                "golang.org/x/crypto/cryptobyte/asn1",
+                "io",
+                "io/ioutil",
+                "math/big",
+                "net",
+                "net/url",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/json",
+                "encoding/pem",
+                "fmt",
+                "github.com/fatih/structs",
+                "math/big",
+                "math/rand",
+                "reflect",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/cidrutil": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/go-sockaddr",
+                "net",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/go-sockaddr",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/compressutil": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "compress/lzw",
+                "fmt",
+                "github.com/golang/snappy",
+                "github.com/hashicorp/errwrap",
+                "github.com/pierrec/lz4",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/consts": {
+            "Imports": [
+                "errors",
+                "fmt"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/cryptoutil": {
+            "Imports": [
+                "golang.org/x/crypto/blake2b"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/custommetadata": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/mitchellh/mapstructure"
+            ],
+            "TestImports": [
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/dbtxn": {
+            "Imports": [
+                "context",
+                "database/sql",
+                "fmt",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/errutil": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/hclutil": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/hcl/hcl/ast"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/identitytpl": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/vault/sdk/logical",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/vault/sdk/logical",
+                "math",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/jsonutil": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/vault/sdk/helper/compressutil",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/hashicorp/vault/sdk/helper/compressutil",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/kdf": {
+            "Imports": [
+                "crypto/hmac",
+                "crypto/sha256",
+                "encoding/binary",
+                "fmt",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/keysutil": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/asn1",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/golang-lru",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/helper/kdf",
+                "github.com/hashicorp/vault/sdk/helper/locksutil",
+                "github.com/hashicorp/vault/sdk/logical",
+                "golang.org/x/crypto/chacha20poly1305",
+                "golang.org/x/crypto/ed25519",
+                "golang.org/x/crypto/hkdf",
+                "golang.org/x/crypto/sha3",
+                "hash",
+                "io",
+                "math/big",
+                "path",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/mitchellh/copystructure",
+                "golang.org/x/crypto/ed25519",
+                "math/rand",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/ldaputil": {
+            "Imports": [
+                "bytes",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/binary",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/go-ldap/ldap/v3",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-secure-stdlib/tlsutil",
+                "github.com/hashicorp/vault/sdk/framework",
+                "math",
+                "net",
+                "net/url",
+                "strings",
+                "text/template",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/go-test/deep",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/framework",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/license": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/locksutil": {
+            "Imports": [
+                "github.com/hashicorp/vault/sdk/helper/cryptoutil",
+                "sync"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/logging": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "io",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "os",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/mlock": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/mlock"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/parseutil": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/parseutil",
+                "github.com/hashicorp/go-sockaddr",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/password": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/password",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/pathmanager": {
+            "Imports": [
+                "github.com/hashicorp/go-immutable-radix",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/pluginutil": {
+            "Imports": [
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/go-secure-stdlib/mlock",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/vault/sdk/helper/certutil",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/version",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "os",
+                "os/exec",
+                "reflect",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/version",
+                "github.com/stretchr/testify/mock",
+                "github.com/stretchr/testify/require",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "os",
+                "os/exec",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/pointerutil": {
+            "Imports": [
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/policyutil": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/roottoken": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/base64",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/base62",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/vault/sdk/helper/xor",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/salt": {
+            "Imports": [
+                "context",
+                "crypto/hmac",
+                "crypto/sha1",
+                "crypto/sha256",
+                "encoding/hex",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/vault/sdk/logical",
+                "hash"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/sha1",
+                "crypto/sha256",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/vault/sdk/logical",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/strutil": {
+            "Imports": [
+                "github.com/hashicorp/go-secure-stdlib/strutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/template": {
+            "Imports": [
+                "crypto/sha256",
+                "encoding/base64",
+                "fmt",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-secure-stdlib/base62",
+                "github.com/hashicorp/go-uuid",
+                "strconv",
+                "strings",
+                "text/template",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/stretchr/testify/require",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/tlsutil": {
+            "Imports": [
+                "crypto/tls",
+                "github.com/hashicorp/go-secure-stdlib/tlsutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/tokenutil": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-secure-stdlib/parseutil",
+                "github.com/hashicorp/go-secure-stdlib/strutil",
+                "github.com/hashicorp/go-sockaddr",
+                "github.com/hashicorp/vault/sdk/framework",
+                "github.com/hashicorp/vault/sdk/helper/policyutil",
+                "github.com/hashicorp/vault/sdk/logical",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/useragent": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/version",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/vault/sdk/logical",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/helper/wrapping": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/helper/xor": {
+            "Imports": [
+                "encoding/base64",
+                "fmt"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/logical": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/cipher",
+                "crypto/sha256",
+                "crypto/tls",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-sockaddr",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/helper/license",
+                "github.com/hashicorp/vault/sdk/helper/logging",
+                "github.com/hashicorp/vault/sdk/helper/pluginutil",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/physical",
+                "github.com/hashicorp/vault/sdk/physical/inmem",
+                "github.com/mitchellh/copystructure",
+                "github.com/mitchellh/go-testing-interface",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io",
+                "net/http",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/sha256",
+                "encoding/base64",
+                "encoding/json",
+                "github.com/go-test/deep",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/physical": {
+            "Imports": [
+                "context",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/golang-lru",
+                "github.com/hashicorp/vault/sdk/helper/locksutil",
+                "github.com/hashicorp/vault/sdk/helper/pathmanager",
+                "go.uber.org/atomic",
+                "math/rand",
+                "reflect",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/vault/sdk/physical/file": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/jsonutil",
+                "github.com/hashicorp/vault/sdk/physical",
+                "io",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/helper/logging",
+                "github.com/hashicorp/vault/sdk/physical",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/physical/inmem": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/armon/go-radix",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/physical",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/armon/go-radix",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/vault/sdk/helper/logging",
+                "github.com/hashicorp/vault/sdk/physical",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/plugin": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/license",
+                "github.com/hashicorp/vault/sdk/helper/pluginutil",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/plugin/pb",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "math",
+                "os",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/vault/sdk/helper/consts",
+                "github.com/hashicorp/vault/sdk/helper/logging",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/plugin/mock",
+                "github.com/hashicorp/vault/sdk/plugin/pb",
+                "google.golang.org/grpc",
+                "google.golang.org/protobuf/proto",
+                "io/ioutil",
+                "net/rpc",
+                "os",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/plugin/mock": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/hashicorp/errwrap",
+                "github.com/hashicorp/vault/sdk/framework",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/logical",
+                "github.com/hashicorp/vault/sdk/plugin/pb",
+                "net/rpc"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/vault/sdk/logical",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/plugin/pb": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/json",
+                "errors",
+                "github.com/golang/protobuf/ptypes",
+                "github.com/hashicorp/go-secure-stdlib/parseutil",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/pem",
+                "errors",
+                "github.com/hashicorp/vault/sdk/helper/errutil",
+                "github.com/hashicorp/vault/sdk/helper/wrapping",
+                "github.com/hashicorp/vault/sdk/logical",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/queue": {
+            "Imports": [
+                "container/heap",
+                "errors",
+                "github.com/mitchellh/copystructure",
+                "sync"
+            ],
+            "TestImports": [
+                "container/heap",
+                "fmt",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/vault/sdk/version": {
+            "Imports": [
+                "bytes",
+                "fmt"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -3,15 +3,15 @@
 package brokenfs
 
 import (
-	"os"
+    "os"
 )
 
 var (
-	Root = os.Getenv("HOMEDRIVE")
+    Root = os.Getenv("HOMEDRIVE")
 )
 
 func init() {
-	if Root == "" {
-		Root = "C:"
-	}
+    if Root == "" {
+        Root = "C:"
+    }
 }

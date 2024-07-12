@@ -1,0 +1,307 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "",
+    "Sum": "h1:VcDpS9y+PmT9itf+mH5Qdh9GME7ungLMt9yjf9o4REY=",
+    "Packages": {
+        "github.com/moby/vpnkit/go/cmd/dial-example": {
+            "Imports": [
+                "flag",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "io",
+                "log",
+                "net/http",
+                "os",
+                "runtime"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/cmd/kube-vpnkit-forwarder": {
+            "Imports": [
+                "flag",
+                "github.com/moby/vpnkit/go/pkg/controller",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "k8s.io/client-go/informers",
+                "k8s.io/client-go/kubernetes",
+                "k8s.io/client-go/rest",
+                "log",
+                "os",
+                "os/signal",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/cmd/vpnkit-expose-port": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/libproxy",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/spf13/viper",
+                "golang.org/x/crypto/ssh/terminal",
+                "log",
+                "net",
+                "os",
+                "os/signal",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/cmd/vpnkit-forwarder": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/control",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/http",
+                "log",
+                "os",
+                "os/signal",
+                "path/filepath",
+                "runtime/pprof",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/cmd/vpnkit-iptables-wrapper": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "fmt",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "strconv",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/cmd/vpnkit-list-ports": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/pkg/controller": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/pkg/errors",
+                "github.com/sirupsen/logrus",
+                "k8s.io/api/core/v1",
+                "k8s.io/client-go/kubernetes/typed/core/v1",
+                "net"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "k8s.io/api/core/v1",
+                "k8s.io/apimachinery/pkg/apis/meta/v1",
+                "k8s.io/apimachinery/pkg/runtime/schema",
+                "k8s.io/apimachinery/pkg/util/intstr",
+                "k8s.io/client-go/kubernetes/fake",
+                "k8s.io/client-go/testing",
+                "net",
+                "testing"
+            ]
+        },
+        "github.com/moby/vpnkit/go/pkg/libproxy": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "container/ring",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/sirupsen/logrus",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/sha1",
+                "encoding/binary",
+                "fmt",
+                "golang.org/x/sync/errgroup",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/vpnkit/go/pkg/vmnet": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/uuid",
+                "io",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/linuxkit/virtsock/pkg/hvsock",
+                "github.com/linuxkit/virtsock/pkg/vsock",
+                "github.com/moby/vpnkit/go/pkg/libproxy",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/transport",
+                "github.com/pkg/errors",
+                "io",
+                "net",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "net",
+                "testing"
+            ]
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit/control": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/libproxy",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/forward",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/log",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/transport",
+                "github.com/pkg/errors",
+                "io",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit/forward": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/Microsoft/go-winio",
+                "github.com/moby/vpnkit/go/pkg/libproxy",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/log",
+                "github.com/pkg/errors",
+                "io",
+                "net",
+                "os",
+                "path/filepath",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/moby/vpnkit/go/pkg/libproxy",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/pkg/errors",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "strings",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit/http": {
+            "Imports": [
+                "context",
+                "github.com/labstack/echo",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/moby/vpnkit/go/pkg/vpnkit/transport",
+                "io"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/moby/vpnkit/go/pkg/vpnkit",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "os",
+                "path/filepath",
+                "runtime",
+                "testing"
+            ]
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit/log": {
+            "Imports": [
+                "github.com/sirupsen/logrus"
+            ],
+            "TestImports": null
+        },
+        "github.com/moby/vpnkit/go/pkg/vpnkit/transport": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/Microsoft/go-winio",
+                "github.com/linuxkit/virtsock/pkg/hvsock",
+                "github.com/linuxkit/virtsock/pkg/vsock",
+                "github.com/pkg/errors",
+                "net",
+                "os",
+                "os/user",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/linuxkit/virtsock/pkg/hvsock",
+                "github.com/linuxkit/virtsock/pkg/vsock",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io/ioutil",
+                "net",
+                "os",
+                "path",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,171 @@
+{
+    "Version": "v0.0.0-20240311173647-c811ad7063a7",
+    "GoVersion": "1.19",
+    "Sum": "h1:oqta3O3AnlWbmIE3bFnWbu4bRxZjfbWCp0cKSuZh01E=",
+    "Packages": {
+        "google.golang.org/genproto/googleapis/api": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/annotations": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/configchange": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/distribution": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/error_reason": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/expr/conformance/v1alpha1": {
+            "Imports": [
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/expr/v1alpha1": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/expr/v1beta1": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/httpbody": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/label": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/metric": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api",
+                "google.golang.org/genproto/googleapis/api/label",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/monitoredres": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api",
+                "google.golang.org/genproto/googleapis/api/label",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/structpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/serviceconfig": {
+            "Imports": [
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/api/label",
+                "google.golang.org/genproto/googleapis/api/metric",
+                "google.golang.org/genproto/googleapis/api/monitoredres",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/apipb",
+                "google.golang.org/protobuf/types/known/typepb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/api/visibility": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

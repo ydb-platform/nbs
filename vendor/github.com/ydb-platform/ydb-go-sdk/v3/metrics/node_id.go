@@ -1,9 +1,9 @@
 package metrics
 
 import (
-	"strconv"
+    "strconv"
 )
 
 func idToString(id uint32) string {
-	return strconv.FormatUint(uint64(id), 10)
+    return strconv.FormatUint(uint64(id), 10)
 }

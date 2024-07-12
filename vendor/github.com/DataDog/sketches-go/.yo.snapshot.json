@@ -1,0 +1,119 @@
+{
+    "Version": "v1.4.1",
+    "GoVersion": "1.15",
+    "Sum": "h1:j5G6as+9FASM2qC36lvpvQAj9qsv/jUs3FtO8CwZNAY=",
+    "Packages": {
+        "github.com/DataDog/sketches-go/dataset": {
+            "Imports": [
+                "github.com/DataDog/sketches-go/ddsketch/stat",
+                "math",
+                "math/rand",
+                "sort"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/sketches-go/ddsketch": {
+            "Imports": [
+                "errors",
+                "github.com/DataDog/sketches-go/ddsketch/encoding",
+                "github.com/DataDog/sketches-go/ddsketch/mapping",
+                "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb",
+                "github.com/DataDog/sketches-go/ddsketch/stat",
+                "github.com/DataDog/sketches-go/ddsketch/store",
+                "io",
+                "math"
+            ],
+            "TestImports": [
+                "github.com/DataDog/sketches-go/dataset",
+                "github.com/DataDog/sketches-go/ddsketch/mapping",
+                "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb",
+                "github.com/DataDog/sketches-go/ddsketch/stat",
+                "github.com/DataDog/sketches-go/ddsketch/store",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/gofuzz",
+                "github.com/stretchr/testify/assert",
+                "math",
+                "math/rand",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/sketches-go/ddsketch/encoding": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "io",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/sketches-go/ddsketch/mapping": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/DataDog/sketches-go/ddsketch/encoding",
+                "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb",
+                "math"
+            ],
+            "TestImports": [
+                "github.com/DataDog/sketches-go/ddsketch/encoding",
+                "github.com/stretchr/testify/assert",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/sketches-go/ddsketch/stat": {
+            "Imports": [
+                "fmt",
+                "math"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/DataDog/sketches-go/ddsketch/store": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/DataDog/sketches-go/ddsketch/encoding",
+                "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb",
+                "math",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/DataDog/sketches-go/ddsketch/encoding",
+                "github.com/google/gofuzz",
+                "github.com/stretchr/testify/assert",
+                "math",
+                "math/rand",
+                "reflect",
+                "runtime",
+                "sort",
+                "testing"
+            ]
+        }
+    }
+}

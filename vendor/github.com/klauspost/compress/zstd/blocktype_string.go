@@ -5,13 +5,13 @@ package zstd
 import "strconv"
 
 func _() {
-	// An "invalid array index" compiler error signifies that the constant values have changed.
-	// Re-run the stringer command to generate them again.
-	var x [1]struct{}
-	_ = x[blockTypeRaw-0]
-	_ = x[blockTypeRLE-1]
-	_ = x[blockTypeCompressed-2]
-	_ = x[blockTypeReserved-3]
+    // An "invalid array index" compiler error signifies that the constant values have changed.
+    // Re-run the stringer command to generate them again.
+    var x [1]struct{}
+    _ = x[blockTypeRaw-0]
+    _ = x[blockTypeRLE-1]
+    _ = x[blockTypeCompressed-2]
+    _ = x[blockTypeReserved-3]
 }
 
 const _blockType_name = "blockTypeRawblockTypeRLEblockTypeCompressedblockTypeReserved"
@@ -19,19 +19,19 @@ const _blockType_name = "blockTypeRawblockTypeRLEblockTypeCompressedblockTypeRes
 var _blockType_index = [...]uint8{0, 12, 24, 43, 60}
 
 func (i blockType) String() string {
-	if i >= blockType(len(_blockType_index)-1) {
-		return "blockType(" + strconv.FormatInt(int64(i), 10) + ")"
-	}
-	return _blockType_name[_blockType_index[i]:_blockType_index[i+1]]
+    if i >= blockType(len(_blockType_index)-1) {
+        return "blockType(" + strconv.FormatInt(int64(i), 10) + ")"
+    }
+    return _blockType_name[_blockType_index[i]:_blockType_index[i+1]]
 }
 func _() {
-	// An "invalid array index" compiler error signifies that the constant values have changed.
-	// Re-run the stringer command to generate them again.
-	var x [1]struct{}
-	_ = x[literalsBlockRaw-0]
-	_ = x[literalsBlockRLE-1]
-	_ = x[literalsBlockCompressed-2]
-	_ = x[literalsBlockTreeless-3]
+    // An "invalid array index" compiler error signifies that the constant values have changed.
+    // Re-run the stringer command to generate them again.
+    var x [1]struct{}
+    _ = x[literalsBlockRaw-0]
+    _ = x[literalsBlockRLE-1]
+    _ = x[literalsBlockCompressed-2]
+    _ = x[literalsBlockTreeless-3]
 }
 
 const _literalsBlockType_name = "literalsBlockRawliteralsBlockRLEliteralsBlockCompressedliteralsBlockTreeless"
@@ -39,19 +39,19 @@ const _literalsBlockType_name = "literalsBlockRawliteralsBlockRLEliteralsBlockCo
 var _literalsBlockType_index = [...]uint8{0, 16, 32, 55, 76}
 
 func (i literalsBlockType) String() string {
-	if i >= literalsBlockType(len(_literalsBlockType_index)-1) {
-		return "literalsBlockType(" + strconv.FormatInt(int64(i), 10) + ")"
-	}
-	return _literalsBlockType_name[_literalsBlockType_index[i]:_literalsBlockType_index[i+1]]
+    if i >= literalsBlockType(len(_literalsBlockType_index)-1) {
+        return "literalsBlockType(" + strconv.FormatInt(int64(i), 10) + ")"
+    }
+    return _literalsBlockType_name[_literalsBlockType_index[i]:_literalsBlockType_index[i+1]]
 }
 func _() {
-	// An "invalid array index" compiler error signifies that the constant values have changed.
-	// Re-run the stringer command to generate them again.
-	var x [1]struct{}
-	_ = x[compModePredefined-0]
-	_ = x[compModeRLE-1]
-	_ = x[compModeFSE-2]
-	_ = x[compModeRepeat-3]
+    // An "invalid array index" compiler error signifies that the constant values have changed.
+    // Re-run the stringer command to generate them again.
+    var x [1]struct{}
+    _ = x[compModePredefined-0]
+    _ = x[compModeRLE-1]
+    _ = x[compModeFSE-2]
+    _ = x[compModeRepeat-3]
 }
 
 const _seqCompMode_name = "compModePredefinedcompModeRLEcompModeFSEcompModeRepeat"
@@ -59,18 +59,18 @@ const _seqCompMode_name = "compModePredefinedcompModeRLEcompModeFSEcompModeRepea
 var _seqCompMode_index = [...]uint8{0, 18, 29, 40, 54}
 
 func (i seqCompMode) String() string {
-	if i >= seqCompMode(len(_seqCompMode_index)-1) {
-		return "seqCompMode(" + strconv.FormatInt(int64(i), 10) + ")"
-	}
-	return _seqCompMode_name[_seqCompMode_index[i]:_seqCompMode_index[i+1]]
+    if i >= seqCompMode(len(_seqCompMode_index)-1) {
+        return "seqCompMode(" + strconv.FormatInt(int64(i), 10) + ")"
+    }
+    return _seqCompMode_name[_seqCompMode_index[i]:_seqCompMode_index[i+1]]
 }
 func _() {
-	// An "invalid array index" compiler error signifies that the constant values have changed.
-	// Re-run the stringer command to generate them again.
-	var x [1]struct{}
-	_ = x[tableLiteralLengths-0]
-	_ = x[tableOffsets-1]
-	_ = x[tableMatchLengths-2]
+    // An "invalid array index" compiler error signifies that the constant values have changed.
+    // Re-run the stringer command to generate them again.
+    var x [1]struct{}
+    _ = x[tableLiteralLengths-0]
+    _ = x[tableOffsets-1]
+    _ = x[tableMatchLengths-2]
 }
 
 const _tableIndex_name = "tableLiteralLengthstableOffsetstableMatchLengths"
@@ -78,8 +78,8 @@ const _tableIndex_name = "tableLiteralLengthstableOffsetstableMatchLengths"
 var _tableIndex_index = [...]uint8{0, 19, 31, 48}
 
 func (i tableIndex) String() string {
-	if i >= tableIndex(len(_tableIndex_index)-1) {
-		return "tableIndex(" + strconv.FormatInt(int64(i), 10) + ")"
-	}
-	return _tableIndex_name[_tableIndex_index[i]:_tableIndex_index[i+1]]
+    if i >= tableIndex(len(_tableIndex_index)-1) {
+        return "tableIndex(" + strconv.FormatInt(int64(i), 10) + ")"
+    }
+    return _tableIndex_name[_tableIndex_index[i]:_tableIndex_index[i+1]]
 }

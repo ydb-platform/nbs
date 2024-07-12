@@ -1,0 +1,3 @@
+FROM golang:1.21
+
+COPY --from=envoyproxy/envoy-dev:latest /usr/local/bin/envoy /usr/local/bin/envoy

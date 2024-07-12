@@ -1,0 +1,23 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    calendarperiod
+    color
+    date
+    date_range
+    date_time_range
+    datetime
+    dayofweek
+    decimal
+    expr
+    fraction
+    interval
+    latlng
+    localized_text
+    money
+    month
+    phone_number
+    postaladdress
+    quaternion
+    timeofday
+)

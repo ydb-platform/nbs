@@ -8,45 +8,45 @@
 package protoreflect
 
 import (
-	"unsafe"
+    "unsafe"
 
-	"google.golang.org/protobuf/internal/pragma"
+    "google.golang.org/protobuf/internal/pragma"
 )
 
 type (
-	stringHeader struct {
-		Data unsafe.Pointer
-		Len  int
-	}
-	sliceHeader struct {
-		Data unsafe.Pointer
-		Len  int
-		Cap  int
-	}
-	ifaceHeader struct {
-		Type unsafe.Pointer
-		Data unsafe.Pointer
-	}
+    stringHeader struct {
+        Data unsafe.Pointer
+        Len  int
+    }
+    sliceHeader struct {
+        Data unsafe.Pointer
+        Len  int
+        Cap  int
+    }
+    ifaceHeader struct {
+        Type unsafe.Pointer
+        Data unsafe.Pointer
+    }
 )
 
 var (
-	nilType     = typeOf(nil)
-	boolType    = typeOf(*new(bool))
-	int32Type   = typeOf(*new(int32))
-	int64Type   = typeOf(*new(int64))
-	uint32Type  = typeOf(*new(uint32))
-	uint64Type  = typeOf(*new(uint64))
-	float32Type = typeOf(*new(float32))
-	float64Type = typeOf(*new(float64))
-	stringType  = typeOf(*new(string))
-	bytesType   = typeOf(*new([]byte))
-	enumType    = typeOf(*new(EnumNumber))
+    nilType     = typeOf(nil)
+    boolType    = typeOf(*new(bool))
+    int32Type   = typeOf(*new(int32))
+    int64Type   = typeOf(*new(int64))
+    uint32Type  = typeOf(*new(uint32))
+    uint64Type  = typeOf(*new(uint64))
+    float32Type = typeOf(*new(float32))
+    float64Type = typeOf(*new(float64))
+    stringType  = typeOf(*new(string))
+    bytesType   = typeOf(*new([]byte))
+    enumType    = typeOf(*new(EnumNumber))
 )
 
 // typeOf returns a pointer to the Go type information.
 // The pointer is comparable and equal if and only if the types are identical.
 func typeOf(t interface{}) unsafe.Pointer {
-	return (*ifaceHeader)(unsafe.Pointer(&t)).Type
+    return (*ifaceHeader)(unsafe.Pointer(&t)).Type
 }
 
 // value is a union where only one type can be represented at a time.
@@ -56,44 +56,44 @@ func typeOf(t interface{}) unsafe.Pointer {
 // The Go GC needs to be able to scan variables containing pointers.
 // As such, pointers and non-pointers cannot be intermixed.
 type value struct {
-	pragma.DoNotCompare // 0B
+    pragma.DoNotCompare // 0B
 
-	// typ stores the type of the value as a pointer to the Go type.
-	typ unsafe.Pointer // 8B
+    // typ stores the type of the value as a pointer to the Go type.
+    typ unsafe.Pointer // 8B
 
-	// ptr stores the data pointer for a String, Bytes, or interface value.
-	ptr unsafe.Pointer // 8B
+    // ptr stores the data pointer for a String, Bytes, or interface value.
+    ptr unsafe.Pointer // 8B
 
-	// num stores a Bool, Int32, Int64, Uint32, Uint64, Float32, Float64, or
-	// Enum value as a raw uint64.
-	//
-	// It is also used to store the length of a String or Bytes value;
-	// the capacity is ignored.
-	num uint64 // 8B
+    // num stores a Bool, Int32, Int64, Uint32, Uint64, Float32, Float64, or
+    // Enum value as a raw uint64.
+    //
+    // It is also used to store the length of a String or Bytes value;
+    // the capacity is ignored.
+    num uint64 // 8B
 }
 
 func valueOfString(v string) Value {
-	p := (*stringHeader)(unsafe.Pointer(&v))
-	return Value{typ: stringType, ptr: p.Data, num: uint64(len(v))}
+    p := (*stringHeader)(unsafe.Pointer(&v))
+    return Value{typ: stringType, ptr: p.Data, num: uint64(len(v))}
 }
 func valueOfBytes(v []byte) Value {
-	p := (*sliceHeader)(unsafe.Pointer(&v))
-	return Value{typ: bytesType, ptr: p.Data, num: uint64(len(v))}
+    p := (*sliceHeader)(unsafe.Pointer(&v))
+    return Value{typ: bytesType, ptr: p.Data, num: uint64(len(v))}
 }
 func valueOfIface(v interface{}) Value {
-	p := (*ifaceHeader)(unsafe.Pointer(&v))
-	return Value{typ: p.Type, ptr: p.Data}
+    p := (*ifaceHeader)(unsafe.Pointer(&v))
+    return Value{typ: p.Type, ptr: p.Data}
 }
 
 func (v Value) getString() (x string) {
-	*(*stringHeader)(unsafe.Pointer(&x)) = stringHeader{Data: v.ptr, Len: int(v.num)}
-	return x
+    *(*stringHeader)(unsafe.Pointer(&x)) = stringHeader{Data: v.ptr, Len: int(v.num)}
+    return x
 }
 func (v Value) getBytes() (x []byte) {
-	*(*sliceHeader)(unsafe.Pointer(&x)) = sliceHeader{Data: v.ptr, Len: int(v.num), Cap: int(v.num)}
-	return x
+    *(*sliceHeader)(unsafe.Pointer(&x)) = sliceHeader{Data: v.ptr, Len: int(v.num), Cap: int(v.num)}
+    return x
 }
 func (v Value) getIface() (x interface{}) {
-	*(*ifaceHeader)(unsafe.Pointer(&x)) = ifaceHeader{Type: v.typ, Data: v.ptr}
-	return x
+    *(*ifaceHeader)(unsafe.Pointer(&x)) = ifaceHeader{Type: v.typ, Data: v.ptr}
+    return x
 }

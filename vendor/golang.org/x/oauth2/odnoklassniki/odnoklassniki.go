@@ -6,11 +6,11 @@
 package odnoklassniki // import "golang.org/x/oauth2/odnoklassniki"
 
 import (
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 // Endpoint is Odnoklassniki's OAuth 2.0 endpoint.
 var Endpoint = oauth2.Endpoint{
-	AuthURL:  "https://www.odnoklassniki.ru/oauth/authorize",
-	TokenURL: "https://api.odnoklassniki.ru/oauth/token.do",
+    AuthURL:  "https://www.odnoklassniki.ru/oauth/authorize",
+    TokenURL: "https://api.odnoklassniki.ru/oauth/token.do",
 }

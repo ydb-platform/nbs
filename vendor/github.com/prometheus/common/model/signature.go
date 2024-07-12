@@ -14,7 +14,7 @@
 package model
 
 import (
-	"sort"
+    "sort"
 )
 
 // SeparatorByte is a byte that cannot occur in valid UTF-8 sequences and is
@@ -22,75 +22,73 @@ import (
 // when calculating their combined hash value (aka signature aka fingerprint).
 const SeparatorByte byte = 255
 
-var (
-	// cache the signature of an empty label set.
-	emptyLabelSignature = hashNew()
-)
+// cache the signature of an empty label set.
+var emptyLabelSignature = hashNew()
 
 // LabelsToSignature returns a quasi-unique signature (i.e., fingerprint) for a
 // given label set. (Collisions are possible but unlikely if the number of label
 // sets the function is applied to is small.)
 func LabelsToSignature(labels map[string]string) uint64 {
-	if len(labels) == 0 {
-		return emptyLabelSignature
-	}
+    if len(labels) == 0 {
+        return emptyLabelSignature
+    }
 
-	labelNames := make([]string, 0, len(labels))
-	for labelName := range labels {
-		labelNames = append(labelNames, labelName)
-	}
-	sort.Strings(labelNames)
+    labelNames := make([]string, 0, len(labels))
+    for labelName := range labels {
+        labelNames = append(labelNames, labelName)
+    }
+    sort.Strings(labelNames)
 
-	sum := hashNew()
-	for _, labelName := range labelNames {
-		sum = hashAdd(sum, labelName)
-		sum = hashAddByte(sum, SeparatorByte)
-		sum = hashAdd(sum, labels[labelName])
-		sum = hashAddByte(sum, SeparatorByte)
-	}
-	return sum
+    sum := hashNew()
+    for _, labelName := range labelNames {
+        sum = hashAdd(sum, labelName)
+        sum = hashAddByte(sum, SeparatorByte)
+        sum = hashAdd(sum, labels[labelName])
+        sum = hashAddByte(sum, SeparatorByte)
+    }
+    return sum
 }
 
 // labelSetToFingerprint works exactly as LabelsToSignature but takes a LabelSet as
 // parameter (rather than a label map) and returns a Fingerprint.
 func labelSetToFingerprint(ls LabelSet) Fingerprint {
-	if len(ls) == 0 {
-		return Fingerprint(emptyLabelSignature)
-	}
+    if len(ls) == 0 {
+        return Fingerprint(emptyLabelSignature)
+    }
 
-	labelNames := make(LabelNames, 0, len(ls))
-	for labelName := range ls {
-		labelNames = append(labelNames, labelName)
-	}
-	sort.Sort(labelNames)
+    labelNames := make(LabelNames, 0, len(ls))
+    for labelName := range ls {
+        labelNames = append(labelNames, labelName)
+    }
+    sort.Sort(labelNames)
 
-	sum := hashNew()
-	for _, labelName := range labelNames {
-		sum = hashAdd(sum, string(labelName))
-		sum = hashAddByte(sum, SeparatorByte)
-		sum = hashAdd(sum, string(ls[labelName]))
-		sum = hashAddByte(sum, SeparatorByte)
-	}
-	return Fingerprint(sum)
+    sum := hashNew()
+    for _, labelName := range labelNames {
+        sum = hashAdd(sum, string(labelName))
+        sum = hashAddByte(sum, SeparatorByte)
+        sum = hashAdd(sum, string(ls[labelName]))
+        sum = hashAddByte(sum, SeparatorByte)
+    }
+    return Fingerprint(sum)
 }
 
 // labelSetToFastFingerprint works similar to labelSetToFingerprint but uses a
 // faster and less allocation-heavy hash function, which is more susceptible to
 // create hash collisions. Therefore, collision detection should be applied.
 func labelSetToFastFingerprint(ls LabelSet) Fingerprint {
-	if len(ls) == 0 {
-		return Fingerprint(emptyLabelSignature)
-	}
+    if len(ls) == 0 {
+        return Fingerprint(emptyLabelSignature)
+    }
 
-	var result uint64
-	for labelName, labelValue := range ls {
-		sum := hashNew()
-		sum = hashAdd(sum, string(labelName))
-		sum = hashAddByte(sum, SeparatorByte)
-		sum = hashAdd(sum, string(labelValue))
-		result ^= sum
-	}
-	return Fingerprint(result)
+    var result uint64
+    for labelName, labelValue := range ls {
+        sum := hashNew()
+        sum = hashAdd(sum, string(labelName))
+        sum = hashAddByte(sum, SeparatorByte)
+        sum = hashAdd(sum, string(labelValue))
+        result ^= sum
+    }
+    return Fingerprint(result)
 }
 
 // SignatureForLabels works like LabelsToSignature but takes a Metric as
@@ -98,47 +96,47 @@ func labelSetToFastFingerprint(ls LabelSet) Fingerprint {
 // specified LabelNames into the signature calculation. The labels passed in
 // will be sorted by this function.
 func SignatureForLabels(m Metric, labels ...LabelName) uint64 {
-	if len(labels) == 0 {
-		return emptyLabelSignature
-	}
+    if len(labels) == 0 {
+        return emptyLabelSignature
+    }
 
-	sort.Sort(LabelNames(labels))
+    sort.Sort(LabelNames(labels))
 
-	sum := hashNew()
-	for _, label := range labels {
-		sum = hashAdd(sum, string(label))
-		sum = hashAddByte(sum, SeparatorByte)
-		sum = hashAdd(sum, string(m[label]))
-		sum = hashAddByte(sum, SeparatorByte)
-	}
-	return sum
+    sum := hashNew()
+    for _, label := range labels {
+        sum = hashAdd(sum, string(label))
+        sum = hashAddByte(sum, SeparatorByte)
+        sum = hashAdd(sum, string(m[label]))
+        sum = hashAddByte(sum, SeparatorByte)
+    }
+    return sum
 }
 
 // SignatureWithoutLabels works like LabelsToSignature but takes a Metric as
 // parameter (rather than a label map) and excludes the labels with any of the
 // specified LabelNames from the signature calculation.
 func SignatureWithoutLabels(m Metric, labels map[LabelName]struct{}) uint64 {
-	if len(m) == 0 {
-		return emptyLabelSignature
-	}
+    if len(m) == 0 {
+        return emptyLabelSignature
+    }
 
-	labelNames := make(LabelNames, 0, len(m))
-	for labelName := range m {
-		if _, exclude := labels[labelName]; !exclude {
-			labelNames = append(labelNames, labelName)
-		}
-	}
-	if len(labelNames) == 0 {
-		return emptyLabelSignature
-	}
-	sort.Sort(labelNames)
+    labelNames := make(LabelNames, 0, len(m))
+    for labelName := range m {
+        if _, exclude := labels[labelName]; !exclude {
+            labelNames = append(labelNames, labelName)
+        }
+    }
+    if len(labelNames) == 0 {
+        return emptyLabelSignature
+    }
+    sort.Sort(labelNames)
 
-	sum := hashNew()
-	for _, labelName := range labelNames {
-		sum = hashAdd(sum, string(labelName))
-		sum = hashAddByte(sum, SeparatorByte)
-		sum = hashAdd(sum, string(m[labelName]))
-		sum = hashAddByte(sum, SeparatorByte)
-	}
-	return sum
+    sum := hashNew()
+    for _, labelName := range labelNames {
+        sum = hashAdd(sum, string(labelName))
+        sum = hashAddByte(sum, SeparatorByte)
+        sum = hashAdd(sum, string(m[labelName]))
+        sum = hashAddByte(sum, SeparatorByte)
+    }
+    return sum
 }

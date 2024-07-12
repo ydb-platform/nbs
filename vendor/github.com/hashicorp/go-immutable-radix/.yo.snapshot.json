@@ -1,0 +1,24 @@
+{
+    "Version": "v1.3.1",
+    "GoVersion": "",
+    "Sum": "h1:DKHmCUm2hRBK510BaiZlwvpD40f8bJFeZnpfm2KLowc=",
+    "Packages": {
+        "github.com/hashicorp/go-immutable-radix": {
+            "Imports": [
+                "bytes",
+                "github.com/hashicorp/golang-lru/simplelru",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-uuid",
+                "math/rand",
+                "reflect",
+                "sort",
+                "testing",
+                "testing/quick"
+            ]
+        }
+    }
+}

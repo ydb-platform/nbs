@@ -1,7 +1,7 @@
 package trace
 
 import (
-	"context"
+    "context"
 )
 
 // tool gtrace used from ./internal/cmd/gtrace
@@ -9,315 +9,315 @@ import (
 //go:generate gtrace
 
 type (
-	// Topic specified trace of topic reader client activity.
-	// gtrace:gen
-	Topic struct {
-		// TopicReaderCustomerEvents - upper level, on bridge with customer code
+    // Topic specified trace of topic reader client activity.
+    // gtrace:gen
+    Topic struct {
+        // TopicReaderCustomerEvents - upper level, on bridge with customer code
 
-		OnReaderStart func(info TopicReaderStartInfo)
+        OnReaderStart func(info TopicReaderStartInfo)
 
-		// TopicReaderStreamLifeCycleEvents
+        // TopicReaderStreamLifeCycleEvents
 
-		OnReaderReconnect        func(TopicReaderReconnectStartInfo) func(TopicReaderReconnectDoneInfo)
-		OnReaderReconnectRequest func(TopicReaderReconnectRequestInfo)
+        OnReaderReconnect        func(TopicReaderReconnectStartInfo) func(TopicReaderReconnectDoneInfo)
+        OnReaderReconnectRequest func(TopicReaderReconnectRequestInfo)
 
-		// TopicReaderPartitionEvents
+        // TopicReaderPartitionEvents
 
-		OnReaderPartitionReadStartResponse func(
-			TopicReaderPartitionReadStartResponseStartInfo,
-		) func(
-			TopicReaderPartitionReadStartResponseDoneInfo,
-		)
-		OnReaderPartitionReadStopResponse func(
-			TopicReaderPartitionReadStopResponseStartInfo,
-		) func(
-			TopicReaderPartitionReadStopResponseDoneInfo,
-		)
+        OnReaderPartitionReadStartResponse func(
+            TopicReaderPartitionReadStartResponseStartInfo,
+        ) func(
+            TopicReaderPartitionReadStartResponseDoneInfo,
+        )
+        OnReaderPartitionReadStopResponse func(
+            TopicReaderPartitionReadStopResponseStartInfo,
+        ) func(
+            TopicReaderPartitionReadStopResponseDoneInfo,
+        )
 
-		// TopicReaderStreamEvents
+        // TopicReaderStreamEvents
 
-		OnReaderCommit            func(TopicReaderCommitStartInfo) func(TopicReaderCommitDoneInfo)
-		OnReaderSendCommitMessage func(TopicReaderSendCommitMessageStartInfo) func(TopicReaderSendCommitMessageDoneInfo)
-		OnReaderCommittedNotify   func(TopicReaderCommittedNotifyInfo)
-		OnReaderClose             func(TopicReaderCloseStartInfo) func(TopicReaderCloseDoneInfo)
-		OnReaderInit              func(TopicReaderInitStartInfo) func(TopicReaderInitDoneInfo)
-		OnReaderError             func(TopicReaderErrorInfo)
-		OnReaderUpdateToken       func(
-			OnReadUpdateTokenStartInfo,
-		) func(
-			OnReadUpdateTokenMiddleTokenReceivedInfo,
-		) func(
-			OnReadStreamUpdateTokenDoneInfo,
-		)
+        OnReaderCommit            func(TopicReaderCommitStartInfo) func(TopicReaderCommitDoneInfo)
+        OnReaderSendCommitMessage func(TopicReaderSendCommitMessageStartInfo) func(TopicReaderSendCommitMessageDoneInfo)
+        OnReaderCommittedNotify   func(TopicReaderCommittedNotifyInfo)
+        OnReaderClose             func(TopicReaderCloseStartInfo) func(TopicReaderCloseDoneInfo)
+        OnReaderInit              func(TopicReaderInitStartInfo) func(TopicReaderInitDoneInfo)
+        OnReaderError             func(TopicReaderErrorInfo)
+        OnReaderUpdateToken       func(
+            OnReadUpdateTokenStartInfo,
+        ) func(
+            OnReadUpdateTokenMiddleTokenReceivedInfo,
+        ) func(
+            OnReadStreamUpdateTokenDoneInfo,
+        )
 
-		// TopicReaderMessageEvents
+        // TopicReaderMessageEvents
 
-		OnReaderSentDataRequest     func(TopicReaderSentDataRequestInfo)
-		OnReaderReceiveDataResponse func(TopicReaderReceiveDataResponseStartInfo) func(TopicReaderReceiveDataResponseDoneInfo)
-		OnReaderReadMessages        func(TopicReaderReadMessagesStartInfo) func(TopicReaderReadMessagesDoneInfo)
-		OnReaderUnknownGrpcMessage  func(OnReadUnknownGrpcMessageInfo)
+        OnReaderSentDataRequest     func(TopicReaderSentDataRequestInfo)
+        OnReaderReceiveDataResponse func(TopicReaderReceiveDataResponseStartInfo) func(TopicReaderReceiveDataResponseDoneInfo)
+        OnReaderReadMessages        func(TopicReaderReadMessagesStartInfo) func(TopicReaderReadMessagesDoneInfo)
+        OnReaderUnknownGrpcMessage  func(OnReadUnknownGrpcMessageInfo)
 
-		// TopicWriterStreamLifeCycleEvents
+        // TopicWriterStreamLifeCycleEvents
 
-		OnWriterReconnect  func(TopicWriterReconnectStartInfo) func(TopicWriterReconnectDoneInfo)
-		OnWriterInitStream func(TopicWriterInitStreamStartInfo) func(TopicWriterInitStreamDoneInfo)
-		OnWriterClose      func(TopicWriterCloseStartInfo) func(TopicWriterCloseDoneInfo)
+        OnWriterReconnect  func(TopicWriterReconnectStartInfo) func(TopicWriterReconnectDoneInfo)
+        OnWriterInitStream func(TopicWriterInitStreamStartInfo) func(TopicWriterInitStreamDoneInfo)
+        OnWriterClose      func(TopicWriterCloseStartInfo) func(TopicWriterCloseDoneInfo)
 
-		// TopicWriterStreamEvents
+        // TopicWriterStreamEvents
 
-		OnWriterCompressMessages       func(TopicWriterCompressMessagesStartInfo) func(TopicWriterCompressMessagesDoneInfo)
-		OnWriterSendMessages           func(TopicWriterSendMessagesStartInfo) func(TopicWriterSendMessagesDoneInfo)
-		OnWriterReadUnknownGrpcMessage func(TopicOnWriterReadUnknownGrpcMessageInfo)
-	}
+        OnWriterCompressMessages       func(TopicWriterCompressMessagesStartInfo) func(TopicWriterCompressMessagesDoneInfo)
+        OnWriterSendMessages           func(TopicWriterSendMessagesStartInfo) func(TopicWriterSendMessagesDoneInfo)
+        OnWriterReadUnknownGrpcMessage func(TopicOnWriterReadUnknownGrpcMessageInfo)
+    }
 
-	TopicReaderPartitionReadStartResponseStartInfo struct {
-		ReaderConnectionID string
-		PartitionContext   context.Context
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-	}
+    TopicReaderPartitionReadStartResponseStartInfo struct {
+        ReaderConnectionID string
+        PartitionContext   context.Context
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+    }
 
-	TopicReaderStartInfo struct {
-		ReaderID int64
-		Consumer string
-	}
+    TopicReaderStartInfo struct {
+        ReaderID int64
+        Consumer string
+    }
 
-	TopicReaderPartitionReadStartResponseDoneInfo struct {
-		ReadOffset   *int64
-		CommitOffset *int64
-		Error        error
-	}
+    TopicReaderPartitionReadStartResponseDoneInfo struct {
+        ReadOffset   *int64
+        CommitOffset *int64
+        Error        error
+    }
 
-	TopicReaderPartitionReadStopResponseStartInfo struct {
-		ReaderConnectionID string
-		PartitionContext   context.Context
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-		CommittedOffset    int64
-		Graceful           bool
-	}
+    TopicReaderPartitionReadStopResponseStartInfo struct {
+        ReaderConnectionID string
+        PartitionContext   context.Context
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+        CommittedOffset    int64
+        Graceful           bool
+    }
 
-	TopicReaderPartitionReadStopResponseDoneInfo struct {
-		Error error
-	}
+    TopicReaderPartitionReadStopResponseDoneInfo struct {
+        Error error
+    }
 
-	TopicReaderSendCommitMessageStartInfo struct {
-		CommitsInfo TopicReaderStreamSendCommitMessageStartMessageInfo
-	}
+    TopicReaderSendCommitMessageStartInfo struct {
+        CommitsInfo TopicReaderStreamSendCommitMessageStartMessageInfo
+    }
 
-	TopicReaderStreamCommitInfo struct {
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-		StartOffset        int64
-		EndOffset          int64
-	}
+    TopicReaderStreamCommitInfo struct {
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+        StartOffset        int64
+        EndOffset          int64
+    }
 
-	TopicReaderStreamSendCommitMessageStartMessageInfo interface {
-		GetCommitsInfo() []TopicReaderStreamCommitInfo
-	}
+    TopicReaderStreamSendCommitMessageStartMessageInfo interface {
+        GetCommitsInfo() []TopicReaderStreamCommitInfo
+    }
 
-	TopicReaderSendCommitMessageDoneInfo struct {
-		Error error
-	}
+    TopicReaderSendCommitMessageDoneInfo struct {
+        Error error
+    }
 
-	TopicReaderCommittedNotifyInfo struct {
-		ReaderConnectionID string
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-		CommittedOffset    int64
-	}
+    TopicReaderCommittedNotifyInfo struct {
+        ReaderConnectionID string
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+        CommittedOffset    int64
+    }
 
-	TopicReaderErrorInfo struct {
-		ReaderConnectionID string
-		Error              error
-	}
+    TopicReaderErrorInfo struct {
+        ReaderConnectionID string
+        Error              error
+    }
 
-	TopicReaderSentDataRequestInfo struct {
-		ReaderConnectionID       string
-		RequestBytes             int
-		LocalBufferSizeAfterSent int
-	}
+    TopicReaderSentDataRequestInfo struct {
+        ReaderConnectionID       string
+        RequestBytes             int
+        LocalBufferSizeAfterSent int
+    }
 
-	TopicReaderReceiveDataResponseStartInfo struct {
-		ReaderConnectionID          string
-		LocalBufferSizeAfterReceive int
-		DataResponse                TopicReaderDataResponseInfo
-	}
+    TopicReaderReceiveDataResponseStartInfo struct {
+        ReaderConnectionID          string
+        LocalBufferSizeAfterReceive int
+        DataResponse                TopicReaderDataResponseInfo
+    }
 
-	TopicReaderDataResponseInfo interface {
-		GetBytesSize() int
-		GetPartitionBatchMessagesCounts() (partitionCount, batchCount, messagesCount int)
-	}
+    TopicReaderDataResponseInfo interface {
+        GetBytesSize() int
+        GetPartitionBatchMessagesCounts() (partitionCount, batchCount, messagesCount int)
+    }
 
-	TopicReaderReceiveDataResponseDoneInfo struct {
-		Error error
-	}
+    TopicReaderReceiveDataResponseDoneInfo struct {
+        Error error
+    }
 
-	TopicReaderReadMessagesStartInfo struct {
-		RequestContext     context.Context
-		MinCount           int
-		MaxCount           int
-		FreeBufferCapacity int
-	}
+    TopicReaderReadMessagesStartInfo struct {
+        RequestContext     context.Context
+        MinCount           int
+        MaxCount           int
+        FreeBufferCapacity int
+    }
 
-	TopicReaderReadMessagesDoneInfo struct {
-		MessagesCount      int
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-		OffsetStart        int64
-		OffsetEnd          int64
-		FreeBufferCapacity int
-		Error              error
-	}
+    TopicReaderReadMessagesDoneInfo struct {
+        MessagesCount      int
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+        OffsetStart        int64
+        OffsetEnd          int64
+        FreeBufferCapacity int
+        Error              error
+    }
 
-	OnReadUnknownGrpcMessageInfo struct {
-		ReaderConnectionID string
-		Error              error
-	}
+    OnReadUnknownGrpcMessageInfo struct {
+        ReaderConnectionID string
+        Error              error
+    }
 
-	TopicReaderReconnectStartInfo struct {
-		Reason error
-	}
+    TopicReaderReconnectStartInfo struct {
+        Reason error
+    }
 
-	TopicReaderReconnectDoneInfo struct {
-		Error error
-	}
+    TopicReaderReconnectDoneInfo struct {
+        Error error
+    }
 
-	TopicReaderReconnectRequestInfo struct {
-		Reason  error
-		WasSent bool
-	}
+    TopicReaderReconnectRequestInfo struct {
+        Reason  error
+        WasSent bool
+    }
 
-	TopicReaderCommitStartInfo struct {
-		RequestContext     context.Context
-		Topic              string
-		PartitionID        int64
-		PartitionSessionID int64
-		StartOffset        int64
-		EndOffset          int64
-	}
+    TopicReaderCommitStartInfo struct {
+        RequestContext     context.Context
+        Topic              string
+        PartitionID        int64
+        PartitionSessionID int64
+        StartOffset        int64
+        EndOffset          int64
+    }
 
-	TopicReaderCommitDoneInfo struct {
-		Error error
-	}
+    TopicReaderCommitDoneInfo struct {
+        Error error
+    }
 
-	TopicReaderCloseStartInfo struct {
-		ReaderConnectionID string
-		CloseReason        error
-	}
+    TopicReaderCloseStartInfo struct {
+        ReaderConnectionID string
+        CloseReason        error
+    }
 
-	TopicReaderCloseDoneInfo struct {
-		CloseError error
-	}
+    TopicReaderCloseDoneInfo struct {
+        CloseError error
+    }
 
-	TopicReaderInitStartInfo struct {
-		PreInitReaderConnectionID string
-		InitRequestInfo           TopicReadStreamInitRequestInfo
-	}
+    TopicReaderInitStartInfo struct {
+        PreInitReaderConnectionID string
+        InitRequestInfo           TopicReadStreamInitRequestInfo
+    }
 
-	TopicReadStreamInitRequestInfo interface {
-		GetConsumer() string
-		GetTopics() []string
-	}
+    TopicReadStreamInitRequestInfo interface {
+        GetConsumer() string
+        GetTopics() []string
+    }
 
-	TopicReaderInitDoneInfo struct {
-		ReaderConnectionID string
-		Error              error
-	}
+    TopicReaderInitDoneInfo struct {
+        ReaderConnectionID string
+        Error              error
+    }
 
-	OnReadUpdateTokenStartInfo struct {
-		ReaderConnectionID string
-	}
+    OnReadUpdateTokenStartInfo struct {
+        ReaderConnectionID string
+    }
 
-	OnReadUpdateTokenMiddleTokenReceivedInfo struct {
-		TokenLen int
-		Error    error
-	}
+    OnReadUpdateTokenMiddleTokenReceivedInfo struct {
+        TokenLen int
+        Error    error
+    }
 
-	OnReadStreamUpdateTokenDoneInfo struct {
-		Error error
-	}
+    OnReadStreamUpdateTokenDoneInfo struct {
+        Error error
+    }
 
-	////////////
-	//////////// TopicWriter
-	////////////
+    ////////////
+    //////////// TopicWriter
+    ////////////
 
-	TopicWriterReconnectStartInfo struct {
-		WriterInstanceID string
-		Topic            string
-		ProducerID       string
-		Attempt          int
-	}
+    TopicWriterReconnectStartInfo struct {
+        WriterInstanceID string
+        Topic            string
+        ProducerID       string
+        Attempt          int
+    }
 
-	TopicWriterReconnectDoneInfo struct {
-		Error error
-	}
+    TopicWriterReconnectDoneInfo struct {
+        Error error
+    }
 
-	TopicWriterInitStreamStartInfo struct {
-		WriterInstanceID string
-		Topic            string
-		ProducerID       string
-	}
+    TopicWriterInitStreamStartInfo struct {
+        WriterInstanceID string
+        Topic            string
+        ProducerID       string
+    }
 
-	TopicWriterInitStreamDoneInfo struct {
-		SessionID string
-		Error     error
-	}
+    TopicWriterInitStreamDoneInfo struct {
+        SessionID string
+        Error     error
+    }
 
-	TopicWriterCloseStartInfo struct {
-		WriterInstanceID string
-		Reason           error
-	}
+    TopicWriterCloseStartInfo struct {
+        WriterInstanceID string
+        Reason           error
+    }
 
-	TopicWriterCloseDoneInfo struct {
-		Error error
-	}
+    TopicWriterCloseDoneInfo struct {
+        Error error
+    }
 
-	TopicWriterCompressMessagesStartInfo struct {
-		WriterInstanceID string
-		SessionID        string
-		Codec            int32
-		FirstSeqNo       int64
-		MessagesCount    int
-		Reason           TopicWriterCompressMessagesReason
-	}
+    TopicWriterCompressMessagesStartInfo struct {
+        WriterInstanceID string
+        SessionID        string
+        Codec            int32
+        FirstSeqNo       int64
+        MessagesCount    int
+        Reason           TopicWriterCompressMessagesReason
+    }
 
-	TopicWriterCompressMessagesDoneInfo struct {
-		Error error
-	}
+    TopicWriterCompressMessagesDoneInfo struct {
+        Error error
+    }
 
-	TopicWriterSendMessagesStartInfo struct {
-		WriterInstanceID string
-		SessionID        string
-		Codec            int32
-		FirstSeqNo       int64
-		MessagesCount    int
-	}
+    TopicWriterSendMessagesStartInfo struct {
+        WriterInstanceID string
+        SessionID        string
+        Codec            int32
+        FirstSeqNo       int64
+        MessagesCount    int
+    }
 
-	TopicWriterSendMessagesDoneInfo struct {
-		Error error
-	}
+    TopicWriterSendMessagesDoneInfo struct {
+        Error error
+    }
 
-	TopicOnWriterReadUnknownGrpcMessageInfo struct {
-		WriterInstanceID string
-		SessionID        string
-		Error            error
-	}
+    TopicOnWriterReadUnknownGrpcMessageInfo struct {
+        WriterInstanceID string
+        SessionID        string
+        Error            error
+    }
 )
 
 type TopicWriterCompressMessagesReason string
 
 const (
-	TopicWriterCompressMessagesReasonCompressData                = TopicWriterCompressMessagesReason("compress-on-send")           //nolint:lll
-	TopicWriterCompressMessagesReasonCompressDataOnWriteReadData = TopicWriterCompressMessagesReason("compress-on-call-write")     //nolint:lll
-	TopicWriterCompressMessagesReasonCodecsMeasure               = TopicWriterCompressMessagesReason("compress-on-codecs-measure") //nolint:lll
+    TopicWriterCompressMessagesReasonCompressData                = TopicWriterCompressMessagesReason("compress-on-send")           //nolint:lll
+    TopicWriterCompressMessagesReasonCompressDataOnWriteReadData = TopicWriterCompressMessagesReason("compress-on-call-write")     //nolint:lll
+    TopicWriterCompressMessagesReasonCodecsMeasure               = TopicWriterCompressMessagesReason("compress-on-codecs-measure") //nolint:lll
 )
 
 func (r TopicWriterCompressMessagesReason) String() string {
-	return string(r)
+    return string(r)
 }

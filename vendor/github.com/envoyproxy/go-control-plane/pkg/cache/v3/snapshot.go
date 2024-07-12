@@ -15,24 +15,24 @@
 package cache
 
 import (
-	"errors"
-	"fmt"
+    "errors"
+    "fmt"
 
-	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+    "github.com/envoyproxy/go-control-plane/pkg/cache/types"
+    "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 )
 
 // Snapshot is an internally consistent snapshot of xDS resources.
 // Consistency is important for the convergence as different resource types
 // from the snapshot may be delivered to the proxy in arbitrary order.
 type Snapshot struct {
-	Resources [types.UnknownType]Resources
+    Resources [types.UnknownType]Resources
 
-	// VersionMap holds the current hash map of all resources in the snapshot.
-	// This field should remain nil until it is used, at which point should be
-	// instantiated by calling ConstructVersionMap().
-	// VersionMap is only to be used with delta xDS.
-	VersionMap map[string]map[string]string
+    // VersionMap holds the current hash map of all resources in the snapshot.
+    // This field should remain nil until it is used, at which point should be
+    // instantiated by calling ConstructVersionMap().
+    // VersionMap is only to be used with delta xDS.
+    VersionMap map[string]map[string]string
 }
 
 var _ ResourceSnapshot = &Snapshot{}
@@ -40,35 +40,35 @@ var _ ResourceSnapshot = &Snapshot{}
 // NewSnapshot creates a snapshot from response types and a version.
 // The resources map is keyed off the type URL of a resource, followed by the slice of resource objects.
 func NewSnapshot(version string, resources map[resource.Type][]types.Resource) (*Snapshot, error) {
-	out := Snapshot{}
+    out := Snapshot{}
 
-	for typ, resource := range resources {
-		index := GetResponseType(typ)
-		if index == types.UnknownType {
-			return nil, errors.New("unknown resource type: " + typ)
-		}
+    for typ, resource := range resources {
+        index := GetResponseType(typ)
+        if index == types.UnknownType {
+            return nil, errors.New("unknown resource type: " + typ)
+        }
 
-		out.Resources[index] = NewResources(version, resource)
-	}
+        out.Resources[index] = NewResources(version, resource)
+    }
 
-	return &out, nil
+    return &out, nil
 }
 
 // NewSnapshotWithTTLs creates a snapshot of ResourceWithTTLs.
 // The resources map is keyed off the type URL of a resource, followed by the slice of resource objects.
 func NewSnapshotWithTTLs(version string, resources map[resource.Type][]types.ResourceWithTTL) (*Snapshot, error) {
-	out := Snapshot{}
+    out := Snapshot{}
 
-	for typ, resource := range resources {
-		index := GetResponseType(typ)
-		if index == types.UnknownType {
-			return nil, errors.New("unknown resource type: " + typ)
-		}
+    for typ, resource := range resources {
+        index := GetResponseType(typ)
+        if index == types.UnknownType {
+            return nil, errors.New("unknown resource type: " + typ)
+        }
 
-		out.Resources[index] = NewResourcesWithTTL(version, resource)
-	}
+        out.Resources[index] = NewResourcesWithTTL(version, resource)
+    }
 
-	return &out, nil
+    return &out, nil
 }
 
 // Consistent check verifies that the dependent resources are exactly listed in the
@@ -81,127 +81,127 @@ func NewSnapshotWithTTLs(version string, resources map[resource.Type][]types.Res
 // Envoy will accept the snapshot list of clusters as-is even if it does not match
 // all references found in xDS.
 func (s *Snapshot) Consistent() error {
-	if s == nil {
-		return errors.New("nil snapshot")
-	}
+    if s == nil {
+        return errors.New("nil snapshot")
+    }
 
-	referencedResources := GetAllResourceReferences(s.Resources)
+    referencedResources := GetAllResourceReferences(s.Resources)
 
-	// Loop through each referenced resource.
-	referencedResponseTypes := map[types.ResponseType]struct{}{
-		types.Endpoint: {},
-		types.Route:    {},
-	}
+    // Loop through each referenced resource.
+    referencedResponseTypes := map[types.ResponseType]struct{}{
+        types.Endpoint: {},
+        types.Route:    {},
+    }
 
-	for idx, items := range s.Resources {
+    for idx, items := range s.Resources {
 
-		// We only want to check resource types that are expected to be referenced by another resource type.
-		// Basically, if the consistency relationship is modeled as a DAG, we only want
-		// to check nodes that are expected to have edges pointing to it.
-		responseType := types.ResponseType(idx)
-		if _, ok := referencedResponseTypes[responseType]; ok {
-			typeURL, err := GetResponseTypeURL(responseType)
-			if err != nil {
-				return err
-			}
-			referenceSet := referencedResources[typeURL]
+        // We only want to check resource types that are expected to be referenced by another resource type.
+        // Basically, if the consistency relationship is modeled as a DAG, we only want
+        // to check nodes that are expected to have edges pointing to it.
+        responseType := types.ResponseType(idx)
+        if _, ok := referencedResponseTypes[responseType]; ok {
+            typeURL, err := GetResponseTypeURL(responseType)
+            if err != nil {
+                return err
+            }
+            referenceSet := referencedResources[typeURL]
 
-			if len(referenceSet) != len(items.Items) {
-				return fmt.Errorf("mismatched %q reference and resource lengths: len(%v) != %d",
-					typeURL, referenceSet, len(items.Items))
-			}
+            if len(referenceSet) != len(items.Items) {
+                return fmt.Errorf("mismatched %q reference and resource lengths: len(%v) != %d",
+                    typeURL, referenceSet, len(items.Items))
+            }
 
-			// Check superset.
-			if err := superset(referenceSet, items.Items); err != nil {
-				return fmt.Errorf("inconsistent %q reference: %w", typeURL, err)
-			}
-		}
-	}
+            // Check superset.
+            if err := superset(referenceSet, items.Items); err != nil {
+                return fmt.Errorf("inconsistent %q reference: %w", typeURL, err)
+            }
+        }
+    }
 
-	return nil
+    return nil
 }
 
 // GetResources selects snapshot resources by type, returning the map of resources.
 func (s *Snapshot) GetResources(typeURL resource.Type) map[string]types.Resource {
-	resources := s.GetResourcesAndTTL(typeURL)
-	if resources == nil {
-		return nil
-	}
+    resources := s.GetResourcesAndTTL(typeURL)
+    if resources == nil {
+        return nil
+    }
 
-	withoutTTL := make(map[string]types.Resource, len(resources))
+    withoutTTL := make(map[string]types.Resource, len(resources))
 
-	for k, v := range resources {
-		withoutTTL[k] = v.Resource
-	}
+    for k, v := range resources {
+        withoutTTL[k] = v.Resource
+    }
 
-	return withoutTTL
+    return withoutTTL
 }
 
 // GetResourcesAndTTL selects snapshot resources by type, returning the map of resources and the associated TTL.
 func (s *Snapshot) GetResourcesAndTTL(typeURL resource.Type) map[string]types.ResourceWithTTL {
-	if s == nil {
-		return nil
-	}
-	typ := GetResponseType(typeURL)
-	if typ == types.UnknownType {
-		return nil
-	}
-	return s.Resources[typ].Items
+    if s == nil {
+        return nil
+    }
+    typ := GetResponseType(typeURL)
+    if typ == types.UnknownType {
+        return nil
+    }
+    return s.Resources[typ].Items
 }
 
 // GetVersion returns the version for a resource type.
 func (s *Snapshot) GetVersion(typeURL resource.Type) string {
-	if s == nil {
-		return ""
-	}
-	typ := GetResponseType(typeURL)
-	if typ == types.UnknownType {
-		return ""
-	}
-	return s.Resources[typ].Version
+    if s == nil {
+        return ""
+    }
+    typ := GetResponseType(typeURL)
+    if typ == types.UnknownType {
+        return ""
+    }
+    return s.Resources[typ].Version
 }
 
 // GetVersionMap will return the internal version map of the currently applied snapshot.
 func (s *Snapshot) GetVersionMap(typeURL string) map[string]string {
-	return s.VersionMap[typeURL]
+    return s.VersionMap[typeURL]
 }
 
 // ConstructVersionMap will construct a version map based on the current state of a snapshot
 func (s *Snapshot) ConstructVersionMap() error {
-	if s == nil {
-		return fmt.Errorf("missing snapshot")
-	}
+    if s == nil {
+        return fmt.Errorf("missing snapshot")
+    }
 
-	// The snapshot resources never change, so no need to ever rebuild.
-	if s.VersionMap != nil {
-		return nil
-	}
+    // The snapshot resources never change, so no need to ever rebuild.
+    if s.VersionMap != nil {
+        return nil
+    }
 
-	s.VersionMap = make(map[string]map[string]string)
+    s.VersionMap = make(map[string]map[string]string)
 
-	for i, resources := range s.Resources {
-		typeURL, err := GetResponseTypeURL(types.ResponseType(i))
-		if err != nil {
-			return err
-		}
-		if _, ok := s.VersionMap[typeURL]; !ok {
-			s.VersionMap[typeURL] = make(map[string]string, len(resources.Items))
-		}
+    for i, resources := range s.Resources {
+        typeURL, err := GetResponseTypeURL(types.ResponseType(i))
+        if err != nil {
+            return err
+        }
+        if _, ok := s.VersionMap[typeURL]; !ok {
+            s.VersionMap[typeURL] = make(map[string]string, len(resources.Items))
+        }
 
-		for _, r := range resources.Items {
-			// Hash our version in here and build the version map.
-			marshaledResource, err := MarshalResource(r.Resource)
-			if err != nil {
-				return err
-			}
-			v := HashResource(marshaledResource)
-			if v == "" {
-				return fmt.Errorf("failed to build resource version: %w", err)
-			}
+        for _, r := range resources.Items {
+            // Hash our version in here and build the version map.
+            marshaledResource, err := MarshalResource(r.Resource)
+            if err != nil {
+                return err
+            }
+            v := HashResource(marshaledResource)
+            if v == "" {
+                return fmt.Errorf("failed to build resource version: %w", err)
+            }
 
-			s.VersionMap[typeURL][GetResourceName(r.Resource)] = v
-		}
-	}
+            s.VersionMap[typeURL][GetResourceName(r.Resource)] = v
+        }
+    }
 
-	return nil
+    return nil
 }

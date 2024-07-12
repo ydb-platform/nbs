@@ -20,9 +20,9 @@ limitations under the License.
 package pointer
 
 import (
-	"time"
+    "time"
 
-	"k8s.io/utils/ptr"
+    "k8s.io/utils/ptr"
 )
 
 // AllPtrFieldsNil tests whether all pointer fields in a struct are nil.  This is useful when,

@@ -21,31 +21,31 @@
 package zap
 
 import (
-	"sync/atomic"
+    "sync/atomic"
 
-	"go.uber.org/zap/internal"
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/internal"
+    "go.uber.org/zap/zapcore"
 )
 
 const (
-	// DebugLevel logs are typically voluminous, and are usually disabled in
-	// production.
-	DebugLevel = zapcore.DebugLevel
-	// InfoLevel is the default logging priority.
-	InfoLevel = zapcore.InfoLevel
-	// WarnLevel logs are more important than Info, but don't need individual
-	// human review.
-	WarnLevel = zapcore.WarnLevel
-	// ErrorLevel logs are high-priority. If an application is running smoothly,
-	// it shouldn't generate any error-level logs.
-	ErrorLevel = zapcore.ErrorLevel
-	// DPanicLevel logs are particularly important errors. In development the
-	// logger panics after writing the message.
-	DPanicLevel = zapcore.DPanicLevel
-	// PanicLevel logs a message, then panics.
-	PanicLevel = zapcore.PanicLevel
-	// FatalLevel logs a message, then calls os.Exit(1).
-	FatalLevel = zapcore.FatalLevel
+    // DebugLevel logs are typically voluminous, and are usually disabled in
+    // production.
+    DebugLevel = zapcore.DebugLevel
+    // InfoLevel is the default logging priority.
+    InfoLevel = zapcore.InfoLevel
+    // WarnLevel logs are more important than Info, but don't need individual
+    // human review.
+    WarnLevel = zapcore.WarnLevel
+    // ErrorLevel logs are high-priority. If an application is running smoothly,
+    // it shouldn't generate any error-level logs.
+    ErrorLevel = zapcore.ErrorLevel
+    // DPanicLevel logs are particularly important errors. In development the
+    // logger panics after writing the message.
+    DPanicLevel = zapcore.DPanicLevel
+    // PanicLevel logs a message, then panics.
+    PanicLevel = zapcore.PanicLevel
+    // FatalLevel logs a message, then calls os.Exit(1).
+    FatalLevel = zapcore.FatalLevel
 )
 
 // LevelEnablerFunc is a convenient way to implement zapcore.LevelEnabler with
@@ -69,7 +69,7 @@ func (f LevelEnablerFunc) Enabled(lvl zapcore.Level) bool { return f(lvl) }
 // AtomicLevels must be created with the NewAtomicLevel constructor to allocate
 // their internal atomic pointer.
 type AtomicLevel struct {
-	l *atomic.Int32
+    l *atomic.Int32
 }
 
 var _ internal.LeveledEnabler = AtomicLevel{}
@@ -77,17 +77,17 @@ var _ internal.LeveledEnabler = AtomicLevel{}
 // NewAtomicLevel creates an AtomicLevel with InfoLevel and above logging
 // enabled.
 func NewAtomicLevel() AtomicLevel {
-	lvl := AtomicLevel{l: new(atomic.Int32)}
-	lvl.l.Store(int32(InfoLevel))
-	return lvl
+    lvl := AtomicLevel{l: new(atomic.Int32)}
+    lvl.l.Store(int32(InfoLevel))
+    return lvl
 }
 
 // NewAtomicLevelAt is a convenience function that creates an AtomicLevel
 // and then calls SetLevel with the given level.
 func NewAtomicLevelAt(l zapcore.Level) AtomicLevel {
-	a := NewAtomicLevel()
-	a.SetLevel(l)
-	return a
+    a := NewAtomicLevel()
+    a.SetLevel(l)
+    return a
 }
 
 // ParseAtomicLevel parses an AtomicLevel based on a lowercase or all-caps ASCII
@@ -97,57 +97,57 @@ func NewAtomicLevelAt(l zapcore.Level) AtomicLevel {
 // This is particularly useful when dealing with text input to configure log
 // levels.
 func ParseAtomicLevel(text string) (AtomicLevel, error) {
-	a := NewAtomicLevel()
-	l, err := zapcore.ParseLevel(text)
-	if err != nil {
-		return a, err
-	}
+    a := NewAtomicLevel()
+    l, err := zapcore.ParseLevel(text)
+    if err != nil {
+        return a, err
+    }
 
-	a.SetLevel(l)
-	return a, nil
+    a.SetLevel(l)
+    return a, nil
 }
 
 // Enabled implements the zapcore.LevelEnabler interface, which allows the
 // AtomicLevel to be used in place of traditional static levels.
 func (lvl AtomicLevel) Enabled(l zapcore.Level) bool {
-	return lvl.Level().Enabled(l)
+    return lvl.Level().Enabled(l)
 }
 
 // Level returns the minimum enabled log level.
 func (lvl AtomicLevel) Level() zapcore.Level {
-	return zapcore.Level(int8(lvl.l.Load()))
+    return zapcore.Level(int8(lvl.l.Load()))
 }
 
 // SetLevel alters the logging level.
 func (lvl AtomicLevel) SetLevel(l zapcore.Level) {
-	lvl.l.Store(int32(l))
+    lvl.l.Store(int32(l))
 }
 
 // String returns the string representation of the underlying Level.
 func (lvl AtomicLevel) String() string {
-	return lvl.Level().String()
+    return lvl.Level().String()
 }
 
 // UnmarshalText unmarshals the text to an AtomicLevel. It uses the same text
 // representations as the static zapcore.Levels ("debug", "info", "warn",
 // "error", "dpanic", "panic", and "fatal").
 func (lvl *AtomicLevel) UnmarshalText(text []byte) error {
-	if lvl.l == nil {
-		lvl.l = &atomic.Int32{}
-	}
+    if lvl.l == nil {
+        lvl.l = &atomic.Int32{}
+    }
 
-	var l zapcore.Level
-	if err := l.UnmarshalText(text); err != nil {
-		return err
-	}
+    var l zapcore.Level
+    if err := l.UnmarshalText(text); err != nil {
+        return err
+    }
 
-	lvl.SetLevel(l)
-	return nil
+    lvl.SetLevel(l)
+    return nil
 }
 
 // MarshalText marshals the AtomicLevel to a byte slice. It uses the same
 // text representation as the static zapcore.Levels ("debug", "info", "warn",
 // "error", "dpanic", "panic", and "fatal").
 func (lvl AtomicLevel) MarshalText() (text []byte, err error) {
-	return lvl.Level().MarshalText()
+    return lvl.Level().MarshalText()
 }

@@ -22,12 +22,12 @@
 package service
 
 import (
-	"golang.org/x/sys/unix"
-	channelzpb "google.golang.org/grpc/channelz/grpc_channelz_v1"
+    "golang.org/x/sys/unix"
+    channelzpb "google.golang.org/grpc/channelz/grpc_channelz_v1"
 )
 
 func protoToTime(protoTime *channelzpb.SocketOptionTimeout) *unix.Timeval {
-	timeout := &unix.Timeval{}
-	timeout.Sec, timeout.Usec = convertToDuration(protoTime.GetDuration())
-	return timeout
+    timeout := &unix.Timeval{}
+    timeout.Sec, timeout.Usec = convertToDuration(protoTime.GetDuration())
+    return timeout
 }

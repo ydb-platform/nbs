@@ -18,48 +18,48 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
+    "github.com/go-logr/logr"
+    "github.com/go-logr/logr/funcr"
 )
 
 type e struct {
-	str string
+    str string
 }
 
 func (e e) Error() string {
-	return e.str
+    return e.str
 }
 
 func helper(log logr.Logger, msg string) {
-	helper2(log, msg)
+    helper2(log, msg)
 }
 
 func helper2(log logr.Logger, msg string) {
-	log.WithCallDepth(2).Info(msg)
+    log.WithCallDepth(2).Info(msg)
 }
 
 func main() {
-	// logr
-	log := funcr.NewJSON(
-		func(arg string) { fmt.Println(arg) },
-		funcr.Options{
-			LogCaller:    funcr.All,
-			LogTimestamp: true,
-			Verbosity:    1,
-		})
-	logrExample(log.WithName("logr").WithValues("mode", "funcr"))
+    // logr
+    log := funcr.NewJSON(
+        func(arg string) { fmt.Println(arg) },
+        funcr.Options{
+            LogCaller:    funcr.All,
+            LogTimestamp: true,
+            Verbosity:    1,
+        })
+    logrExample(log.WithName("logr").WithValues("mode", "funcr"))
 
-	// slog (if possible)
-	doSlog(log)
+    // slog (if possible)
+    doSlog(log)
 }
 
 func logrExample(log logr.Logger) {
-	log.Info("hello", "val1", 1, "val2", map[string]int{"k": 1})
-	log.V(1).Info("you should see this")
-	log.V(1).V(1).Info("you should NOT see this")
-	log.Error(nil, "uh oh", "trouble", true, "reasons", []float64{0.1, 0.11, 3.14})
-	log.Error(e{"an error occurred"}, "goodbye", "code", -1)
-	helper(log, "thru a helper")
+    log.Info("hello", "val1", 1, "val2", map[string]int{"k": 1})
+    log.V(1).Info("you should see this")
+    log.V(1).V(1).Info("you should NOT see this")
+    log.Error(nil, "uh oh", "trouble", true, "reasons", []float64{0.1, 0.11, 3.14})
+    log.Error(e{"an error occurred"}, "goodbye", "code", -1)
+    helper(log, "thru a helper")
 }

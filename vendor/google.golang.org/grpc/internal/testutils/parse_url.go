@@ -19,16 +19,16 @@
 package testutils
 
 import (
-	"fmt"
-	"net/url"
+    "fmt"
+    "net/url"
 )
 
 // MustParseURL attempts to parse the provided target using url.Parse()
 // and panics if parsing fails.
 func MustParseURL(target string) *url.URL {
-	u, err := url.Parse(target)
-	if err != nil {
-		panic(fmt.Sprintf("Error parsing target(%s): %v", target, err))
-	}
-	return u
+    u, err := url.Parse(target)
+    if err != nil {
+        panic(fmt.Sprintf("Error parsing target(%s): %v", target, err))
+    }
+    return u
 }

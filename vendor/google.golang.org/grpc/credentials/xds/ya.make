@@ -1,8 +1,12 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
-SRCS(xds.go)
+SRCS(
+    xds.go
+)
 
 GO_TEST_SRCS(
     xds_client_test.go
@@ -11,4 +15,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

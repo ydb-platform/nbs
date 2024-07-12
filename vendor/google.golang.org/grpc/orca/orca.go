@@ -27,10 +27,10 @@
 package orca
 
 import (
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal/balancerload"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/orca/internal"
+    "google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/internal/balancerload"
+    "google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/orca/internal"
 )
 
 var logger = grpclog.Component("orca-backend-metrics")
@@ -45,16 +45,16 @@ var logger = grpclog.Component("orca-backend-metrics")
 type loadParser struct{}
 
 func (loadParser) Parse(md metadata.MD) interface{} {
-	lr, err := internal.ToLoadReport(md)
-	if err != nil {
-		logger.Infof("Parse failed: %v", err)
-	}
-	if lr == nil && logger.V(2) {
-		logger.Infof("Missing ORCA load report data")
-	}
-	return lr
+    lr, err := internal.ToLoadReport(md)
+    if err != nil {
+        logger.Infof("Parse failed: %v", err)
+    }
+    if lr == nil && logger.V(2) {
+        logger.Infof("Missing ORCA load report data")
+    }
+    return lr
 }
 
 func init() {
-	balancerload.SetParser(loadParser{})
+    balancerload.SetParser(loadParser{})
 }

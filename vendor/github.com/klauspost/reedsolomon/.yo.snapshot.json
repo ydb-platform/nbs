@@ -1,0 +1,38 @@
+{
+    "Version": "v1.10.1-0.20220820100202-797d62e03058",
+    "GoVersion": "1.15",
+    "Sum": "h1:BCXmzZSSmCKmiLLZcopKVzUqi105AwpVrd1QDSGTtHA=",
+    "Packages": {
+        "github.com/klauspost/reedsolomon": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/klauspost/cpuid/v2",
+                "io",
+                "math/bits",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/klauspost/reedsolomon",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "os",
+                "runtime",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

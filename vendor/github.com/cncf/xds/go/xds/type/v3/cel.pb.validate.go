@@ -4,87 +4,87 @@
 package v3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
 )
 
 // Validate checks the field values on CelExpression with the rules defined in
 // the proto definition for this message. If any rules are violated, an error
 // is returned.
 func (m *CelExpression) Validate() error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	switch m.ExprSpecifier.(type) {
+    switch m.ExprSpecifier.(type) {
 
-	case *CelExpression_ParsedExpr:
+    case *CelExpression_ParsedExpr:
 
-		if v, ok := interface{}(m.GetParsedExpr()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return CelExpressionValidationError{
-					field:  "ParsedExpr",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if v, ok := interface{}(m.GetParsedExpr()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return CelExpressionValidationError{
+                    field:  "ParsedExpr",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *CelExpression_CheckedExpr:
+    case *CelExpression_CheckedExpr:
 
-		if v, ok := interface{}(m.GetCheckedExpr()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return CelExpressionValidationError{
-					field:  "CheckedExpr",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if v, ok := interface{}(m.GetCheckedExpr()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return CelExpressionValidationError{
+                    field:  "CheckedExpr",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	default:
-		return CelExpressionValidationError{
-			field:  "ExprSpecifier",
-			reason: "value is required",
-		}
+    default:
+        return CelExpressionValidationError{
+            field:  "ExprSpecifier",
+            reason: "value is required",
+        }
 
-	}
+    }
 
-	return nil
+    return nil
 }
 
 // CelExpressionValidationError is the validation error returned by
 // CelExpression.Validate if the designated constraints aren't met.
 type CelExpressionValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -104,79 +104,79 @@ func (e CelExpressionValidationError) ErrorName() string { return "CelExpression
 
 // Error satisfies the builtin error interface
 func (e CelExpressionValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sCelExpression.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sCelExpression.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = CelExpressionValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = CelExpressionValidationError{}
 
 // Validate checks the field values on CelExtractString with the rules defined
 // in the proto definition for this message. If any rules are violated, an
 // error is returned.
 func (m *CelExtractString) Validate() error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	if m.GetExprExtract() == nil {
-		return CelExtractStringValidationError{
-			field:  "ExprExtract",
-			reason: "value is required",
-		}
-	}
+    if m.GetExprExtract() == nil {
+        return CelExtractStringValidationError{
+            field:  "ExprExtract",
+            reason: "value is required",
+        }
+    }
 
-	if v, ok := interface{}(m.GetExprExtract()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return CelExtractStringValidationError{
-				field:  "ExprExtract",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if v, ok := interface{}(m.GetExprExtract()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return CelExtractStringValidationError{
+                field:  "ExprExtract",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if v, ok := interface{}(m.GetDefaultValue()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return CelExtractStringValidationError{
-				field:  "DefaultValue",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if v, ok := interface{}(m.GetDefaultValue()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return CelExtractStringValidationError{
+                field:  "DefaultValue",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	return nil
+    return nil
 }
 
 // CelExtractStringValidationError is the validation error returned by
 // CelExtractString.Validate if the designated constraints aren't met.
 type CelExtractStringValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -196,30 +196,30 @@ func (e CelExtractStringValidationError) ErrorName() string { return "CelExtract
 
 // Error satisfies the builtin error interface
 func (e CelExtractStringValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sCelExtractString.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sCelExtractString.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = CelExtractStringValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = CelExtractStringValidationError{}

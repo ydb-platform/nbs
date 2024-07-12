@@ -1,10 +1,10 @@
 package topicreader
 
 import (
-	"errors"
+    "errors"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreaderinternal"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreaderinternal"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
 // ErrUnexpectedCodec will return if topicreader receive message with unknown codec.

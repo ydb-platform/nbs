@@ -1,0 +1,91 @@
+{
+    "Version": "v1.2.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:uCdmnmatrKCgMBlM4rMuJZWOkPDqdbZPnrMXDY4gI68=",
+    "Packages": {
+        "github.com/golang/glog": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/golang/glog/internal/logsink",
+                "github.com/golang/glog/internal/stackdump",
+                "io",
+                "log",
+                "os",
+                "os/user",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "runtime/pprof",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "github.com/golang/glog/internal/logsink",
+                "io/ioutil",
+                "log",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/glog/internal/logsink": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/golang/glog/internal/stackdump",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "github.com/golang/glog/internal/logsink",
+                "github.com/golang/glog/internal/stackdump",
+                "github.com/google/go-cmp/cmp",
+                "math",
+                "reflect",
+                "runtime",
+                "slices",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/glog/internal/stackdump": {
+            "Imports": [
+                "bytes",
+                "runtime"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/golang/glog/internal/stackdump",
+                "regexp",
+                "runtime",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,29 @@
+{
+    "Version": "v0.1.1",
+    "GoVersion": "1.14",
+    "Sum": "h1:8UAPvyqmsxK8oOjloDk4wUt63TzFe9WEJkg5lChlj7o=",
+    "Packages": {
+        "github.com/pion/udp": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/pion/transport/deadline",
+                "github.com/pion/transport/packetio",
+                "net",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/pion/transport/test",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

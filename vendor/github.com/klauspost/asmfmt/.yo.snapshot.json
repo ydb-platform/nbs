@@ -1,0 +1,43 @@
+{
+    "Version": "v1.3.2",
+    "GoVersion": "1.16",
+    "Sum": "h1:4Ri7ox3EwapiOjCki+hw14RyKk201CN4rzyCJRFLpK4=",
+    "Packages": {
+        "github.com/klauspost/asmfmt": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "io",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/klauspost/asmfmt/cmd/asmfmt": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/klauspost/asmfmt",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime/pprof",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

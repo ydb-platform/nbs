@@ -4,46 +4,46 @@
 package accesslogv3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 
-	v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 
-	_ = v3.RequestMethod(0)
+    _ = v3.RequestMethod(0)
 )
 
 // Validate checks the field values on TCPAccessLogEntry with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
 func (m *TCPAccessLogEntry) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on TCPAccessLogEntry with the rules
@@ -51,79 +51,79 @@ func (m *TCPAccessLogEntry) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // TCPAccessLogEntryMultiError, or nil if none found.
 func (m *TCPAccessLogEntry) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *TCPAccessLogEntry) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if all {
-		switch v := interface{}(m.GetCommonProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, TCPAccessLogEntryValidationError{
-					field:  "CommonProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, TCPAccessLogEntryValidationError{
-					field:  "CommonProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetCommonProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return TCPAccessLogEntryValidationError{
-				field:  "CommonProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetCommonProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, TCPAccessLogEntryValidationError{
+                    field:  "CommonProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, TCPAccessLogEntryValidationError{
+                    field:  "CommonProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetCommonProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return TCPAccessLogEntryValidationError{
+                field:  "CommonProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetConnectionProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, TCPAccessLogEntryValidationError{
-					field:  "ConnectionProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, TCPAccessLogEntryValidationError{
-					field:  "ConnectionProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetConnectionProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return TCPAccessLogEntryValidationError{
-				field:  "ConnectionProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetConnectionProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, TCPAccessLogEntryValidationError{
+                    field:  "ConnectionProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, TCPAccessLogEntryValidationError{
+                    field:  "ConnectionProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetConnectionProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return TCPAccessLogEntryValidationError{
+                field:  "ConnectionProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if len(errors) > 0 {
-		return TCPAccessLogEntryMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return TCPAccessLogEntryMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // TCPAccessLogEntryMultiError is an error wrapping multiple validation errors
@@ -133,11 +133,11 @@ type TCPAccessLogEntryMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TCPAccessLogEntryMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -146,10 +146,10 @@ func (m TCPAccessLogEntryMultiError) AllErrors() []error { return m }
 // TCPAccessLogEntryValidationError is the validation error returned by
 // TCPAccessLogEntry.Validate if the designated constraints aren't met.
 type TCPAccessLogEntryValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -166,44 +166,44 @@ func (e TCPAccessLogEntryValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e TCPAccessLogEntryValidationError) ErrorName() string {
-	return "TCPAccessLogEntryValidationError"
+    return "TCPAccessLogEntryValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e TCPAccessLogEntryValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sTCPAccessLogEntry.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sTCPAccessLogEntry.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = TCPAccessLogEntryValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = TCPAccessLogEntryValidationError{}
 
 // Validate checks the field values on HTTPAccessLogEntry with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HTTPAccessLogEntry) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HTTPAccessLogEntry with the rules
@@ -211,110 +211,110 @@ func (m *HTTPAccessLogEntry) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HTTPAccessLogEntryMultiError, or nil if none found.
 func (m *HTTPAccessLogEntry) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HTTPAccessLogEntry) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if all {
-		switch v := interface{}(m.GetCommonProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "CommonProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "CommonProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetCommonProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HTTPAccessLogEntryValidationError{
-				field:  "CommonProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetCommonProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "CommonProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "CommonProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetCommonProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HTTPAccessLogEntryValidationError{
+                field:  "CommonProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for ProtocolVersion
+    // no validation rules for ProtocolVersion
 
-	if all {
-		switch v := interface{}(m.GetRequest()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "Request",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "Request",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetRequest()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HTTPAccessLogEntryValidationError{
-				field:  "Request",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetRequest()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "Request",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "Request",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetRequest()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HTTPAccessLogEntryValidationError{
+                field:  "Request",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetResponse()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "Response",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HTTPAccessLogEntryValidationError{
-					field:  "Response",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetResponse()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HTTPAccessLogEntryValidationError{
-				field:  "Response",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetResponse()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "Response",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HTTPAccessLogEntryValidationError{
+                    field:  "Response",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetResponse()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HTTPAccessLogEntryValidationError{
+                field:  "Response",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if len(errors) > 0 {
-		return HTTPAccessLogEntryMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HTTPAccessLogEntryMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HTTPAccessLogEntryMultiError is an error wrapping multiple validation errors
@@ -324,11 +324,11 @@ type HTTPAccessLogEntryMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HTTPAccessLogEntryMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -337,10 +337,10 @@ func (m HTTPAccessLogEntryMultiError) AllErrors() []error { return m }
 // HTTPAccessLogEntryValidationError is the validation error returned by
 // HTTPAccessLogEntry.Validate if the designated constraints aren't met.
 type HTTPAccessLogEntryValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -357,44 +357,44 @@ func (e HTTPAccessLogEntryValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HTTPAccessLogEntryValidationError) ErrorName() string {
-	return "HTTPAccessLogEntryValidationError"
+    return "HTTPAccessLogEntryValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HTTPAccessLogEntryValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHTTPAccessLogEntry.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHTTPAccessLogEntry.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HTTPAccessLogEntryValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HTTPAccessLogEntryValidationError{}
 
 // Validate checks the field values on ConnectionProperties with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ConnectionProperties) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ConnectionProperties with the rules
@@ -402,25 +402,25 @@ func (m *ConnectionProperties) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ConnectionPropertiesMultiError, or nil if none found.
 func (m *ConnectionProperties) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ConnectionProperties) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for ReceivedBytes
+    // no validation rules for ReceivedBytes
 
-	// no validation rules for SentBytes
+    // no validation rules for SentBytes
 
-	if len(errors) > 0 {
-		return ConnectionPropertiesMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ConnectionPropertiesMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ConnectionPropertiesMultiError is an error wrapping multiple validation
@@ -430,11 +430,11 @@ type ConnectionPropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ConnectionPropertiesMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -443,10 +443,10 @@ func (m ConnectionPropertiesMultiError) AllErrors() []error { return m }
 // ConnectionPropertiesValidationError is the validation error returned by
 // ConnectionProperties.Validate if the designated constraints aren't met.
 type ConnectionPropertiesValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -463,44 +463,44 @@ func (e ConnectionPropertiesValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ConnectionPropertiesValidationError) ErrorName() string {
-	return "ConnectionPropertiesValidationError"
+    return "ConnectionPropertiesValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ConnectionPropertiesValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sConnectionProperties.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sConnectionProperties.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ConnectionPropertiesValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ConnectionPropertiesValidationError{}
 
 // Validate checks the field values on AccessLogCommon with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
 func (m *AccessLogCommon) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on AccessLogCommon with the rules
@@ -508,599 +508,599 @@ func (m *AccessLogCommon) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // AccessLogCommonMultiError, or nil if none found.
 func (m *AccessLogCommon) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *AccessLogCommon) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if val := m.GetSampleRate(); val <= 0 || val > 1 {
-		err := AccessLogCommonValidationError{
-			field:  "SampleRate",
-			reason: "value must be inside range (0, 1]",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if val := m.GetSampleRate(); val <= 0 || val > 1 {
+        err := AccessLogCommonValidationError{
+            field:  "SampleRate",
+            reason: "value must be inside range (0, 1]",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if all {
-		switch v := interface{}(m.GetDownstreamRemoteAddress()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetDownstreamRemoteAddress()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "DownstreamRemoteAddress",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetDownstreamRemoteAddress()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetDownstreamRemoteAddress()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "DownstreamRemoteAddress",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetDownstreamLocalAddress()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamLocalAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamLocalAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetDownstreamLocalAddress()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "DownstreamLocalAddress",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetDownstreamLocalAddress()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamLocalAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamLocalAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetDownstreamLocalAddress()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "DownstreamLocalAddress",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTlsProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TlsProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TlsProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTlsProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TlsProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTlsProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TlsProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TlsProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTlsProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TlsProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetStartTime()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "StartTime",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "StartTime",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetStartTime()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "StartTime",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetStartTime()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "StartTime",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "StartTime",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetStartTime()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "StartTime",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToLastRxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToLastRxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToLastRxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToLastRxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToLastRxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToLastRxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToFirstUpstreamTxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstUpstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstUpstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToFirstUpstreamTxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToFirstUpstreamTxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToFirstUpstreamTxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstUpstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstUpstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToFirstUpstreamTxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToFirstUpstreamTxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToLastUpstreamTxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastUpstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastUpstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToLastUpstreamTxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToLastUpstreamTxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToLastUpstreamTxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastUpstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastUpstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToLastUpstreamTxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToLastUpstreamTxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToFirstUpstreamRxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstUpstreamRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstUpstreamRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToFirstUpstreamRxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToFirstUpstreamRxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToFirstUpstreamRxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstUpstreamRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstUpstreamRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToFirstUpstreamRxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToFirstUpstreamRxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToLastUpstreamRxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastUpstreamRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastUpstreamRxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToLastUpstreamRxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToLastUpstreamRxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToLastUpstreamRxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastUpstreamRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastUpstreamRxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToLastUpstreamRxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToLastUpstreamRxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToFirstDownstreamTxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstDownstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToFirstDownstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToFirstDownstreamTxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToFirstDownstreamTxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToFirstDownstreamTxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstDownstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToFirstDownstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToFirstDownstreamTxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToFirstDownstreamTxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetTimeToLastDownstreamTxByte()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastDownstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "TimeToLastDownstreamTxByte",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTimeToLastDownstreamTxByte()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "TimeToLastDownstreamTxByte",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTimeToLastDownstreamTxByte()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastDownstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "TimeToLastDownstreamTxByte",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTimeToLastDownstreamTxByte()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "TimeToLastDownstreamTxByte",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetUpstreamRemoteAddress()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "UpstreamRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "UpstreamRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetUpstreamRemoteAddress()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "UpstreamRemoteAddress",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetUpstreamRemoteAddress()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "UpstreamRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "UpstreamRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetUpstreamRemoteAddress()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "UpstreamRemoteAddress",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetUpstreamLocalAddress()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "UpstreamLocalAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "UpstreamLocalAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetUpstreamLocalAddress()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "UpstreamLocalAddress",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetUpstreamLocalAddress()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "UpstreamLocalAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "UpstreamLocalAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetUpstreamLocalAddress()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "UpstreamLocalAddress",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for UpstreamCluster
+    // no validation rules for UpstreamCluster
 
-	if all {
-		switch v := interface{}(m.GetResponseFlags()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "ResponseFlags",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "ResponseFlags",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetResponseFlags()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "ResponseFlags",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetResponseFlags()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "ResponseFlags",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "ResponseFlags",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetResponseFlags()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "ResponseFlags",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetMetadata()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "Metadata",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "Metadata",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetMetadata()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "Metadata",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetMetadata()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "Metadata",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "Metadata",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetMetadata()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "Metadata",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for UpstreamTransportFailureReason
+    // no validation rules for UpstreamTransportFailureReason
 
-	// no validation rules for RouteName
+    // no validation rules for RouteName
 
-	if all {
-		switch v := interface{}(m.GetDownstreamDirectRemoteAddress()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamDirectRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "DownstreamDirectRemoteAddress",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetDownstreamDirectRemoteAddress()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "DownstreamDirectRemoteAddress",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetDownstreamDirectRemoteAddress()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamDirectRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "DownstreamDirectRemoteAddress",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetDownstreamDirectRemoteAddress()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "DownstreamDirectRemoteAddress",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	{
-		sorted_keys := make([]string, len(m.GetFilterStateObjects()))
-		i := 0
-		for key := range m.GetFilterStateObjects() {
-			sorted_keys[i] = key
-			i++
-		}
-		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
-		for _, key := range sorted_keys {
-			val := m.GetFilterStateObjects()[key]
-			_ = val
+    {
+        sorted_keys := make([]string, len(m.GetFilterStateObjects()))
+        i := 0
+        for key := range m.GetFilterStateObjects() {
+            sorted_keys[i] = key
+            i++
+        }
+        sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
+        for _, key := range sorted_keys {
+            val := m.GetFilterStateObjects()[key]
+            _ = val
 
-			// no validation rules for FilterStateObjects[key]
+            // no validation rules for FilterStateObjects[key]
 
-			if all {
-				switch v := interface{}(val).(type) {
-				case interface{ ValidateAll() error }:
-					if err := v.ValidateAll(); err != nil {
-						errors = append(errors, AccessLogCommonValidationError{
-							field:  fmt.Sprintf("FilterStateObjects[%v]", key),
-							reason: "embedded message failed validation",
-							cause:  err,
-						})
-					}
-				case interface{ Validate() error }:
-					if err := v.Validate(); err != nil {
-						errors = append(errors, AccessLogCommonValidationError{
-							field:  fmt.Sprintf("FilterStateObjects[%v]", key),
-							reason: "embedded message failed validation",
-							cause:  err,
-						})
-					}
-				}
-			} else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
-				if err := v.Validate(); err != nil {
-					return AccessLogCommonValidationError{
-						field:  fmt.Sprintf("FilterStateObjects[%v]", key),
-						reason: "embedded message failed validation",
-						cause:  err,
-					}
-				}
-			}
+            if all {
+                switch v := interface{}(val).(type) {
+                case interface{ ValidateAll() error }:
+                    if err := v.ValidateAll(); err != nil {
+                        errors = append(errors, AccessLogCommonValidationError{
+                            field:  fmt.Sprintf("FilterStateObjects[%v]", key),
+                            reason: "embedded message failed validation",
+                            cause:  err,
+                        })
+                    }
+                case interface{ Validate() error }:
+                    if err := v.Validate(); err != nil {
+                        errors = append(errors, AccessLogCommonValidationError{
+                            field:  fmt.Sprintf("FilterStateObjects[%v]", key),
+                            reason: "embedded message failed validation",
+                            cause:  err,
+                        })
+                    }
+                }
+            } else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
+                if err := v.Validate(); err != nil {
+                    return AccessLogCommonValidationError{
+                        field:  fmt.Sprintf("FilterStateObjects[%v]", key),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    }
+                }
+            }
 
-		}
-	}
+        }
+    }
 
-	// no validation rules for CustomTags
+    // no validation rules for CustomTags
 
-	if all {
-		switch v := interface{}(m.GetDuration()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "Duration",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, AccessLogCommonValidationError{
-					field:  "Duration",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetDuration()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return AccessLogCommonValidationError{
-				field:  "Duration",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetDuration()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "Duration",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, AccessLogCommonValidationError{
+                    field:  "Duration",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetDuration()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return AccessLogCommonValidationError{
+                field:  "Duration",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for UpstreamRequestAttemptCount
+    // no validation rules for UpstreamRequestAttemptCount
 
-	// no validation rules for ConnectionTerminationDetails
+    // no validation rules for ConnectionTerminationDetails
 
-	// no validation rules for StreamId
+    // no validation rules for StreamId
 
-	// no validation rules for IntermediateLogEntry
+    // no validation rules for IntermediateLogEntry
 
-	// no validation rules for DownstreamTransportFailureReason
+    // no validation rules for DownstreamTransportFailureReason
 
-	// no validation rules for DownstreamWireBytesSent
+    // no validation rules for DownstreamWireBytesSent
 
-	// no validation rules for DownstreamWireBytesReceived
+    // no validation rules for DownstreamWireBytesReceived
 
-	// no validation rules for UpstreamWireBytesSent
+    // no validation rules for UpstreamWireBytesSent
 
-	// no validation rules for UpstreamWireBytesReceived
+    // no validation rules for UpstreamWireBytesReceived
 
-	// no validation rules for AccessLogType
+    // no validation rules for AccessLogType
 
-	if len(errors) > 0 {
-		return AccessLogCommonMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return AccessLogCommonMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // AccessLogCommonMultiError is an error wrapping multiple validation errors
@@ -1110,11 +1110,11 @@ type AccessLogCommonMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m AccessLogCommonMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1123,10 +1123,10 @@ func (m AccessLogCommonMultiError) AllErrors() []error { return m }
 // AccessLogCommonValidationError is the validation error returned by
 // AccessLogCommon.Validate if the designated constraints aren't met.
 type AccessLogCommonValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1146,39 +1146,39 @@ func (e AccessLogCommonValidationError) ErrorName() string { return "AccessLogCo
 
 // Error satisfies the builtin error interface
 func (e AccessLogCommonValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sAccessLogCommon.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sAccessLogCommon.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = AccessLogCommonValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = AccessLogCommonValidationError{}
 
 // Validate checks the field values on ResponseFlags with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
 func (m *ResponseFlags) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ResponseFlags with the rules defined
@@ -1186,102 +1186,102 @@ func (m *ResponseFlags) Validate() error {
 // result is a list of violation errors wrapped in ResponseFlagsMultiError, or
 // nil if none found.
 func (m *ResponseFlags) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ResponseFlags) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for FailedLocalHealthcheck
+    // no validation rules for FailedLocalHealthcheck
 
-	// no validation rules for NoHealthyUpstream
+    // no validation rules for NoHealthyUpstream
 
-	// no validation rules for UpstreamRequestTimeout
+    // no validation rules for UpstreamRequestTimeout
 
-	// no validation rules for LocalReset
+    // no validation rules for LocalReset
 
-	// no validation rules for UpstreamRemoteReset
+    // no validation rules for UpstreamRemoteReset
 
-	// no validation rules for UpstreamConnectionFailure
+    // no validation rules for UpstreamConnectionFailure
 
-	// no validation rules for UpstreamConnectionTermination
+    // no validation rules for UpstreamConnectionTermination
 
-	// no validation rules for UpstreamOverflow
+    // no validation rules for UpstreamOverflow
 
-	// no validation rules for NoRouteFound
+    // no validation rules for NoRouteFound
 
-	// no validation rules for DelayInjected
+    // no validation rules for DelayInjected
 
-	// no validation rules for FaultInjected
+    // no validation rules for FaultInjected
 
-	// no validation rules for RateLimited
+    // no validation rules for RateLimited
 
-	if all {
-		switch v := interface{}(m.GetUnauthorizedDetails()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ResponseFlagsValidationError{
-					field:  "UnauthorizedDetails",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ResponseFlagsValidationError{
-					field:  "UnauthorizedDetails",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetUnauthorizedDetails()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ResponseFlagsValidationError{
-				field:  "UnauthorizedDetails",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetUnauthorizedDetails()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, ResponseFlagsValidationError{
+                    field:  "UnauthorizedDetails",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, ResponseFlagsValidationError{
+                    field:  "UnauthorizedDetails",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetUnauthorizedDetails()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return ResponseFlagsValidationError{
+                field:  "UnauthorizedDetails",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for RateLimitServiceError
+    // no validation rules for RateLimitServiceError
 
-	// no validation rules for DownstreamConnectionTermination
+    // no validation rules for DownstreamConnectionTermination
 
-	// no validation rules for UpstreamRetryLimitExceeded
+    // no validation rules for UpstreamRetryLimitExceeded
 
-	// no validation rules for StreamIdleTimeout
+    // no validation rules for StreamIdleTimeout
 
-	// no validation rules for InvalidEnvoyRequestHeaders
+    // no validation rules for InvalidEnvoyRequestHeaders
 
-	// no validation rules for DownstreamProtocolError
+    // no validation rules for DownstreamProtocolError
 
-	// no validation rules for UpstreamMaxStreamDurationReached
+    // no validation rules for UpstreamMaxStreamDurationReached
 
-	// no validation rules for ResponseFromCacheFilter
+    // no validation rules for ResponseFromCacheFilter
 
-	// no validation rules for NoFilterConfigFound
+    // no validation rules for NoFilterConfigFound
 
-	// no validation rules for DurationTimeout
+    // no validation rules for DurationTimeout
 
-	// no validation rules for UpstreamProtocolError
+    // no validation rules for UpstreamProtocolError
 
-	// no validation rules for NoClusterFound
+    // no validation rules for NoClusterFound
 
-	// no validation rules for OverloadManager
+    // no validation rules for OverloadManager
 
-	// no validation rules for DnsResolutionFailure
+    // no validation rules for DnsResolutionFailure
 
-	if len(errors) > 0 {
-		return ResponseFlagsMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ResponseFlagsMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ResponseFlagsMultiError is an error wrapping multiple validation errors
@@ -1291,11 +1291,11 @@ type ResponseFlagsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ResponseFlagsMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1304,10 +1304,10 @@ func (m ResponseFlagsMultiError) AllErrors() []error { return m }
 // ResponseFlagsValidationError is the validation error returned by
 // ResponseFlags.Validate if the designated constraints aren't met.
 type ResponseFlagsValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1327,39 +1327,39 @@ func (e ResponseFlagsValidationError) ErrorName() string { return "ResponseFlags
 
 // Error satisfies the builtin error interface
 func (e ResponseFlagsValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sResponseFlags.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sResponseFlags.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ResponseFlagsValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ResponseFlagsValidationError{}
 
 // Validate checks the field values on TLSProperties with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
 func (m *TLSProperties) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on TLSProperties with the rules defined
@@ -1367,116 +1367,116 @@ func (m *TLSProperties) Validate() error {
 // result is a list of violation errors wrapped in TLSPropertiesMultiError, or
 // nil if none found.
 func (m *TLSProperties) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *TLSProperties) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for TlsVersion
+    // no validation rules for TlsVersion
 
-	if all {
-		switch v := interface{}(m.GetTlsCipherSuite()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "TlsCipherSuite",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "TlsCipherSuite",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTlsCipherSuite()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return TLSPropertiesValidationError{
-				field:  "TlsCipherSuite",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTlsCipherSuite()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "TlsCipherSuite",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "TlsCipherSuite",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTlsCipherSuite()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return TLSPropertiesValidationError{
+                field:  "TlsCipherSuite",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for TlsSniHostname
+    // no validation rules for TlsSniHostname
 
-	if all {
-		switch v := interface{}(m.GetLocalCertificateProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "LocalCertificateProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "LocalCertificateProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetLocalCertificateProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return TLSPropertiesValidationError{
-				field:  "LocalCertificateProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetLocalCertificateProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "LocalCertificateProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "LocalCertificateProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetLocalCertificateProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return TLSPropertiesValidationError{
+                field:  "LocalCertificateProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetPeerCertificateProperties()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "PeerCertificateProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, TLSPropertiesValidationError{
-					field:  "PeerCertificateProperties",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetPeerCertificateProperties()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return TLSPropertiesValidationError{
-				field:  "PeerCertificateProperties",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetPeerCertificateProperties()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "PeerCertificateProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, TLSPropertiesValidationError{
+                    field:  "PeerCertificateProperties",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetPeerCertificateProperties()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return TLSPropertiesValidationError{
+                field:  "PeerCertificateProperties",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for TlsSessionId
+    // no validation rules for TlsSessionId
 
-	// no validation rules for Ja3Fingerprint
+    // no validation rules for Ja3Fingerprint
 
-	if len(errors) > 0 {
-		return TLSPropertiesMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return TLSPropertiesMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // TLSPropertiesMultiError is an error wrapping multiple validation errors
@@ -1486,11 +1486,11 @@ type TLSPropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TLSPropertiesMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1499,10 +1499,10 @@ func (m TLSPropertiesMultiError) AllErrors() []error { return m }
 // TLSPropertiesValidationError is the validation error returned by
 // TLSProperties.Validate if the designated constraints aren't met.
 type TLSPropertiesValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1522,39 +1522,39 @@ func (e TLSPropertiesValidationError) ErrorName() string { return "TLSProperties
 
 // Error satisfies the builtin error interface
 func (e TLSPropertiesValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sTLSProperties.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sTLSProperties.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = TLSPropertiesValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = TLSPropertiesValidationError{}
 
 // Validate checks the field values on HTTPRequestProperties with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HTTPRequestProperties) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HTTPRequestProperties with the rules
@@ -1562,87 +1562,87 @@ func (m *HTTPRequestProperties) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HTTPRequestPropertiesMultiError, or nil if none found.
 func (m *HTTPRequestProperties) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HTTPRequestProperties) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if _, ok := v3.RequestMethod_name[int32(m.GetRequestMethod())]; !ok {
-		err := HTTPRequestPropertiesValidationError{
-			field:  "RequestMethod",
-			reason: "value must be one of the defined enum values",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if _, ok := v3.RequestMethod_name[int32(m.GetRequestMethod())]; !ok {
+        err := HTTPRequestPropertiesValidationError{
+            field:  "RequestMethod",
+            reason: "value must be one of the defined enum values",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	// no validation rules for Scheme
+    // no validation rules for Scheme
 
-	// no validation rules for Authority
+    // no validation rules for Authority
 
-	if all {
-		switch v := interface{}(m.GetPort()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HTTPRequestPropertiesValidationError{
-					field:  "Port",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HTTPRequestPropertiesValidationError{
-					field:  "Port",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetPort()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HTTPRequestPropertiesValidationError{
-				field:  "Port",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetPort()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HTTPRequestPropertiesValidationError{
+                    field:  "Port",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HTTPRequestPropertiesValidationError{
+                    field:  "Port",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetPort()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HTTPRequestPropertiesValidationError{
+                field:  "Port",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for Path
+    // no validation rules for Path
 
-	// no validation rules for UserAgent
+    // no validation rules for UserAgent
 
-	// no validation rules for Referer
+    // no validation rules for Referer
 
-	// no validation rules for ForwardedFor
+    // no validation rules for ForwardedFor
 
-	// no validation rules for RequestId
+    // no validation rules for RequestId
 
-	// no validation rules for OriginalPath
+    // no validation rules for OriginalPath
 
-	// no validation rules for RequestHeadersBytes
+    // no validation rules for RequestHeadersBytes
 
-	// no validation rules for RequestBodyBytes
+    // no validation rules for RequestBodyBytes
 
-	// no validation rules for RequestHeaders
+    // no validation rules for RequestHeaders
 
-	// no validation rules for UpstreamHeaderBytesSent
+    // no validation rules for UpstreamHeaderBytesSent
 
-	// no validation rules for DownstreamHeaderBytesReceived
+    // no validation rules for DownstreamHeaderBytesReceived
 
-	if len(errors) > 0 {
-		return HTTPRequestPropertiesMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HTTPRequestPropertiesMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HTTPRequestPropertiesMultiError is an error wrapping multiple validation
@@ -1652,11 +1652,11 @@ type HTTPRequestPropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HTTPRequestPropertiesMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1665,10 +1665,10 @@ func (m HTTPRequestPropertiesMultiError) AllErrors() []error { return m }
 // HTTPRequestPropertiesValidationError is the validation error returned by
 // HTTPRequestProperties.Validate if the designated constraints aren't met.
 type HTTPRequestPropertiesValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1685,44 +1685,44 @@ func (e HTTPRequestPropertiesValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HTTPRequestPropertiesValidationError) ErrorName() string {
-	return "HTTPRequestPropertiesValidationError"
+    return "HTTPRequestPropertiesValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HTTPRequestPropertiesValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHTTPRequestProperties.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHTTPRequestProperties.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HTTPRequestPropertiesValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HTTPRequestPropertiesValidationError{}
 
 // Validate checks the field values on HTTPResponseProperties with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HTTPResponseProperties) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HTTPResponseProperties with the rules
@@ -1730,64 +1730,64 @@ func (m *HTTPResponseProperties) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HTTPResponsePropertiesMultiError, or nil if none found.
 func (m *HTTPResponseProperties) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HTTPResponseProperties) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if all {
-		switch v := interface{}(m.GetResponseCode()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HTTPResponsePropertiesValidationError{
-					field:  "ResponseCode",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HTTPResponsePropertiesValidationError{
-					field:  "ResponseCode",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetResponseCode()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HTTPResponsePropertiesValidationError{
-				field:  "ResponseCode",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetResponseCode()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HTTPResponsePropertiesValidationError{
+                    field:  "ResponseCode",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HTTPResponsePropertiesValidationError{
+                    field:  "ResponseCode",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetResponseCode()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HTTPResponsePropertiesValidationError{
+                field:  "ResponseCode",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for ResponseHeadersBytes
+    // no validation rules for ResponseHeadersBytes
 
-	// no validation rules for ResponseBodyBytes
+    // no validation rules for ResponseBodyBytes
 
-	// no validation rules for ResponseHeaders
+    // no validation rules for ResponseHeaders
 
-	// no validation rules for ResponseTrailers
+    // no validation rules for ResponseTrailers
 
-	// no validation rules for ResponseCodeDetails
+    // no validation rules for ResponseCodeDetails
 
-	// no validation rules for UpstreamHeaderBytesReceived
+    // no validation rules for UpstreamHeaderBytesReceived
 
-	// no validation rules for DownstreamHeaderBytesSent
+    // no validation rules for DownstreamHeaderBytesSent
 
-	if len(errors) > 0 {
-		return HTTPResponsePropertiesMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HTTPResponsePropertiesMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HTTPResponsePropertiesMultiError is an error wrapping multiple validation
@@ -1797,11 +1797,11 @@ type HTTPResponsePropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HTTPResponsePropertiesMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1810,10 +1810,10 @@ func (m HTTPResponsePropertiesMultiError) AllErrors() []error { return m }
 // HTTPResponsePropertiesValidationError is the validation error returned by
 // HTTPResponseProperties.Validate if the designated constraints aren't met.
 type HTTPResponsePropertiesValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1830,44 +1830,44 @@ func (e HTTPResponsePropertiesValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HTTPResponsePropertiesValidationError) ErrorName() string {
-	return "HTTPResponsePropertiesValidationError"
+    return "HTTPResponsePropertiesValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HTTPResponsePropertiesValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHTTPResponseProperties.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHTTPResponseProperties.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HTTPResponsePropertiesValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HTTPResponsePropertiesValidationError{}
 
 // Validate checks the field values on ResponseFlags_Unauthorized with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ResponseFlags_Unauthorized) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ResponseFlags_Unauthorized with the
@@ -1875,23 +1875,23 @@ func (m *ResponseFlags_Unauthorized) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ResponseFlags_UnauthorizedMultiError, or nil if none found.
 func (m *ResponseFlags_Unauthorized) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ResponseFlags_Unauthorized) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for Reason
+    // no validation rules for Reason
 
-	if len(errors) > 0 {
-		return ResponseFlags_UnauthorizedMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ResponseFlags_UnauthorizedMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ResponseFlags_UnauthorizedMultiError is an error wrapping multiple
@@ -1901,11 +1901,11 @@ type ResponseFlags_UnauthorizedMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ResponseFlags_UnauthorizedMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1914,10 +1914,10 @@ func (m ResponseFlags_UnauthorizedMultiError) AllErrors() []error { return m }
 // ResponseFlags_UnauthorizedValidationError is the validation error returned
 // by ResponseFlags_Unauthorized.Validate if the designated constraints aren't met.
 type ResponseFlags_UnauthorizedValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1934,37 +1934,37 @@ func (e ResponseFlags_UnauthorizedValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ResponseFlags_UnauthorizedValidationError) ErrorName() string {
-	return "ResponseFlags_UnauthorizedValidationError"
+    return "ResponseFlags_UnauthorizedValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ResponseFlags_UnauthorizedValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sResponseFlags_Unauthorized.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sResponseFlags_Unauthorized.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ResponseFlags_UnauthorizedValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ResponseFlags_UnauthorizedValidationError{}
 
 // Validate checks the field values on TLSProperties_CertificateProperties with
@@ -1972,7 +1972,7 @@ var _ interface {
 // are violated, the first error encountered is returned, or nil if there are
 // no violations.
 func (m *TLSProperties_CertificateProperties) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on TLSProperties_CertificateProperties
@@ -1980,57 +1980,57 @@ func (m *TLSProperties_CertificateProperties) Validate() error {
 // rules are violated, the result is a list of violation errors wrapped in
 // TLSProperties_CertificatePropertiesMultiError, or nil if none found.
 func (m *TLSProperties_CertificateProperties) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *TLSProperties_CertificateProperties) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	for idx, item := range m.GetSubjectAltName() {
-		_, _ = idx, item
+    for idx, item := range m.GetSubjectAltName() {
+        _, _ = idx, item
 
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, TLSProperties_CertificatePropertiesValidationError{
-						field:  fmt.Sprintf("SubjectAltName[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, TLSProperties_CertificatePropertiesValidationError{
-						field:  fmt.Sprintf("SubjectAltName[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return TLSProperties_CertificatePropertiesValidationError{
-					field:  fmt.Sprintf("SubjectAltName[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(item).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, TLSProperties_CertificatePropertiesValidationError{
+                        field:  fmt.Sprintf("SubjectAltName[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, TLSProperties_CertificatePropertiesValidationError{
+                        field:  fmt.Sprintf("SubjectAltName[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return TLSProperties_CertificatePropertiesValidationError{
+                    field:  fmt.Sprintf("SubjectAltName[%v]", idx),
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	}
+    }
 
-	// no validation rules for Subject
+    // no validation rules for Subject
 
-	if len(errors) > 0 {
-		return TLSProperties_CertificatePropertiesMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return TLSProperties_CertificatePropertiesMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // TLSProperties_CertificatePropertiesMultiError is an error wrapping multiple
@@ -2041,11 +2041,11 @@ type TLSProperties_CertificatePropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TLSProperties_CertificatePropertiesMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -2055,10 +2055,10 @@ func (m TLSProperties_CertificatePropertiesMultiError) AllErrors() []error { ret
 // returned by TLSProperties_CertificateProperties.Validate if the designated
 // constraints aren't met.
 type TLSProperties_CertificatePropertiesValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -2075,37 +2075,37 @@ func (e TLSProperties_CertificatePropertiesValidationError) Key() bool { return 
 
 // ErrorName returns error name.
 func (e TLSProperties_CertificatePropertiesValidationError) ErrorName() string {
-	return "TLSProperties_CertificatePropertiesValidationError"
+    return "TLSProperties_CertificatePropertiesValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e TLSProperties_CertificatePropertiesValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sTLSProperties_CertificateProperties.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sTLSProperties_CertificateProperties.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = TLSProperties_CertificatePropertiesValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = TLSProperties_CertificatePropertiesValidationError{}
 
 // Validate checks the field values on
@@ -2113,7 +2113,7 @@ var _ interface {
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
 func (m *TLSProperties_CertificateProperties_SubjectAltName) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on
@@ -2123,50 +2123,50 @@ func (m *TLSProperties_CertificateProperties_SubjectAltName) Validate() error {
 // TLSProperties_CertificateProperties_SubjectAltNameMultiError, or nil if
 // none found.
 func (m *TLSProperties_CertificateProperties_SubjectAltName) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *TLSProperties_CertificateProperties_SubjectAltName) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	switch v := m.San.(type) {
-	case *TLSProperties_CertificateProperties_SubjectAltName_Uri:
-		if v == nil {
-			err := TLSProperties_CertificateProperties_SubjectAltNameValidationError{
-				field:  "San",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		// no validation rules for Uri
-	case *TLSProperties_CertificateProperties_SubjectAltName_Dns:
-		if v == nil {
-			err := TLSProperties_CertificateProperties_SubjectAltNameValidationError{
-				field:  "San",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		// no validation rules for Dns
-	default:
-		_ = v // ensures v is used
-	}
+    switch v := m.San.(type) {
+    case *TLSProperties_CertificateProperties_SubjectAltName_Uri:
+        if v == nil {
+            err := TLSProperties_CertificateProperties_SubjectAltNameValidationError{
+                field:  "San",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        // no validation rules for Uri
+    case *TLSProperties_CertificateProperties_SubjectAltName_Dns:
+        if v == nil {
+            err := TLSProperties_CertificateProperties_SubjectAltNameValidationError{
+                field:  "San",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        // no validation rules for Dns
+    default:
+        _ = v // ensures v is used
+    }
 
-	if len(errors) > 0 {
-		return TLSProperties_CertificateProperties_SubjectAltNameMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return TLSProperties_CertificateProperties_SubjectAltNameMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // TLSProperties_CertificateProperties_SubjectAltNameMultiError is an error
@@ -2177,11 +2177,11 @@ type TLSProperties_CertificateProperties_SubjectAltNameMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TLSProperties_CertificateProperties_SubjectAltNameMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -2192,25 +2192,25 @@ func (m TLSProperties_CertificateProperties_SubjectAltNameMultiError) AllErrors(
 // TLSProperties_CertificateProperties_SubjectAltName.Validate if the
 // designated constraints aren't met.
 type TLSProperties_CertificateProperties_SubjectAltNameValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
 func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) Field() string {
-	return e.field
+    return e.field
 }
 
 // Reason function returns reason value.
 func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) Reason() string {
-	return e.reason
+    return e.reason
 }
 
 // Cause function returns cause value.
 func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) Cause() error {
-	return e.cause
+    return e.cause
 }
 
 // Key function returns key value.
@@ -2218,35 +2218,35 @@ func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) Key()
 
 // ErrorName returns error name.
 func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) ErrorName() string {
-	return "TLSProperties_CertificateProperties_SubjectAltNameValidationError"
+    return "TLSProperties_CertificateProperties_SubjectAltNameValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e TLSProperties_CertificateProperties_SubjectAltNameValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sTLSProperties_CertificateProperties_SubjectAltName.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sTLSProperties_CertificateProperties_SubjectAltName.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = TLSProperties_CertificateProperties_SubjectAltNameValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = TLSProperties_CertificateProperties_SubjectAltNameValidationError{}

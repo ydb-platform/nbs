@@ -1,0 +1,33 @@
+{
+    "Version": "v0.5.2",
+    "GoVersion": "1.20",
+    "Sum": "h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=",
+    "Packages": {
+        "github.com/stretchr/objx": {
+            "Imports": [
+                "bytes",
+                "crypto/sha1",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io/ioutil",
+                "net/url",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/stretchr/objx",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

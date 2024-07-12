@@ -1,0 +1,43 @@
+{
+    "Version": "v2.0.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:jWpvCLoY8Z/e3VKvlsiIGKtc+UG6U5vzxaoagmhXfyg=",
+    "Packages": {
+        "github.com/matttproud/golang_protobuf_extensions/v2/ext": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/matttproud/golang_protobuf_extensions/v2/pbtest": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/matttproud/golang_protobuf_extensions/v2/pbutil": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "google.golang.org/protobuf/proto",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "github.com/google/go-cmp/cmp",
+                "github.com/matttproud/golang_protobuf_extensions/v2/testdata",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io",
+                "testing",
+                "testing/iotest"
+            ]
+        },
+        "github.com/matttproud/golang_protobuf_extensions/v2/testdata": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

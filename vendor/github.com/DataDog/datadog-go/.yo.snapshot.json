@@ -1,0 +1,53 @@
+{
+    "Version": "v4.8.3+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:fNGaYSuObuQb5nzeTQqowRAd9bpDIRRV4/gUtIBjh8Q=",
+    "Packages": {
+        "github.com/DataDog/datadog-go/example": {
+            "Imports": [
+                "github.com/DataDog/datadog-go/statsd",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-go/statsd": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/Microsoft/go-winio",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/DataDog/datadog-go/statsd",
+                "github.com/Microsoft/go-winio",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/mock",
+                "github.com/stretchr/testify/require",
+                "github.com/stretchr/testify/suite",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

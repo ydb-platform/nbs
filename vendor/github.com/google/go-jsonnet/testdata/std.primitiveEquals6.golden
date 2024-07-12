@@ -1,0 +1,8 @@
+RUNTIME ERROR: primitiveEquals operates on primitive types, got object
+-------------------------------------------------
+    testdata/std.primitiveEquals6:1:1-28    $
+
+std.primitiveEquals({}, {})
+
+-------------------------------------------------
+    During evaluation

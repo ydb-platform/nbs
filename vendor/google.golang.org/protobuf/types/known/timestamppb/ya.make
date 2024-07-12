@@ -1,11 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
-SRCS(timestamp.pb.go)
-
-GO_XTEST_SRCS(timestamp_test.go)
+SRCS(
+    timestamp.pb.go
+)
 
 END()
-
-RECURSE(gotest)

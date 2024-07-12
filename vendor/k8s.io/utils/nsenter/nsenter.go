@@ -20,25 +20,25 @@ limitations under the License.
 package nsenter
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+    "context"
+    "errors"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
 
-	"k8s.io/klog/v2"
-	"k8s.io/utils/exec"
+    "k8s.io/klog/v2"
+    "k8s.io/utils/exec"
 )
 
 const (
-	// DefaultHostRootFsPath is path to host's filesystem mounted into container
-	// with kubelet.
-	DefaultHostRootFsPath = "/rootfs"
-	// mountNsPath is the default mount namespace of the host
-	mountNsPath = "/proc/1/ns/mnt"
-	// nsenterPath is the default nsenter command
-	nsenterPath = "nsenter"
+    // DefaultHostRootFsPath is path to host's filesystem mounted into container
+    // with kubelet.
+    DefaultHostRootFsPath = "/rootfs"
+    // mountNsPath is the default mount namespace of the host
+    mountNsPath = "/proc/1/ns/mnt"
+    // nsenterPath is the default nsenter command
+    nsenterPath = "nsenter"
 )
 
 // Nsenter is a type alias for backward compatibility
@@ -70,104 +70,104 @@ type Nsenter = NSEnter
 //
 // For more information about mount propagation modes, see:
 //
-//	https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt
+//    https://www.kernel.org/doc/Documentation/filesystems/sharedsubtree.txt
 type NSEnter struct {
-	// a map of commands to their paths on the host filesystem
-	paths map[string]string
+    // a map of commands to their paths on the host filesystem
+    paths map[string]string
 
-	// Path to the host filesystem, typically "/rootfs". Used only for testing.
-	hostRootFsPath string
+    // Path to the host filesystem, typically "/rootfs". Used only for testing.
+    hostRootFsPath string
 
-	// Exec implementation
-	executor exec.Interface
+    // Exec implementation
+    executor exec.Interface
 }
 
 // NewNsenter constructs a new instance of NSEnter
 func NewNsenter(hostRootFsPath string, executor exec.Interface) (*NSEnter, error) {
-	ne := &NSEnter{
-		hostRootFsPath: hostRootFsPath,
-		executor:       executor,
-	}
-	if err := ne.initPaths(); err != nil {
-		return nil, err
-	}
-	return ne, nil
+    ne := &NSEnter{
+        hostRootFsPath: hostRootFsPath,
+        executor:       executor,
+    }
+    if err := ne.initPaths(); err != nil {
+        return nil, err
+    }
+    return ne, nil
 }
 
 func (ne *NSEnter) initPaths() error {
-	ne.paths = map[string]string{}
-	binaries := []string{
-		"mount",
-		"findmnt",
-		"umount",
-		"systemd-run",
-		"stat",
-		"touch",
-		"mkdir",
-		"sh",
-		"chmod",
-		"realpath",
-	}
-	// search for the required commands in other locations besides /usr/bin
-	for _, binary := range binaries {
-		// check for binary under the following directories
-		for _, path := range []string{"/", "/bin", "/usr/sbin", "/usr/bin"} {
-			binPath := filepath.Join(path, binary)
-			if _, err := os.Stat(filepath.Join(ne.hostRootFsPath, binPath)); err != nil {
-				continue
-			}
-			ne.paths[binary] = binPath
-			break
-		}
-		// systemd-run is optional, bailout if we don't find any of the other binaries
-		if ne.paths[binary] == "" && binary != "systemd-run" {
-			return fmt.Errorf("unable to find %v", binary)
-		}
-	}
-	return nil
+    ne.paths = map[string]string{}
+    binaries := []string{
+        "mount",
+        "findmnt",
+        "umount",
+        "systemd-run",
+        "stat",
+        "touch",
+        "mkdir",
+        "sh",
+        "chmod",
+        "realpath",
+    }
+    // search for the required commands in other locations besides /usr/bin
+    for _, binary := range binaries {
+        // check for binary under the following directories
+        for _, path := range []string{"/", "/bin", "/usr/sbin", "/usr/bin"} {
+            binPath := filepath.Join(path, binary)
+            if _, err := os.Stat(filepath.Join(ne.hostRootFsPath, binPath)); err != nil {
+                continue
+            }
+            ne.paths[binary] = binPath
+            break
+        }
+        // systemd-run is optional, bailout if we don't find any of the other binaries
+        if ne.paths[binary] == "" && binary != "systemd-run" {
+            return fmt.Errorf("unable to find %v", binary)
+        }
+    }
+    return nil
 }
 
 // Exec executes nsenter commands in hostProcMountNsPath mount namespace
 func (ne *NSEnter) Exec(cmd string, args []string) exec.Cmd {
-	hostProcMountNsPath := filepath.Join(ne.hostRootFsPath, mountNsPath)
-	fullArgs := append([]string{fmt.Sprintf("--mount=%s", hostProcMountNsPath), "--"},
-		append([]string{ne.AbsHostPath(cmd)}, args...)...)
-	klog.V(5).Infof("Running nsenter command: %v %v", nsenterPath, fullArgs)
-	return ne.executor.Command(nsenterPath, fullArgs...)
+    hostProcMountNsPath := filepath.Join(ne.hostRootFsPath, mountNsPath)
+    fullArgs := append([]string{fmt.Sprintf("--mount=%s", hostProcMountNsPath), "--"},
+        append([]string{ne.AbsHostPath(cmd)}, args...)...)
+    klog.V(5).Infof("Running nsenter command: %v %v", nsenterPath, fullArgs)
+    return ne.executor.Command(nsenterPath, fullArgs...)
 }
 
 // Command returns a command wrapped with nsenter
 func (ne *NSEnter) Command(cmd string, args ...string) exec.Cmd {
-	return ne.Exec(cmd, args)
+    return ne.Exec(cmd, args)
 }
 
 // CommandContext returns a CommandContext wrapped with nsenter
 func (ne *NSEnter) CommandContext(ctx context.Context, cmd string, args ...string) exec.Cmd {
-	hostProcMountNsPath := filepath.Join(ne.hostRootFsPath, mountNsPath)
-	fullArgs := append([]string{fmt.Sprintf("--mount=%s", hostProcMountNsPath), "--"},
-		append([]string{ne.AbsHostPath(cmd)}, args...)...)
-	klog.V(5).Infof("Running nsenter command: %v %v", nsenterPath, fullArgs)
-	return ne.executor.CommandContext(ctx, nsenterPath, fullArgs...)
+    hostProcMountNsPath := filepath.Join(ne.hostRootFsPath, mountNsPath)
+    fullArgs := append([]string{fmt.Sprintf("--mount=%s", hostProcMountNsPath), "--"},
+        append([]string{ne.AbsHostPath(cmd)}, args...)...)
+    klog.V(5).Infof("Running nsenter command: %v %v", nsenterPath, fullArgs)
+    return ne.executor.CommandContext(ctx, nsenterPath, fullArgs...)
 }
 
 // LookPath returns a LookPath wrapped with nsenter
 func (ne *NSEnter) LookPath(file string) (string, error) {
-	return "", fmt.Errorf("not implemented, error looking up : %s", file)
+    return "", fmt.Errorf("not implemented, error looking up : %s", file)
 }
 
 // AbsHostPath returns the absolute runnable path for a specified command
 func (ne *NSEnter) AbsHostPath(command string) string {
-	path, ok := ne.paths[command]
-	if !ok {
-		return command
-	}
-	return path
+    path, ok := ne.paths[command]
+    if !ok {
+        return command
+    }
+    return path
 }
 
 // SupportsSystemd checks whether command systemd-run exists
 func (ne *NSEnter) SupportsSystemd() (string, bool) {
-	systemdRunPath, ok := ne.paths["systemd-run"]
-	return systemdRunPath, ok && systemdRunPath != ""
+    systemdRunPath, ok := ne.paths["systemd-run"]
+    return systemdRunPath, ok && systemdRunPath != ""
 }
 
 // EvalSymlinks returns the path name on the host after evaluating symlinks on the
@@ -177,37 +177,37 @@ func (ne *NSEnter) SupportsSystemd() (string, bool) {
 // blindly adds the non-existing part:
 // pathname: /mnt/volume/non/existing/directory
 //
-//	/mnt/volume exists
-//	           non/existing/directory does not exist
+//    /mnt/volume exists
+//               non/existing/directory does not exist
 //
 // -> It resolves symlinks in /mnt/volume to say /mnt/foo and returns
 //
-//	/mnt/foo/non/existing/directory.
+//    /mnt/foo/non/existing/directory.
 //
 // BEWARE! EvalSymlinks is not able to detect symlink looks with mustExist=false!
 // If /tmp/link is symlink to /tmp/link, EvalSymlinks(/tmp/link/foo) returns /tmp/link/foo.
 func (ne *NSEnter) EvalSymlinks(pathname string, mustExist bool) (string, error) {
-	var args []string
-	if mustExist {
-		// "realpath -e: all components of the path must exist"
-		args = []string{"-e", pathname}
-	} else {
-		// "realpath -m: no path components need exist or be a directory"
-		args = []string{"-m", pathname}
-	}
-	outBytes, err := ne.Exec("realpath", args).CombinedOutput()
-	if err != nil {
-		klog.Infof("failed to resolve symbolic links on %s: %v", pathname, err)
-		return "", err
-	}
-	return strings.TrimSpace(string(outBytes)), nil
+    var args []string
+    if mustExist {
+        // "realpath -e: all components of the path must exist"
+        args = []string{"-e", pathname}
+    } else {
+        // "realpath -m: no path components need exist or be a directory"
+        args = []string{"-m", pathname}
+    }
+    outBytes, err := ne.Exec("realpath", args).CombinedOutput()
+    if err != nil {
+        klog.Infof("failed to resolve symbolic links on %s: %v", pathname, err)
+        return "", err
+    }
+    return strings.TrimSpace(string(outBytes)), nil
 }
 
 // KubeletPath returns the path name that can be accessed by containerized
 // kubelet. It is recommended to resolve symlinks on the host by EvalSymlinks
 // before calling this function
 func (ne *NSEnter) KubeletPath(pathname string) string {
-	return filepath.Join(ne.hostRootFsPath, pathname)
+    return filepath.Join(ne.hostRootFsPath, pathname)
 }
 
 // NewFakeNsenter returns a NSEnter that does not run "nsenter --mount=... --",
@@ -216,48 +216,48 @@ func (ne *NSEnter) KubeletPath(pathname string) string {
 // This fake NSEnter is enough for most operations, e.g. to resolve symlinks,
 // but it's not enough to call /bin/mount - unit tests don't run as root.
 func NewFakeNsenter(rootfsPath string) (*NSEnter, error) {
-	executor := &fakeExec{
-		rootfsPath: rootfsPath,
-	}
-	// prepare /rootfs/bin, usr/bin and usr/sbin
-	bin := filepath.Join(rootfsPath, "bin")
-	if err := os.Symlink("/bin", bin); err != nil {
-		return nil, err
-	}
+    executor := &fakeExec{
+        rootfsPath: rootfsPath,
+    }
+    // prepare /rootfs/bin, usr/bin and usr/sbin
+    bin := filepath.Join(rootfsPath, "bin")
+    if err := os.Symlink("/bin", bin); err != nil {
+        return nil, err
+    }
 
-	usr := filepath.Join(rootfsPath, "usr")
-	if err := os.Mkdir(usr, 0755); err != nil {
-		return nil, err
-	}
-	usrbin := filepath.Join(usr, "bin")
-	if err := os.Symlink("/usr/bin", usrbin); err != nil {
-		return nil, err
-	}
-	usrsbin := filepath.Join(usr, "sbin")
-	if err := os.Symlink("/usr/sbin", usrsbin); err != nil {
-		return nil, err
-	}
+    usr := filepath.Join(rootfsPath, "usr")
+    if err := os.Mkdir(usr, 0755); err != nil {
+        return nil, err
+    }
+    usrbin := filepath.Join(usr, "bin")
+    if err := os.Symlink("/usr/bin", usrbin); err != nil {
+        return nil, err
+    }
+    usrsbin := filepath.Join(usr, "sbin")
+    if err := os.Symlink("/usr/sbin", usrsbin); err != nil {
+        return nil, err
+    }
 
-	return NewNsenter(rootfsPath, executor)
+    return NewNsenter(rootfsPath, executor)
 }
 
 type fakeExec struct {
-	rootfsPath string
+    rootfsPath string
 }
 
 func (f fakeExec) Command(cmd string, args ...string) exec.Cmd {
-	// This will intentionaly panic if NSEnter does not provide enough arguments.
-	realCmd := args[2]
-	realArgs := args[3:]
-	return exec.New().Command(realCmd, realArgs...)
+    // This will intentionaly panic if NSEnter does not provide enough arguments.
+    realCmd := args[2]
+    realArgs := args[3:]
+    return exec.New().Command(realCmd, realArgs...)
 }
 
 func (fakeExec) LookPath(file string) (string, error) {
-	return "", errors.New("not implemented")
+    return "", errors.New("not implemented")
 }
 
 func (fakeExec) CommandContext(ctx context.Context, cmd string, args ...string) exec.Cmd {
-	return nil
+    return nil
 }
 
 var _ exec.Interface = fakeExec{}

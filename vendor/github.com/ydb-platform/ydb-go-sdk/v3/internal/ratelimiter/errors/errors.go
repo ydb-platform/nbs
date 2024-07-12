@@ -1,45 +1,45 @@
 package errors
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
-	"github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+    "github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
 )
 
 type acquireError struct {
-	err    error
-	amount uint64
+    err    error
+    amount uint64
 }
 
 func (e *acquireError) Amount() uint64 {
-	return e.amount
+    return e.amount
 }
 
 func (e *acquireError) Error() string {
-	return fmt.Sprintf("acquire for amount (%d) failed: %v", e.amount, e.err)
+    return fmt.Sprintf("acquire for amount (%d) failed: %v", e.amount, e.err)
 }
 
 func (e *acquireError) Unwrap() error {
-	return e.err
+    return e.err
 }
 
 func NewAcquire(amoount uint64, err error) ratelimiter.AcquireError {
-	return &acquireError{
-		err:    err,
-		amount: amoount,
-	}
+    return &acquireError{
+        err:    err,
+        amount: amoount,
+    }
 }
 
 func IsAcquireError(err error) bool {
-	var ae *acquireError
-	return xerrors.As(err, &ae)
+    var ae *acquireError
+    return xerrors.As(err, &ae)
 }
 
 func ToAcquireError(err error) ratelimiter.AcquireError {
-	var ae *acquireError
-	if xerrors.As(err, &ae) {
-		return ae
-	}
-	return nil
+    var ae *acquireError
+    if xerrors.As(err, &ae) {
+        return ae
+    }
+    return nil
 }

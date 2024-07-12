@@ -1,0 +1,533 @@
+{
+    "Version": "v2.26.1",
+    "GoVersion": "1.19",
+    "Sum": "h1:G9WAfb8LHeCxu7Ae8nc1agZlQOSCUWsb610iAogBhCs=",
+    "Packages": {
+        "github.com/hashicorp/terraform-plugin-sdk/v2/diag": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/pem",
+                "fmt",
+                "golang.org/x/crypto/ssh",
+                "math/big",
+                "math/rand",
+                "net/netip",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/rsa",
+                "golang.org/x/crypto/ssh",
+                "net/netip",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/terraform",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/id": {
+            "Imports": [
+                "fmt",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "regexp",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/logutils",
+                "github.com/hashicorp/terraform-plugin-log/tflog",
+                "github.com/mitchellh/go-testing-interface",
+                "io",
+                "log",
+                "net/http",
+                "net/http/httputil",
+                "net/textproto",
+                "os",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/terraform-plugin-log/tflog",
+                "github.com/hashicorp/terraform-plugin-log/tflogtest",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging",
+                "io",
+                "net/http",
+                "regexp",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/terraform-exec/tfexec",
+                "github.com/hashicorp/terraform-json",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/id",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/addrs",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugintest",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/tfdiags",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/plugin",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/terraform",
+                "github.com/mitchellh/go-testing-interface",
+                "io",
+                "log",
+                "os",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/terraform-json",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugintest",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/terraform",
+                "github.com/mitchellh/go-testing-interface",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "log",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "strings",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "github.com/hashicorp/go-cty/cty/gocty",
+                "github.com/hashicorp/go-cty/cty/json",
+                "github.com/hashicorp/go-cty/cty/msgpack",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/hcl2shim",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/helper/hashcode",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plans/objchange",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugin/convert",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/meta",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/terraform",
+                "github.com/mitchellh/copystructure",
+                "github.com/mitchellh/go-testing-interface",
+                "github.com/mitchellh/mapstructure",
+                "log",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/json",
+                "github.com/hashicorp/go-cty/cty/msgpack",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/hcl2shim",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/diagutils",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/helper/hashcode",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugin/convert",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/providers",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/tfdiags",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/meta",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/terraform",
+                "math",
+                "math/big",
+                "os",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure": {
+            "Imports": [
+                "encoding/json",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "reflect"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure",
+                "github.com/mitchellh/go-testing-interface",
+                "math",
+                "net",
+                "net/url",
+                "reflect",
+                "regexp",
+                "sort",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/addrs": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/tfdiags",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/gocty"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/tfdiags",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/hcl2shim": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-cty/cty/convert",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "math/big",
+                "reflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "math/big",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/diagutils": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/helper/hashcode": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "hash/crc32"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging",
+                "github.com/mitchellh/go-testing-interface"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklogtest",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plans/objchange": {
+            "Imports": [
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugin/convert": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging",
+                "reflect",
+                "sort"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/plugintest": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install",
+                "github.com/hashicorp/hc-install/checkpoint",
+                "github.com/hashicorp/hc-install/fs",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "github.com/hashicorp/hc-install/src",
+                "github.com/hashicorp/terraform-exec/tfexec",
+                "github.com/hashicorp/terraform-json",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/logging",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/diag",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/providers": {
+            "Imports": [
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/internal/tfdiags": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "sort",
+                "strconv"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/hashicorp/go-cty/cty",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/meta": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-version"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/plugin": {
+            "Imports": [
+                "context",
+                "errors",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/go-plugin",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5/tf5server",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema",
+                "github.com/mitchellh/go-testing-interface",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-sdk/v2/terraform": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-uuid",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/addrs",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/hcl2shim",
+                "github.com/mitchellh/copystructure",
+                "github.com/mitchellh/reflectwalk",
+                "log",
+                "os",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-cty/cty",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/addrs",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/configschema",
+                "github.com/hashicorp/terraform-plugin-sdk/v2/internal/configs/hcl2shim",
+                "github.com/mitchellh/reflectwalk",
+                "reflect",
+                "sort",
+                "strconv",
+                "testing"
+            ]
+        }
+    }
+}

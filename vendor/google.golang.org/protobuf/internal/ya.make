@@ -1,0 +1,28 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    cmd
+    descfmt
+    descopts
+    detrand
+    editiondefaults
+    encoding
+    errors
+    filedesc
+    filetype
+    flags
+    fuzz
+    fuzztest
+    genid
+    impl
+    msgfmt
+    order
+    pragma
+    protobuild
+    protolegacy
+    set
+    strs
+    testprotos
+    version
+    weakdeps
+)

@@ -1,0 +1,28 @@
+{
+    "Version": "v1.11.9",
+    "GoVersion": "1.20",
+    "Sum": "h1:Wx0rlZoEJR7JwlSZcHnEa7CNjrSIyVxMFWGAaXy4fJY=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/smithy-go/middleware"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "net/http",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

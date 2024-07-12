@@ -1,11 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
-SRCS(field_mask.pb.go)
-
-GO_XTEST_SRCS(field_mask_test.go)
+SRCS(
+    field_mask.pb.go
+)
 
 END()
-
-RECURSE(gotest)

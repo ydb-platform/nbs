@@ -62,20 +62,20 @@ package process
 #include <sys/queue.h>
 
 enum {
-	sizeofPtr = sizeof(void*),
+    sizeofPtr = sizeof(void*),
 };
 
 union sockaddr_all {
-	struct sockaddr s1;	// this one gets used for fields
-	struct sockaddr_in s2;	// these pad it out
-	struct sockaddr_in6 s3;
-	struct sockaddr_un s4;
-	struct sockaddr_dl s5;
+    struct sockaddr s1;    // this one gets used for fields
+    struct sockaddr_in s2;    // these pad it out
+    struct sockaddr_in6 s3;
+    struct sockaddr_un s4;
+    struct sockaddr_dl s5;
 };
 
 struct sockaddr_any {
-	struct sockaddr addr;
-	char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
+    struct sockaddr addr;
+    char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
 };
 
 struct ucred_queue {
@@ -90,20 +90,20 @@ import "C"
 // Machine characteristics; for internal use.
 
 const (
-	sizeofPtr      = C.sizeofPtr
-	sizeofShort    = C.sizeof_short
-	sizeofInt      = C.sizeof_int
-	sizeofLong     = C.sizeof_long
-	sizeofLongLong = C.sizeof_longlong
+    sizeofPtr      = C.sizeofPtr
+    sizeofShort    = C.sizeof_short
+    sizeofInt      = C.sizeof_int
+    sizeofLong     = C.sizeof_long
+    sizeofLongLong = C.sizeof_longlong
 )
 
 // Basic types
 
 type (
-	_C_short     C.short
-	_C_int       C.int
-	_C_long      C.long
-	_C_long_long C.longlong
+    _C_short     C.short
+    _C_int       C.int
+    _C_long      C.long
+    _C_long_long C.longlong
 )
 
 // Time
@@ -155,9 +155,9 @@ type Posix_cred C.struct_posix_cred
 type Label C.struct_label
 
 type (
-	AuditinfoAddr C.struct_auditinfo_addr
-	AuMask        C.struct_au_mask
-	AuTidAddr     C.struct_au_tid_addr
+    AuditinfoAddr C.struct_auditinfo_addr
+    AuMask        C.struct_au_mask
+    AuTidAddr     C.struct_au_tid_addr
 )
 
 // TAILQ(ucred)

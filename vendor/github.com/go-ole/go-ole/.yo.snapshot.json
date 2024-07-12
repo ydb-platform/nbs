@@ -1,0 +1,38 @@
+{
+    "Version": "v1.2.7-0.20211215081658-ee6c8cce8e87",
+    "GoVersion": "1.12",
+    "Sum": "h1:GylhL0uJeyEQjzFzuhCXxMCaGjZ0nkWV3gaGmLhc7a4=",
+    "Packages": {
+        "github.com/go-ole/go-ole": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/sys/windows",
+                "math/big",
+                "reflect",
+                "strings",
+                "syscall",
+                "time",
+                "unicode/utf16",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/go-ole/go-ole/oleutil": {
+            "Imports": [
+                "github.com/go-ole/go-ole",
+                "reflect",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

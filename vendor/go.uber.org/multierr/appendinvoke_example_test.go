@@ -21,47 +21,47 @@
 package multierr_test
 
 import (
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
+    "fmt"
+    "log"
+    "os"
+    "path/filepath"
 
-	"go.uber.org/multierr"
+    "go.uber.org/multierr"
 )
 
 func ExampleAppendInvoke() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
+    if err := run(); err != nil {
+        log.Fatal(err)
+    }
 }
 
 func run() (err error) {
-	dir, err := os.MkdirTemp("", "multierr")
-	// We create a temporary directory and defer its deletion when this
-	// function returns.
-	//
-	// If we failed to delete the temporary directory, we append its
-	// failure into the returned value with multierr.AppendInvoke.
-	//
-	// This uses a custom invoker that we implement below.
-	defer multierr.AppendInvoke(&err, RemoveAll(dir))
+    dir, err := os.MkdirTemp("", "multierr")
+    // We create a temporary directory and defer its deletion when this
+    // function returns.
+    //
+    // If we failed to delete the temporary directory, we append its
+    // failure into the returned value with multierr.AppendInvoke.
+    //
+    // This uses a custom invoker that we implement below.
+    defer multierr.AppendInvoke(&err, RemoveAll(dir))
 
-	path := filepath.Join(dir, "example.txt")
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	// Similarly, we defer closing the open file when the function returns,
-	// and appends its failure, if any, into the returned error.
-	//
-	// This uses the multierr.Close invoker included in multierr.
-	defer multierr.AppendInvoke(&err, multierr.Close(f))
+    path := filepath.Join(dir, "example.txt")
+    f, err := os.Create(path)
+    if err != nil {
+        return err
+    }
+    // Similarly, we defer closing the open file when the function returns,
+    // and appends its failure, if any, into the returned error.
+    //
+    // This uses the multierr.Close invoker included in multierr.
+    defer multierr.AppendInvoke(&err, multierr.Close(f))
 
-	if _, err := fmt.Fprintln(f, "hello"); err != nil {
-		return err
-	}
+    if _, err := fmt.Fprintln(f, "hello"); err != nil {
+        return err
+    }
 
-	return nil
+    return nil
 }
 
 // RemoveAll is a multierr.Invoker that deletes the provided directory and all
@@ -69,5 +69,5 @@ func run() (err error) {
 type RemoveAll string
 
 func (r RemoveAll) Invoke() error {
-	return os.RemoveAll(string(r))
+    return os.RemoveAll(string(r))
 }

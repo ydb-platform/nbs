@@ -1,0 +1,46 @@
+{
+    "Version": "v0.43.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:3Vp9HDMY/lGe7UY8fDRGmwddCoAb7cACiAL2joIdJh8=",
+    "Packages": {
+        "go.opentelemetry.io/contrib/zpages": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/contrib/zpages/internal",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/trace",
+                "html/template",
+                "io",
+                "log",
+                "net/http",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/trace",
+                "reflect",
+                "sort",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "go.opentelemetry.io/contrib/zpages/internal": {
+            "Imports": [
+                "embed"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -1,0 +1,72 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:S5+I3zYyZ+GQz68OfbURDdt/+cSMqCK1wrvNx7WBzTE=",
+    "Packages": {
+        "github.com/google/go-replayers/grpcreplay": {
+            "Imports": [
+                "bufio",
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/go-replayers/grpcreplay/proto/grpcreplay",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "io",
+                "log",
+                "net",
+                "os",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-replayers/grpcreplay",
+                "github.com/google/go-replayers/grpcreplay/proto/grpcreplay",
+                "github.com/google/go-replayers/grpcreplay/proto/intstore",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io",
+                "log",
+                "net",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-replayers/grpcreplay/proto/grpcreplay": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-replayers/grpcreplay/proto/intstore": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -19,92 +19,92 @@ package test
 // ZaprOutputMappingDirect provides a mapping from klog output to the
 // corresponding zapr output when zapr is called directly.
 func ZaprOutputMappingDirect() map[string]string {
-	return map[string]string{
-		`I output.go:<LINE>] "test" akey="<&>"
+    return map[string]string{
+        `I output.go:<LINE>] "test" akey="<&>"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"<&>"}
 `,
 
-		`E output.go:<LINE>] "test" err="whoops"
+        `E output.go:<LINE>] "test" err="whoops"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","err":"whoops"}
 `,
 
-		`I output.go:<LINE>] "helper" akey="avalue"
+        `I output.go:<LINE>] "helper" akey="avalue"
 `: `{"caller":"test/output.go:<LINE>","msg":"helper","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" akey="avalue" akey="avalue2"
+        `I output.go:<LINE>] "test" akey="avalue" akey="avalue2"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"avalue","akey":"avalue2"}
 `,
 
-		`I output.go:<LINE>] "test" logger="hello.world" akey="avalue"
+        `I output.go:<LINE>] "test" logger="hello.world" akey="avalue"
 `: `{"logger":"hello.world","caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" X="y" duration="1m0s" A="b"
+        `I output.go:<LINE>] "test" X="y" duration="1m0s" A="b"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","duration":"1h0m0s","X":"y","v":0,"duration":"1m0s","A":"b"}
 `,
 
-		`I output.go:<LINE>] "test" akey9="avalue9" akey8="avalue8" akey1="avalue1" akey5="avalue5" akey4="avalue4"
+        `I output.go:<LINE>] "test" akey9="avalue9" akey8="avalue8" akey1="avalue1" akey5="avalue5" akey4="avalue4"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","akey9":"avalue9","akey8":"avalue8","akey1":"avalue1","v":0,"akey5":"avalue5","akey4":"avalue4"}
 `,
 
-		`I output.go:<LINE>] "test"
+        `I output.go:<LINE>] "test"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0}
 `,
 
-		`I output.go:<LINE>] "\"quoted\"" key="\"quoted value\""
+        `I output.go:<LINE>] "\"quoted\"" key="\"quoted value\""
 `: `{"caller":"test/output.go:<LINE>","msg":"\"quoted\"","v":0,"key":"\"quoted value\""}
 `,
 
-		`I output.go:<LINE>] "test" err="whoops"
+        `I output.go:<LINE>] "test" err="whoops"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"err":"whoops"}
 `,
 
-		`I output.go:<LINE>] "test" pod="kube-system/pod-1"
+        `I output.go:<LINE>] "test" pod="kube-system/pod-1"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"pod":{"name":"pod-1","namespace":"kube-system"}}
 `,
 
-		`I output.go:<LINE>] "KObjs" pods=[{"name":"pod-1","namespace":"kube-system"},{"name":"pod-2","namespace":"kube-system"}]
+        `I output.go:<LINE>] "KObjs" pods=[{"name":"pod-1","namespace":"kube-system"},{"name":"pod-2","namespace":"kube-system"}]
 `: `{"caller":"test/output.go:<LINE>","msg":"KObjs","v":0,"pods":[{"name":"pod-1","namespace":"kube-system"},{"name":"pod-2","namespace":"kube-system"}]}
 `,
 
-		`I output.go:<LINE>] "KObjSlice" pods=["kube-system/pod-1","kube-system/pod-2"]
+        `I output.go:<LINE>] "KObjSlice" pods=["kube-system/pod-1","kube-system/pod-2"]
 `: `{"caller":"test/output.go:<LINE>","msg":"KObjSlice","v":0,"pods":[{"name":"pod-1","namespace":"kube-system"},{"name":"pod-2","namespace":"kube-system"}]}
 `,
 
-		`I output.go:<LINE>] "test" pods=null
+        `I output.go:<LINE>] "test" pods=null
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"pods":null}
 `,
 
-		`I output.go:<LINE>] "test" pods="<KObjSlice needs a slice, got type int>"
+        `I output.go:<LINE>] "test" pods="<KObjSlice needs a slice, got type int>"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"pods":"<KObjSlice needs a slice, got type int>"}
 `,
 
-		`I output.go:<LINE>] "test" ints=["<KObjSlice needs a slice of values implementing KMetadata, got type int>"]
+        `I output.go:<LINE>] "test" ints=["<KObjSlice needs a slice of values implementing KMetadata, got type int>"]
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"ints":"<KObjSlice needs a slice of values implementing KMetadata, got type int>"}
 `,
 
-		`I output.go:<LINE>] "test" pods=["kube-system/pod-1",null]
+        `I output.go:<LINE>] "test" pods=["kube-system/pod-1",null]
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"pods":[{"name":"pod-1","namespace":"kube-system"},null]}
 `,
 
-		`I output.go:<LINE>] "test" akey="avalue"
+        `I output.go:<LINE>] "test" akey="avalue"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" logger="me" akey="avalue"
+        `I output.go:<LINE>] "test" logger="me" akey="avalue"
 `: `{"logger":"me","caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" akey="avalue2"
+        `I output.go:<LINE>] "test" akey="avalue2"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","akey":"avalue","v":0,"akey":"avalue2"}
 `,
 
-		`I output.go:<LINE>] "you see me"
+        `I output.go:<LINE>] "you see me"
 `: `{"caller":"test/output.go:<LINE>","msg":"you see me","v":9}
 `,
 
-		`I output.go:<LINE>] "test" firstKey=1
+        `I output.go:<LINE>] "test" firstKey=1
 I output.go:<LINE>] "test" firstKey=1 secondKey=2
 I output.go:<LINE>] "test" firstKey=1
 I output.go:<LINE>] "test" firstKey=1 secondKey=3
@@ -114,7 +114,7 @@ I output.go:<LINE>] "test" firstKey=1 secondKey=3
 {"caller":"test/output.go:<LINE>","msg":"test","firstKey":1,"secondKey":3,"v":0}
 `,
 
-		`I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
+        `I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)" anotherKeyWithoutValue="(MISSING)"
 I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 `: `{"caller":"test/output.go:<WITH-VALUES>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"keyWithoutValue"}
@@ -124,142 +124,142 @@ I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 {"caller":"test/output.go:<LINE>","msg":"odd WithValues","v":0}
 `,
 
-		`I output.go:<LINE>] "odd arguments" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "odd arguments" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<LINE>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"akey2"}
 {"caller":"test/output.go:<LINE>","msg":"odd arguments","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "both odd" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "both odd" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<WITH-VALUES>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"basekey2"}
 {"caller":"test/output.go:<LINE>","msg":"odd number of arguments passed as key-value pairs for logging","basekey1":"basevar1","ignored key":"akey2"}
 {"caller":"test/output.go:<LINE>","msg":"both odd","basekey1":"basevar1","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "marshaler nil" obj="<panic: value method k8s.io/klog/v2.ObjectRef.WriteText called using nil *ObjectRef pointer>"
+        `I output.go:<LINE>] "marshaler nil" obj="<panic: value method k8s.io/klog/v2.ObjectRef.WriteText called using nil *ObjectRef pointer>"
 `: `{"caller":"test/output.go:<LINE>","msg":"marshaler nil","v":0,"objError":"PANIC=value method k8s.io/klog/v2.ObjectRef.MarshalLog called using nil *ObjectRef pointer"}
 `,
 
-		// zap replaces a panic for a nil object with <nil>.
-		`E output.go:<LINE>] "error nil" err="<panic: runtime error: invalid memory address or nil pointer dereference>"
+        // zap replaces a panic for a nil object with <nil>.
+        `E output.go:<LINE>] "error nil" err="<panic: runtime error: invalid memory address or nil pointer dereference>"
 `: `{"caller":"test/output.go:<LINE>","msg":"error nil","err":"<nil>"}
 `,
 
-		`I output.go:<LINE>] "stringer nil" stringer="<panic: runtime error: invalid memory address or nil pointer dereference>"
+        `I output.go:<LINE>] "stringer nil" stringer="<panic: runtime error: invalid memory address or nil pointer dereference>"
 `: `{"caller":"test/output.go:<LINE>","msg":"stringer nil","v":0,"stringer":"<nil>"}
 `,
 
-		`I output.go:<LINE>] "stringer panic" stringer="<panic: fake String panic>"
+        `I output.go:<LINE>] "stringer panic" stringer="<panic: fake String panic>"
 `: `{"caller":"test/output.go:<LINE>","msg":"stringer panic","v":0,"stringerError":"PANIC=fake String panic"}
 `,
 
-		`E output.go:<LINE>] "error panic" err="<panic: fake Error panic>"
+        `E output.go:<LINE>] "error panic" err="<panic: fake Error panic>"
 `: `{"caller":"test/output.go:<LINE>","msg":"error panic","errError":"PANIC=fake Error panic"}
 `,
 
-		`I output.go:<LINE>] "marshaler panic" obj="<panic: fake MarshalLog panic>"
+        `I output.go:<LINE>] "marshaler panic" obj="<panic: fake MarshalLog panic>"
 `: `{"caller":"test/output.go:<LINE>","msg":"marshaler panic","v":0,"objError":"PANIC=fake MarshalLog panic"}
 `,
 
-		`I output.go:<LINE>] "marshaler recursion" obj={}
+        `I output.go:<LINE>] "marshaler recursion" obj={}
 `: `{"caller":"test/output.go:<LINE>","msg":"marshaler recursion","v":0,"obj":{}}
 `,
 
-		// klog.Info
-		`I output.go:<LINE>] "helloworld\n"
+        // klog.Info
+        `I output.go:<LINE>] "helloworld\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"helloworld","v":0}
 `,
 
-		// klog.Infoln
-		`I output.go:<LINE>] "hello world\n"
+        // klog.Infoln
+        `I output.go:<LINE>] "hello world\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"hello world","v":0}
 `,
 
-		// klog.Error
-		`E output.go:<LINE>] "helloworld\n"
+        // klog.Error
+        `E output.go:<LINE>] "helloworld\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"helloworld"}
 `,
 
-		// klog.Errorln
-		`E output.go:<LINE>] "hello world\n"
+        // klog.Errorln
+        `E output.go:<LINE>] "hello world\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"hello world"}
 `,
 
-		// klog.ErrorS
-		`E output.go:<LINE>] "world" err="hello"
+        // klog.ErrorS
+        `E output.go:<LINE>] "world" err="hello"
 `: `{"caller":"test/output.go:<LINE>","msg":"world","err":"hello"}
 `,
 
-		// klog.InfoS
-		`I output.go:<LINE>] "hello" what="world"
+        // klog.InfoS
+        `I output.go:<LINE>] "hello" what="world"
 `: `{"caller":"test/output.go:<LINE>","msg":"hello","v":0,"what":"world"}
 `,
 
-		// klog.V(1).Info
-		`I output.go:<LINE>] "hellooneworld\n"
+        // klog.V(1).Info
+        `I output.go:<LINE>] "hellooneworld\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"hellooneworld","v":1}
 `,
 
-		// klog.V(1).Infoln
-		`I output.go:<LINE>] "hello one world\n"
+        // klog.V(1).Infoln
+        `I output.go:<LINE>] "hello one world\n"
 `: `{"caller":"test/output.go:<LINE>","msg":"hello one world","v":1}
 `,
 
-		// klog.V(1).ErrorS
-		`E output.go:<LINE>] "one world" err="hello"
+        // klog.V(1).ErrorS
+        `E output.go:<LINE>] "one world" err="hello"
 `: `{"caller":"test/output.go:<LINE>","msg":"one world","err":"hello"}
 `,
 
-		// klog.V(1).InfoS
-		`I output.go:<LINE>] "hello" what="one world"
+        // klog.V(1).InfoS
+        `I output.go:<LINE>] "hello" what="one world"
 `: `{"caller":"test/output.go:<LINE>","msg":"hello","v":1,"what":"one world"}
 `,
 
-		`I output.go:<LINE>] "integer keys" %!s(int=1)="value" %!s(int=2)="value2" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "integer keys" %!s(int=1)="value" %!s(int=2)="value2" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<WITH-VALUES>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":1}
 {"caller":"test/output.go:<LINE>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"akey2"}
 {"caller":"test/output.go:<LINE>","msg":"integer keys","v":0,"akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "struct keys" {name}="value" test="other value" key="val"
+        `I output.go:<LINE>] "struct keys" {name}="value" test="other value" key="val"
 `: `{"caller":"test/output.go:<WITH-VALUES>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":{}}
 {"caller":"test/output.go:<LINE>","msg":"struct keys","v":0,"key":"val"}
 `,
-		`I output.go:<LINE>] "map keys" map[test:%!s(bool=true)]="test"
+        `I output.go:<LINE>] "map keys" map[test:%!s(bool=true)]="test"
 `: `{"caller":"test/output.go:<LINE>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":{"test":true}}
 {"caller":"test/output.go:<LINE>","msg":"map keys","v":0}
 `,
 
-		`I output.go:<LINE>] "Format" config=<
-	{
-	  "Kind": "config",
-	  "RealField": 42
-	}
+        `I output.go:<LINE>] "Format" config=<
+    {
+      "Kind": "config",
+      "RealField": 42
+    }
  >
 `: `{"caller":"test/output.go:<LINE>","msg":"Format","v":0,"config":{"Kind":"config","RealField":42}}
 `,
-		`I output.go:<LINE>] "maps" s={"hello":"world"} i={"1":2,"3":4}
+        `I output.go:<LINE>] "maps" s={"hello":"world"} i={"1":2,"3":4}
 `: `{"caller":"test/output.go:<LINE>","msg":"maps","v":0,"s":{"hello":"world"},"i":{"1":2,"3":4}}
 `,
 
-		`I output.go:<LINE>] "slices" s=["hello","world"] i=[1,2,3]
+        `I output.go:<LINE>] "slices" s=["hello","world"] i=[1,2,3]
 `: `{"caller":"test/output.go:<LINE>","msg":"slices","v":0,"s":["hello","world"],"i":[1,2,3]}
 `,
-		`I output.go:<LINE>] "structs" s={"Name":"worker","Kind":"pod"}
+        `I output.go:<LINE>] "structs" s={"Name":"worker","Kind":"pod"}
 `: `{"caller":"test/output.go:<LINE>","msg":"structs","v":0,"s":{"Name":"worker","Kind":"pod"}}
 `,
-		`I output.go:<LINE>] "klog.Format" s=<
-	{
-	  "Name": "worker",
-	  "Kind": "pod"
-	}
+        `I output.go:<LINE>] "klog.Format" s=<
+    {
+      "Name": "worker",
+      "Kind": "pod"
+    }
  >
 `: `{"caller":"test/output.go:<LINE>","msg":"klog.Format","v":0,"s":{"Name":"worker","Kind":"pod"}}
 `,
 
-		`I output.go:<LINE>] "cycle" list="<internal error: json: unsupported value: encountered a cycle via *test.myList>"
+        `I output.go:<LINE>] "cycle" list="<internal error: json: unsupported value: encountered a cycle via *test.myList>"
 `: `{"caller":"test/output.go:<LINE>","msg":"cycle","v":0,"listError":"json: unsupported value: encountered a cycle via *test.myList"}
 `,
-	}
+    }
 }
 
 // ZaprOutputMappingIndirect provides a mapping from klog output to the
@@ -278,23 +278,23 @@ I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 //   - zap does not de-duplicate key/value pairs, here klog does that
 //     for it.
 func ZaprOutputMappingIndirect() map[string]string {
-	mapping := ZaprOutputMappingDirect()
+    mapping := ZaprOutputMappingDirect()
 
-	for key, value := range map[string]string{
-		`I output.go:<LINE>] "test" logger="hello.world" akey="avalue"
+    for key, value := range map[string]string{
+        `I output.go:<LINE>] "test" logger="hello.world" akey="avalue"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"logger":"hello.world","akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" logger="me" akey="avalue"
+        `I output.go:<LINE>] "test" logger="me" akey="avalue"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"logger":"me","akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "odd parameters" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "odd parameters" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<LINE>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"akey2"}
 {"caller":"test/output.go:<LINE>","msg":"odd parameters","v":0,"basekey1":"basevar1","basekey2":"(MISSING)","akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
+        `I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)" anotherKeyWithoutValue="(MISSING)"
 I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 `: `{"caller":"test/output.go:<LINE>","msg":"odd WithValues","v":0,"keyWithoutValue":"(MISSING)"}
@@ -302,24 +302,24 @@ I output.go:<LINE>] "odd WithValues" keyWithoutValue="(MISSING)"
 {"caller":"test/output.go:<LINE>","msg":"odd WithValues","v":0,"keyWithoutValue":"(MISSING)"}
 `,
 
-		`I output.go:<LINE>] "both odd" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "both odd" basekey1="basevar1" basekey2="(MISSING)" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<LINE>","msg":"odd number of arguments passed as key-value pairs for logging","ignored key":"akey2"}
 {"caller":"test/output.go:<LINE>","msg":"both odd","v":0,"basekey1":"basevar1","basekey2":"(MISSING)","akey":"avalue"}
 `,
 
-		`I output.go:<LINE>] "test" akey9="avalue9" akey8="avalue8" akey1="avalue1" akey5="avalue5" akey4="avalue4"
+        `I output.go:<LINE>] "test" akey9="avalue9" akey8="avalue8" akey1="avalue1" akey5="avalue5" akey4="avalue4"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"akey9":"avalue9","akey8":"avalue8","akey1":"avalue1","akey5":"avalue5","akey4":"avalue4"}
 `,
 
-		`I output.go:<LINE>] "test" akey="avalue2"
+        `I output.go:<LINE>] "test" akey="avalue2"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"akey":"avalue2"}
 `,
 
-		`I output.go:<LINE>] "test" X="y" duration="1m0s" A="b"
+        `I output.go:<LINE>] "test" X="y" duration="1m0s" A="b"
 `: `{"caller":"test/output.go:<LINE>","msg":"test","v":0,"X":"y","duration":"1m0s","A":"b"}
 `,
 
-		`I output.go:<LINE>] "test" firstKey=1
+        `I output.go:<LINE>] "test" firstKey=1
 I output.go:<LINE>] "test" firstKey=1 secondKey=2
 I output.go:<LINE>] "test" firstKey=1
 I output.go:<LINE>] "test" firstKey=1 secondKey=3
@@ -328,25 +328,25 @@ I output.go:<LINE>] "test" firstKey=1 secondKey=3
 {"caller":"test/output.go:<LINE>","msg":"test","v":0,"firstKey":1}
 {"caller":"test/output.go:<LINE>","msg":"test","v":0,"firstKey":1,"secondKey":3}
 `,
-		`I output.go:<LINE>] "integer keys" %!s(int=1)="value" %!s(int=2)="value2" akey="avalue" akey2="(MISSING)"
+        `I output.go:<LINE>] "integer keys" %!s(int=1)="value" %!s(int=2)="value2" akey="avalue" akey2="(MISSING)"
 `: `{"caller":"test/output.go:<LINE>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":1}
 {"caller":"test/output.go:<LINE>","msg":"integer keys","v":0}
 `,
-		`I output.go:<LINE>] "struct keys" {name}="value" test="other value" key="val"
+        `I output.go:<LINE>] "struct keys" {name}="value" test="other value" key="val"
 `: `{"caller":"test/output.go:<LINE>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":{}}
 {"caller":"test/output.go:<LINE>","msg":"struct keys","v":0}
 `,
-		`I output.go:<LINE>] "map keys" map[test:%!s(bool=true)]="test"
+        `I output.go:<LINE>] "map keys" map[test:%!s(bool=true)]="test"
 `: `{"caller":"test/output.go:<LINE>","msg":"non-string key argument passed to logging, ignoring all later arguments","invalid key":{"test":true}}
 {"caller":"test/output.go:<LINE>","msg":"map keys","v":0}
 `,
 
-		// zapr does not support vmodule checks and thus always
-		// discards these messages.
-		`I output.go:<LINE>] "v=11: you see me because of -vmodule output=11"
+        // zapr does not support vmodule checks and thus always
+        // discards these messages.
+        `I output.go:<LINE>] "v=11: you see me because of -vmodule output=11"
 `: ``,
-	} {
-		mapping[key] = value
-	}
-	return mapping
+    } {
+        mapping[key] = value
+    }
+    return mapping
 }

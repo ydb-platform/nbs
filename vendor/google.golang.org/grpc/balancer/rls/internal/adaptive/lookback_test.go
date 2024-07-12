@@ -19,67 +19,67 @@
 package adaptive
 
 import (
-	"testing"
-	"time"
+    "testing"
+    "time"
 )
 
 func TestLookback(t *testing.T) {
-	makeTicks := func(offsets []int64) []time.Time {
-		var ticks []time.Time
-		now := time.Now()
-		for _, offset := range offsets {
-			ticks = append(ticks, now.Add(time.Duration(offset)))
-		}
-		return ticks
-	}
+    makeTicks := func(offsets []int64) []time.Time {
+        var ticks []time.Time
+        now := time.Now()
+        for _, offset := range offsets {
+            ticks = append(ticks, now.Add(time.Duration(offset)))
+        }
+        return ticks
+    }
 
-	// lookback.add and lookback.sum behave correctly.
-	testcases := []struct {
-		desc   string
-		bins   int64
-		ticks  []time.Time
-		values []int64
-		want   []int64
-	}{
-		{
-			"Accumulate",
-			3,
-			makeTicks([]int64{0, 1, 2}), // Ticks
-			[]int64{1, 2, 3},            // Values
-			[]int64{1, 3, 6},            // Want
-		},
-		{
-			"LightTimeTravel",
-			3,
-			makeTicks([]int64{1, 0, 2}), // Ticks
-			[]int64{1, 2, 3},            // Values
-			[]int64{1, 3, 6},            // Want
-		},
-		{
-			"HeavyTimeTravel",
-			3,
-			makeTicks([]int64{8, 0, 9}), // Ticks
-			[]int64{1, 2, 3},            // Values
-			[]int64{1, 1, 4},            // Want
-		},
-		{
-			"Rollover",
-			1,
-			makeTicks([]int64{0, 1, 2}), // Ticks
-			[]int64{1, 2, 3},            // Values
-			[]int64{1, 2, 3},            // Want
-		},
-	}
+    // lookback.add and lookback.sum behave correctly.
+    testcases := []struct {
+        desc   string
+        bins   int64
+        ticks  []time.Time
+        values []int64
+        want   []int64
+    }{
+        {
+            "Accumulate",
+            3,
+            makeTicks([]int64{0, 1, 2}), // Ticks
+            []int64{1, 2, 3},            // Values
+            []int64{1, 3, 6},            // Want
+        },
+        {
+            "LightTimeTravel",
+            3,
+            makeTicks([]int64{1, 0, 2}), // Ticks
+            []int64{1, 2, 3},            // Values
+            []int64{1, 3, 6},            // Want
+        },
+        {
+            "HeavyTimeTravel",
+            3,
+            makeTicks([]int64{8, 0, 9}), // Ticks
+            []int64{1, 2, 3},            // Values
+            []int64{1, 1, 4},            // Want
+        },
+        {
+            "Rollover",
+            1,
+            makeTicks([]int64{0, 1, 2}), // Ticks
+            []int64{1, 2, 3},            // Values
+            []int64{1, 2, 3},            // Want
+        },
+    }
 
-	for _, test := range testcases {
-		t.Run(test.desc, func(t *testing.T) {
-			lb := newLookback(test.bins, time.Duration(test.bins))
-			for i, tick := range test.ticks {
-				lb.add(tick, test.values[i])
-				if got := lb.sum(tick); got != test.want[i] {
-					t.Errorf("sum for index %d got %d, want %d", i, got, test.want[i])
-				}
-			}
-		})
-	}
+    for _, test := range testcases {
+        t.Run(test.desc, func(t *testing.T) {
+            lb := newLookback(test.bins, time.Duration(test.bins))
+            for i, tick := range test.ticks {
+                lb.add(tick, test.values[i])
+                if got := lb.sum(tick); got != test.want[i] {
+                    t.Errorf("sum for index %d got %d, want %d", i, got, test.want[i])
+                }
+            }
+        })
+    }
 }

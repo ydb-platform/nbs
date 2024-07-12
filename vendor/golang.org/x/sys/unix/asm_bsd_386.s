@@ -11,17 +11,17 @@
 // Just jump to package syscall's implementation for all these functions.
 // The runtime may know about them.
 
-TEXT	·Syscall(SB),NOSPLIT,$0-28
-	JMP	syscall·Syscall(SB)
+TEXT    ·Syscall(SB),NOSPLIT,$0-28
+    JMP    syscall·Syscall(SB)
 
-TEXT	·Syscall6(SB),NOSPLIT,$0-40
-	JMP	syscall·Syscall6(SB)
+TEXT    ·Syscall6(SB),NOSPLIT,$0-40
+    JMP    syscall·Syscall6(SB)
 
-TEXT	·Syscall9(SB),NOSPLIT,$0-52
-	JMP	syscall·Syscall9(SB)
+TEXT    ·Syscall9(SB),NOSPLIT,$0-52
+    JMP    syscall·Syscall9(SB)
 
-TEXT	·RawSyscall(SB),NOSPLIT,$0-28
-	JMP	syscall·RawSyscall(SB)
+TEXT    ·RawSyscall(SB),NOSPLIT,$0-28
+    JMP    syscall·RawSyscall(SB)
 
-TEXT	·RawSyscall6(SB),NOSPLIT,$0-40
-	JMP	syscall·RawSyscall6(SB)
+TEXT    ·RawSyscall6(SB),NOSPLIT,$0-40
+    JMP    syscall·RawSyscall6(SB)

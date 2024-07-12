@@ -1,0 +1,15 @@
+{
+    "Version": "v1.1.8",
+    "GoVersion": "1.12",
+    "Sum": "h1:AkaSdXYQOWeaO3neb8EM634ahkXXe3jYbVh/F9lq+GI=",
+    "Packages": {
+        "github.com/kr/pty": {
+            "Imports": [
+                "github.com/creack/pty",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        }
+    }
+}

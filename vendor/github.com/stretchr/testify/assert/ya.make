@@ -1,10 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
 SRCS(
     assertion_compare.go
-    assertion_compare_can_convert.go
     assertion_format.go
     assertion_forward.go
     assertion_order.go
@@ -16,7 +17,6 @@ SRCS(
 )
 
 GO_TEST_SRCS(
-    assertion_compare_go1.17_test.go
     assertion_compare_test.go
     assertion_order_test.go
     assertions_test.go
@@ -26,4 +26,7 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+    internal
+)

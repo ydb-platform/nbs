@@ -1,0 +1,3 @@
+testdata/index_object_with_number:1:1-7 Indexed value is assumed to be an object, but index is not a string
+
+{}[42]

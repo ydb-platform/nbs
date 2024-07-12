@@ -1,0 +1,163 @@
+{
+    "Version": "v1.0.5-SNAPSHOT.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:A5gBU4xmWVTfd4q8Te+1+42DOoi3KCkID0eYE7+2zxk=",
+    "Packages": {
+        "github.com/envoyproxy/protoc-gen-validate": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/module",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/types/pluginpb"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/cmd/protoc-gen-validate-cpp": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/module",
+                "github.com/lyft/protoc-gen-star/v2",
+                "google.golang.org/protobuf/types/pluginpb"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/cmd/protoc-gen-validate-go": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/module",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/types/pluginpb"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/cmd/protoc-gen-validate-java": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/module",
+                "github.com/lyft/protoc-gen-star/v2",
+                "google.golang.org/protobuf/types/pluginpb"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/module": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/templates",
+                "github.com/envoyproxy/protoc-gen-validate/templates/java",
+                "github.com/envoyproxy/protoc-gen-validate/validate",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/templates/cc",
+                "github.com/envoyproxy/protoc-gen-validate/templates/ccnop",
+                "github.com/envoyproxy/protoc-gen-validate/templates/go",
+                "github.com/envoyproxy/protoc-gen-validate/templates/java",
+                "github.com/envoyproxy/protoc-gen-validate/templates/shared",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/cc": {
+            "Imports": [
+                "fmt",
+                "github.com/envoyproxy/protoc-gen-validate/templates/shared",
+                "github.com/iancoleman/strcase",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "strconv",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/ccnop": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/templates/cc",
+                "github.com/lyft/protoc-gen-star/v2",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/go": {
+            "Imports": [
+                "github.com/envoyproxy/protoc-gen-validate/templates/goshared",
+                "github.com/lyft/protoc-gen-star/v2",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/goshared": {
+            "Imports": [
+                "fmt",
+                "github.com/envoyproxy/protoc-gen-validate/templates/shared",
+                "github.com/iancoleman/strcase",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "strconv",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/java": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/envoyproxy/protoc-gen-validate/templates/shared",
+                "github.com/iancoleman/strcase",
+                "github.com/lyft/protoc-gen-star/v2",
+                "github.com/lyft/protoc-gen-star/v2/lang/go",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "os",
+                "strings",
+                "text/template",
+                "unicode"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/templates/shared": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/envoyproxy/protoc-gen-validate/validate",
+                "github.com/lyft/protoc-gen-star/v2",
+                "google.golang.org/protobuf/proto",
+                "reflect",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "github.com/envoyproxy/protoc-gen-validate/validate": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -20,14 +20,14 @@ limitations under the License.
 package testhelp
 
 import (
-	"bytes"
-	"log/slog"
-	"testing"
+    "bytes"
+    "log/slog"
+    "testing"
 )
 
 func TestRunSlogTestsOnSlogSink(t *testing.T) {
-	// This proves that RunSlogTests works.
-	RunSlogTests(t, func(buffer *bytes.Buffer) slog.Handler {
-		return slog.NewJSONHandler(buffer, nil)
-	})
+    // This proves that RunSlogTests works.
+    RunSlogTests(t, func(buffer *bytes.Buffer) slog.Handler {
+        return slog.NewJSONHandler(buffer, nil)
+    })
 }

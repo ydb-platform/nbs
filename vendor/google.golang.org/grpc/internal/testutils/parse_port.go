@@ -18,22 +18,22 @@
 package testutils
 
 import (
-	"net"
-	"strconv"
-	"testing"
+    "net"
+    "strconv"
+    "testing"
 )
 
 // ParsePort returns the port from the given address string, as a unit32.
 func ParsePort(t *testing.T, addr string) uint32 {
-	t.Helper()
+    t.Helper()
 
-	_, p, err := net.SplitHostPort(addr)
-	if err != nil {
-		t.Fatalf("Invalid serving address: %v", err)
-	}
-	port, err := strconv.ParseUint(p, 10, 32)
-	if err != nil {
-		t.Fatalf("Invalid serving port: %v", err)
-	}
-	return uint32(port)
+    _, p, err := net.SplitHostPort(addr)
+    if err != nil {
+        t.Fatalf("Invalid serving address: %v", err)
+    }
+    port, err := strconv.ParseUint(p, 10, 32)
+    if err != nil {
+        t.Fatalf("Invalid serving port: %v", err)
+    }
+    return uint32(port)
 }

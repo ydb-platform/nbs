@@ -1,0 +1,4 @@
+sqlite3-binding.c
+sqlite3-binding.h
+sqlite3ext.h
+sqlite3_opt_unlock_notify.c

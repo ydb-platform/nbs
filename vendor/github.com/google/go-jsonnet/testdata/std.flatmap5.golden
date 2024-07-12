@@ -1,0 +1,18 @@
+RUNTIME ERROR: a
+-------------------------------------------------
+    testdata/std.flatmap5:1:21-28    function <failWith>
+
+local failWith(x) = error x;
+
+-------------------------------------------------
+    testdata/std.flatmap5:2:10-48    thunk from <$>
+
+std.type(std.flatMap(failWith, ["a", "b", "c"]))
+
+-------------------------------------------------
+    testdata/std.flatmap5:2:1-49    $
+
+std.type(std.flatMap(failWith, ["a", "b", "c"]))
+
+-------------------------------------------------
+    During evaluation

@@ -3,10 +3,10 @@
 package s3
 
 import (
-	"time"
+    "time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
+    "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/request"
 )
 
 // WaitUntilBucketExists uses the Amazon S3 API operation
@@ -14,7 +14,7 @@ import (
 // If the condition is not met within the max attempt window, an error will
 // be returned.
 func (c *S3) WaitUntilBucketExists(input *HeadBucketInput) error {
-	return c.WaitUntilBucketExistsWithContext(aws.BackgroundContext(), input)
+    return c.WaitUntilBucketExistsWithContext(aws.BackgroundContext(), input)
 }
 
 // WaitUntilBucketExistsWithContext is an extended version of WaitUntilBucketExists.
@@ -26,48 +26,48 @@ func (c *S3) WaitUntilBucketExists(input *HeadBucketInput) error {
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *S3) WaitUntilBucketExistsWithContext(ctx aws.Context, input *HeadBucketInput, opts ...request.WaiterOption) error {
-	w := request.Waiter{
-		Name:        "WaitUntilBucketExists",
-		MaxAttempts: 20,
-		Delay:       request.ConstantWaiterDelay(5 * time.Second),
-		Acceptors: []request.WaiterAcceptor{
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 200,
-			},
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 301,
-			},
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 403,
-			},
-			{
-				State:    request.RetryWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 404,
-			},
-		},
-		Logger: c.Config.Logger,
-		NewRequest: func(opts []request.Option) (*request.Request, error) {
-			var inCpy *HeadBucketInput
-			if input != nil {
-				tmp := *input
-				inCpy = &tmp
-			}
-			req, _ := c.HeadBucketRequest(inCpy)
-			req.SetContext(ctx)
-			req.ApplyOptions(opts...)
-			return req, nil
-		},
-	}
-	w.ApplyOptions(opts...)
+    w := request.Waiter{
+        Name:        "WaitUntilBucketExists",
+        MaxAttempts: 20,
+        Delay:       request.ConstantWaiterDelay(5 * time.Second),
+        Acceptors: []request.WaiterAcceptor{
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 200,
+            },
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 301,
+            },
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 403,
+            },
+            {
+                State:    request.RetryWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 404,
+            },
+        },
+        Logger: c.Config.Logger,
+        NewRequest: func(opts []request.Option) (*request.Request, error) {
+            var inCpy *HeadBucketInput
+            if input != nil {
+                tmp := *input
+                inCpy = &tmp
+            }
+            req, _ := c.HeadBucketRequest(inCpy)
+            req.SetContext(ctx)
+            req.ApplyOptions(opts...)
+            return req, nil
+        },
+    }
+    w.ApplyOptions(opts...)
 
-	return w.WaitWithContext(ctx)
+    return w.WaitWithContext(ctx)
 }
 
 // WaitUntilBucketNotExists uses the Amazon S3 API operation
@@ -75,7 +75,7 @@ func (c *S3) WaitUntilBucketExistsWithContext(ctx aws.Context, input *HeadBucket
 // If the condition is not met within the max attempt window, an error will
 // be returned.
 func (c *S3) WaitUntilBucketNotExists(input *HeadBucketInput) error {
-	return c.WaitUntilBucketNotExistsWithContext(aws.BackgroundContext(), input)
+    return c.WaitUntilBucketNotExistsWithContext(aws.BackgroundContext(), input)
 }
 
 // WaitUntilBucketNotExistsWithContext is an extended version of WaitUntilBucketNotExists.
@@ -87,33 +87,33 @@ func (c *S3) WaitUntilBucketNotExists(input *HeadBucketInput) error {
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *S3) WaitUntilBucketNotExistsWithContext(ctx aws.Context, input *HeadBucketInput, opts ...request.WaiterOption) error {
-	w := request.Waiter{
-		Name:        "WaitUntilBucketNotExists",
-		MaxAttempts: 20,
-		Delay:       request.ConstantWaiterDelay(5 * time.Second),
-		Acceptors: []request.WaiterAcceptor{
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 404,
-			},
-		},
-		Logger: c.Config.Logger,
-		NewRequest: func(opts []request.Option) (*request.Request, error) {
-			var inCpy *HeadBucketInput
-			if input != nil {
-				tmp := *input
-				inCpy = &tmp
-			}
-			req, _ := c.HeadBucketRequest(inCpy)
-			req.SetContext(ctx)
-			req.ApplyOptions(opts...)
-			return req, nil
-		},
-	}
-	w.ApplyOptions(opts...)
+    w := request.Waiter{
+        Name:        "WaitUntilBucketNotExists",
+        MaxAttempts: 20,
+        Delay:       request.ConstantWaiterDelay(5 * time.Second),
+        Acceptors: []request.WaiterAcceptor{
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 404,
+            },
+        },
+        Logger: c.Config.Logger,
+        NewRequest: func(opts []request.Option) (*request.Request, error) {
+            var inCpy *HeadBucketInput
+            if input != nil {
+                tmp := *input
+                inCpy = &tmp
+            }
+            req, _ := c.HeadBucketRequest(inCpy)
+            req.SetContext(ctx)
+            req.ApplyOptions(opts...)
+            return req, nil
+        },
+    }
+    w.ApplyOptions(opts...)
 
-	return w.WaitWithContext(ctx)
+    return w.WaitWithContext(ctx)
 }
 
 // WaitUntilObjectExists uses the Amazon S3 API operation
@@ -121,7 +121,7 @@ func (c *S3) WaitUntilBucketNotExistsWithContext(ctx aws.Context, input *HeadBuc
 // If the condition is not met within the max attempt window, an error will
 // be returned.
 func (c *S3) WaitUntilObjectExists(input *HeadObjectInput) error {
-	return c.WaitUntilObjectExistsWithContext(aws.BackgroundContext(), input)
+    return c.WaitUntilObjectExistsWithContext(aws.BackgroundContext(), input)
 }
 
 // WaitUntilObjectExistsWithContext is an extended version of WaitUntilObjectExists.
@@ -133,38 +133,38 @@ func (c *S3) WaitUntilObjectExists(input *HeadObjectInput) error {
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *S3) WaitUntilObjectExistsWithContext(ctx aws.Context, input *HeadObjectInput, opts ...request.WaiterOption) error {
-	w := request.Waiter{
-		Name:        "WaitUntilObjectExists",
-		MaxAttempts: 20,
-		Delay:       request.ConstantWaiterDelay(5 * time.Second),
-		Acceptors: []request.WaiterAcceptor{
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 200,
-			},
-			{
-				State:    request.RetryWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 404,
-			},
-		},
-		Logger: c.Config.Logger,
-		NewRequest: func(opts []request.Option) (*request.Request, error) {
-			var inCpy *HeadObjectInput
-			if input != nil {
-				tmp := *input
-				inCpy = &tmp
-			}
-			req, _ := c.HeadObjectRequest(inCpy)
-			req.SetContext(ctx)
-			req.ApplyOptions(opts...)
-			return req, nil
-		},
-	}
-	w.ApplyOptions(opts...)
+    w := request.Waiter{
+        Name:        "WaitUntilObjectExists",
+        MaxAttempts: 20,
+        Delay:       request.ConstantWaiterDelay(5 * time.Second),
+        Acceptors: []request.WaiterAcceptor{
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 200,
+            },
+            {
+                State:    request.RetryWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 404,
+            },
+        },
+        Logger: c.Config.Logger,
+        NewRequest: func(opts []request.Option) (*request.Request, error) {
+            var inCpy *HeadObjectInput
+            if input != nil {
+                tmp := *input
+                inCpy = &tmp
+            }
+            req, _ := c.HeadObjectRequest(inCpy)
+            req.SetContext(ctx)
+            req.ApplyOptions(opts...)
+            return req, nil
+        },
+    }
+    w.ApplyOptions(opts...)
 
-	return w.WaitWithContext(ctx)
+    return w.WaitWithContext(ctx)
 }
 
 // WaitUntilObjectNotExists uses the Amazon S3 API operation
@@ -172,7 +172,7 @@ func (c *S3) WaitUntilObjectExistsWithContext(ctx aws.Context, input *HeadObject
 // If the condition is not met within the max attempt window, an error will
 // be returned.
 func (c *S3) WaitUntilObjectNotExists(input *HeadObjectInput) error {
-	return c.WaitUntilObjectNotExistsWithContext(aws.BackgroundContext(), input)
+    return c.WaitUntilObjectNotExistsWithContext(aws.BackgroundContext(), input)
 }
 
 // WaitUntilObjectNotExistsWithContext is an extended version of WaitUntilObjectNotExists.
@@ -184,31 +184,31 @@ func (c *S3) WaitUntilObjectNotExists(input *HeadObjectInput) error {
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *S3) WaitUntilObjectNotExistsWithContext(ctx aws.Context, input *HeadObjectInput, opts ...request.WaiterOption) error {
-	w := request.Waiter{
-		Name:        "WaitUntilObjectNotExists",
-		MaxAttempts: 20,
-		Delay:       request.ConstantWaiterDelay(5 * time.Second),
-		Acceptors: []request.WaiterAcceptor{
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.StatusWaiterMatch,
-				Expected: 404,
-			},
-		},
-		Logger: c.Config.Logger,
-		NewRequest: func(opts []request.Option) (*request.Request, error) {
-			var inCpy *HeadObjectInput
-			if input != nil {
-				tmp := *input
-				inCpy = &tmp
-			}
-			req, _ := c.HeadObjectRequest(inCpy)
-			req.SetContext(ctx)
-			req.ApplyOptions(opts...)
-			return req, nil
-		},
-	}
-	w.ApplyOptions(opts...)
+    w := request.Waiter{
+        Name:        "WaitUntilObjectNotExists",
+        MaxAttempts: 20,
+        Delay:       request.ConstantWaiterDelay(5 * time.Second),
+        Acceptors: []request.WaiterAcceptor{
+            {
+                State:    request.SuccessWaiterState,
+                Matcher:  request.StatusWaiterMatch,
+                Expected: 404,
+            },
+        },
+        Logger: c.Config.Logger,
+        NewRequest: func(opts []request.Option) (*request.Request, error) {
+            var inCpy *HeadObjectInput
+            if input != nil {
+                tmp := *input
+                inCpy = &tmp
+            }
+            req, _ := c.HeadObjectRequest(inCpy)
+            req.SetContext(ctx)
+            req.ApplyOptions(opts...)
+            return req, nil
+        },
+    }
+    w.ApplyOptions(opts...)
 
-	return w.WaitWithContext(ctx)
+    return w.WaitWithContext(ctx)
 }

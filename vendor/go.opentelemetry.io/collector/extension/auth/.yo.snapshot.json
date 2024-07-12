@@ -1,0 +1,42 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:mMZfNUCeWaXnQY85gepFA9uhzsEf0AAnAE4/Oblx/Wc=",
+    "Packages": {
+        "go.opentelemetry.io/collector/extension/auth": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/extension",
+                "google.golang.org/grpc/credentials",
+                "net/http"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "google.golang.org/grpc/credentials",
+                "net/http",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/extension/auth/authtest": {
+            "Imports": [
+                "context",
+                "errors",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/extension/auth",
+                "google.golang.org/grpc/credentials",
+                "net/http"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "google.golang.org/grpc/credentials",
+                "net/http",
+                "testing"
+            ]
+        }
+    }
+}

@@ -17,48 +17,48 @@ limitations under the License.
 package strings
 
 import (
-	"bytes"
-	"io"
-	"strings"
+    "bytes"
+    "io"
+    "strings"
 )
 
 // LineDelimiter is a filter that will split input on lines
 // and bracket each line with the delimiter string.
 type LineDelimiter struct {
-	output    io.Writer
-	delimiter []byte
-	buf       bytes.Buffer
+    output    io.Writer
+    delimiter []byte
+    buf       bytes.Buffer
 }
 
 // NewLineDelimiter allocates a new io.Writer that will split input on lines
 // and bracket each line with the delimiter string.  This can be useful in
 // output tests where it is difficult to see and test trailing whitespace.
 func NewLineDelimiter(output io.Writer, delimiter string) *LineDelimiter {
-	return &LineDelimiter{output: output, delimiter: []byte(delimiter)}
+    return &LineDelimiter{output: output, delimiter: []byte(delimiter)}
 }
 
 // Write writes buf to the LineDelimiter ld. The only errors returned are ones
 // encountered while writing to the underlying output stream.
 func (ld *LineDelimiter) Write(buf []byte) (n int, err error) {
-	return ld.buf.Write(buf)
+    return ld.buf.Write(buf)
 }
 
 // Flush all lines up until now.  This will assume insert a linebreak at the current point of the stream.
 func (ld *LineDelimiter) Flush() (err error) {
-	lines := strings.Split(ld.buf.String(), "\n")
-	for _, line := range lines {
-		if _, err = ld.output.Write(ld.delimiter); err != nil {
-			return
-		}
-		if _, err = ld.output.Write([]byte(line)); err != nil {
-			return
-		}
-		if _, err = ld.output.Write(ld.delimiter); err != nil {
-			return
-		}
-		if _, err = ld.output.Write([]byte("\n")); err != nil {
-			return
-		}
-	}
-	return
+    lines := strings.Split(ld.buf.String(), "\n")
+    for _, line := range lines {
+        if _, err = ld.output.Write(ld.delimiter); err != nil {
+            return
+        }
+        if _, err = ld.output.Write([]byte(line)); err != nil {
+            return
+        }
+        if _, err = ld.output.Write(ld.delimiter); err != nil {
+            return
+        }
+        if _, err = ld.output.Write([]byte("\n")); err != nil {
+            return
+        }
+    }
+    return
 }

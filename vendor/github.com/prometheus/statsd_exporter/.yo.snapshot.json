@@ -1,0 +1,268 @@
+{
+    "Version": "v0.22.7",
+    "GoVersion": "1.17",
+    "Sum": "h1:7Pji/i2GuhK6Lu7DHrtTkFmNBCudCPT1pX2CziuyQR0=",
+    "Packages": {
+        "github.com/prometheus/statsd_exporter": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/promauto",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "github.com/prometheus/common/promlog",
+                "github.com/prometheus/common/promlog/flag",
+                "github.com/prometheus/common/version",
+                "github.com/prometheus/statsd_exporter/pkg/address",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/exporter",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "github.com/prometheus/statsd_exporter/pkg/line",
+                "github.com/prometheus/statsd_exporter/pkg/listener",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache/lru",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache/randomreplacement",
+                "github.com/prometheus/statsd_exporter/pkg/relay",
+                "gopkg.in/alecthomas/kingpin.v2",
+                "net",
+                "net/http",
+                "net/http/pprof",
+                "os",
+                "os/signal",
+                "strconv",
+                "syscall"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/exporter",
+                "github.com/prometheus/statsd_exporter/pkg/line",
+                "github.com/prometheus/statsd_exporter/pkg/listener",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "net",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/address": {
+            "Imports": [
+                "fmt",
+                "net",
+                "strconv"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/clock": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/event": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/exporter": {
+            "Imports": [
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "github.com/prometheus/statsd_exporter/pkg/registry",
+                "os",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/line",
+                "github.com/prometheus/statsd_exporter/pkg/listener",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "github.com/prometheus/statsd_exporter/pkg/registry",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/level": {
+            "Imports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/go-kit/log/level"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/go-kit/log",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/line": {
+            "Imports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "strconv",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/listener": {
+            "Imports": [
+                "bufio",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/event",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "github.com/prometheus/statsd_exporter/pkg/relay",
+                "io",
+                "net",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/mapper": {
+            "Imports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "github.com/prometheus/statsd_exporter/pkg/mapper/fsm",
+                "gopkg.in/yaml.v2",
+                "io/ioutil",
+                "regexp",
+                "strings",
+                "sync",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache/lru",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache/randomreplacement",
+                "math/rand",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/statsd_exporter/pkg/mapper/fsm": {
+            "Imports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "io",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/mappercache": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/mappercache/lru": {
+            "Imports": [
+                "github.com/golang/groupcache/lru",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/mappercache/randomreplacement": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/statsd_exporter/pkg/mappercache",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/metrics": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/registry": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/common/model",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/mapper",
+                "github.com/prometheus/statsd_exporter/pkg/metrics",
+                "hash",
+                "hash/fnv",
+                "sort",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/statsd_exporter/pkg/relay": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/promauto",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/prometheus/statsd_exporter/pkg/level",
+                "net",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/go-kit/log",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_model/go",
+                "github.com/prometheus/statsd_exporter/pkg/clock",
+                "github.com/stvp/go-udp-testing",
+                "runtime",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

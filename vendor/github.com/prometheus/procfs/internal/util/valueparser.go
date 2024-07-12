@@ -14,7 +14,7 @@
 package util
 
 import (
-	"strconv"
+    "strconv"
 )
 
 // TODO(mdlayher): util packages are an anti-pattern and this should be moved
@@ -24,13 +24,13 @@ import (
 // in a concise and safe way. The Err method must be invoked after invoking
 // any other methods to ensure a value was successfully parsed.
 type ValueParser struct {
-	v   string
-	err error
+    v   string
+    err error
 }
 
 // NewValueParser creates a ValueParser using the input string.
 func NewValueParser(v string) *ValueParser {
-	return &ValueParser{v: v}
+    return &ValueParser{v: v}
 }
 
 // Int interprets the underlying value as an int and returns that value.
@@ -39,53 +39,53 @@ func (vp *ValueParser) Int() int { return int(vp.int64()) }
 // PInt64 interprets the underlying value as an int64 and returns a pointer to
 // that value.
 func (vp *ValueParser) PInt64() *int64 {
-	if vp.err != nil {
-		return nil
-	}
+    if vp.err != nil {
+        return nil
+    }
 
-	v := vp.int64()
-	return &v
+    v := vp.int64()
+    return &v
 }
 
 // int64 interprets the underlying value as an int64 and returns that value.
 // TODO: export if/when necessary.
 func (vp *ValueParser) int64() int64 {
-	if vp.err != nil {
-		return 0
-	}
+    if vp.err != nil {
+        return 0
+    }
 
-	// A base value of zero makes ParseInt infer the correct base using the
-	// string's prefix, if any.
-	const base = 0
-	v, err := strconv.ParseInt(vp.v, base, 64)
-	if err != nil {
-		vp.err = err
-		return 0
-	}
+    // A base value of zero makes ParseInt infer the correct base using the
+    // string's prefix, if any.
+    const base = 0
+    v, err := strconv.ParseInt(vp.v, base, 64)
+    if err != nil {
+        vp.err = err
+        return 0
+    }
 
-	return v
+    return v
 }
 
 // PUInt64 interprets the underlying value as an uint64 and returns a pointer to
 // that value.
 func (vp *ValueParser) PUInt64() *uint64 {
-	if vp.err != nil {
-		return nil
-	}
+    if vp.err != nil {
+        return nil
+    }
 
-	// A base value of zero makes ParseInt infer the correct base using the
-	// string's prefix, if any.
-	const base = 0
-	v, err := strconv.ParseUint(vp.v, base, 64)
-	if err != nil {
-		vp.err = err
-		return nil
-	}
+    // A base value of zero makes ParseInt infer the correct base using the
+    // string's prefix, if any.
+    const base = 0
+    v, err := strconv.ParseUint(vp.v, base, 64)
+    if err != nil {
+        vp.err = err
+        return nil
+    }
 
-	return &v
+    return &v
 }
 
 // Err returns the last error, if any, encountered by the ValueParser.
 func (vp *ValueParser) Err() error {
-	return vp.err
+    return vp.err
 }

@@ -17,9 +17,9 @@ limitations under the License.
 package keymutex
 
 import (
-	"hash/fnv"
-	"runtime"
-	"sync"
+    "hash/fnv"
+    "runtime"
+    "sync"
 )
 
 // NewHashed returns a new instance of KeyMutex which hashes arbitrary keys to
@@ -28,31 +28,31 @@ import (
 // Note that because it uses fixed set of locks, different keys may share same
 // lock, so it's possible to wait on same lock.
 func NewHashed(n int) KeyMutex {
-	if n <= 0 {
-		n = runtime.NumCPU()
-	}
-	return &hashedKeyMutex{
-		mutexes: make([]sync.Mutex, n),
-	}
+    if n <= 0 {
+        n = runtime.NumCPU()
+    }
+    return &hashedKeyMutex{
+        mutexes: make([]sync.Mutex, n),
+    }
 }
 
 type hashedKeyMutex struct {
-	mutexes []sync.Mutex
+    mutexes []sync.Mutex
 }
 
 // Acquires a lock associated with the specified ID.
 func (km *hashedKeyMutex) LockKey(id string) {
-	km.mutexes[km.hash(id)%uint32(len(km.mutexes))].Lock()
+    km.mutexes[km.hash(id)%uint32(len(km.mutexes))].Lock()
 }
 
 // Releases the lock associated with the specified ID.
 func (km *hashedKeyMutex) UnlockKey(id string) error {
-	km.mutexes[km.hash(id)%uint32(len(km.mutexes))].Unlock()
-	return nil
+    km.mutexes[km.hash(id)%uint32(len(km.mutexes))].Unlock()
+    return nil
 }
 
 func (km *hashedKeyMutex) hash(id string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(id))
-	return h.Sum32()
+    h := fnv.New32a()
+    h.Write([]byte(id))
+    return h.Sum32()
 }

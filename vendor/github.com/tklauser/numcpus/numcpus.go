@@ -41,13 +41,13 @@ var ErrNotSupported = errors.New("function not supported")
 // function should return the same value as `getconf _SC_NPROCESSORS_CONF` on a
 // unix system.
 func GetConfigured() (int, error) {
-	return getConfigured()
+    return getConfigured()
 }
 
 // GetKernelMax returns the maximum number of CPUs allowed by the kernel
 // configuration. This function is only supported on Linux and Windows systems.
 func GetKernelMax() (int, error) {
-	return getKernelMax()
+    return getKernelMax()
 }
 
 // GetOffline returns the number of offline CPUs, i.e. CPUs that are not online
@@ -55,21 +55,21 @@ func GetKernelMax() (int, error) {
 // the kernel configuration (see GetKernelMax). This function is only supported
 // on Linux systems.
 func GetOffline() (int, error) {
-	return getOffline()
+    return getOffline()
 }
 
 // GetOnline returns the number of CPUs that are online and being scheduled.
 func GetOnline() (int, error) {
-	return getOnline()
+    return getOnline()
 }
 
 // GetPossible returns the number of possible CPUs, i.e. CPUs that
 // have been allocated resources and can be brought online if they are present.
 func GetPossible() (int, error) {
-	return getPossible()
+    return getPossible()
 }
 
 // GetPresent returns the number of CPUs present in the system.
 func GetPresent() (int, error) {
-	return getPresent()
+    return getPresent()
 }

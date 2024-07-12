@@ -17,52 +17,52 @@ package log
 
 // Logger interface for reporting informational and warning messages.
 type Logger interface {
-	// Debugf logs a formatted debugging message.
-	Debugf(format string, args ...interface{})
+    // Debugf logs a formatted debugging message.
+    Debugf(format string, args ...interface{})
 
-	// Infof logs a formatted informational message.
-	Infof(format string, args ...interface{})
+    // Infof logs a formatted informational message.
+    Infof(format string, args ...interface{})
 
-	// Warnf logs a formatted warning message.
-	Warnf(format string, args ...interface{})
+    // Warnf logs a formatted warning message.
+    Warnf(format string, args ...interface{})
 
-	// Errorf logs a formatted error message.
-	Errorf(format string, args ...interface{})
+    // Errorf logs a formatted error message.
+    Errorf(format string, args ...interface{})
 }
 
 // LoggerFuncs implements the Logger interface, allowing the
 // caller to specify only the logging functions that are desired.
 type LoggerFuncs struct {
-	DebugFunc func(string, ...interface{})
-	InfoFunc  func(string, ...interface{})
-	WarnFunc  func(string, ...interface{})
-	ErrorFunc func(string, ...interface{})
+    DebugFunc func(string, ...interface{})
+    InfoFunc  func(string, ...interface{})
+    WarnFunc  func(string, ...interface{})
+    ErrorFunc func(string, ...interface{})
 }
 
 // Debugf logs a formatted debugging message.
 func (f LoggerFuncs) Debugf(format string, args ...interface{}) {
-	if f.DebugFunc != nil {
-		f.DebugFunc(format, args...)
-	}
+    if f.DebugFunc != nil {
+        f.DebugFunc(format, args...)
+    }
 }
 
 // Infof logs a formatted informational message.
 func (f LoggerFuncs) Infof(format string, args ...interface{}) {
-	if f.InfoFunc != nil {
-		f.InfoFunc(format, args...)
-	}
+    if f.InfoFunc != nil {
+        f.InfoFunc(format, args...)
+    }
 }
 
 // Warnf logs a formatted warning message.
 func (f LoggerFuncs) Warnf(format string, args ...interface{}) {
-	if f.WarnFunc != nil {
-		f.WarnFunc(format, args...)
-	}
+    if f.WarnFunc != nil {
+        f.WarnFunc(format, args...)
+    }
 }
 
 // Errorf logs a formatted error message.
 func (f LoggerFuncs) Errorf(format string, args ...interface{}) {
-	if f.ErrorFunc != nil {
-		f.ErrorFunc(format, args...)
-	}
+    if f.ErrorFunc != nil {
+        f.ErrorFunc(format, args...)
+    }
 }

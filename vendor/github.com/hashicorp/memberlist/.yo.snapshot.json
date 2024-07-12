@@ -1,0 +1,78 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:EtYPN8DpAURiapus508I4n9CzHs2W+8NZGbmmR/prTM=",
+    "Packages": {
+        "github.com/hashicorp/memberlist": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/lzw",
+                "container/list",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/rand",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/google/btree",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/go-sockaddr",
+                "github.com/miekg/dns",
+                "github.com/sean-/seed",
+                "hash/crc32",
+                "io",
+                "log",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/google/btree",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/memberlist/internal/retry",
+                "github.com/miekg/dns",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/memberlist/internal/retry": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -1,0 +1,145 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:06RnmrcEiBG3xhhGcGNT+hEk/j/4XtHavlMIxZcJHQE=",
+    "Packages": {
+        "go.opentelemetry.io/collector/exporter": {
+            "Imports": [
+                "context",
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/consumer",
+                "go.uber.org/zap"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/exporter/exporterhelper": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/cenkalti/backoff/v4",
+                "go.opencensus.io/metric",
+                "go.opencensus.io/metric/metricdata",
+                "go.opencensus.io/metric/metricproducer",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumererror",
+                "go.opentelemetry.io/collector/exporter",
+                "go.opentelemetry.io/collector/exporter/exporterhelper/internal",
+                "go.opentelemetry.io/collector/internal/obsreportconfig/obsmetrics",
+                "go.opentelemetry.io/collector/obsreport",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/trace",
+                "go.uber.org/zap",
+                "go.uber.org/zap/zapcore",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opencensus.io/metric",
+                "go.opencensus.io/metric/metricdata",
+                "go.opencensus.io/metric/metricproducer",
+                "go.opencensus.io/tag",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/consumer/consumererror",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "go.opentelemetry.io/collector/exporter",
+                "go.opentelemetry.io/collector/exporter/exporterhelper/internal",
+                "go.opentelemetry.io/collector/exporter/exportertest",
+                "go.opentelemetry.io/collector/internal/obsreportconfig/obsmetrics",
+                "go.opentelemetry.io/collector/internal/testdata",
+                "go.opentelemetry.io/collector/obsreport",
+                "go.opentelemetry.io/collector/obsreport/obsreporttest",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "go.opentelemetry.io/otel",
+                "go.opentelemetry.io/otel/attribute",
+                "go.opentelemetry.io/otel/codes",
+                "go.opentelemetry.io/otel/sdk/trace",
+                "go.opentelemetry.io/otel/sdk/trace/tracetest",
+                "go.opentelemetry.io/otel/trace",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "go.opentelemetry.io/collector/exporter/exporterhelper/internal": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/exporter",
+                "go.opentelemetry.io/collector/extension/experimental/storage",
+                "go.uber.org/zap",
+                "strconv",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/exporter/exportertest",
+                "go.opentelemetry.io/collector/extension/experimental/storage",
+                "go.opentelemetry.io/collector/extension/extensiontest",
+                "go.opentelemetry.io/collector/pdata/pcommon",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "go.uber.org/zap",
+                "reflect",
+                "strconv",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "go.opentelemetry.io/collector/exporter/exportertest": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/consumer/consumertest",
+                "go.opentelemetry.io/collector/exporter"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/component/componenttest",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "testing"
+            ]
+        }
+    }
+}

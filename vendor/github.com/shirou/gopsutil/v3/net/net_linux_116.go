@@ -4,9 +4,9 @@
 package net
 
 import (
-	"os"
+    "os"
 )
 
 func readDir(f *os.File, max int) ([]os.DirEntry, error) {
-	return f.ReadDir(max)
+    return f.ReadDir(max)
 }

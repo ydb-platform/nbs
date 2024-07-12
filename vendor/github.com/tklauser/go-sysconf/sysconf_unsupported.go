@@ -8,10 +8,10 @@
 package sysconf
 
 import (
-	"fmt"
-	"runtime"
+    "fmt"
+    "runtime"
 )
 
 func sysconf(name int) (int64, error) {
-	return -1, fmt.Errorf("unsupported on %s", runtime.GOOS)
+    return -1, fmt.Errorf("unsupported on %s", runtime.GOOS)
 }

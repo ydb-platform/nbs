@@ -1,0 +1,8 @@
+RUNTIME ERROR: base64 can only base64 encode strings / arrays of single bytes, got number
+-------------------------------------------------
+    testdata/builtinBase64_non_string_non_array:1:1-14    $
+
+std.base64(1)
+
+-------------------------------------------------
+    During evaluation

@@ -14,76 +14,76 @@
 package procfs
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"strconv"
-	"strings"
+    "bufio"
+    "bytes"
+    "fmt"
+    "strconv"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // Swap represents an entry in /proc/swaps.
 type Swap struct {
-	Filename string
-	Type     string
-	Size     int
-	Used     int
-	Priority int
+    Filename string
+    Type     string
+    Size     int
+    Used     int
+    Priority int
 }
 
 // Swaps returns a slice of all configured swap devices on the system.
 func (fs FS) Swaps() ([]*Swap, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("swaps"))
-	if err != nil {
-		return nil, err
-	}
-	return parseSwaps(data)
+    data, err := util.ReadFileNoStat(fs.proc.Path("swaps"))
+    if err != nil {
+        return nil, err
+    }
+    return parseSwaps(data)
 }
 
 func parseSwaps(info []byte) ([]*Swap, error) {
-	swaps := []*Swap{}
-	scanner := bufio.NewScanner(bytes.NewReader(info))
-	scanner.Scan() // ignore header line
-	for scanner.Scan() {
-		swapString := scanner.Text()
-		parsedSwap, err := parseSwapString(swapString)
-		if err != nil {
-			return nil, err
-		}
-		swaps = append(swaps, parsedSwap)
-	}
+    swaps := []*Swap{}
+    scanner := bufio.NewScanner(bytes.NewReader(info))
+    scanner.Scan() // ignore header line
+    for scanner.Scan() {
+        swapString := scanner.Text()
+        parsedSwap, err := parseSwapString(swapString)
+        if err != nil {
+            return nil, err
+        }
+        swaps = append(swaps, parsedSwap)
+    }
 
-	err := scanner.Err()
-	return swaps, err
+    err := scanner.Err()
+    return swaps, err
 }
 
 func parseSwapString(swapString string) (*Swap, error) {
-	var err error
+    var err error
 
-	swapFields := strings.Fields(swapString)
-	swapLength := len(swapFields)
-	if swapLength < 5 {
-		return nil, fmt.Errorf("%w: too few fields in swap string: %s", ErrFileParse, swapString)
-	}
+    swapFields := strings.Fields(swapString)
+    swapLength := len(swapFields)
+    if swapLength < 5 {
+        return nil, fmt.Errorf("%w: too few fields in swap string: %s", ErrFileParse, swapString)
+    }
 
-	swap := &Swap{
-		Filename: swapFields[0],
-		Type:     swapFields[1],
-	}
+    swap := &Swap{
+        Filename: swapFields[0],
+        Type:     swapFields[1],
+    }
 
-	swap.Size, err = strconv.Atoi(swapFields[2])
-	if err != nil {
-		return nil, fmt.Errorf("%s: invalid swap size: %s: %w", ErrFileParse, swapFields[2], err)
-	}
-	swap.Used, err = strconv.Atoi(swapFields[3])
-	if err != nil {
-		return nil, fmt.Errorf("%s: invalid swap used: %s: %w", ErrFileParse, swapFields[3], err)
-	}
-	swap.Priority, err = strconv.Atoi(swapFields[4])
-	if err != nil {
-		return nil, fmt.Errorf("%s: invalid swap priority: %s: %w", ErrFileParse, swapFields[4], err)
-	}
+    swap.Size, err = strconv.Atoi(swapFields[2])
+    if err != nil {
+        return nil, fmt.Errorf("%s: invalid swap size: %s: %w", ErrFileParse, swapFields[2], err)
+    }
+    swap.Used, err = strconv.Atoi(swapFields[3])
+    if err != nil {
+        return nil, fmt.Errorf("%s: invalid swap used: %s: %w", ErrFileParse, swapFields[3], err)
+    }
+    swap.Priority, err = strconv.Atoi(swapFields[4])
+    if err != nil {
+        return nil, fmt.Errorf("%s: invalid swap priority: %s: %w", ErrFileParse, swapFields[4], err)
+    }
 
-	return swap, nil
+    return swap, nil
 }

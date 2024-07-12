@@ -1,0 +1,99 @@
+{
+    "Version": "v0.3.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:ADtq8RKfP+jrTyIWIZDIYcKOMecRqNJFOew2IT0Inus=",
+    "Packages": {
+        "github.com/google/go-tspi/attestation": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-tspi/tspi",
+                "github.com/google/go-tspi/tspiconst"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/tpmclient": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-tspi/tspiconst",
+                "github.com/google/go-tspi/verification",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/tpmd": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-tspi/attestation",
+                "github.com/google/go-tspi/tpmclient",
+                "github.com/google/go-tspi/tspi",
+                "github.com/google/go-tspi/tspiconst",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/tpmown": {
+            "Imports": [
+                "bytes",
+                "github.com/google/go-tspi/tspi",
+                "github.com/google/go-tspi/tspiconst",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/tspi": {
+            "Imports": [
+                "C",
+                "bufio",
+                "crypto",
+                "crypto/rsa",
+                "crypto/sha1",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/go-tspi/tspiconst",
+                "io",
+                "math/big",
+                "os",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/tspiconst": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-tspi/verification": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "encoding/binary",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/google/certificate-transparency-go/x509",
+                "github.com/google/go-tspi/tspiconst",
+                "math/big"
+            ],
+            "TestImports": null
+        }
+    }
+}

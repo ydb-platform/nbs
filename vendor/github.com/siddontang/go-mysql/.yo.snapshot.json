@@ -1,0 +1,356 @@
+{
+    "Version": "v0.0.0-20200622032841-a8c16ae9a9cb",
+    "GoVersion": "",
+    "Sum": "h1:EBfJEDBSQFFE2jUHcez4n+kLlpXKgWUQ/OUXSTADvgQ=",
+    "Packages": {
+        "github.com/siddontang/go-mysql/canal": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "encoding/hex",
+                "fmt",
+                "github.com/BurntSushi/toml",
+                "github.com/pingcap/errors",
+                "github.com/pingcap/parser",
+                "github.com/pingcap/parser/ast",
+                "github.com/pingcap/parser/format",
+                "github.com/satori/go.uuid",
+                "github.com/shopspring/decimal",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/dump",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/replication",
+                "github.com/siddontang/go-mysql/schema",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "github.com/pingcap/errors",
+                "github.com/pingcap/parser",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/replication",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go-mysql/client": {
+            "Imports": [
+                "bytes",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/binary",
+                "encoding/pem",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/packet",
+                "github.com/siddontang/go/hack",
+                "math",
+                "net",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/test_util/test_keys",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/cmd/go-binlogparser": {
+            "Imports": [
+                "flag",
+                "github.com/siddontang/go-mysql/replication",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/cmd/go-canal": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/siddontang/go-mysql/canal",
+                "github.com/siddontang/go-mysql/mysql",
+                "os",
+                "os/signal",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/cmd/go-mysqlbinlog": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/replication",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/cmd/go-mysqldump": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/dump",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/driver": {
+            "Imports": [
+                "database/sql",
+                "database/sql/driver",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go/hack",
+                "io",
+                "strings"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/jmoiron/sqlx",
+                "github.com/pingcap/check",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/dump": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/mysql",
+                "io",
+                "os",
+                "os/exec",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/mysql",
+                "io/ioutil",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/failover": {
+            "Imports": [
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/mysql",
+                "net"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/mysql": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "encoding/binary",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/satori/go.uuid",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go/hack",
+                "io",
+                "math",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/pingcap/check",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/packet": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/x509",
+                "encoding/pem",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "io",
+                "net",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/replication": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/satori/go.uuid",
+                "github.com/shopspring/decimal",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go/hack",
+                "hash/crc32",
+                "io",
+                "math",
+                "net",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "github.com/pingcap/errors",
+                "github.com/satori/go.uuid",
+                "github.com/shopspring/decimal",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/mysql",
+                "os",
+                "path",
+                "strconv",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go-mysql/schema": {
+            "Imports": [
+                "database/sql",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "database/sql",
+                "flag",
+                "fmt",
+                "github.com/pingcap/check",
+                "github.com/siddontang/go-mysql/client",
+                "github.com/siddontang/go-mysql/driver",
+                "testing"
+            ]
+        },
+        "github.com/siddontang/go-mysql/server": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/binary",
+                "encoding/pem",
+                "fmt",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/packet",
+                "github.com/siddontang/go/hack",
+                "github.com/siddontang/go/sync2",
+                "math",
+                "math/big",
+                "net",
+                "strconv",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "database/sql",
+                "flag",
+                "fmt",
+                "github.com/go-sql-driver/mysql",
+                "github.com/pingcap/check",
+                "github.com/pingcap/errors",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/test_util/test_keys",
+                "net",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/siddontang/go-mysql/server/example": {
+            "Imports": [
+                "crypto/tls",
+                "github.com/siddontang/go-log/log",
+                "github.com/siddontang/go-mysql/mysql",
+                "github.com/siddontang/go-mysql/server",
+                "github.com/siddontang/go-mysql/test_util/test_keys",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/siddontang/go-mysql/test_util/test_keys": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

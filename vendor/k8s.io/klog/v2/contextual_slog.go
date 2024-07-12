@@ -20,12 +20,12 @@ limitations under the License.
 package klog
 
 import (
-	"log/slog"
+    "log/slog"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // SetSlogLogger reconfigures klog to log through the slog logger. The logger must not be nil.
 func SetSlogLogger(logger *slog.Logger) {
-	SetLoggerWithOptions(logr.FromSlogHandler(logger.Handler()), ContextualLogger(true))
+    SetLoggerWithOptions(logr.FromSlogHandler(logger.Handler()), ContextualLogger(true))
 }

@@ -18,9 +18,9 @@
 package testutils
 
 import (
-	"context"
-	"net/http"
-	"time"
+    "context"
+    "net/http"
+    "time"
 )
 
 // DefaultHTTPRequestTimeout is the default timeout value for the amount of time
@@ -32,32 +32,32 @@ const DefaultHTTPRequestTimeout = 1 * time.Second
 // makes HTTP requests made by the code under test available through a channel,
 // and makes it possible to inject various responses.
 type FakeHTTPClient struct {
-	// ReqChan exposes the HTTP.Request made by the code under test.
-	ReqChan *Channel
-	// RespChan is a channel on which this fake client accepts responses to be
-	// sent to the code under test.
-	RespChan *Channel
-	// Err, if set, is returned by Do().
-	Err error
-	// RecvTimeout is the amount of the time this client waits for a response to
-	// be pushed on RespChan before it fails the Do() call. If this field is
-	// left unspecified, DefaultHTTPRequestTimeout is used.
-	RecvTimeout time.Duration
+    // ReqChan exposes the HTTP.Request made by the code under test.
+    ReqChan *Channel
+    // RespChan is a channel on which this fake client accepts responses to be
+    // sent to the code under test.
+    RespChan *Channel
+    // Err, if set, is returned by Do().
+    Err error
+    // RecvTimeout is the amount of the time this client waits for a response to
+    // be pushed on RespChan before it fails the Do() call. If this field is
+    // left unspecified, DefaultHTTPRequestTimeout is used.
+    RecvTimeout time.Duration
 }
 
 // Do pushes req on ReqChan and returns the response available on RespChan.
 func (fc *FakeHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	fc.ReqChan.Send(req)
+    fc.ReqChan.Send(req)
 
-	timeout := fc.RecvTimeout
-	if timeout == 0 {
-		timeout = DefaultHTTPRequestTimeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	val, err := fc.RespChan.Receive(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return val.(*http.Response), fc.Err
+    timeout := fc.RecvTimeout
+    if timeout == 0 {
+        timeout = DefaultHTTPRequestTimeout
+    }
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    val, err := fc.RespChan.Receive(ctx)
+    if err != nil {
+        return nil, err
+    }
+    return val.(*http.Response), fc.Err
 }

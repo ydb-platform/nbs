@@ -1,0 +1,21 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "",
+    "Sum": "h1:Q7juDM0QtcnhCpeyLGQKyg4TOIghuNXrkL32pHAUMxo=",
+    "Packages": {
+        "github.com/fatih/structs": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

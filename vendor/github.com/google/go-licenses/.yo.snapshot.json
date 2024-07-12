@@ -1,0 +1,138 @@
+{
+    "Version": "v1.6.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:MM+VCXf0slYkpWO0mECvdYDVCxZXIQNal5wqUIXEZ/A=",
+    "Packages": {
+        "github.com/google/go-licenses": {
+            "Imports": [
+                "context",
+                "encoding/csv",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-licenses/licenses",
+                "github.com/otiai10/copy",
+                "github.com/spf13/cobra",
+                "golang.org/x/text/cases",
+                "golang.org/x/text/language",
+                "io/ioutil",
+                "k8s.io/klog/v2",
+                "os",
+                "path/filepath",
+                "regexp",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "github.com/google/go-cmp/cmp",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/google/go-licenses/internal/third_party/pkgsite/derrors": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "net/http"
+            ],
+            "TestImports": [
+                "errors",
+                "testing"
+            ]
+        },
+        "github.com/google/go-licenses/internal/third_party/pkgsite/source": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "fmt",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/derrors",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/stdlib",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/version",
+                "go.opencensus.io/plugin/ochttp",
+                "go.opencensus.io/trace",
+                "golang.org/x/net/context/ctxhttp",
+                "io",
+                "log",
+                "net/http",
+                "path",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-replayers/httpreplay",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-licenses/internal/third_party/pkgsite/stdlib": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/derrors",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/version",
+                "golang.org/x/mod/semver",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/go-licenses/internal/third_party/pkgsite/version": {
+            "Imports": [
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-licenses/licenses": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-licenses/internal/third_party/pkgsite/source",
+                "github.com/google/licenseclassifier",
+                "go/build",
+                "golang.org/x/tools/go/packages",
+                "gopkg.in/src-d/go-git.v4",
+                "k8s.io/klog/v2",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "gopkg.in/src-d/go-git.v4",
+                "os",
+                "path/filepath",
+                "regexp",
+                "testing"
+            ]
+        }
+    }
+}

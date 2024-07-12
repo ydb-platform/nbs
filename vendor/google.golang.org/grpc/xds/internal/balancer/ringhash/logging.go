@@ -19,10 +19,10 @@
 package ringhash
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/grpc/grpclog"
-	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/grpclog"
+    internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
 const prefix = "[ring-hash-lb %p] "
@@ -30,9 +30,9 @@ const prefix = "[ring-hash-lb %p] "
 var logger = grpclog.Component("xds")
 
 func prefixLogger(p *ringhashBalancer) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
+    return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
 }
 
 func subConnPrefixLogger(p *ringhashBalancer, sc *subConn) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p)+fmt.Sprintf("[subConn %p] ", sc))
+    return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p)+fmt.Sprintf("[subConn %p] ", sc))
 }

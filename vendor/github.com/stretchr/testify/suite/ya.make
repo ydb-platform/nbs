@@ -1,6 +1,6 @@
 GO_LIBRARY()
 
-OWNER(g:go-contrib)
+SUBSCRIBER(g:go-contrib)
 
 LICENSE(MIT)
 
@@ -25,4 +25,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

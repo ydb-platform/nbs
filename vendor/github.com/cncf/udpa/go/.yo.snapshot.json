@@ -1,0 +1,37 @@
+{
+    "Version": "v0.0.0-20220112060539-c52dc94e7fbe",
+    "GoVersion": "1.11",
+    "Sum": "h1:QQ3GSy+MqSHxm/d8nCtnAiZdYFd45cYZPs8vOOIYKfk=",
+    "Packages": {
+        "github.com/cncf/udpa/go/udpa/annotations": {
+            "Imports": [
+                "github.com/cncf/xds/go/udpa/annotations"
+            ],
+            "TestImports": null
+        },
+        "github.com/cncf/udpa/go/udpa/data/orca/v1": {
+            "Imports": [
+                "github.com/cncf/xds/go/udpa/data/orca/v1"
+            ],
+            "TestImports": null
+        },
+        "github.com/cncf/udpa/go/udpa/service/orca/v1": {
+            "Imports": [
+                "github.com/cncf/xds/go/udpa/service/orca/v1"
+            ],
+            "TestImports": null
+        },
+        "github.com/cncf/udpa/go/udpa/type/v1": {
+            "Imports": [
+                "github.com/cncf/xds/go/udpa/type/v1"
+            ],
+            "TestImports": null
+        },
+        "github.com/cncf/udpa/go/xds/core/v3": {
+            "Imports": [
+                "github.com/cncf/xds/go/xds/core/v3"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -20,22 +20,22 @@ limitations under the License.
 package klog_test
 
 import (
-	"testing"
+    "testing"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 func TestSafePtr(t *testing.T) {
-	// Test with nil pointer
-	var stringPtr *string
-	if result := klog.SafePtr(stringPtr); result != nil {
-		t.Errorf("Expected nil, got %p", result)
-	}
+    // Test with nil pointer
+    var stringPtr *string
+    if result := klog.SafePtr(stringPtr); result != nil {
+        t.Errorf("Expected nil, got %p", result)
+    }
 
-	// Test with non-nil pointer
-	expected := "foo"
-	stringPtr = &expected
-	if result := klog.SafePtr(stringPtr); result != stringPtr {
-		t.Errorf("Expected %v, got %v", stringPtr, result)
-	}
+    // Test with non-nil pointer
+    expected := "foo"
+    stringPtr = &expected
+    if result := klog.SafePtr(stringPtr); result != stringPtr {
+        t.Errorf("Expected %v, got %v", stringPtr, result)
+    }
 }

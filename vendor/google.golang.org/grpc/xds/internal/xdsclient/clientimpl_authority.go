@@ -18,11 +18,11 @@
 package xdsclient
 
 import (
-	"errors"
-	"fmt"
+    "errors"
+    "fmt"
 
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
+    "google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+    "google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 // findAuthority returns the authority for this name. If it doesn't already
@@ -36,41 +36,41 @@ import (
 //
 // Caller must not hold c.authorityMu.
 func (c *clientImpl) findAuthority(n *xdsresource.Name) (_ *authority, unref func(), _ error) {
-	scheme, authority := n.Scheme, n.Authority
+    scheme, authority := n.Scheme, n.Authority
 
-	c.authorityMu.Lock()
-	defer c.authorityMu.Unlock()
-	if c.done.HasFired() {
-		return nil, nil, errors.New("the xds-client is closed")
-	}
+    c.authorityMu.Lock()
+    defer c.authorityMu.Unlock()
+    if c.done.HasFired() {
+        return nil, nil, errors.New("the xds-client is closed")
+    }
 
-	config := c.config.XDSServer
-	if scheme == xdsresource.FederationScheme {
-		cfg, ok := c.config.Authorities[authority]
-		if !ok {
-			return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
-		}
-		if cfg.XDSServer != nil {
-			config = cfg.XDSServer
-		}
-	}
+    config := c.config.XDSServer
+    if scheme == xdsresource.FederationScheme {
+        cfg, ok := c.config.Authorities[authority]
+        if !ok {
+            return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
+        }
+        if cfg.XDSServer != nil {
+            config = cfg.XDSServer
+        }
+    }
 
-	a, err := c.newAuthorityLocked(config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("xds: failed to connect to the control plane for authority %q: %v", authority, err)
-	}
-	// All returned authority from this function will be used by a watch,
-	// holding the ref here.
-	//
-	// Note that this must be done while c.authorityMu is held, to avoid the
-	// race that an authority is returned, but before the watch starts, the
-	// old last watch is canceled (in another goroutine), causing this
-	// authority to be removed, and then a watch will start on a removed
-	// authority.
-	//
-	// unref() will be done when the watch is canceled.
-	a.refLocked()
-	return a, func() { c.unrefAuthority(a) }, nil
+    a, err := c.newAuthorityLocked(config)
+    if err != nil {
+        return nil, nil, fmt.Errorf("xds: failed to connect to the control plane for authority %q: %v", authority, err)
+    }
+    // All returned authority from this function will be used by a watch,
+    // holding the ref here.
+    //
+    // Note that this must be done while c.authorityMu is held, to avoid the
+    // race that an authority is returned, but before the watch starts, the
+    // old last watch is canceled (in another goroutine), causing this
+    // authority to be removed, and then a watch will start on a removed
+    // authority.
+    //
+    // unref() will be done when the watch is canceled.
+    a.refLocked()
+    return a, func() { c.unrefAuthority(a) }, nil
 }
 
 // newAuthorityLocked creates a new authority for the given config.  If an
@@ -82,41 +82,41 @@ func (c *clientImpl) findAuthority(n *xdsresource.Name) (_ *authority, unref fun
 //
 // caller must hold c.authorityMu
 func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *authority, retErr error) {
-	// First check if there's already an authority for this config. If found, it
-	// means this authority is used by other watches (could be the same
-	// authority name, or a different authority name but the same server
-	// config). Return it.
-	configStr := config.String()
-	if a, ok := c.authorities[configStr]; ok {
-		return a, nil
-	}
-	// Second check if there's an authority in the idle cache. If found, it
-	// means this authority was created, but moved to the idle cache because the
-	// watch was canceled. Move it from idle cache to the authority cache, and
-	// return.
-	if old, ok := c.idleAuthorities.Remove(configStr); ok {
-		oldA, _ := old.(*authority)
-		if oldA != nil {
-			c.authorities[configStr] = oldA
-			return oldA, nil
-		}
-	}
+    // First check if there's already an authority for this config. If found, it
+    // means this authority is used by other watches (could be the same
+    // authority name, or a different authority name but the same server
+    // config). Return it.
+    configStr := config.String()
+    if a, ok := c.authorities[configStr]; ok {
+        return a, nil
+    }
+    // Second check if there's an authority in the idle cache. If found, it
+    // means this authority was created, but moved to the idle cache because the
+    // watch was canceled. Move it from idle cache to the authority cache, and
+    // return.
+    if old, ok := c.idleAuthorities.Remove(configStr); ok {
+        oldA, _ := old.(*authority)
+        if oldA != nil {
+            c.authorities[configStr] = oldA
+            return oldA, nil
+        }
+    }
 
-	// Make a new authority since there's no existing authority for this config.
-	ret, err := newAuthority(authorityArgs{
-		serverCfg:          config,
-		bootstrapCfg:       c.config,
-		serializer:         c.serializer,
-		resourceTypeGetter: c.resourceTypes.get,
-		watchExpiryTimeout: c.watchExpiryTimeout,
-		logger:             c.logger,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating new authority for config %q: %v", config.String(), err)
-	}
-	// Add it to the cache, so it will be reused.
-	c.authorities[configStr] = ret
-	return ret, nil
+    // Make a new authority since there's no existing authority for this config.
+    ret, err := newAuthority(authorityArgs{
+        serverCfg:          config,
+        bootstrapCfg:       c.config,
+        serializer:         c.serializer,
+        resourceTypeGetter: c.resourceTypes.get,
+        watchExpiryTimeout: c.watchExpiryTimeout,
+        logger:             c.logger,
+    })
+    if err != nil {
+        return nil, fmt.Errorf("creating new authority for config %q: %v", config.String(), err)
+    }
+    // Add it to the cache, so it will be reused.
+    c.authorities[configStr] = ret
+    return ret, nil
 }
 
 // unrefAuthority unrefs the authority. It also moves the authority to idle
@@ -127,14 +127,14 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 //
 // Caller must not hold c.authorityMu.
 func (c *clientImpl) unrefAuthority(a *authority) {
-	c.authorityMu.Lock()
-	defer c.authorityMu.Unlock()
-	if a.unrefLocked() > 0 {
-		return
-	}
-	configStr := a.serverCfg.String()
-	delete(c.authorities, configStr)
-	c.idleAuthorities.Add(configStr, a, func() {
-		a.close()
-	})
+    c.authorityMu.Lock()
+    defer c.authorityMu.Unlock()
+    if a.unrefLocked() > 0 {
+        return
+    }
+    configStr := a.serverCfg.String()
+    delete(c.authorities, configStr)
+    c.idleAuthorities.Add(configStr, a, func() {
+        a.close()
+    })
 }

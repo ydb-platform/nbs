@@ -19,14 +19,14 @@
 package rls
 
 import (
-	"fmt"
-	"sync/atomic"
-	"unsafe"
+    "fmt"
+    "sync/atomic"
+    "unsafe"
 
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/balancer/base"
-	"google.golang.org/grpc/connectivity"
-	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/balancer"
+    "google.golang.org/grpc/balancer/base"
+    "google.golang.org/grpc/connectivity"
+    internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
 // childPolicyWrapper is a reference counted wrapper around a child policy.
@@ -53,57 +53,57 @@ import (
 //
 // It is not safe for concurrent access.
 type childPolicyWrapper struct {
-	logger *internalgrpclog.PrefixLogger
-	target string // RLS target corresponding to this child policy.
-	refCnt int    // Reference count.
+    logger *internalgrpclog.PrefixLogger
+    target string // RLS target corresponding to this child policy.
+    refCnt int    // Reference count.
 
-	// Balancer state reported by the child policy. The RLS LB policy maintains
-	// these child policies in a BalancerGroup. The state reported by the child
-	// policy is pushed to the state aggregator (which is also implemented by the
-	// RLS LB policy) and cached here. See handleChildPolicyStateUpdate() for
-	// details on how the state aggregation is performed.
-	//
-	// While this field is written to by the LB policy, it is read by the picker
-	// at Pick time. Making this an atomic to enable the picker to read this value
-	// without a mutex.
-	state unsafe.Pointer // *balancer.State
+    // Balancer state reported by the child policy. The RLS LB policy maintains
+    // these child policies in a BalancerGroup. The state reported by the child
+    // policy is pushed to the state aggregator (which is also implemented by the
+    // RLS LB policy) and cached here. See handleChildPolicyStateUpdate() for
+    // details on how the state aggregation is performed.
+    //
+    // While this field is written to by the LB policy, it is read by the picker
+    // at Pick time. Making this an atomic to enable the picker to read this value
+    // without a mutex.
+    state unsafe.Pointer // *balancer.State
 }
 
 // newChildPolicyWrapper creates a child policy wrapper for the given target,
 // and is initialized with one reference and starts off in CONNECTING state.
 func newChildPolicyWrapper(target string) *childPolicyWrapper {
-	c := &childPolicyWrapper{
-		target: target,
-		refCnt: 1,
-		state: unsafe.Pointer(&balancer.State{
-			ConnectivityState: connectivity.Connecting,
-			Picker:            base.NewErrPicker(balancer.ErrNoSubConnAvailable),
-		}),
-	}
-	c.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-child-policy-wrapper %s %p] ", c.target, c))
-	c.logger.Infof("Created")
-	return c
+    c := &childPolicyWrapper{
+        target: target,
+        refCnt: 1,
+        state: unsafe.Pointer(&balancer.State{
+            ConnectivityState: connectivity.Connecting,
+            Picker:            base.NewErrPicker(balancer.ErrNoSubConnAvailable),
+        }),
+    }
+    c.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-child-policy-wrapper %s %p] ", c.target, c))
+    c.logger.Infof("Created")
+    return c
 }
 
 // acquireRef increments the reference count on the child policy wrapper.
 func (c *childPolicyWrapper) acquireRef() {
-	c.refCnt++
+    c.refCnt++
 }
 
 // releaseRef decrements the reference count on the child policy wrapper. The
 // return value indicates whether the released reference was the last one.
 func (c *childPolicyWrapper) releaseRef() bool {
-	c.refCnt--
-	return c.refCnt == 0
+    c.refCnt--
+    return c.refCnt == 0
 }
 
 // lamify causes the child policy wrapper to return a picker which will always
 // fail requests. This is used when the wrapper runs into errors when trying to
 // build and parse the child policy configuration.
 func (c *childPolicyWrapper) lamify(err error) {
-	c.logger.Warningf("Entering lame mode: %v", err)
-	atomic.StorePointer(&c.state, unsafe.Pointer(&balancer.State{
-		ConnectivityState: connectivity.TransientFailure,
-		Picker:            base.NewErrPicker(err),
-	}))
+    c.logger.Warningf("Entering lame mode: %v", err)
+    atomic.StorePointer(&c.state, unsafe.Pointer(&balancer.State{
+        ConnectivityState: connectivity.TransientFailure,
+        Picker:            base.NewErrPicker(err),
+    }))
 }

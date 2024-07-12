@@ -1,0 +1,22 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:KJquqyQ/Am3wgyOEhLHAYmLix1Mow7zUORNKitUv6GQ=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/configauth": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/extension/auth"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/collector/component",
+                "go.opentelemetry.io/collector/extension",
+                "go.opentelemetry.io/collector/extension/auth",
+                "testing"
+            ]
+        }
+    }
+}

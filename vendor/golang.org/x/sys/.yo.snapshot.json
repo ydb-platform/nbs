@@ -1,0 +1,286 @@
+{
+    "Version": "v0.19.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:q5f1RH2jigJ1MoAWp2KTp3gm5zAGFUTarQZ5U386+4o=",
+    "Packages": {
+        "golang.org/x/sys/cpu": {
+            "Imports": [
+                "os",
+                "runtime",
+                "strconv",
+                "strings",
+                "unsafe"
+            ],
+            "TestImports": [
+                "golang.org/x/sys/cpu",
+                "runtime",
+                "testing",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/sys/execabs": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "unsafe"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/sys/unix": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "math/bits",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/hex",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/sys/unix",
+                "io",
+                "log",
+                "net",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "runtime/debug",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/sys/unix/internal/mkmerge": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "flag",
+                "fmt",
+                "go/ast",
+                "go/format",
+                "go/parser",
+                "go/token",
+                "io",
+                "log",
+                "os",
+                "path",
+                "path/filepath",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "go/parser",
+                "go/token",
+                "html/template",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/sys/windows": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "net",
+                "runtime",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "debug/pe",
+                "errors",
+                "fmt",
+                "golang.org/x/sys/windows",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "slices",
+                "strconv",
+                "strings",
+                "syscall",
+                "testing",
+                "time",
+                "unicode/utf8",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/sys/windows/mkwinsyscall": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "go/format",
+                "go/parser",
+                "go/token",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": [
+                "bytes",
+                "go/format",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/sys/windows/registry": {
+            "Imports": [
+                "errors",
+                "golang.org/x/sys/windows",
+                "io",
+                "runtime",
+                "syscall",
+                "time",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "golang.org/x/sys/windows/registry",
+                "os",
+                "syscall",
+                "testing",
+                "time",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/sys/windows/svc": {
+            "Imports": [
+                "errors",
+                "golang.org/x/sys/windows",
+                "strings",
+                "sync",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/sys/windows/svc",
+                "golang.org/x/sys/windows/svc/mgr",
+                "math/rand",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/sys/windows/svc/debug": {
+            "Imports": [
+                "golang.org/x/sys/windows/svc",
+                "os",
+                "os/signal",
+                "strconv",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/sys/windows/svc/eventlog": {
+            "Imports": [
+                "errors",
+                "golang.org/x/sys/windows",
+                "golang.org/x/sys/windows/registry",
+                "syscall"
+            ],
+            "TestImports": [
+                "golang.org/x/sys/windows/svc/eventlog",
+                "testing"
+            ]
+        },
+        "golang.org/x/sys/windows/svc/example": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "golang.org/x/sys/windows/svc",
+                "golang.org/x/sys/windows/svc/debug",
+                "golang.org/x/sys/windows/svc/eventlog",
+                "golang.org/x/sys/windows/svc/mgr",
+                "log",
+                "os",
+                "path/filepath",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/sys/windows/svc/mgr": {
+            "Imports": [
+                "errors",
+                "golang.org/x/sys/windows",
+                "golang.org/x/sys/windows/svc",
+                "syscall",
+                "time",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/sys/windows",
+                "golang.org/x/sys/windows/svc",
+                "golang.org/x/sys/windows/svc/mgr",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

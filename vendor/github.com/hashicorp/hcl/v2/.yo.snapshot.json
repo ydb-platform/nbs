@@ -1,0 +1,455 @@
+{
+    "Version": "v2.16.2",
+    "GoVersion": "1.18",
+    "Sum": "h1:mpkHZh/Tv+xet3sy3F9Ld4FyI2tUpWe9x3XtPx9f1a0=",
+    "Packages": {
+        "github.com/hashicorp/hcl/v2": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/agext/levenshtein",
+                "github.com/apparentlymart/go-textseg/v13/textseg",
+                "github.com/mitchellh/go-wordwrap",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/function",
+                "io",
+                "math/big",
+                "sort"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/cmd/hcldec": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/userfunc",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hcldec",
+                "github.com/hashicorp/hcl/v2/hclparse",
+                "github.com/spf13/pflag",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "github.com/zclconf/go-cty/cty/function/stdlib",
+                "github.com/zclconf/go-cty/cty/json",
+                "golang.org/x/crypto/ssh/terminal",
+                "io",
+                "io/ioutil",
+                "os",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/cmd/hclfmt": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclparse",
+                "github.com/hashicorp/hcl/v2/hclwrite",
+                "golang.org/x/crypto/ssh/terminal",
+                "io/ioutil",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/cmd/hclspecsuite": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/typeexpr",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hclparse",
+                "github.com/zclconf/go-cty-debug/ctydebug",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/json",
+                "golang.org/x/crypto/ssh/terminal",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/ext/customdecode": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/zclconf/go-cty/cty",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/ext/dynblock": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hcldec",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert"
+            ],
+            "TestImports": [
+                "github.com/davecgh/go-spew/spew",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hcldec",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/hcltest",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/ext/transform": {
+            "Imports": [
+                "github.com/hashicorp/hcl/v2"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hcltest",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/ext/tryfunc": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/customdecode",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/ext/typeexpr": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/customdecode",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/function",
+                "reflect",
+                "sort",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/json",
+                "github.com/zclconf/go-cty/cty",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/ext/userfunc": {
+            "Imports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/gohcl": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclwrite",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/gocty",
+                "reflect",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hclwrite",
+                "github.com/hashicorp/hcl/v2/json",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hcldec": {
+            "Imports": [
+                "bytes",
+                "encoding/gob",
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/customdecode",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/function",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/apparentlymart/go-dump/dump",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hcled": {
+            "Imports": [
+                "github.com/hashicorp/hcl/v2"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/hclparse": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/json",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hcl/v2/hclsimple": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/json",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2/hclsimple",
+                "log",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hclsyntax": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/agext/levenshtein",
+                "github.com/apparentlymart/go-textseg/v13/textseg",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/customdecode",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "github.com/zclconf/go-cty/cty/function",
+                "github.com/zclconf/go-cty/cty/function/stdlib",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/go-test/deep",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/kr/pretty",
+                "github.com/kylelemons/godebug/pretty",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "github.com/zclconf/go-cty/cty/function/stdlib",
+                "reflect",
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hclsyntax/fuzz": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hcltest": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/zclconf/go-cty/cty",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hclwrite": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/apparentlymart/go-textseg/v13/textseg",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "io",
+                "reflect",
+                "sort",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/hclwrite",
+                "github.com/kylelemons/godebug/pretty",
+                "github.com/sergi/go-diff/diffmatchpatch",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "github.com/zclconf/go-cty/cty/function/stdlib",
+                "math/big",
+                "reflect",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/hclwrite/fuzz": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclwrite",
+                "io/ioutil",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/integrationtest": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/davecgh/go-spew/spew",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/ext/customdecode",
+                "github.com/hashicorp/hcl/v2/ext/dynblock",
+                "github.com/hashicorp/hcl/v2/ext/typeexpr",
+                "github.com/hashicorp/hcl/v2/gohcl",
+                "github.com/hashicorp/hcl/v2/hcldec",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/hashicorp/hcl/v2/json",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/function",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/json": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/agext/levenshtein",
+                "github.com/apparentlymart/go-textseg/v13/textseg",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/hashicorp/hcl/v2/hclsyntax",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/convert",
+                "io/ioutil",
+                "math/big",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/davecgh/go-spew/spew",
+                "github.com/go-test/deep",
+                "github.com/hashicorp/hcl/v2",
+                "github.com/zclconf/go-cty/cty",
+                "math/big",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/json/fuzz": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/hashicorp/hcl/v2/json",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hcl/v2/specsuite": {
+            "Imports": null,
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

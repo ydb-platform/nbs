@@ -1,11 +1,11 @@
 package topicoptions
 
 import (
-	"time"
+    "time"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/config"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic"
-	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/config"
+    "github.com/ydb-platform/ydb-go-sdk/v3/internal/topic"
+    "github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 // TopicOption
@@ -21,9 +21,9 @@ type TopicOption func(c *topic.Config)
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
 func WithTrace(trace trace.Topic, opts ...trace.TopicComposeOption) TopicOption { //nolint:gocritic
-	return func(c *topic.Config) {
-		c.Trace = c.Trace.Compose(&trace, opts...)
-	}
+    return func(c *topic.Config) {
+        c.Trace = c.Trace.Compose(&trace, opts...)
+    }
 }
 
 // WithOperationTimeout set the maximum amount of time a YDB server will process
@@ -36,9 +36,9 @@ func WithTrace(trace trace.Topic, opts ...trace.TopicComposeOption) TopicOption 
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
 func WithOperationTimeout(operationTimeout time.Duration) TopicOption {
-	return func(c *topic.Config) {
-		config.SetOperationTimeout(&c.Common, operationTimeout)
-	}
+    return func(c *topic.Config) {
+        config.SetOperationTimeout(&c.Common, operationTimeout)
+    }
 }
 
 // WithOperationCancelAfter set the maximum amount of time a YDB server will process an
@@ -51,7 +51,7 @@ func WithOperationTimeout(operationTimeout time.Duration) TopicOption {
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
 func WithOperationCancelAfter(operationCancelAfter time.Duration) TopicOption {
-	return func(c *topic.Config) {
-		config.SetOperationCancelAfter(&c.Common, operationCancelAfter)
-	}
+    return func(c *topic.Config) {
+        config.SetOperationCancelAfter(&c.Common, operationCancelAfter)
+    }
 }

@@ -19,40 +19,40 @@
 package google
 
 import (
-	"context"
-	"testing"
+    "context"
+    "testing"
 
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/internal"
-	icredentials "google.golang.org/grpc/internal/credentials"
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/credentials"
+    "google.golang.org/grpc/internal"
+    icredentials "google.golang.org/grpc/internal/credentials"
+    "google.golang.org/grpc/resolver"
 )
 
 func (s) TestIsDirectPathCluster(t *testing.T) {
-	c := func(cluster string) context.Context {
-		return icredentials.NewClientHandshakeInfoContext(context.Background(), credentials.ClientHandshakeInfo{
-			Attributes: internal.SetXDSHandshakeClusterName(resolver.Address{}, cluster).Attributes,
-		})
-	}
+    c := func(cluster string) context.Context {
+        return icredentials.NewClientHandshakeInfoContext(context.Background(), credentials.ClientHandshakeInfo{
+            Attributes: internal.SetXDSHandshakeClusterName(resolver.Address{}, cluster).Attributes,
+        })
+    }
 
-	testCases := []struct {
-		name string
-		ctx  context.Context
-		want bool
-	}{
-		{"not an xDS cluster", context.Background(), false},
-		{"cfe", c("google_cfe_bigtable.googleapis.com"), false},
-		{"non-cfe", c("google_bigtable.googleapis.com"), true},
-		{"starts with xdstp but not cfe format", c("xdstp:google_cfe_bigtable.googleapis.com"), true},
-		{"no authority", c("xdstp:///envoy.config.cluster.v3.Cluster/google_cfe_"), true},
-		{"wrong authority", c("xdstp://foo.bar/envoy.config.cluster.v3.Cluster/google_cfe_"), true},
-		{"xdstp CFE", c("xdstp://traffic-director-c2p.xds.googleapis.com/envoy.config.cluster.v3.Cluster/google_cfe_"), false},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := isDirectPathCluster(tc.ctx); got != tc.want {
-				t.Errorf("isDirectPathCluster(_) = %v; want %v", got, tc.want)
-			}
-		})
-	}
+    testCases := []struct {
+        name string
+        ctx  context.Context
+        want bool
+    }{
+        {"not an xDS cluster", context.Background(), false},
+        {"cfe", c("google_cfe_bigtable.googleapis.com"), false},
+        {"non-cfe", c("google_bigtable.googleapis.com"), true},
+        {"starts with xdstp but not cfe format", c("xdstp:google_cfe_bigtable.googleapis.com"), true},
+        {"no authority", c("xdstp:///envoy.config.cluster.v3.Cluster/google_cfe_"), true},
+        {"wrong authority", c("xdstp://foo.bar/envoy.config.cluster.v3.Cluster/google_cfe_"), true},
+        {"xdstp CFE", c("xdstp://traffic-director-c2p.xds.googleapis.com/envoy.config.cluster.v3.Cluster/google_cfe_"), false},
+    }
+    for _, tc := range testCases {
+        t.Run(tc.name, func(t *testing.T) {
+            if got := isDirectPathCluster(tc.ctx); got != tc.want {
+                t.Errorf("isDirectPathCluster(_) = %v; want %v", got, tc.want)
+            }
+        })
+    }
 }

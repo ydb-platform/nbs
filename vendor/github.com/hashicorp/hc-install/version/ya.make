@@ -1,0 +1,13 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MPL-2.0)
+
+SRCS(
+    version.go
+)
+
+GO_EMBED_PATTERN(VERSION)
+
+END()

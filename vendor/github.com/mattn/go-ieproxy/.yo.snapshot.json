@@ -1,0 +1,37 @@
+{
+    "Version": "v0.0.1",
+    "GoVersion": "1.14",
+    "Sum": "h1:qiyop7gCflfhwCzGyeT0gro3sF9AIg9HU98JORTkqfI=",
+    "Packages": {
+        "github.com/mattn/go-ieproxy": {
+            "Imports": [
+                "golang.org/x/net/http/httpproxy",
+                "golang.org/x/sys/windows",
+                "golang.org/x/sys/windows/registry",
+                "net/http",
+                "net/url",
+                "os",
+                "strings",
+                "sync",
+                "syscall",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/mattn/go-ieproxy/autoload": {
+            "Imports": [
+                "github.com/mattn/go-ieproxy"
+            ],
+            "TestImports": null
+        }
+    }
+}

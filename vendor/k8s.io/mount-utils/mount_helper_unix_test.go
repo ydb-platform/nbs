@@ -20,23 +20,23 @@ limitations under the License.
 package mount
 
 import (
-	"os"
-	"path/filepath"
-	"reflect"
-	"testing"
+    "os"
+    "path/filepath"
+    "reflect"
+    "testing"
 )
 
 func writeFile(t *testing.T, content string) string {
-	filename := filepath.Join(t.TempDir(), "mountinfo")
-	err := os.WriteFile(filename, []byte(content), 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return filename
+    filename := filepath.Join(t.TempDir(), "mountinfo")
+    err := os.WriteFile(filename, []byte(content), 0o600)
+    if err != nil {
+        t.Fatal(err)
+    }
+    return filename
 }
 
 func TestParseMountInfo(t *testing.T) {
-	info := `62 0 253:0 / / rw,relatime shared:1 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+    info := `62 0 253:0 / / rw,relatime shared:1 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
 78 62 0:41 / /tmp rw,nosuid,nodev shared:30 - tmpfs tmpfs rw,seclabel
 80 62 0:42 / /var/lib/nfs/rpc_pipefs rw,relatime shared:31 - rpc_pipefs sunrpc rw
 82 62 0:43 / /var/lib/foo rw,relatime shared:32 - tmpfs tmpfs rw
@@ -78,275 +78,275 @@ func TestParseMountInfo(t *testing.T) {
 40 28 0:36 / /sys/fs/cgroup/perf_event rw,nosuid,nodev,noexec,relatime shared:22 - cgroup cgroup rw,perf_event
 761 60 8:0 / /var/lib/kubelet/plugins/kubernetes.io/iscsi/iface-default/127.0.0.1:3260-iqn.2003-01.org.linux-iscsi.f21.x8664:sn.4b0aae584f7c-lun-0 rw,relatime shared:421 - ext4 /dev/sda rw,context="system_u:object_r:container_file_t:s0:c314,c894",data=ordered
 `
-	filename := writeFile(t, info)
+    filename := writeFile(t, info)
 
-	tests := []struct {
-		name         string
-		id           int
-		expectedInfo MountInfo
-	}{
-		{
-			"simple bind mount",
-			189,
-			MountInfo{
-				ID:             189,
-				ParentID:       80,
-				Major:          8,
-				Minor:          1,
-				Root:           "/var/lib/kubelet",
-				Source:         "/dev/sda1",
-				MountPoint:     "/var/lib/kubelet",
-				OptionalFields: []string{"shared:30"},
-				FsType:         "ext4",
-				MountOptions:   []string{"rw", "relatime"},
-				SuperOptions:   []string{"rw", "commit=30", "data=ordered"},
-			},
-		},
-		{
-			"bind mount a directory",
-			222,
-			MountInfo{
-				ID:             222,
-				ParentID:       24,
-				Major:          253,
-				Minor:          0,
-				Root:           "/tmp/src",
-				Source:         "/dev/mapper/vagrant--vg-root",
-				MountPoint:     "/mnt/dst",
-				OptionalFields: []string{"shared:1"},
-				FsType:         "ext4",
-				MountOptions:   []string{"rw", "relatime"},
-				SuperOptions:   []string{"rw", "errors=remount-ro", "data=ordered"},
-			},
-		},
-		{
-			"more than one optional fields",
-			224,
-			MountInfo{
-				ID:             224,
-				ParentID:       62,
-				Major:          253,
-				Minor:          0,
-				Root:           "/var/lib/docker/devicemapper/test/shared",
-				Source:         "/dev/mapper/ssd-root",
-				MountPoint:     "/var/lib/docker/devicemapper/test/shared",
-				OptionalFields: []string{"master:1", "shared:44"},
-				FsType:         "ext4",
-				MountOptions:   []string{"rw", "relatime"},
-				SuperOptions:   []string{"rw", "seclabel", "data=ordered"},
-			},
-		},
-		{
-			"cgroup-mountpoint",
-			28,
-			MountInfo{
-				ID:             28,
-				ParentID:       18,
-				Major:          0,
-				Minor:          24,
-				Root:           "/",
-				Source:         "tmpfs",
-				MountPoint:     "/sys/fs/cgroup",
-				OptionalFields: []string{"shared:9"},
-				FsType:         "tmpfs",
-				MountOptions:   []string{"ro", "nosuid", "nodev", "noexec"},
-				SuperOptions:   []string{"ro", "mode=755"},
-			},
-		},
-		{
-			"cgroup-subsystem-systemd-mountpoint",
-			29,
-			MountInfo{
-				ID:             29,
-				ParentID:       28,
-				Major:          0,
-				Minor:          25,
-				Root:           "/",
-				Source:         "cgroup",
-				MountPoint:     "/sys/fs/cgroup/systemd",
-				OptionalFields: []string{"shared:10"},
-				FsType:         "cgroup",
-				MountOptions:   []string{"rw", "nosuid", "nodev", "noexec", "relatime"},
-				SuperOptions:   []string{"rw", "xattr", "release_agent=/lib/systemd/systemd-cgroups-agent", "name=systemd"},
-			},
-		},
-		{
-			"cgroup-subsystem-cpuset-mountpoint",
-			31,
-			MountInfo{
-				ID:             31,
-				ParentID:       28,
-				Major:          0,
-				Minor:          27,
-				Root:           "/",
-				Source:         "cgroup",
-				MountPoint:     "/sys/fs/cgroup/cpuset",
-				OptionalFields: []string{"shared:13"},
-				FsType:         "cgroup",
-				MountOptions:   []string{"rw", "nosuid", "nodev", "noexec", "relatime"},
-				SuperOptions:   []string{"rw", "cpuset"},
-			},
-		},
-		{
-			"mount option with commas inside quotes",
-			761,
-			MountInfo{
-				ID:             761,
-				ParentID:       60,
-				Major:          8,
-				Minor:          0,
-				Root:           "/",
-				Source:         "/dev/sda",
-				MountPoint:     "/var/lib/kubelet/plugins/kubernetes.io/iscsi/iface-default/127.0.0.1:3260-iqn.2003-01.org.linux-iscsi.f21.x8664:sn.4b0aae584f7c-lun-0",
-				OptionalFields: []string{"shared:421"},
-				FsType:         "ext4",
-				MountOptions:   []string{"rw", "relatime"},
-				SuperOptions:   []string{"rw", "context=\"system_u:object_r:container_file_t:s0:c314,c894\"", "data=ordered"},
-			},
-		},
-	}
+    tests := []struct {
+        name         string
+        id           int
+        expectedInfo MountInfo
+    }{
+        {
+            "simple bind mount",
+            189,
+            MountInfo{
+                ID:             189,
+                ParentID:       80,
+                Major:          8,
+                Minor:          1,
+                Root:           "/var/lib/kubelet",
+                Source:         "/dev/sda1",
+                MountPoint:     "/var/lib/kubelet",
+                OptionalFields: []string{"shared:30"},
+                FsType:         "ext4",
+                MountOptions:   []string{"rw", "relatime"},
+                SuperOptions:   []string{"rw", "commit=30", "data=ordered"},
+            },
+        },
+        {
+            "bind mount a directory",
+            222,
+            MountInfo{
+                ID:             222,
+                ParentID:       24,
+                Major:          253,
+                Minor:          0,
+                Root:           "/tmp/src",
+                Source:         "/dev/mapper/vagrant--vg-root",
+                MountPoint:     "/mnt/dst",
+                OptionalFields: []string{"shared:1"},
+                FsType:         "ext4",
+                MountOptions:   []string{"rw", "relatime"},
+                SuperOptions:   []string{"rw", "errors=remount-ro", "data=ordered"},
+            },
+        },
+        {
+            "more than one optional fields",
+            224,
+            MountInfo{
+                ID:             224,
+                ParentID:       62,
+                Major:          253,
+                Minor:          0,
+                Root:           "/var/lib/docker/devicemapper/test/shared",
+                Source:         "/dev/mapper/ssd-root",
+                MountPoint:     "/var/lib/docker/devicemapper/test/shared",
+                OptionalFields: []string{"master:1", "shared:44"},
+                FsType:         "ext4",
+                MountOptions:   []string{"rw", "relatime"},
+                SuperOptions:   []string{"rw", "seclabel", "data=ordered"},
+            },
+        },
+        {
+            "cgroup-mountpoint",
+            28,
+            MountInfo{
+                ID:             28,
+                ParentID:       18,
+                Major:          0,
+                Minor:          24,
+                Root:           "/",
+                Source:         "tmpfs",
+                MountPoint:     "/sys/fs/cgroup",
+                OptionalFields: []string{"shared:9"},
+                FsType:         "tmpfs",
+                MountOptions:   []string{"ro", "nosuid", "nodev", "noexec"},
+                SuperOptions:   []string{"ro", "mode=755"},
+            },
+        },
+        {
+            "cgroup-subsystem-systemd-mountpoint",
+            29,
+            MountInfo{
+                ID:             29,
+                ParentID:       28,
+                Major:          0,
+                Minor:          25,
+                Root:           "/",
+                Source:         "cgroup",
+                MountPoint:     "/sys/fs/cgroup/systemd",
+                OptionalFields: []string{"shared:10"},
+                FsType:         "cgroup",
+                MountOptions:   []string{"rw", "nosuid", "nodev", "noexec", "relatime"},
+                SuperOptions:   []string{"rw", "xattr", "release_agent=/lib/systemd/systemd-cgroups-agent", "name=systemd"},
+            },
+        },
+        {
+            "cgroup-subsystem-cpuset-mountpoint",
+            31,
+            MountInfo{
+                ID:             31,
+                ParentID:       28,
+                Major:          0,
+                Minor:          27,
+                Root:           "/",
+                Source:         "cgroup",
+                MountPoint:     "/sys/fs/cgroup/cpuset",
+                OptionalFields: []string{"shared:13"},
+                FsType:         "cgroup",
+                MountOptions:   []string{"rw", "nosuid", "nodev", "noexec", "relatime"},
+                SuperOptions:   []string{"rw", "cpuset"},
+            },
+        },
+        {
+            "mount option with commas inside quotes",
+            761,
+            MountInfo{
+                ID:             761,
+                ParentID:       60,
+                Major:          8,
+                Minor:          0,
+                Root:           "/",
+                Source:         "/dev/sda",
+                MountPoint:     "/var/lib/kubelet/plugins/kubernetes.io/iscsi/iface-default/127.0.0.1:3260-iqn.2003-01.org.linux-iscsi.f21.x8664:sn.4b0aae584f7c-lun-0",
+                OptionalFields: []string{"shared:421"},
+                FsType:         "ext4",
+                MountOptions:   []string{"rw", "relatime"},
+                SuperOptions:   []string{"rw", "context=\"system_u:object_r:container_file_t:s0:c314,c894\"", "data=ordered"},
+            },
+        },
+    }
 
-	infos, err := ParseMountInfo(filename)
-	if err != nil {
-		t.Fatalf("Cannot parse %s: %s", filename, err)
-	}
+    infos, err := ParseMountInfo(filename)
+    if err != nil {
+        t.Fatalf("Cannot parse %s: %s", filename, err)
+    }
 
-	for _, test := range tests {
-		found := false
-		for _, info := range infos {
-			if info.ID == test.id {
-				found = true
-				if !reflect.DeepEqual(info, test.expectedInfo) {
-					t.Errorf("Test case %q:\n expected: %+v\n got:      %+v", test.name, test.expectedInfo, info)
-				}
-				break
-			}
-		}
-		if !found {
-			t.Errorf("Test case %q: mountPoint %d not found", test.name, test.id)
-		}
-	}
+    for _, test := range tests {
+        found := false
+        for _, info := range infos {
+            if info.ID == test.id {
+                found = true
+                if !reflect.DeepEqual(info, test.expectedInfo) {
+                    t.Errorf("Test case %q:\n expected: %+v\n got:      %+v", test.name, test.expectedInfo, info)
+                }
+                break
+            }
+        }
+        if !found {
+            t.Errorf("Test case %q: mountPoint %d not found", test.name, test.id)
+        }
+    }
 }
 
 func TestBadParseMountInfo(t *testing.T) {
-	tests := []struct {
-		info         string
-		name         string
-		id           int
-		expectedInfo *MountInfo
-		error        string
-	}{
-		{
-			`224 62 253:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"good major:minor field",
-			224,
-			&MountInfo{
-				ID:             224,
-				ParentID:       62,
-				Major:          253,
-				Minor:          0,
-				Root:           "/var/lib/docker/devicemapper/test/shared",
-				Source:         "/dev/mapper/ssd-root",
-				MountPoint:     "/var/lib/docker/devicemapper/test/shared",
-				OptionalFields: []string{"master:1", "shared:44"},
-				FsType:         "ext4",
-				MountOptions:   []string{"rw", "relatime"},
-				SuperOptions:   []string{"rw", "seclabel", "data=ordered"},
-			},
-			"",
-		},
-		{
-			`224 62 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"missing major:minor field",
-			224,
-			nil,
-			`parsing '224 62 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered' failed: unexpected minor:major pair [/var/lib/docker/devicemapper/test/shared]`,
-		},
-		{
-			`224 62 :0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"empty major field",
-			224,
-			nil,
-			`parsing '' failed: unable to parse major device id, err:strconv.Atoi: parsing "": invalid syntax`,
-		},
-		{
-			`224 62 253: /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"empty minor field",
-			224,
-			nil,
-			`parsing '' failed: unable to parse minor device id, err:strconv.Atoi: parsing "": invalid syntax`,
-		},
-		{
-			`224 62 foo:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"alphabet in major field",
-			224,
-			nil,
-			`parsing 'foo' failed: unable to parse major device id, err:strconv.Atoi: parsing "foo": invalid syntax`,
-		},
-		{
-			`224 62 253:bar /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
-			"alphabet in minor field",
-			224,
-			nil,
-			`parsing 'bar' failed: unable to parse minor device id, err:strconv.Atoi: parsing "bar": invalid syntax`,
-		},
-	}
+    tests := []struct {
+        info         string
+        name         string
+        id           int
+        expectedInfo *MountInfo
+        error        string
+    }{
+        {
+            `224 62 253:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "good major:minor field",
+            224,
+            &MountInfo{
+                ID:             224,
+                ParentID:       62,
+                Major:          253,
+                Minor:          0,
+                Root:           "/var/lib/docker/devicemapper/test/shared",
+                Source:         "/dev/mapper/ssd-root",
+                MountPoint:     "/var/lib/docker/devicemapper/test/shared",
+                OptionalFields: []string{"master:1", "shared:44"},
+                FsType:         "ext4",
+                MountOptions:   []string{"rw", "relatime"},
+                SuperOptions:   []string{"rw", "seclabel", "data=ordered"},
+            },
+            "",
+        },
+        {
+            `224 62 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "missing major:minor field",
+            224,
+            nil,
+            `parsing '224 62 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered' failed: unexpected minor:major pair [/var/lib/docker/devicemapper/test/shared]`,
+        },
+        {
+            `224 62 :0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "empty major field",
+            224,
+            nil,
+            `parsing '' failed: unable to parse major device id, err:strconv.Atoi: parsing "": invalid syntax`,
+        },
+        {
+            `224 62 253: /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "empty minor field",
+            224,
+            nil,
+            `parsing '' failed: unable to parse minor device id, err:strconv.Atoi: parsing "": invalid syntax`,
+        },
+        {
+            `224 62 foo:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "alphabet in major field",
+            224,
+            nil,
+            `parsing 'foo' failed: unable to parse major device id, err:strconv.Atoi: parsing "foo": invalid syntax`,
+        },
+        {
+            `224 62 253:bar /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered`,
+            "alphabet in minor field",
+            224,
+            nil,
+            `parsing 'bar' failed: unable to parse minor device id, err:strconv.Atoi: parsing "bar": invalid syntax`,
+        },
+    }
 
-	for _, test := range tests {
-		filename := writeFile(t, test.info)
+    for _, test := range tests {
+        filename := writeFile(t, test.info)
 
-		infos, err := ParseMountInfo(filename)
-		if err != nil {
-			if err.Error() != test.error {
-				t.Errorf("Test case %q:\n expected error: %+v\n got:      %+v", test.name, test.error, err.Error())
-			}
-			continue
-		}
+        infos, err := ParseMountInfo(filename)
+        if err != nil {
+            if err.Error() != test.error {
+                t.Errorf("Test case %q:\n expected error: %+v\n got:      %+v", test.name, test.error, err.Error())
+            }
+            continue
+        }
 
-		found := false
-		for _, info := range infos {
-			if info.ID == test.id {
-				found = true
-				if !reflect.DeepEqual(info, *test.expectedInfo) {
-					t.Errorf("Test case %q:\n expected: %+v\n got:      %+v", test.name, test.expectedInfo, info)
-				}
-				break
-			}
-		}
-		if !found {
-			t.Errorf("Test case %q: mountPoint %d not found", test.name, test.id)
-		}
-	}
+        found := false
+        for _, info := range infos {
+            if info.ID == test.id {
+                found = true
+                if !reflect.DeepEqual(info, *test.expectedInfo) {
+                    t.Errorf("Test case %q:\n expected: %+v\n got:      %+v", test.name, test.expectedInfo, info)
+                }
+                break
+            }
+        }
+        if !found {
+            t.Errorf("Test case %q: mountPoint %d not found", test.name, test.id)
+        }
+    }
 }
 
 func testIsMountPointMatch(t testing.TB) {
-	mpCases := []struct {
-		mp, dir string
-		res     bool
-	}{
-		{"", "", true},
-		{"/", "/", true},
-		{"/some/path", "/some/path", true},
-		{"/a/different/kind/of/path\\040(deleted)", "/a/different/kind/of/path", true},
-		{"one", "two", false},
-		{"a somewhat long path that ends with A", "a somewhat long path that ends with B", false},
-	}
+    mpCases := []struct {
+        mp, dir string
+        res     bool
+    }{
+        {"", "", true},
+        {"/", "/", true},
+        {"/some/path", "/some/path", true},
+        {"/a/different/kind/of/path\\040(deleted)", "/a/different/kind/of/path", true},
+        {"one", "two", false},
+        {"a somewhat long path that ends with A", "a somewhat long path that ends with B", false},
+    }
 
-	for _, tc := range mpCases {
-		mp := MountPoint{Path: tc.mp}
-		res := isMountPointMatch(mp, tc.dir)
-		if res != tc.res {
-			t.Errorf("mp: %q, dir: %q, expected %v, got %v", tc.mp, tc.dir, tc.res, res)
-		}
-	}
+    for _, tc := range mpCases {
+        mp := MountPoint{Path: tc.mp}
+        res := isMountPointMatch(mp, tc.dir)
+        if res != tc.res {
+            t.Errorf("mp: %q, dir: %q, expected %v, got %v", tc.mp, tc.dir, tc.res, res)
+        }
+    }
 }
 
 func TestIsMountPointMatch(t *testing.T) {
-	testIsMountPointMatch(t)
+    testIsMountPointMatch(t)
 }
 
 func BenchmarkIsMountPointMatch(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		testIsMountPointMatch(b)
-	}
+    for i := 0; i < b.N; i++ {
+        testIsMountPointMatch(b)
+    }
 }

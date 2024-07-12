@@ -26,7 +26,7 @@ package process
 #include <sys/user.h>
 
 enum {
-	sizeofPtr = sizeof(void*),
+    sizeofPtr = sizeof(void*),
 };
 
 
@@ -36,45 +36,45 @@ import "C"
 // Machine characteristics; for internal use.
 
 const (
-	CTLKern          = 1  // "high kernel": proc, limits
-	KernProc         = 14 // struct: process entries
-	KernProcPID      = 1  // by process id
-	KernProcProc     = 8  // only return procs
-	KernProcPathname = 12 // path to executable
-	KernProcArgs     = 7  // get/set arguments/proctitle
+    CTLKern          = 1  // "high kernel": proc, limits
+    KernProc         = 14 // struct: process entries
+    KernProcPID      = 1  // by process id
+    KernProcProc     = 8  // only return procs
+    KernProcPathname = 12 // path to executable
+    KernProcArgs     = 7  // get/set arguments/proctitle
 )
 
 const (
-	sizeofPtr      = C.sizeofPtr
-	sizeofShort    = C.sizeof_short
-	sizeofInt      = C.sizeof_int
-	sizeofLong     = C.sizeof_long
-	sizeofLongLong = C.sizeof_longlong
+    sizeofPtr      = C.sizeofPtr
+    sizeofShort    = C.sizeof_short
+    sizeofInt      = C.sizeof_int
+    sizeofLong     = C.sizeof_long
+    sizeofLongLong = C.sizeof_longlong
 )
 
 const (
-	sizeOfKinfoVmentry = C.sizeof_struct_kinfo_vmentry
-	sizeOfKinfoProc    = C.sizeof_struct_kinfo_proc
+    sizeOfKinfoVmentry = C.sizeof_struct_kinfo_vmentry
+    sizeOfKinfoProc    = C.sizeof_struct_kinfo_proc
 )
 
 // from sys/proc.h
 const (
-	SIDL   = 1 /* Process being created by fork. */
-	SRUN   = 2 /* Currently runnable. */
-	SSLEEP = 3 /* Sleeping on an address. */
-	SSTOP  = 4 /* Process debugging or suspension. */
-	SZOMB  = 5 /* Awaiting collection by parent. */
-	SWAIT  = 6 /* Waiting for interrupt. */
-	SLOCK  = 7 /* Blocked on a lock. */
+    SIDL   = 1 /* Process being created by fork. */
+    SRUN   = 2 /* Currently runnable. */
+    SSLEEP = 3 /* Sleeping on an address. */
+    SSTOP  = 4 /* Process debugging or suspension. */
+    SZOMB  = 5 /* Awaiting collection by parent. */
+    SWAIT  = 6 /* Waiting for interrupt. */
+    SLOCK  = 7 /* Blocked on a lock. */
 )
 
 // Basic types
 
 type (
-	_C_short     C.short
-	_C_int       C.int
-	_C_long      C.long
-	_C_long_long C.longlong
+    _C_short     C.short
+    _C_int       C.int
+    _C_long      C.long
+    _C_long_long C.longlong
 )
 
 // Time

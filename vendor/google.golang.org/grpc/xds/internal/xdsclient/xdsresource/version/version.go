@@ -23,19 +23,19 @@ package version
 // Resource URLs. We need to be able to accept either version of the resource
 // regardless of the version of the transport protocol in use.
 const (
-	googleapiPrefix = "type.googleapis.com/"
+    googleapiPrefix = "type.googleapis.com/"
 
-	V3ListenerType    = "envoy.config.listener.v3.Listener"
-	V3RouteConfigType = "envoy.config.route.v3.RouteConfiguration"
-	V3ClusterType     = "envoy.config.cluster.v3.Cluster"
-	V3EndpointsType   = "envoy.config.endpoint.v3.ClusterLoadAssignment"
+    V3ListenerType    = "envoy.config.listener.v3.Listener"
+    V3RouteConfigType = "envoy.config.route.v3.RouteConfiguration"
+    V3ClusterType     = "envoy.config.cluster.v3.Cluster"
+    V3EndpointsType   = "envoy.config.endpoint.v3.ClusterLoadAssignment"
 
-	V3ResourceWrapperURL      = googleapiPrefix + "envoy.service.discovery.v3.Resource"
-	V3ListenerURL             = googleapiPrefix + V3ListenerType
-	V3RouteConfigURL          = googleapiPrefix + V3RouteConfigType
-	V3ClusterURL              = googleapiPrefix + V3ClusterType
-	V3EndpointsURL            = googleapiPrefix + V3EndpointsType
-	V3HTTPConnManagerURL      = googleapiPrefix + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
-	V3UpstreamTLSContextURL   = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
-	V3DownstreamTLSContextURL = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext"
+    V3ResourceWrapperURL      = googleapiPrefix + "envoy.service.discovery.v3.Resource"
+    V3ListenerURL             = googleapiPrefix + V3ListenerType
+    V3RouteConfigURL          = googleapiPrefix + V3RouteConfigType
+    V3ClusterURL              = googleapiPrefix + V3ClusterType
+    V3EndpointsURL            = googleapiPrefix + V3EndpointsType
+    V3HTTPConnManagerURL      = googleapiPrefix + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
+    V3UpstreamTLSContextURL   = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
+    V3DownstreamTLSContextURL = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext"
 )

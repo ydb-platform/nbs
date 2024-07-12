@@ -7,25 +7,25 @@
 package genid
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+    protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const File_google_protobuf_field_mask_proto = "google/protobuf/field_mask.proto"
 
 // Names for google.protobuf.FieldMask.
 const (
-	FieldMask_message_name     protoreflect.Name     = "FieldMask"
-	FieldMask_message_fullname protoreflect.FullName = "google.protobuf.FieldMask"
+    FieldMask_message_name     protoreflect.Name     = "FieldMask"
+    FieldMask_message_fullname protoreflect.FullName = "google.protobuf.FieldMask"
 )
 
 // Field names for google.protobuf.FieldMask.
 const (
-	FieldMask_Paths_field_name protoreflect.Name = "paths"
+    FieldMask_Paths_field_name protoreflect.Name = "paths"
 
-	FieldMask_Paths_field_fullname protoreflect.FullName = "google.protobuf.FieldMask.paths"
+    FieldMask_Paths_field_fullname protoreflect.FullName = "google.protobuf.FieldMask.paths"
 )
 
 // Field numbers for google.protobuf.FieldMask.
 const (
-	FieldMask_Paths_field_number protoreflect.FieldNumber = 1
+    FieldMask_Paths_field_number protoreflect.FieldNumber = 1
 )

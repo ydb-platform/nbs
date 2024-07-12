@@ -19,26 +19,26 @@
 package xds
 
 import (
-	"net"
+    "net"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/connectivity"
 )
 
 type serverOptions struct {
-	modeCallback                ServingModeCallbackFunc
-	bootstrapContentsForTesting []byte
+    modeCallback                ServingModeCallbackFunc
+    bootstrapContentsForTesting []byte
 }
 
 type serverOption struct {
-	grpc.EmptyServerOption
-	apply func(*serverOptions)
+    grpc.EmptyServerOption
+    apply func(*serverOptions)
 }
 
 // ServingModeCallback returns a grpc.ServerOption which allows users to
 // register a callback to get notified about serving mode changes.
 func ServingModeCallback(cb ServingModeCallbackFunc) grpc.ServerOption {
-	return &serverOption{apply: func(o *serverOptions) { o.modeCallback = cb }}
+    return &serverOption{apply: func(o *serverOptions) { o.modeCallback = cb }}
 }
 
 // ServingModeCallbackFunc is the callback that users can register to get
@@ -51,11 +51,11 @@ type ServingModeCallbackFunc func(addr net.Addr, args ServingModeChangeArgs)
 // ServingModeChangeArgs wraps the arguments passed to the serving mode callback
 // function.
 type ServingModeChangeArgs struct {
-	// Mode is the new serving mode of the server listener.
-	Mode connectivity.ServingMode
-	// Err is set to a non-nil error if the server has transitioned into
-	// not-serving mode.
-	Err error
+    // Mode is the new serving mode of the server listener.
+    Mode connectivity.ServingMode
+    // Err is set to a non-nil error if the server has transitioned into
+    // not-serving mode.
+    Err error
 }
 
 // BootstrapContentsForTesting returns a grpc.ServerOption which allows users
@@ -72,5 +72,5 @@ type ServingModeChangeArgs struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func BootstrapContentsForTesting(contents []byte) grpc.ServerOption {
-	return &serverOption{apply: func(o *serverOptions) { o.bootstrapContentsForTesting = contents }}
+    return &serverOption{apply: func(o *serverOptions) { o.bootstrapContentsForTesting = contents }}
 }

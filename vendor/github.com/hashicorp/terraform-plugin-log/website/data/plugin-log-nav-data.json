@@ -1,0 +1,19 @@
+[
+  { "heading": "Logging" },
+  {
+    "title": "Overview",
+    "path": ""
+  },
+  {
+    "title": "Managing Log Output",
+    "path": "managing"
+  },
+  {
+    "title": "Writing Log Output",
+    "path": "writing"
+  },
+  {
+    "title": "Filtering Log Output",
+    "path": "filtering"
+  }
+]

@@ -1,0 +1,183 @@
+{
+    "Version": "v0.6.1",
+    "GoVersion": "1.12",
+    "Sum": "h1:8lp6YejULeHBF8NmV8e2787BogQhduZugh5PdhDyyN4=",
+    "Packages": {
+        "github.com/pion/stun": {
+            "Imports": [
+                "crypto/md5",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/tls",
+                "encoding/base64",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/stun/internal/hmac",
+                "github.com/pion/transport/v2",
+                "github.com/pion/transport/v2/stdnet",
+                "github.com/pion/transport/v2/utils/xor",
+                "hash/crc32",
+                "io",
+                "log",
+                "net",
+                "net/url",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/csv",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/pion/stun/internal/testutil",
+                "github.com/stretchr/testify/assert",
+                "hash/crc64",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/url",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/stun/cmd/stun-bench": {
+            "Imports": [
+                "context",
+                "crypto/rand",
+                "errors",
+                "flag",
+                "github.com/pion/stun",
+                "log",
+                "math/rand",
+                "os",
+                "os/signal",
+                "runtime",
+                "runtime/pprof",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/cmd/stun-client": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pion/stun",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/cmd/stun-decode": {
+            "Imports": [
+                "encoding/base64",
+                "flag",
+                "fmt",
+                "github.com/pion/stun",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/cmd/stun-multiplex": {
+            "Imports": [
+                "flag",
+                "github.com/pion/stun",
+                "io",
+                "log",
+                "net",
+                "os",
+                "os/signal",
+                "syscall",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/cmd/stun-nat-behaviour": {
+            "Imports": [
+                "errors",
+                "flag",
+                "github.com/pion/logging",
+                "github.com/pion/stun",
+                "net",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/cmd/stun-traversal": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "fmt",
+                "github.com/pion/stun",
+                "log",
+                "net",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/e2e": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/stun",
+                "log",
+                "net",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/internal/hmac": {
+            "Imports": [
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/subtle",
+                "hash",
+                "sync"
+            ],
+            "TestImports": [
+                "crypto/md5",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "fmt",
+                "hash",
+                "testing"
+            ]
+        },
+        "github.com/pion/stun/internal/testutil": {
+            "Imports": [
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/stun/stuntest": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "net",
+                "testing"
+            ],
+            "TestImports": null
+        }
+    }
+}

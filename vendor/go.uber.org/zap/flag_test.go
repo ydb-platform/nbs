@@ -21,83 +21,83 @@
 package zap
 
 import (
-	"flag"
-	"io"
-	"testing"
+    "flag"
+    "io"
+    "testing"
 
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/zapcore"
 
-	"github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/assert"
 )
 
 type flagTestCase struct {
-	args      []string
-	wantLevel zapcore.Level
-	wantErr   bool
+    args      []string
+    wantLevel zapcore.Level
+    wantErr   bool
 }
 
 func (tc flagTestCase) runImplicitSet(t testing.TB) {
-	origCommandLine := flag.CommandLine
-	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	flag.CommandLine.SetOutput(io.Discard)
-	defer func() { flag.CommandLine = origCommandLine }()
+    origCommandLine := flag.CommandLine
+    flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+    flag.CommandLine.SetOutput(io.Discard)
+    defer func() { flag.CommandLine = origCommandLine }()
 
-	level := LevelFlag("level", InfoLevel, "")
-	tc.run(t, flag.CommandLine, level)
+    level := LevelFlag("level", InfoLevel, "")
+    tc.run(t, flag.CommandLine, level)
 }
 
 func (tc flagTestCase) runExplicitSet(t testing.TB) {
-	var lvl zapcore.Level
-	set := flag.NewFlagSet("test", flag.ContinueOnError)
-	set.SetOutput(io.Discard)
-	set.Var(&lvl, "level", "minimum enabled logging level")
-	tc.run(t, set, &lvl)
+    var lvl zapcore.Level
+    set := flag.NewFlagSet("test", flag.ContinueOnError)
+    set.SetOutput(io.Discard)
+    set.Var(&lvl, "level", "minimum enabled logging level")
+    tc.run(t, set, &lvl)
 }
 
 func (tc flagTestCase) run(t testing.TB, set *flag.FlagSet, actual *zapcore.Level) {
-	err := set.Parse(tc.args)
-	if tc.wantErr {
-		assert.Error(t, err, "Parse(%v) should fail.", tc.args)
-		return
-	}
-	if assert.NoError(t, err, "Parse(%v) should succeed.", tc.args) {
-		assert.Equal(t, tc.wantLevel, *actual, "Level mismatch.")
-	}
+    err := set.Parse(tc.args)
+    if tc.wantErr {
+        assert.Error(t, err, "Parse(%v) should fail.", tc.args)
+        return
+    }
+    if assert.NoError(t, err, "Parse(%v) should succeed.", tc.args) {
+        assert.Equal(t, tc.wantLevel, *actual, "Level mismatch.")
+    }
 }
 
 func TestLevelFlag(t *testing.T) {
-	tests := []flagTestCase{
-		{
-			args:      nil,
-			wantLevel: zapcore.InfoLevel,
-		},
-		{
-			args:    []string{"--level", "unknown"},
-			wantErr: true,
-		},
-		{
-			args:      []string{"--level", "error"},
-			wantLevel: zapcore.ErrorLevel,
-		},
-	}
+    tests := []flagTestCase{
+        {
+            args:      nil,
+            wantLevel: zapcore.InfoLevel,
+        },
+        {
+            args:    []string{"--level", "unknown"},
+            wantErr: true,
+        },
+        {
+            args:      []string{"--level", "error"},
+            wantLevel: zapcore.ErrorLevel,
+        },
+    }
 
-	for _, tt := range tests {
-		tt.runExplicitSet(t)
-		tt.runImplicitSet(t)
-	}
+    for _, tt := range tests {
+        tt.runExplicitSet(t)
+        tt.runImplicitSet(t)
+    }
 }
 
 func TestLevelFlagsAreIndependent(t *testing.T) {
-	origCommandLine := flag.CommandLine
-	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	flag.CommandLine.SetOutput(io.Discard)
-	defer func() { flag.CommandLine = origCommandLine }()
+    origCommandLine := flag.CommandLine
+    flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+    flag.CommandLine.SetOutput(io.Discard)
+    defer func() { flag.CommandLine = origCommandLine }()
 
-	// Make sure that these two flags are independent.
-	fileLevel := LevelFlag("file-level", InfoLevel, "")
-	consoleLevel := LevelFlag("console-level", InfoLevel, "")
+    // Make sure that these two flags are independent.
+    fileLevel := LevelFlag("file-level", InfoLevel, "")
+    consoleLevel := LevelFlag("console-level", InfoLevel, "")
 
-	assert.NoError(t, flag.CommandLine.Parse([]string{"-file-level", "debug"}), "Unexpected flag-parsing error.")
-	assert.Equal(t, InfoLevel, *consoleLevel, "Expected file logging level to remain unchanged.")
-	assert.Equal(t, DebugLevel, *fileLevel, "Expected console logging level to have changed.")
+    assert.NoError(t, flag.CommandLine.Parse([]string{"-file-level", "debug"}), "Unexpected flag-parsing error.")
+    assert.Equal(t, InfoLevel, *consoleLevel, "Expected file logging level to remain unchanged.")
+    assert.Equal(t, DebugLevel, *fileLevel, "Expected console logging level to have changed.")
 }

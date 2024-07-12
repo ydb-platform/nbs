@@ -1,0 +1,62 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:YG1yQHhuLWLNANyRIqM6QasVFKanDI/p51mcjXV8+k8=",
+    "Packages": {
+        "go.opentelemetry.io/collector/consumer": {
+            "Imports": [
+                "context",
+                "errors",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/consumer/consumererror": {
+            "Imports": [
+                "errors",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/internal/testdata",
+                "testing"
+            ]
+        },
+        "go.opentelemetry.io/collector/consumer/consumertest": {
+            "Imports": [
+                "context",
+                "go.opentelemetry.io/collector/consumer",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.opentelemetry.io/collector/internal/testdata",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace",
+                "testing"
+            ]
+        }
+    }
+}

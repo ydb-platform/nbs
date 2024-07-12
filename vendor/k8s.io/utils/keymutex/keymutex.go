@@ -18,10 +18,10 @@ package keymutex
 
 // KeyMutex is a thread-safe interface for acquiring locks on arbitrary strings.
 type KeyMutex interface {
-	// Acquires a lock associated with the specified ID, creates the lock if one doesn't already exist.
-	LockKey(id string)
+    // Acquires a lock associated with the specified ID, creates the lock if one doesn't already exist.
+    LockKey(id string)
 
-	// Releases the lock associated with the specified ID.
-	// Returns an error if the specified ID doesn't exist.
-	UnlockKey(id string) error
+    // Releases the lock associated with the specified ID.
+    // Returns an error if the specified ID doesn't exist.
+    UnlockKey(id string) error
 }

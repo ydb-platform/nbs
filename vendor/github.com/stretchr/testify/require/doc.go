@@ -5,19 +5,19 @@
 //
 // The following is a complete example using require in a standard test function:
 //
-//	import (
-//	  "testing"
-//	  "github.com/stretchr/testify/require"
-//	)
+//    import (
+//      "testing"
+//      "github.com/stretchr/testify/require"
+//    )
 //
-//	func TestSomething(t *testing.T) {
+//    func TestSomething(t *testing.T) {
 //
-//	  var a string = "Hello"
-//	  var b string = "Hello"
+//      var a string = "Hello"
+//      var b string = "Hello"
 //
-//	  require.Equal(t, a, b, "The two words should be the same.")
+//      require.Equal(t, a, b, "The two words should be the same.")
 //
-//	}
+//    }
 //
 // # Assertions
 //

@@ -1,0 +1,541 @@
+{
+    "Version": "v0.16.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:aDkGMBSYxElaoP81NpoUoz2oo2R2wHdZpGToUxfyQrQ=",
+    "Packages": {
+        "golang.org/x/oauth2": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/sha256",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2/internal",
+                "io",
+                "log",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/oauth2/amazon": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/authhandler": {
+            "Imports": [
+                "context",
+                "errors",
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "golang.org/x/oauth2",
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/bitbucket": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/cern": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/clientcredentials": {
+            "Imports": [
+                "context",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/internal",
+                "net/http",
+                "net/url",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/endpoints": {
+            "Imports": [
+                "golang.org/x/oauth2",
+                "strings"
+            ],
+            "TestImports": [
+                "golang.org/x/oauth2",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/facebook": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/fitbit": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/foursquare": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/github": {
+            "Imports": [
+                "golang.org/x/oauth2/endpoints"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/gitlab": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/google": {
+            "Imports": [
+                "bufio",
+                "cloud.google.com/go/compute/metadata",
+                "context",
+                "crypto/rsa",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/authhandler",
+                "golang.org/x/oauth2/google/internal/externalaccount",
+                "golang.org/x/oauth2/google/internal/externalaccountauthorizeduser",
+                "golang.org/x/oauth2/internal",
+                "golang.org/x/oauth2/jws",
+                "golang.org/x/oauth2/jwt",
+                "io",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "os/user",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google",
+                "golang.org/x/oauth2/jws",
+                "golang.org/x/oauth2/jwt",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/oauth2/google/downscope": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/oauth2",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google",
+                "golang.org/x/oauth2/google/downscope",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/google/internal/externalaccount": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/hmac",
+                "crypto/sha256",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google/internal/stsexchange",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "golang.org/x/oauth2",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "reflect",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/oauth2/google/internal/externalaccountauthorizeduser": {
+            "Imports": [
+                "context",
+                "errors",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google/internal/stsexchange",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/google/internal/stsexchange",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/oauth2/google/internal/stsexchange": {
+            "Imports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "golang.org/x/oauth2",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "reflect",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/heroku": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/hipchat": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/clientcredentials"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/instagram": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/internal": {
+            "Imports": [
+                "context",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "math",
+                "mime",
+                "net/http",
+                "net/url",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "io",
+                "math",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/jira": {
+            "Imports": [
+                "context",
+                "crypto/hmac",
+                "crypto/sha256",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/jws",
+                "net/http",
+                "net/http/httptest",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/jws": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha256",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/jwt": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/internal",
+                "golang.org/x/oauth2/jws",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/oauth2",
+                "golang.org/x/oauth2/jws",
+                "golang.org/x/oauth2/jwt",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/oauth2/kakao": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/linkedin": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/mailchimp": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/mailru": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/mediamath": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/microsoft": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/nokiahealth": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/odnoklassniki": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/paypal": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/slack": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/spotify": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/stackoverflow": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/twitch": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/uber": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/vk": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/yahoo": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/oauth2/yandex": {
+            "Imports": [
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        }
+    }
+}

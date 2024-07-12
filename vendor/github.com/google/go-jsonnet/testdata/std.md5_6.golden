@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type number, expected string
+-------------------------------------------------
+    testdata/std.md5_6:1:1-12    $
+
+std.md5(42)
+
+-------------------------------------------------
+    During evaluation

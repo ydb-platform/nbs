@@ -14,13 +14,13 @@
 package procfs
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"strconv"
-	"strings"
+    "bufio"
+    "bytes"
+    "fmt"
+    "strconv"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // Cgroup models one line from /proc/[pid]/cgroup. Each Cgroup struct describes the placement of a PID inside a
@@ -33,66 +33,66 @@ import (
 //
 // Also see http://man7.org/linux/man-pages/man7/cgroups.7.html
 type Cgroup struct {
-	// HierarchyID that can be matched to a named hierarchy using /proc/cgroups. Cgroups V2 only has one
-	// hierarchy, so HierarchyID is always 0. For cgroups v1 this is a unique ID number
-	HierarchyID int
-	// Controllers using this hierarchy of processes. Controllers are also known as subsystems. For
-	// Cgroups V2 this may be empty, as all active controllers use the same hierarchy
-	Controllers []string
-	// Path of this control group, relative to the mount point of the cgroupfs representing this specific
-	// hierarchy
-	Path string
+    // HierarchyID that can be matched to a named hierarchy using /proc/cgroups. Cgroups V2 only has one
+    // hierarchy, so HierarchyID is always 0. For cgroups v1 this is a unique ID number
+    HierarchyID int
+    // Controllers using this hierarchy of processes. Controllers are also known as subsystems. For
+    // Cgroups V2 this may be empty, as all active controllers use the same hierarchy
+    Controllers []string
+    // Path of this control group, relative to the mount point of the cgroupfs representing this specific
+    // hierarchy
+    Path string
 }
 
 // parseCgroupString parses each line of the /proc/[pid]/cgroup file
 // Line format is hierarchyID:[controller1,controller2]:path.
 func parseCgroupString(cgroupStr string) (*Cgroup, error) {
-	var err error
+    var err error
 
-	fields := strings.SplitN(cgroupStr, ":", 3)
-	if len(fields) < 3 {
-		return nil, fmt.Errorf("%w: 3+ fields required, found %d fields in cgroup string: %s", ErrFileParse, len(fields), cgroupStr)
-	}
+    fields := strings.SplitN(cgroupStr, ":", 3)
+    if len(fields) < 3 {
+        return nil, fmt.Errorf("%w: 3+ fields required, found %d fields in cgroup string: %s", ErrFileParse, len(fields), cgroupStr)
+    }
 
-	cgroup := &Cgroup{
-		Path:        fields[2],
-		Controllers: nil,
-	}
-	cgroup.HierarchyID, err = strconv.Atoi(fields[0])
-	if err != nil {
-		return nil, fmt.Errorf("%w: hierarchy ID: %q", ErrFileParse, cgroup.HierarchyID)
-	}
-	if fields[1] != "" {
-		ssNames := strings.Split(fields[1], ",")
-		cgroup.Controllers = append(cgroup.Controllers, ssNames...)
-	}
-	return cgroup, nil
+    cgroup := &Cgroup{
+        Path:        fields[2],
+        Controllers: nil,
+    }
+    cgroup.HierarchyID, err = strconv.Atoi(fields[0])
+    if err != nil {
+        return nil, fmt.Errorf("%w: hierarchy ID: %q", ErrFileParse, cgroup.HierarchyID)
+    }
+    if fields[1] != "" {
+        ssNames := strings.Split(fields[1], ",")
+        cgroup.Controllers = append(cgroup.Controllers, ssNames...)
+    }
+    return cgroup, nil
 }
 
 // parseCgroups reads each line of the /proc/[pid]/cgroup file.
 func parseCgroups(data []byte) ([]Cgroup, error) {
-	var cgroups []Cgroup
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		mountString := scanner.Text()
-		parsedMounts, err := parseCgroupString(mountString)
-		if err != nil {
-			return nil, err
-		}
-		cgroups = append(cgroups, *parsedMounts)
-	}
+    var cgroups []Cgroup
+    scanner := bufio.NewScanner(bytes.NewReader(data))
+    for scanner.Scan() {
+        mountString := scanner.Text()
+        parsedMounts, err := parseCgroupString(mountString)
+        if err != nil {
+            return nil, err
+        }
+        cgroups = append(cgroups, *parsedMounts)
+    }
 
-	err := scanner.Err()
-	return cgroups, err
+    err := scanner.Err()
+    return cgroups, err
 }
 
 // Cgroups reads from /proc/<pid>/cgroups and returns a []*Cgroup struct locating this PID in each process
 // control hierarchy running on this system. On every system (v1 and v2), all hierarchies contain all processes,
 // so the len of the returned struct is equal to the number of active hierarchies on this system.
 func (p Proc) Cgroups() ([]Cgroup, error) {
-	data, err := util.ReadFileNoStat(p.path("cgroup"))
-	if err != nil {
-		return nil, err
-	}
-	return parseCgroups(data)
+    data, err := util.ReadFileNoStat(p.path("cgroup"))
+    if err != nil {
+        return nil, err
+    }
+    return parseCgroups(data)
 }

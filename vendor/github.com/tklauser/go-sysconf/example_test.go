@@ -8,23 +8,23 @@
 package sysconf_test
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/tklauser/go-sysconf"
+    "github.com/tklauser/go-sysconf"
 )
 
 func ExampleSysconf_clktck() {
-	clktck, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Sysconf: %v\n", err)
-	}
-	fmt.Printf("sysconf(SC_CLK_TCK) = %v\n", clktck)
+    clktck, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Sysconf: %v\n", err)
+    }
+    fmt.Printf("sysconf(SC_CLK_TCK) = %v\n", clktck)
 }
 
 func ExampleSysconf_invalidParameter() {
-	_, err := sysconf.Sysconf(-1)
-	fmt.Print(err)
+    _, err := sysconf.Sysconf(-1)
+    fmt.Print(err)
 
-	// Output: invalid parameter value
+    // Output: invalid parameter value
 }

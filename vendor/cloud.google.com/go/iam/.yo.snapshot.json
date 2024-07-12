@@ -1,0 +1,216 @@
+{
+    "Version": "v1.1.6",
+    "GoVersion": "1.19",
+    "Sum": "h1:bEa06k05IO4f4uJonbB5iAgKTPpABy1ayxaIZV/GHVc=",
+    "Packages": {
+        "cloud.google.com/go/iam": {
+            "Imports": [
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "time"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/internal/testutil",
+                "fmt",
+                "sort",
+                "testing"
+            ]
+        },
+        "cloud.google.com/go/iam/admin/apiv1": {
+            "Imports": [
+                "cloud.google.com/go/iam",
+                "cloud.google.com/go/iam/admin/apiv1/adminpb",
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "cloud.google.com/go/iam/internal",
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/iterator",
+                "google.golang.org/api/option",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "math",
+                "net/url",
+                "os",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/iam/admin/apiv1",
+                "cloud.google.com/go/iam/admin/apiv1/adminpb",
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "context",
+                "google.golang.org/api/iterator"
+            ]
+        },
+        "cloud.google.com/go/iam/admin/apiv1/adminpb": {
+            "Imports": [
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/type/expr",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/iam/apiv1": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "cloud.google.com/go/iam/internal",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/googleapi",
+                "google.golang.org/api/option",
+                "google.golang.org/api/option/internaloption",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/api/transport/http",
+                "google.golang.org/grpc",
+                "google.golang.org/protobuf/encoding/protojson",
+                "io",
+                "math",
+                "net/http",
+                "net/url"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/iam/apiv1",
+                "cloud.google.com/go/iam/apiv1/iampb",
+                "context"
+            ]
+        },
+        "cloud.google.com/go/iam/apiv1/iampb": {
+            "Imports": [
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/type/expr",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/iam/apiv2": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/iam/apiv2/iampb",
+                "cloud.google.com/go/iam/internal",
+                "cloud.google.com/go/longrunning",
+                "cloud.google.com/go/longrunning/autogen",
+                "cloud.google.com/go/longrunning/autogen/longrunningpb",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/googleapi",
+                "google.golang.org/api/iterator",
+                "google.golang.org/api/option",
+                "google.golang.org/api/option/internaloption",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/api/transport/http",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "math",
+                "net/http",
+                "net/url",
+                "time"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/iam/apiv2",
+                "cloud.google.com/go/iam/apiv2/iampb",
+                "cloud.google.com/go/longrunning/autogen/longrunningpb",
+                "context",
+                "google.golang.org/api/iterator"
+            ]
+        },
+        "cloud.google.com/go/iam/apiv2/iampb": {
+            "Imports": [
+                "cloud.google.com/go/longrunning/autogen/longrunningpb",
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/googleapis/type/expr",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/iam/credentials/apiv1": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/iam/credentials/apiv1/credentialspb",
+                "cloud.google.com/go/iam/internal",
+                "context",
+                "fmt",
+                "github.com/googleapis/gax-go/v2",
+                "google.golang.org/api/googleapi",
+                "google.golang.org/api/option",
+                "google.golang.org/api/option/internaloption",
+                "google.golang.org/api/transport/grpc",
+                "google.golang.org/api/transport/http",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/protobuf/encoding/protojson",
+                "io",
+                "math",
+                "net/http",
+                "net/url",
+                "time"
+            ],
+            "TestImports": [
+                "cloud.google.com/go/iam/credentials/apiv1",
+                "cloud.google.com/go/iam/credentials/apiv1/credentialspb",
+                "context"
+            ]
+        },
+        "cloud.google.com/go/iam/credentials/apiv1/credentialspb": {
+            "Imports": [
+                "context",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "cloud.google.com/go/iam/internal": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

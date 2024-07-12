@@ -1,0 +1,15 @@
+# Description:
+#   Tink (https://github.com/google/tink) is a small crypto library that
+#   provides a safe, simple, agile and fast way to accomplish some common
+#   crypto tasks.
+
+package(default_visibility = ["//tools/build_defs:internal_pkg"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+# gazelle:prefix github.com/google/go
+gazelle(name = "gazelle")

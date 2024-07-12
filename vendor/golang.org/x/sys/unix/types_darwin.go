@@ -58,20 +58,20 @@ package unix
 #include <netinet/tcp.h>
 
 enum {
-	sizeofPtr = sizeof(void*),
+    sizeofPtr = sizeof(void*),
 };
 
 union sockaddr_all {
-	struct sockaddr s1;	// this one gets used for fields
-	struct sockaddr_in s2;	// these pad it out
-	struct sockaddr_in6 s3;
-	struct sockaddr_un s4;
-	struct sockaddr_dl s5;
+    struct sockaddr s1;    // this one gets used for fields
+    struct sockaddr_in s2;    // these pad it out
+    struct sockaddr_in6 s3;
+    struct sockaddr_un s4;
+    struct sockaddr_dl s5;
 };
 
 struct sockaddr_any {
-	struct sockaddr addr;
-	char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
+    struct sockaddr addr;
+    char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
 };
 
 #if defined(__x86_64__)
@@ -87,20 +87,20 @@ import "C"
 // Machine characteristics
 
 const (
-	SizeofPtr      = C.sizeofPtr
-	SizeofShort    = C.sizeof_short
-	SizeofInt      = C.sizeof_int
-	SizeofLong     = C.sizeof_long
-	SizeofLongLong = C.sizeof_longlong
+    SizeofPtr      = C.sizeofPtr
+    SizeofShort    = C.sizeof_short
+    SizeofInt      = C.sizeof_int
+    SizeofLong     = C.sizeof_long
+    SizeofLongLong = C.sizeof_longlong
 )
 
 // Basic types
 
 type (
-	_C_short     C.short
-	_C_int       C.int
-	_C_long      C.long
-	_C_long_long C.longlong
+    _C_short     C.short
+    _C_int       C.int
+    _C_long      C.long
+    _C_long_long C.longlong
 )
 
 // Time
@@ -144,7 +144,7 @@ type Attrlist C.struct_attrlist
 // File system limits
 
 const (
-	PathMax = C.PATH_MAX
+    PathMax = C.PATH_MAX
 )
 
 // Sockets
@@ -204,38 +204,38 @@ type ICMPv6Filter C.struct_icmp6_filter
 type TCPConnectionInfo C.struct_tcp_connection_info
 
 const (
-	SizeofSockaddrInet4     = C.sizeof_struct_sockaddr_in
-	SizeofSockaddrInet6     = C.sizeof_struct_sockaddr_in6
-	SizeofSockaddrAny       = C.sizeof_struct_sockaddr_any
-	SizeofSockaddrUnix      = C.sizeof_struct_sockaddr_un
-	SizeofSockaddrDatalink  = C.sizeof_struct_sockaddr_dl
-	SizeofSockaddrCtl       = C.sizeof_struct_sockaddr_ctl
-	SizeofSockaddrVM        = C.sizeof_struct_sockaddr_vm
-	SizeofXvsockpcb         = C.sizeof_struct_xvsockpcb
-	SizeofXSocket           = C.sizeof_struct_xsocket
-	SizeofXSockbuf          = C.sizeof_struct_xsockbuf
-	SizeofXVSockPgen        = C.sizeof_struct_xvsockpgen
-	SizeofXucred            = C.sizeof_struct_xucred
-	SizeofLinger            = C.sizeof_struct_linger
-	SizeofIovec             = C.sizeof_struct_iovec
-	SizeofIPMreq            = C.sizeof_struct_ip_mreq
-	SizeofIPMreqn           = C.sizeof_struct_ip_mreqn
-	SizeofIPv6Mreq          = C.sizeof_struct_ipv6_mreq
-	SizeofMsghdr            = C.sizeof_struct_msghdr
-	SizeofCmsghdr           = C.sizeof_struct_cmsghdr
-	SizeofInet4Pktinfo      = C.sizeof_struct_in_pktinfo
-	SizeofInet6Pktinfo      = C.sizeof_struct_in6_pktinfo
-	SizeofIPv6MTUInfo       = C.sizeof_struct_ip6_mtuinfo
-	SizeofICMPv6Filter      = C.sizeof_struct_icmp6_filter
-	SizeofTCPConnectionInfo = C.sizeof_struct_tcp_connection_info
+    SizeofSockaddrInet4     = C.sizeof_struct_sockaddr_in
+    SizeofSockaddrInet6     = C.sizeof_struct_sockaddr_in6
+    SizeofSockaddrAny       = C.sizeof_struct_sockaddr_any
+    SizeofSockaddrUnix      = C.sizeof_struct_sockaddr_un
+    SizeofSockaddrDatalink  = C.sizeof_struct_sockaddr_dl
+    SizeofSockaddrCtl       = C.sizeof_struct_sockaddr_ctl
+    SizeofSockaddrVM        = C.sizeof_struct_sockaddr_vm
+    SizeofXvsockpcb         = C.sizeof_struct_xvsockpcb
+    SizeofXSocket           = C.sizeof_struct_xsocket
+    SizeofXSockbuf          = C.sizeof_struct_xsockbuf
+    SizeofXVSockPgen        = C.sizeof_struct_xvsockpgen
+    SizeofXucred            = C.sizeof_struct_xucred
+    SizeofLinger            = C.sizeof_struct_linger
+    SizeofIovec             = C.sizeof_struct_iovec
+    SizeofIPMreq            = C.sizeof_struct_ip_mreq
+    SizeofIPMreqn           = C.sizeof_struct_ip_mreqn
+    SizeofIPv6Mreq          = C.sizeof_struct_ipv6_mreq
+    SizeofMsghdr            = C.sizeof_struct_msghdr
+    SizeofCmsghdr           = C.sizeof_struct_cmsghdr
+    SizeofInet4Pktinfo      = C.sizeof_struct_in_pktinfo
+    SizeofInet6Pktinfo      = C.sizeof_struct_in6_pktinfo
+    SizeofIPv6MTUInfo       = C.sizeof_struct_ip6_mtuinfo
+    SizeofICMPv6Filter      = C.sizeof_struct_icmp6_filter
+    SizeofTCPConnectionInfo = C.sizeof_struct_tcp_connection_info
 )
 
 // Ptrace requests
 
 const (
-	PTRACE_TRACEME = C.PT_TRACE_ME
-	PTRACE_CONT    = C.PT_CONTINUE
-	PTRACE_KILL    = C.PT_KILL
+    PTRACE_TRACEME = C.PT_TRACE_ME
+    PTRACE_CONT    = C.PT_CONTINUE
+    PTRACE_KILL    = C.PT_KILL
 )
 
 // Events (kqueue, kevent)
@@ -249,13 +249,13 @@ type FdSet C.fd_set
 // Routing and interface messages
 
 const (
-	SizeofIfMsghdr    = C.sizeof_struct_if_msghdr
-	SizeofIfData      = C.sizeof_struct_if_data
-	SizeofIfaMsghdr   = C.sizeof_struct_ifa_msghdr
-	SizeofIfmaMsghdr  = C.sizeof_struct_ifma_msghdr
-	SizeofIfmaMsghdr2 = C.sizeof_struct_ifma_msghdr2
-	SizeofRtMsghdr    = C.sizeof_struct_rt_msghdr
-	SizeofRtMetrics   = C.sizeof_struct_rt_metrics
+    SizeofIfMsghdr    = C.sizeof_struct_if_msghdr
+    SizeofIfData      = C.sizeof_struct_if_data
+    SizeofIfaMsghdr   = C.sizeof_struct_ifa_msghdr
+    SizeofIfmaMsghdr  = C.sizeof_struct_ifma_msghdr
+    SizeofIfmaMsghdr2 = C.sizeof_struct_ifma_msghdr2
+    SizeofRtMsghdr    = C.sizeof_struct_rt_msghdr
+    SizeofRtMetrics   = C.sizeof_struct_rt_metrics
 )
 
 type IfMsghdr C.struct_if_msghdr
@@ -275,11 +275,11 @@ type RtMetrics C.struct_rt_metrics
 // Berkeley packet filter
 
 const (
-	SizeofBpfVersion = C.sizeof_struct_bpf_version
-	SizeofBpfStat    = C.sizeof_struct_bpf_stat
-	SizeofBpfProgram = C.sizeof_struct_bpf_program
-	SizeofBpfInsn    = C.sizeof_struct_bpf_insn
-	SizeofBpfHdr     = C.sizeof_struct_bpf_hdr
+    SizeofBpfVersion = C.sizeof_struct_bpf_version
+    SizeofBpfStat    = C.sizeof_struct_bpf_stat
+    SizeofBpfProgram = C.sizeof_struct_bpf_program
+    SizeofBpfInsn    = C.sizeof_struct_bpf_insn
+    SizeofBpfHdr     = C.sizeof_struct_bpf_hdr
 )
 
 type BpfVersion C.struct_bpf_version
@@ -301,11 +301,11 @@ type Winsize C.struct_winsize
 // fchmodat-like syscalls.
 
 const (
-	AT_FDCWD            = C.AT_FDCWD
-	AT_REMOVEDIR        = C.AT_REMOVEDIR
-	AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
-	AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
-	AT_EACCESS          = C.AT_EACCESS
+    AT_FDCWD            = C.AT_FDCWD
+    AT_REMOVEDIR        = C.AT_REMOVEDIR
+    AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
+    AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
+    AT_EACCESS          = C.AT_EACCESS
 )
 
 // poll
@@ -313,16 +313,16 @@ const (
 type PollFd C.struct_pollfd
 
 const (
-	POLLERR    = C.POLLERR
-	POLLHUP    = C.POLLHUP
-	POLLIN     = C.POLLIN
-	POLLNVAL   = C.POLLNVAL
-	POLLOUT    = C.POLLOUT
-	POLLPRI    = C.POLLPRI
-	POLLRDBAND = C.POLLRDBAND
-	POLLRDNORM = C.POLLRDNORM
-	POLLWRBAND = C.POLLWRBAND
-	POLLWRNORM = C.POLLWRNORM
+    POLLERR    = C.POLLERR
+    POLLHUP    = C.POLLHUP
+    POLLIN     = C.POLLIN
+    POLLNVAL   = C.POLLNVAL
+    POLLOUT    = C.POLLOUT
+    POLLPRI    = C.POLLPRI
+    POLLRDBAND = C.POLLRDBAND
+    POLLRDNORM = C.POLLRDNORM
+    POLLWRBAND = C.POLLWRBAND
+    POLLWRNORM = C.POLLWRNORM
 )
 
 // uname
@@ -363,19 +363,19 @@ type SysvIpcPerm C.struct_ipc_perm
 type SysvShmDesc C.struct_shmid_ds
 
 const (
-	IPC_CREAT   = C.IPC_CREAT
-	IPC_EXCL    = C.IPC_EXCL
-	IPC_NOWAIT  = C.IPC_NOWAIT
-	IPC_PRIVATE = C.IPC_PRIVATE
+    IPC_CREAT   = C.IPC_CREAT
+    IPC_EXCL    = C.IPC_EXCL
+    IPC_NOWAIT  = C.IPC_NOWAIT
+    IPC_PRIVATE = C.IPC_PRIVATE
 )
 
 const (
-	IPC_RMID = C.IPC_RMID
-	IPC_SET  = C.IPC_SET
-	IPC_STAT = C.IPC_STAT
+    IPC_RMID = C.IPC_RMID
+    IPC_SET  = C.IPC_SET
+    IPC_STAT = C.IPC_STAT
 )
 
 const (
-	SHM_RDONLY = C.SHM_RDONLY
-	SHM_RND    = C.SHM_RND
+    SHM_RDONLY = C.SHM_RDONLY
+    SHM_RND    = C.SHM_RND
 )

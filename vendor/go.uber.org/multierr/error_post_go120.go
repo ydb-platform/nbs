@@ -25,24 +25,24 @@ package multierr
 
 // Unwrap returns a list of errors wrapped by this multierr.
 func (merr *multiError) Unwrap() []error {
-	return merr.Errors()
+    return merr.Errors()
 }
 
 type multipleErrors interface {
-	Unwrap() []error
+    Unwrap() []error
 }
 
 func extractErrors(err error) []error {
-	if err == nil {
-		return nil
-	}
+    if err == nil {
+        return nil
+    }
 
-	// check if the given err is an Unwrapable error that
-	// implements multipleErrors interface.
-	eg, ok := err.(multipleErrors)
-	if !ok {
-		return []error{err}
-	}
+    // check if the given err is an Unwrapable error that
+    // implements multipleErrors interface.
+    eg, ok := err.(multipleErrors)
+    if !ok {
+        return []error{err}
+    }
 
-	return append(([]error)(nil), eg.Unwrap()...)
+    return append(([]error)(nil), eg.Unwrap()...)
 }

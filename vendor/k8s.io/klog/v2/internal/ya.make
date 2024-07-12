@@ -1,3 +1,5 @@
+SUBSCRIBER(g:go-contrib)
+
 RECURSE(
     buffer
     clock
@@ -5,4 +7,6 @@ RECURSE(
     serialize
     severity
     sloghandler
+    test
+    verbosity
 )

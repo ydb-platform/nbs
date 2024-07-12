@@ -17,7 +17,7 @@
 package credentials
 
 import (
-	"context"
+    "context"
 )
 
 // requestInfoKey is a struct to be used as the key to store RequestInfo in a
@@ -26,12 +26,12 @@ type requestInfoKey struct{}
 
 // NewRequestInfoContext creates a context with ri.
 func NewRequestInfoContext(ctx context.Context, ri interface{}) context.Context {
-	return context.WithValue(ctx, requestInfoKey{}, ri)
+    return context.WithValue(ctx, requestInfoKey{}, ri)
 }
 
 // RequestInfoFromContext extracts the RequestInfo from ctx.
 func RequestInfoFromContext(ctx context.Context) interface{} {
-	return ctx.Value(requestInfoKey{})
+    return ctx.Value(requestInfoKey{})
 }
 
 // clientHandshakeInfoKey is a struct used as the key to store
@@ -40,10 +40,10 @@ type clientHandshakeInfoKey struct{}
 
 // ClientHandshakeInfoFromContext extracts the ClientHandshakeInfo from ctx.
 func ClientHandshakeInfoFromContext(ctx context.Context) interface{} {
-	return ctx.Value(clientHandshakeInfoKey{})
+    return ctx.Value(clientHandshakeInfoKey{})
 }
 
 // NewClientHandshakeInfoContext creates a context with chi.
 func NewClientHandshakeInfoContext(ctx context.Context, chi interface{}) context.Context {
-	return context.WithValue(ctx, clientHandshakeInfoKey{}, chi)
+    return context.WithValue(ctx, clientHandshakeInfoKey{}, chi)
 }

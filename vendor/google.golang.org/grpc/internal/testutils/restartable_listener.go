@@ -19,32 +19,32 @@
 package testutils
 
 import (
-	"net"
-	"sync"
+    "net"
+    "sync"
 )
 
 type tempError struct{}
 
 func (*tempError) Error() string {
-	return "restartable listener temporary error"
+    return "restartable listener temporary error"
 }
 func (*tempError) Temporary() bool {
-	return true
+    return true
 }
 
 // RestartableListener wraps a net.Listener and supports stopping and restarting
 // the latter.
 type RestartableListener struct {
-	lis net.Listener
+    lis net.Listener
 
-	mu      sync.Mutex
-	stopped bool
-	conns   []net.Conn
+    mu      sync.Mutex
+    stopped bool
+    conns   []net.Conn
 }
 
 // NewRestartableListener returns a new RestartableListener wrapping l.
 func NewRestartableListener(l net.Listener) *RestartableListener {
-	return &RestartableListener{lis: l}
+    return &RestartableListener{lis: l}
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -53,46 +53,46 @@ func NewRestartableListener(l net.Listener) *RestartableListener {
 // was called on it, the connection is immediately closed after accepting
 // without any bytes being sent on it.
 func (l *RestartableListener) Accept() (net.Conn, error) {
-	conn, err := l.lis.Accept()
-	if err != nil {
-		return nil, err
-	}
+    conn, err := l.lis.Accept()
+    if err != nil {
+        return nil, err
+    }
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.stopped {
-		conn.Close()
-		return nil, &tempError{}
-	}
-	l.conns = append(l.conns, conn)
-	return conn, nil
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    if l.stopped {
+        conn.Close()
+        return nil, &tempError{}
+    }
+    l.conns = append(l.conns, conn)
+    return conn, nil
 }
 
 // Close closes the listener.
 func (l *RestartableListener) Close() error {
-	return l.lis.Close()
+    return l.lis.Close()
 }
 
 // Addr returns the listener's network address.
 func (l *RestartableListener) Addr() net.Addr {
-	return l.lis.Addr()
+    return l.lis.Addr()
 }
 
 // Stop closes existing connections on the listener and prevents new connections
 // from being accepted.
 func (l *RestartableListener) Stop() {
-	l.mu.Lock()
-	l.stopped = true
-	for _, conn := range l.conns {
-		conn.Close()
-	}
-	l.conns = nil
-	l.mu.Unlock()
+    l.mu.Lock()
+    l.stopped = true
+    for _, conn := range l.conns {
+        conn.Close()
+    }
+    l.conns = nil
+    l.mu.Unlock()
 }
 
 // Restart gets a previously stopped listener to start accepting connections.
 func (l *RestartableListener) Restart() {
-	l.mu.Lock()
-	l.stopped = false
-	l.mu.Unlock()
+    l.mu.Lock()
+    l.stopped = false
+    l.mu.Unlock()
 }

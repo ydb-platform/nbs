@@ -21,14 +21,14 @@
 package httpfilter
 
 import (
-	"github.com/golang/protobuf/proto"
-	iresolver "google.golang.org/grpc/internal/resolver"
+    "github.com/golang/protobuf/proto"
+    iresolver "google.golang.org/grpc/internal/resolver"
 )
 
 // FilterConfig represents an opaque data structure holding configuration for a
 // filter.  Embed this interface to implement it.
 type FilterConfig interface {
-	isFilterConfig()
+    isFilterConfig()
 }
 
 // Filter defines the parsing functionality of an HTTP filter.  A Filter may
@@ -36,51 +36,51 @@ type FilterConfig interface {
 // ServerInterceptorBuilder or both, indicating it is capable of working on the
 // client side or server side or both, respectively.
 type Filter interface {
-	// TypeURLs are the proto message types supported by this filter.  A filter
-	// will be registered by each of its supported message types.
-	TypeURLs() []string
-	// ParseFilterConfig parses the provided configuration proto.Message from
-	// the LDS configuration of this filter.  This may be an anypb.Any, a
-	// udpa.type.v1.TypedStruct, or an xds.type.v3.TypedStruct for filters that
-	// do not accept a custom type. The resulting FilterConfig will later be
-	// passed to Build.
-	ParseFilterConfig(proto.Message) (FilterConfig, error)
-	// ParseFilterConfigOverride parses the provided override configuration
-	// proto.Message from the RDS override configuration of this filter.  This
-	// may be an anypb.Any, a udpa.type.v1.TypedStruct, or an
-	// xds.type.v3.TypedStruct for filters that do not accept a custom type.
-	// The resulting FilterConfig will later be passed to Build.
-	ParseFilterConfigOverride(proto.Message) (FilterConfig, error)
-	// IsTerminal returns whether this Filter is terminal or not (i.e. it must
-	// be last filter in the filter chain).
-	IsTerminal() bool
+    // TypeURLs are the proto message types supported by this filter.  A filter
+    // will be registered by each of its supported message types.
+    TypeURLs() []string
+    // ParseFilterConfig parses the provided configuration proto.Message from
+    // the LDS configuration of this filter.  This may be an anypb.Any, a
+    // udpa.type.v1.TypedStruct, or an xds.type.v3.TypedStruct for filters that
+    // do not accept a custom type. The resulting FilterConfig will later be
+    // passed to Build.
+    ParseFilterConfig(proto.Message) (FilterConfig, error)
+    // ParseFilterConfigOverride parses the provided override configuration
+    // proto.Message from the RDS override configuration of this filter.  This
+    // may be an anypb.Any, a udpa.type.v1.TypedStruct, or an
+    // xds.type.v3.TypedStruct for filters that do not accept a custom type.
+    // The resulting FilterConfig will later be passed to Build.
+    ParseFilterConfigOverride(proto.Message) (FilterConfig, error)
+    // IsTerminal returns whether this Filter is terminal or not (i.e. it must
+    // be last filter in the filter chain).
+    IsTerminal() bool
 }
 
 // ClientInterceptorBuilder constructs a Client Interceptor.  If this type is
 // implemented by a Filter, it is capable of working on a client.
 type ClientInterceptorBuilder interface {
-	// BuildClientInterceptor uses the FilterConfigs produced above to produce
-	// an HTTP filter interceptor for clients.  config will always be non-nil,
-	// but override may be nil if no override config exists for the filter.  It
-	// is valid for Build to return a nil Interceptor and a nil error.  In this
-	// case, the RPC will not be intercepted by this filter.
-	BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
+    // BuildClientInterceptor uses the FilterConfigs produced above to produce
+    // an HTTP filter interceptor for clients.  config will always be non-nil,
+    // but override may be nil if no override config exists for the filter.  It
+    // is valid for Build to return a nil Interceptor and a nil error.  In this
+    // case, the RPC will not be intercepted by this filter.
+    BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
 }
 
 // ServerInterceptorBuilder constructs a Server Interceptor.  If this type is
 // implemented by a Filter, it is capable of working on a server.
 type ServerInterceptorBuilder interface {
-	// BuildServerInterceptor uses the FilterConfigs produced above to produce
-	// an HTTP filter interceptor for servers.  config will always be non-nil,
-	// but override may be nil if no override config exists for the filter.  It
-	// is valid for Build to return a nil Interceptor and a nil error.  In this
-	// case, the RPC will not be intercepted by this filter.
-	BuildServerInterceptor(config, override FilterConfig) (iresolver.ServerInterceptor, error)
+    // BuildServerInterceptor uses the FilterConfigs produced above to produce
+    // an HTTP filter interceptor for servers.  config will always be non-nil,
+    // but override may be nil if no override config exists for the filter.  It
+    // is valid for Build to return a nil Interceptor and a nil error.  In this
+    // case, the RPC will not be intercepted by this filter.
+    BuildServerInterceptor(config, override FilterConfig) (iresolver.ServerInterceptor, error)
 }
 
 var (
-	// m is a map from scheme to filter.
-	m = make(map[string]Filter)
+    // m is a map from scheme to filter.
+    m = make(map[string]Filter)
 )
 
 // Register registers the HTTP filter Builder to the filter map. b.TypeURLs()
@@ -90,19 +90,19 @@ var (
 // an init() function), and is not thread-safe. If multiple filters are
 // registered with the same type URL, the one registered last will take effect.
 func Register(b Filter) {
-	for _, u := range b.TypeURLs() {
-		m[u] = b
-	}
+    for _, u := range b.TypeURLs() {
+        m[u] = b
+    }
 }
 
 // UnregisterForTesting unregisters the HTTP Filter for testing purposes.
 func UnregisterForTesting(typeURL string) {
-	delete(m, typeURL)
+    delete(m, typeURL)
 }
 
 // Get returns the HTTPFilter registered with typeURL.
 //
 // If no filter is register with typeURL, nil will be returned.
 func Get(typeURL string) Filter {
-	return m[typeURL]
+    return m[typeURL]
 }

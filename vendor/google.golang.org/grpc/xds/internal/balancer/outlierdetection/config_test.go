@@ -18,55 +18,55 @@
 package outlierdetection
 
 import (
-	"reflect"
-	"testing"
+    "reflect"
+    "testing"
 )
 
 func TestSuccessRateEjection(t *testing.T) {
-	fields := map[string]bool{
-		"StdevFactor":           true,
-		"EnforcementPercentage": true,
-		"MinimumHosts":          true,
-		"RequestVolume":         true,
-	}
-	typ := reflect.TypeOf(SuccessRateEjection{})
-	for i := 0; i < typ.NumField(); i++ {
-		if n := typ.Field(i).Name; !fields[n] {
-			t.Errorf("New field in SuccessRateEjection %q, update this test and Equal", n)
-		}
-	}
+    fields := map[string]bool{
+        "StdevFactor":           true,
+        "EnforcementPercentage": true,
+        "MinimumHosts":          true,
+        "RequestVolume":         true,
+    }
+    typ := reflect.TypeOf(SuccessRateEjection{})
+    for i := 0; i < typ.NumField(); i++ {
+        if n := typ.Field(i).Name; !fields[n] {
+            t.Errorf("New field in SuccessRateEjection %q, update this test and Equal", n)
+        }
+    }
 }
 
 func TestEqualFieldsFailurePercentageEjection(t *testing.T) {
-	fields := map[string]bool{
-		"Threshold":             true,
-		"EnforcementPercentage": true,
-		"MinimumHosts":          true,
-		"RequestVolume":         true,
-	}
-	typ := reflect.TypeOf(FailurePercentageEjection{})
-	for i := 0; i < typ.NumField(); i++ {
-		if n := typ.Field(i).Name; !fields[n] {
-			t.Errorf("New field in FailurePercentageEjection %q, update this test and Equal", n)
-		}
-	}
+    fields := map[string]bool{
+        "Threshold":             true,
+        "EnforcementPercentage": true,
+        "MinimumHosts":          true,
+        "RequestVolume":         true,
+    }
+    typ := reflect.TypeOf(FailurePercentageEjection{})
+    for i := 0; i < typ.NumField(); i++ {
+        if n := typ.Field(i).Name; !fields[n] {
+            t.Errorf("New field in FailurePercentageEjection %q, update this test and Equal", n)
+        }
+    }
 }
 
 func TestEqualFieldsLBConfig(t *testing.T) {
-	fields := map[string]bool{
-		"LoadBalancingConfig":       true,
-		"Interval":                  true,
-		"BaseEjectionTime":          true,
-		"MaxEjectionTime":           true,
-		"MaxEjectionPercent":        true,
-		"SuccessRateEjection":       true,
-		"FailurePercentageEjection": true,
-		"ChildPolicy":               true,
-	}
-	typ := reflect.TypeOf(LBConfig{})
-	for i := 0; i < typ.NumField(); i++ {
-		if n := typ.Field(i).Name; !fields[n] {
-			t.Errorf("New field in LBConfig %q, update this test and EqualIgnoringChildPolicy", n)
-		}
-	}
+    fields := map[string]bool{
+        "LoadBalancingConfig":       true,
+        "Interval":                  true,
+        "BaseEjectionTime":          true,
+        "MaxEjectionTime":           true,
+        "MaxEjectionPercent":        true,
+        "SuccessRateEjection":       true,
+        "FailurePercentageEjection": true,
+        "ChildPolicy":               true,
+    }
+    typ := reflect.TypeOf(LBConfig{})
+    for i := 0; i < typ.NumField(); i++ {
+        if n := typ.Field(i).Name; !fields[n] {
+            t.Errorf("New field in LBConfig %q, update this test and EqualIgnoringChildPolicy", n)
+        }
+    }
 }

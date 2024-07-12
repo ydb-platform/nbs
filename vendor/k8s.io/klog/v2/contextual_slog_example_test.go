@@ -20,29 +20,29 @@ limitations under the License.
 package klog_test
 
 import (
-	"log/slog"
-	"os"
+    "log/slog"
+    "os"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 func ExampleSetSlogLogger() {
-	state := klog.CaptureState()
-	defer state.Restore()
+    state := klog.CaptureState()
+    defer state.Restore()
 
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		ReplaceAttr: func(_ /* groups */ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				// Avoid non-deterministic output.
-				return slog.Attr{}
-			}
-			return a
-		},
-	})
-	logger := slog.New(handler)
-	klog.SetSlogLogger(logger)
-	klog.Info("hello world")
+    handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+        ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+            if a.Key == slog.TimeKey {
+                // Avoid non-deterministic output.
+                return slog.Attr{}
+            }
+            return a
+        },
+    })
+    logger := slog.New(handler)
+    klog.SetSlogLogger(logger)
+    klog.Info("hello world")
 
-	// Output:
-	// level=INFO msg="hello world"
+    // Output:
+    // level=INFO msg="hello world"
 }

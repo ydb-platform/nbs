@@ -1,0 +1,23 @@
+{
+    "Version": "v0.5.2",
+    "GoVersion": "1.13",
+    "Sum": "h1:035FKYIWjmULyFRBKPs8TBQoi0x6d9G4xc9neXJWAZQ=",
+    "Packages": {
+        "github.com/hashicorp/go-cleanhttp": {
+            "Imports": [
+                "net",
+                "net/http",
+                "runtime",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "fmt",
+                "net/http",
+                "net/http/httptest",
+                "testing"
+            ]
+        }
+    }
+}

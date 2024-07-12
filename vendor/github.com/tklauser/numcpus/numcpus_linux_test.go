@@ -17,53 +17,53 @@ package numcpus
 import "testing"
 
 func TestParseCPURange(t *testing.T) {
-	testCases := []struct {
-		cpus string
-		n    int
-	}{
-		{"", 0},
-		{"0", 1},
-		{"0-1", 2},
-		{"0-7", 8},
-		{"1-7", 7},
-		{"1-15", 15},
-		{"0-3,7", 5},
-		{"0,2-4", 4},
-		{"0,2-4,7", 5},
-		{"0,2-4,7-15", 13},
-	}
+    testCases := []struct {
+        cpus string
+        n    int
+    }{
+        {"", 0},
+        {"0", 1},
+        {"0-1", 2},
+        {"0-7", 8},
+        {"1-7", 7},
+        {"1-15", 15},
+        {"0-3,7", 5},
+        {"0,2-4", 4},
+        {"0,2-4,7", 5},
+        {"0,2-4,7-15", 13},
+    }
 
-	for _, tc := range testCases {
-		n, err := parseCPURange(tc.cpus)
-		if err != nil {
-			t.Errorf("failed to parse CPU range: %v", err)
-		}
+    for _, tc := range testCases {
+        n, err := parseCPURange(tc.cpus)
+        if err != nil {
+            t.Errorf("failed to parse CPU range: %v", err)
+        }
 
-		if n != tc.n {
-			t.Errorf("parseCPURange(%q) = %d, expected %d", tc.cpus, n, tc.n)
-		}
-	}
+        if n != tc.n {
+            t.Errorf("parseCPURange(%q) = %d, expected %d", tc.cpus, n, tc.n)
+        }
+    }
 
-	str := "invalid"
-	_, err := parseCPURange(str)
-	if err == nil {
-		t.Errorf("parseCPURange(%q) unexpectedly succeeded", str)
-	}
+    str := "invalid"
+    _, err := parseCPURange(str)
+    if err == nil {
+        t.Errorf("parseCPURange(%q) unexpectedly succeeded", str)
+    }
 }
 
 func TestGetFromCPUAffinity(t *testing.T) {
-	nAffinity, err := getFromCPUAffinity()
-	if err != nil {
-		t.Fatalf("getFromCPUAffinity: %v", err)
-	}
+    nAffinity, err := getFromCPUAffinity()
+    if err != nil {
+        t.Fatalf("getFromCPUAffinity: %v", err)
+    }
 
-	cpus := "online"
-	nSysfs, err := readCPURange(cpus)
-	if err != nil {
-		t.Fatalf("readCPURange(%q): %v", cpus, err)
-	}
+    cpus := "online"
+    nSysfs, err := readCPURange(cpus)
+    if err != nil {
+        t.Fatalf("readCPURange(%q): %v", cpus, err)
+    }
 
-	if nAffinity != nSysfs {
-		t.Errorf("getFromCPUAffinity() = %d, readCPURange(%q) = %d, want the same return value", nAffinity, cpus, nSysfs)
-	}
+    if nAffinity != nSysfs {
+        t.Errorf("getFromCPUAffinity() = %d, readCPURange(%q) = %d, want the same return value", nAffinity, cpus, nSysfs)
+    }
 }

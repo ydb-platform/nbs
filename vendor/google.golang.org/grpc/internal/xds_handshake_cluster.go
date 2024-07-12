@@ -17,8 +17,8 @@
 package internal
 
 import (
-	"google.golang.org/grpc/attributes"
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/attributes"
+    "google.golang.org/grpc/resolver"
 )
 
 // handshakeClusterNameKey is the type used as the key to store cluster name in
@@ -28,13 +28,13 @@ type handshakeClusterNameKey struct{}
 // SetXDSHandshakeClusterName returns a copy of addr in which the Attributes field
 // is updated with the cluster name.
 func SetXDSHandshakeClusterName(addr resolver.Address, clusterName string) resolver.Address {
-	addr.Attributes = addr.Attributes.WithValue(handshakeClusterNameKey{}, clusterName)
-	return addr
+    addr.Attributes = addr.Attributes.WithValue(handshakeClusterNameKey{}, clusterName)
+    return addr
 }
 
 // GetXDSHandshakeClusterName returns cluster name stored in attr.
 func GetXDSHandshakeClusterName(attr *attributes.Attributes) (string, bool) {
-	v := attr.Value(handshakeClusterNameKey{})
-	name, ok := v.(string)
-	return name, ok
+    v := attr.Value(handshakeClusterNameKey{})
+    name, ok := v.(string)
+    return name, ok
 }

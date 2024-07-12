@@ -4,106 +4,106 @@
 package httpv3
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on Cookie with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
 func (m *Cookie) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on Cookie with the rules defined in the
 // proto definition for this message. If any rules are violated, the result is
 // a list of violation errors wrapped in CookieMultiError, or nil if none found.
 func (m *Cookie) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *Cookie) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if utf8.RuneCountInString(m.GetName()) < 1 {
-		err := CookieValidationError{
-			field:  "Name",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if utf8.RuneCountInString(m.GetName()) < 1 {
+        err := CookieValidationError{
+            field:  "Name",
+            reason: "value length must be at least 1 runes",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if d := m.GetTtl(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = CookieValidationError{
-				field:  "Ttl",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetTtl(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = CookieValidationError{
+                field:  "Ttl",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gte := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur < gte {
-				err := CookieValidationError{
-					field:  "Ttl",
-					reason: "value must be greater than or equal to 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur < gte {
+                err := CookieValidationError{
+                    field:  "Ttl",
+                    reason: "value must be greater than or equal to 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	// no validation rules for Path
+    // no validation rules for Path
 
-	if len(errors) > 0 {
-		return CookieMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return CookieMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // CookieMultiError is an error wrapping multiple validation errors returned by
@@ -112,11 +112,11 @@ type CookieMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CookieMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -125,10 +125,10 @@ func (m CookieMultiError) AllErrors() []error { return m }
 // CookieValidationError is the validation error returned by Cookie.Validate if
 // the designated constraints aren't met.
 type CookieValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -148,30 +148,30 @@ func (e CookieValidationError) ErrorName() string { return "CookieValidationErro
 
 // Error satisfies the builtin error interface
 func (e CookieValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sCookie.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sCookie.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = CookieValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = CookieValidationError{}

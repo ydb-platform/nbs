@@ -1,11 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
-SRCS(pack.go)
-
-GO_TEST_SRCS(pack_test.go)
+SRCS(
+    pack.go
+)
 
 END()
-
-RECURSE(gotest)

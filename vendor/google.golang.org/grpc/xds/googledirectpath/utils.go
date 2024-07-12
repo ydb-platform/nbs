@@ -19,78 +19,78 @@
 package googledirectpath
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"sync"
-	"time"
+    "bytes"
+    "fmt"
+    "io"
+    "net/http"
+    "net/url"
+    "sync"
+    "time"
 )
 
 func getFromMetadata(timeout time.Duration, urlStr string) ([]byte, error) {
-	parsedURL, err := url.Parse(urlStr)
-	if err != nil {
-		return nil, err
-	}
-	client := &http.Client{Timeout: timeout}
-	req := &http.Request{
-		Method: http.MethodGet,
-		URL:    parsedURL,
-		Header: http.Header{"Metadata-Flavor": {"Google"}},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed communicating with metadata server: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata server returned resp with non-OK: %v", resp)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading from metadata server: %v", err)
-	}
-	return body, nil
+    parsedURL, err := url.Parse(urlStr)
+    if err != nil {
+        return nil, err
+    }
+    client := &http.Client{Timeout: timeout}
+    req := &http.Request{
+        Method: http.MethodGet,
+        URL:    parsedURL,
+        Header: http.Header{"Metadata-Flavor": {"Google"}},
+    }
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("failed communicating with metadata server: %v", err)
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("metadata server returned resp with non-OK: %v", resp)
+    }
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("failed reading from metadata server: %v", err)
+    }
+    return body, nil
 }
 
 var (
-	zone     string
-	zoneOnce sync.Once
+    zone     string
+    zoneOnce sync.Once
 )
 
 // Defined as var to be overridden in tests.
 var getZone = func(timeout time.Duration) string {
-	zoneOnce.Do(func() {
-		qualifiedZone, err := getFromMetadata(timeout, zoneURL)
-		if err != nil {
-			logger.Warningf("could not discover instance zone: %v", err)
-			return
-		}
-		i := bytes.LastIndexByte(qualifiedZone, '/')
-		if i == -1 {
-			logger.Warningf("could not parse zone from metadata server: %s", qualifiedZone)
-			return
-		}
-		zone = string(qualifiedZone[i+1:])
-	})
-	return zone
+    zoneOnce.Do(func() {
+        qualifiedZone, err := getFromMetadata(timeout, zoneURL)
+        if err != nil {
+            logger.Warningf("could not discover instance zone: %v", err)
+            return
+        }
+        i := bytes.LastIndexByte(qualifiedZone, '/')
+        if i == -1 {
+            logger.Warningf("could not parse zone from metadata server: %s", qualifiedZone)
+            return
+        }
+        zone = string(qualifiedZone[i+1:])
+    })
+    return zone
 }
 
 var (
-	ipv6Capable     bool
-	ipv6CapableOnce sync.Once
+    ipv6Capable     bool
+    ipv6CapableOnce sync.Once
 )
 
 // Defined as var to be overridden in tests.
 var getIPv6Capable = func(timeout time.Duration) bool {
-	ipv6CapableOnce.Do(func() {
-		_, err := getFromMetadata(timeout, ipv6URL)
-		if err != nil {
-			logger.Warningf("could not discover ipv6 capability: %v", err)
-			return
-		}
-		ipv6Capable = true
-	})
-	return ipv6Capable
+    ipv6CapableOnce.Do(func() {
+        _, err := getFromMetadata(timeout, ipv6URL)
+        if err != nil {
+            logger.Warningf("could not discover ipv6 capability: %v", err)
+            return
+        }
+        ipv6Capable = true
+    })
+    return ipv6Capable
 }

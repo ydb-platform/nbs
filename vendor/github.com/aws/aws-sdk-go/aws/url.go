@@ -9,5 +9,5 @@ import "net/url"
 //
 // Wrapper of net/url#URL.Hostname for backwards Go version compatibility.
 func URLHostname(url *url.URL) string {
-	return url.Hostname()
+    return url.Hostname()
 }

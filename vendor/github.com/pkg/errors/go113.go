@@ -3,7 +3,7 @@
 package errors
 
 import (
-	stderrors "errors"
+    stderrors "errors"
 )
 
 // Is reports whether any error in err's chain matches target.
@@ -34,5 +34,5 @@ func As(err error, target interface{}) bool { return stderrors.As(err, target) }
 // type contains an Unwrap method returning error.
 // Otherwise, Unwrap returns nil.
 func Unwrap(err error) error {
-	return stderrors.Unwrap(err)
+    return stderrors.Unwrap(err)
 }

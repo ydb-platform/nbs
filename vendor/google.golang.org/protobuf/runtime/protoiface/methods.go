@@ -10,77 +10,77 @@
 package protoiface
 
 import (
-	"google.golang.org/protobuf/internal/pragma"
-	"google.golang.org/protobuf/reflect/protoreflect"
+    "google.golang.org/protobuf/internal/pragma"
+    "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // Methods is a set of optional fast-path implementations of various operations.
 type Methods = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	// Flags indicate support for optional features.
-	Flags SupportFlags
+    // Flags indicate support for optional features.
+    Flags SupportFlags
 
-	// Size returns the size in bytes of the wire-format encoding of a message.
-	// Marshal must be provided if a custom Size is provided.
-	Size func(SizeInput) SizeOutput
+    // Size returns the size in bytes of the wire-format encoding of a message.
+    // Marshal must be provided if a custom Size is provided.
+    Size func(SizeInput) SizeOutput
 
-	// Marshal formats a message in the wire-format encoding to the provided buffer.
-	// Size should be provided if a custom Marshal is provided.
-	// It must not return an error for a partial message.
-	Marshal func(MarshalInput) (MarshalOutput, error)
+    // Marshal formats a message in the wire-format encoding to the provided buffer.
+    // Size should be provided if a custom Marshal is provided.
+    // It must not return an error for a partial message.
+    Marshal func(MarshalInput) (MarshalOutput, error)
 
-	// Unmarshal parses the wire-format encoding and merges the result into a message.
-	// It must not reset the target message or return an error for a partial message.
-	Unmarshal func(UnmarshalInput) (UnmarshalOutput, error)
+    // Unmarshal parses the wire-format encoding and merges the result into a message.
+    // It must not reset the target message or return an error for a partial message.
+    Unmarshal func(UnmarshalInput) (UnmarshalOutput, error)
 
-	// Merge merges the contents of a source message into a destination message.
-	Merge func(MergeInput) MergeOutput
+    // Merge merges the contents of a source message into a destination message.
+    Merge func(MergeInput) MergeOutput
 
-	// CheckInitialized returns an error if any required fields in the message are not set.
-	CheckInitialized func(CheckInitializedInput) (CheckInitializedOutput, error)
+    // CheckInitialized returns an error if any required fields in the message are not set.
+    CheckInitialized func(CheckInitializedInput) (CheckInitializedOutput, error)
 }
 
 // SupportFlags indicate support for optional features.
 type SupportFlags = uint64
 
 const (
-	// SupportMarshalDeterministic reports whether MarshalOptions.Deterministic is supported.
-	SupportMarshalDeterministic SupportFlags = 1 << iota
+    // SupportMarshalDeterministic reports whether MarshalOptions.Deterministic is supported.
+    SupportMarshalDeterministic SupportFlags = 1 << iota
 
-	// SupportUnmarshalDiscardUnknown reports whether UnmarshalOptions.DiscardUnknown is supported.
-	SupportUnmarshalDiscardUnknown
+    // SupportUnmarshalDiscardUnknown reports whether UnmarshalOptions.DiscardUnknown is supported.
+    SupportUnmarshalDiscardUnknown
 )
 
 // SizeInput is input to the Size method.
 type SizeInput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Message protoreflect.Message
-	Flags   MarshalInputFlags
+    Message protoreflect.Message
+    Flags   MarshalInputFlags
 }
 
 // SizeOutput is output from the Size method.
 type SizeOutput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Size int
+    Size int
 }
 
 // MarshalInput is input to the Marshal method.
 type MarshalInput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Message protoreflect.Message
-	Buf     []byte // output is appended to this buffer
-	Flags   MarshalInputFlags
+    Message protoreflect.Message
+    Buf     []byte // output is appended to this buffer
+    Flags   MarshalInputFlags
 }
 
 // MarshalOutput is output from the Marshal method.
 type MarshalOutput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Buf []byte // contains marshaled message
+    Buf []byte // contains marshaled message
 }
 
 // MarshalInputFlags configure the marshaler.
@@ -88,29 +88,29 @@ type MarshalOutput = struct {
 type MarshalInputFlags = uint8
 
 const (
-	MarshalDeterministic MarshalInputFlags = 1 << iota
-	MarshalUseCachedSize
+    MarshalDeterministic MarshalInputFlags = 1 << iota
+    MarshalUseCachedSize
 )
 
 // UnmarshalInput is input to the Unmarshal method.
 type UnmarshalInput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Message  protoreflect.Message
-	Buf      []byte // input buffer
-	Flags    UnmarshalInputFlags
-	Resolver interface {
-		FindExtensionByName(field protoreflect.FullName) (protoreflect.ExtensionType, error)
-		FindExtensionByNumber(message protoreflect.FullName, field protoreflect.FieldNumber) (protoreflect.ExtensionType, error)
-	}
-	Depth int
+    Message  protoreflect.Message
+    Buf      []byte // input buffer
+    Flags    UnmarshalInputFlags
+    Resolver interface {
+        FindExtensionByName(field protoreflect.FullName) (protoreflect.ExtensionType, error)
+        FindExtensionByNumber(message protoreflect.FullName, field protoreflect.FieldNumber) (protoreflect.ExtensionType, error)
+    }
+    Depth int
 }
 
 // UnmarshalOutput is output from the Unmarshal method.
 type UnmarshalOutput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Flags UnmarshalOutputFlags
+    Flags UnmarshalOutputFlags
 }
 
 // UnmarshalInputFlags configure the unmarshaler.
@@ -118,51 +118,51 @@ type UnmarshalOutput = struct {
 type UnmarshalInputFlags = uint8
 
 const (
-	UnmarshalDiscardUnknown UnmarshalInputFlags = 1 << iota
+    UnmarshalDiscardUnknown UnmarshalInputFlags = 1 << iota
 )
 
 // UnmarshalOutputFlags are output from the Unmarshal method.
 type UnmarshalOutputFlags = uint8
 
 const (
-	// UnmarshalInitialized may be set on return if all required fields are known to be set.
-	// If unset, then it does not necessarily indicate that the message is uninitialized,
-	// only that its status could not be confirmed.
-	UnmarshalInitialized UnmarshalOutputFlags = 1 << iota
+    // UnmarshalInitialized may be set on return if all required fields are known to be set.
+    // If unset, then it does not necessarily indicate that the message is uninitialized,
+    // only that its status could not be confirmed.
+    UnmarshalInitialized UnmarshalOutputFlags = 1 << iota
 )
 
 // MergeInput is input to the Merge method.
 type MergeInput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Source      protoreflect.Message
-	Destination protoreflect.Message
+    Source      protoreflect.Message
+    Destination protoreflect.Message
 }
 
 // MergeOutput is output from the Merge method.
 type MergeOutput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Flags MergeOutputFlags
+    Flags MergeOutputFlags
 }
 
 // MergeOutputFlags are output from the Merge method.
 type MergeOutputFlags = uint8
 
 const (
-	// MergeComplete reports whether the merge was performed.
-	// If unset, the merger must have made no changes to the destination.
-	MergeComplete MergeOutputFlags = 1 << iota
+    // MergeComplete reports whether the merge was performed.
+    // If unset, the merger must have made no changes to the destination.
+    MergeComplete MergeOutputFlags = 1 << iota
 )
 
 // CheckInitializedInput is input to the CheckInitialized method.
 type CheckInitializedInput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 
-	Message protoreflect.Message
+    Message protoreflect.Message
 }
 
 // CheckInitializedOutput is output from the CheckInitialized method.
 type CheckInitializedOutput = struct {
-	pragma.NoUnkeyedLiterals
+    pragma.NoUnkeyedLiterals
 }

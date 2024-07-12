@@ -4,35 +4,35 @@
 //
 // The following is a complete example using assert in a standard test function:
 //
-//	import (
-//	  "testing"
-//	  "github.com/stretchr/testify/assert"
-//	)
+//    import (
+//      "testing"
+//      "github.com/stretchr/testify/assert"
+//    )
 //
-//	func TestSomething(t *testing.T) {
+//    func TestSomething(t *testing.T) {
 //
-//	  var a string = "Hello"
-//	  var b string = "Hello"
+//      var a string = "Hello"
+//      var b string = "Hello"
 //
-//	  assert.Equal(t, a, b, "The two words should be the same.")
+//      assert.Equal(t, a, b, "The two words should be the same.")
 //
-//	}
+//    }
 //
 // if you assert many times, use the format below:
 //
-//	import (
-//	  "testing"
-//	  "github.com/stretchr/testify/assert"
-//	)
+//    import (
+//      "testing"
+//      "github.com/stretchr/testify/assert"
+//    )
 //
-//	func TestSomething(t *testing.T) {
-//	  assert := assert.New(t)
+//    func TestSomething(t *testing.T) {
+//      assert := assert.New(t)
 //
-//	  var a string = "Hello"
-//	  var b string = "Hello"
+//      var a string = "Hello"
+//      var b string = "Hello"
 //
-//	  assert.Equal(a, b, "The two words should be the same.")
-//	}
+//      assert.Equal(a, b, "The two words should be the same.")
+//    }
 //
 // # Assertions
 //

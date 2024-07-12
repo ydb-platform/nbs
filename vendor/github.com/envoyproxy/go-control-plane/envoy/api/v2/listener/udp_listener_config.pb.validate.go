@@ -4,42 +4,42 @@
 package listener
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on UdpListenerConfig with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
 func (m *UdpListenerConfig) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on UdpListenerConfig with the rules
@@ -47,110 +47,110 @@ func (m *UdpListenerConfig) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // UdpListenerConfigMultiError, or nil if none found.
 func (m *UdpListenerConfig) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *UdpListenerConfig) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for UdpListenerName
+    // no validation rules for UdpListenerName
 
-	switch v := m.ConfigType.(type) {
-	case *UdpListenerConfig_Config:
-		if v == nil {
-			err := UdpListenerConfigValidationError{
-				field:  "ConfigType",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+    switch v := m.ConfigType.(type) {
+    case *UdpListenerConfig_Config:
+        if v == nil {
+            err := UdpListenerConfigValidationError{
+                field:  "ConfigType",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-		if all {
-			switch v := interface{}(m.GetConfig()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, UdpListenerConfigValidationError{
-						field:  "Config",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, UdpListenerConfigValidationError{
-						field:  "Config",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return UdpListenerConfigValidationError{
-					field:  "Config",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetConfig()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, UdpListenerConfigValidationError{
+                        field:  "Config",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, UdpListenerConfigValidationError{
+                        field:  "Config",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return UdpListenerConfigValidationError{
+                    field:  "Config",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *UdpListenerConfig_TypedConfig:
-		if v == nil {
-			err := UdpListenerConfigValidationError{
-				field:  "ConfigType",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+    case *UdpListenerConfig_TypedConfig:
+        if v == nil {
+            err := UdpListenerConfigValidationError{
+                field:  "ConfigType",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-		if all {
-			switch v := interface{}(m.GetTypedConfig()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, UdpListenerConfigValidationError{
-						field:  "TypedConfig",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, UdpListenerConfigValidationError{
-						field:  "TypedConfig",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetTypedConfig()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return UdpListenerConfigValidationError{
-					field:  "TypedConfig",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetTypedConfig()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, UdpListenerConfigValidationError{
+                        field:  "TypedConfig",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, UdpListenerConfigValidationError{
+                        field:  "TypedConfig",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetTypedConfig()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return UdpListenerConfigValidationError{
+                    field:  "TypedConfig",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	default:
-		_ = v // ensures v is used
-	}
+    default:
+        _ = v // ensures v is used
+    }
 
-	if len(errors) > 0 {
-		return UdpListenerConfigMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return UdpListenerConfigMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // UdpListenerConfigMultiError is an error wrapping multiple validation errors
@@ -160,11 +160,11 @@ type UdpListenerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m UdpListenerConfigMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -173,10 +173,10 @@ func (m UdpListenerConfigMultiError) AllErrors() []error { return m }
 // UdpListenerConfigValidationError is the validation error returned by
 // UdpListenerConfig.Validate if the designated constraints aren't met.
 type UdpListenerConfigValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -193,44 +193,44 @@ func (e UdpListenerConfigValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e UdpListenerConfigValidationError) ErrorName() string {
-	return "UdpListenerConfigValidationError"
+    return "UdpListenerConfigValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e UdpListenerConfigValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sUdpListenerConfig.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sUdpListenerConfig.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = UdpListenerConfigValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = UdpListenerConfigValidationError{}
 
 // Validate checks the field values on ActiveRawUdpListenerConfig with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ActiveRawUdpListenerConfig) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ActiveRawUdpListenerConfig with the
@@ -238,21 +238,21 @@ func (m *ActiveRawUdpListenerConfig) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ActiveRawUdpListenerConfigMultiError, or nil if none found.
 func (m *ActiveRawUdpListenerConfig) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ActiveRawUdpListenerConfig) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(errors) > 0 {
-		return ActiveRawUdpListenerConfigMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ActiveRawUdpListenerConfigMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ActiveRawUdpListenerConfigMultiError is an error wrapping multiple
@@ -262,11 +262,11 @@ type ActiveRawUdpListenerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ActiveRawUdpListenerConfigMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -275,10 +275,10 @@ func (m ActiveRawUdpListenerConfigMultiError) AllErrors() []error { return m }
 // ActiveRawUdpListenerConfigValidationError is the validation error returned
 // by ActiveRawUdpListenerConfig.Validate if the designated constraints aren't met.
 type ActiveRawUdpListenerConfigValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -295,35 +295,35 @@ func (e ActiveRawUdpListenerConfigValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ActiveRawUdpListenerConfigValidationError) ErrorName() string {
-	return "ActiveRawUdpListenerConfigValidationError"
+    return "ActiveRawUdpListenerConfigValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ActiveRawUdpListenerConfigValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sActiveRawUdpListenerConfig.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sActiveRawUdpListenerConfig.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ActiveRawUdpListenerConfigValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ActiveRawUdpListenerConfigValidationError{}

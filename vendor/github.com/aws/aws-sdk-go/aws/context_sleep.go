@@ -1,7 +1,7 @@
 package aws
 
 import (
-	"time"
+    "time"
 )
 
 // SleepWithContext will wait for the timer duration to expire, or the context
@@ -10,15 +10,15 @@ import (
 //
 // Expects Context to always return a non-nil error if the Done channel is closed.
 func SleepWithContext(ctx Context, dur time.Duration) error {
-	t := time.NewTimer(dur)
-	defer t.Stop()
+    t := time.NewTimer(dur)
+    defer t.Stop()
 
-	select {
-	case <-t.C:
-		break
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+    select {
+    case <-t.C:
+        break
+    case <-ctx.Done():
+        return ctx.Err()
+    }
 
-	return nil
+    return nil
 }

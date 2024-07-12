@@ -1,0 +1,48 @@
+{
+    "Version": "v0.4.0",
+    "GoVersion": "1.14",
+    "Sum": "h1:BEgLn5cpjn8UN1mAw4NjwDrS35OdebyEtFe+9YPoQUg=",
+    "Packages": {
+        "github.com/jmespath/go-jmespath": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "math",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/jmespath/go-jmespath/internal/testify/assert",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/jmespath/go-jmespath/cmd/jpgo": {
+            "Imports": [
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/jmespath/go-jmespath",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/jmespath/go-jmespath/fuzz": {
+            "Imports": [
+                "github.com/jmespath/go-jmespath"
+            ],
+            "TestImports": null
+        }
+    }
+}

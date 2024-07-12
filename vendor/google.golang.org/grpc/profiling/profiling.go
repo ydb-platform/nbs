@@ -25,7 +25,7 @@
 package profiling
 
 import (
-	internal "google.golang.org/grpc/internal/profiling"
+    internal "google.golang.org/grpc/internal/profiling"
 )
 
 // Enable turns profiling on and off. This operation is safe for concurrent
@@ -36,5 +36,5 @@ import (
 // be done through the profiling service. This is allowed so that users can use
 // heuristics to turn profiling on and off automatically.
 func Enable(enabled bool) {
-	internal.Enable(enabled)
+    internal.Enable(enabled)
 }

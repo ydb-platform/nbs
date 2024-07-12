@@ -19,31 +19,31 @@
 package weightedtarget
 
 import (
-	"encoding/json"
+    "encoding/json"
 
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	"google.golang.org/grpc/serviceconfig"
+    internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+    "google.golang.org/grpc/serviceconfig"
 )
 
 // Target represents one target with the weight and the child policy.
 type Target struct {
-	// Weight is the weight of the child policy.
-	Weight uint32 `json:"weight,omitempty"`
-	// ChildPolicy is the child policy and it's config.
-	ChildPolicy *internalserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
+    // Weight is the weight of the child policy.
+    Weight uint32 `json:"weight,omitempty"`
+    // ChildPolicy is the child policy and it's config.
+    ChildPolicy *internalserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
 }
 
 // LBConfig is the balancer config for weighted_target.
 type LBConfig struct {
-	serviceconfig.LoadBalancingConfig `json:"-"`
+    serviceconfig.LoadBalancingConfig `json:"-"`
 
-	Targets map[string]Target `json:"targets,omitempty"`
+    Targets map[string]Target `json:"targets,omitempty"`
 }
 
 func parseConfig(c json.RawMessage) (*LBConfig, error) {
-	var cfg LBConfig
-	if err := json.Unmarshal(c, &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
+    var cfg LBConfig
+    if err := json.Unmarshal(c, &cfg); err != nil {
+        return nil, err
+    }
+    return &cfg, nil
 }

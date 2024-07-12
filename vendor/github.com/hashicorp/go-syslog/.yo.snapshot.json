@@ -1,0 +1,20 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:KaodqZuhUoZereWVIYmpUgZysurB1kBLX2j0MwMrUAE=",
+    "Packages": {
+        "github.com/hashicorp/go-syslog": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "log/syslog",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

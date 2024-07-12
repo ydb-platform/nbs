@@ -1,0 +1,48 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: kube-vpnkit-forwarder
+rules:
+  - apiGroups: [v1]
+    resources: [services]
+    verbs: [watch]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-vpnkit-forwarder
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-vpnkit-forwarder
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-vpnkit-forwarder
+subjects:
+  - kind: ServiceAccount
+    name: kube-vpnkit-forwarder
+    namespace: kube-system
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vpnkit-forwarder
+  namespace: kube-system
+spec:
+  serviceAccountName: kube-vpnkit-forwarder
+  containers:
+    - name: kube-vpnkit-forwarder
+      image: vpnkit/kube-vpnkit-forwarder:latest
+      command: ["/kube-vpnkit-forwarder", "-path", "/run/host-services/backend.sock"]
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - mountPath: /run/host-services/backend.sock
+          name: api
+  volumes:
+    - name: api
+      hostPath:
+        path: /run/host-services/backend.sock

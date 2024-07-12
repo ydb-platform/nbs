@@ -22,6 +22,6 @@ package testr
 import "testing"
 
 func TestLoggerTestingF(_ *testing.T) {
-	f := &testing.F{}
-	_ = NewWithInterface(f, Options{})
+    f := &testing.F{}
+    _ = NewWithInterface(f, Options{})
 }

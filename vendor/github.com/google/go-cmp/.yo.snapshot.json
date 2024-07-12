@@ -1,0 +1,156 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.13",
+    "Sum": "h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=",
+    "Packages": {
+        "github.com/google/go-cmp/cmp": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/go-cmp/cmp/internal/diff",
+                "github.com/google/go-cmp/cmp/internal/flags",
+                "github.com/google/go-cmp/cmp/internal/function",
+                "github.com/google/go-cmp/cmp/internal/value",
+                "math",
+                "math/rand",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/sha256",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-cmp/cmp/internal/flags",
+                "github.com/google/go-cmp/cmp/internal/testprotos",
+                "github.com/google/go-cmp/cmp/internal/teststructs",
+                "github.com/google/go-cmp/cmp/internal/teststructs/foo1",
+                "github.com/google/go-cmp/cmp/internal/teststructs/foo2",
+                "io",
+                "io/ioutil",
+                "math",
+                "math/rand",
+                "net",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-cmp/cmp/cmpopts": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/internal/function",
+                "math",
+                "reflect",
+                "sort",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-cmp/cmp/internal/flags",
+                "io",
+                "math",
+                "net",
+                "net/netip",
+                "reflect",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-cmp/cmp/internal/diff": {
+            "Imports": [
+                "github.com/google/go-cmp/cmp/internal/flags",
+                "math/rand",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "math/rand",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "github.com/google/go-cmp/cmp/internal/flags": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-cmp/cmp/internal/function": {
+            "Imports": [
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/go-cmp/cmp/internal/testprotos": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-cmp/cmp/internal/teststructs": {
+            "Imports": [
+                "github.com/google/go-cmp/cmp/internal/testprotos",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-cmp/cmp/internal/teststructs/foo1": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-cmp/cmp/internal/teststructs/foo2": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-cmp/cmp/internal/value": {
+            "Imports": [
+                "fmt",
+                "math",
+                "reflect",
+                "sort",
+                "strconv",
+                "unsafe"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/internal/value",
+                "math",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

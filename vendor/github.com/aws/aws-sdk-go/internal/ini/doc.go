@@ -1,16 +1,16 @@
 // Package ini is an LL(1) parser for configuration files.
 //
-//	Example:
-//	sections, err := ini.OpenFile("/path/to/file")
-//	if err != nil {
-//		panic(err)
-//	}
+//    Example:
+//    sections, err := ini.OpenFile("/path/to/file")
+//    if err != nil {
+//        panic(err)
+//    }
 //
-//	profile := "foo"
-//	section, ok := sections.GetSection(profile)
-//	if !ok {
-//		fmt.Printf("section %q could not be found", profile)
-//	}
+//    profile := "foo"
+//    section, ok := sections.GetSection(profile)
+//    if !ok {
+//        fmt.Printf("section %q could not be found", profile)
+//    }
 //
 // Below is the BNF that describes this parser
 //  Grammar:

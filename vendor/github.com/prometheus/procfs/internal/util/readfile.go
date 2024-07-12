@@ -14,8 +14,8 @@
 package util
 
 import (
-	"io"
-	"os"
+    "io"
+    "os"
 )
 
 // ReadFileNoStat uses io.ReadAll to read contents of entire file.
@@ -24,14 +24,14 @@ import (
 // Reads a max file size of 1024kB.  For files larger than this, a scanner
 // should be used.
 func ReadFileNoStat(filename string) ([]byte, error) {
-	const maxBufferSize = 1024 * 1024
+    const maxBufferSize = 1024 * 1024
 
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+    f, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-	reader := io.LimitReader(f, maxBufferSize)
-	return io.ReadAll(reader)
+    reader := io.LimitReader(f, maxBufferSize)
+    return io.ReadAll(reader)
 }

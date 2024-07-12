@@ -47,65 +47,65 @@ package unix
 #include <netinet/tcp.h>
 
 enum {
-	sizeofPtr = sizeof(void*),
+    sizeofPtr = sizeof(void*),
 };
 
 union sockaddr_all {
-	struct sockaddr s1;	// this one gets used for fields
-	struct sockaddr_in s2;	// these pad it out
-	struct sockaddr_in6 s3;
-	struct sockaddr_un s4;
-	struct sockaddr_dl s5;
+    struct sockaddr s1;    // this one gets used for fields
+    struct sockaddr_in s2;    // these pad it out
+    struct sockaddr_in6 s3;
+    struct sockaddr_un s4;
+    struct sockaddr_dl s5;
 };
 
 struct sockaddr_any {
-	struct sockaddr addr;
-	char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
+    struct sockaddr addr;
+    char pad[sizeof(union sockaddr_all) - sizeof(struct sockaddr)];
 };
 
 // This structure is a duplicate of if_data on FreeBSD 8-STABLE.
 // See /usr/include/net/if.h.
 struct if_data8 {
-	u_char  ifi_type;
-	u_char  ifi_physical;
-	u_char  ifi_addrlen;
-	u_char  ifi_hdrlen;
-	u_char  ifi_link_state;
-	u_char  ifi_spare_char1;
-	u_char  ifi_spare_char2;
-	u_char  ifi_datalen;
-	u_long  ifi_mtu;
-	u_long  ifi_metric;
-	u_long  ifi_baudrate;
-	u_long  ifi_ipackets;
-	u_long  ifi_ierrors;
-	u_long  ifi_opackets;
-	u_long  ifi_oerrors;
-	u_long  ifi_collisions;
-	u_long  ifi_ibytes;
-	u_long  ifi_obytes;
-	u_long  ifi_imcasts;
-	u_long  ifi_omcasts;
-	u_long  ifi_iqdrops;
-	u_long  ifi_noproto;
-	u_long  ifi_hwassist;
+    u_char  ifi_type;
+    u_char  ifi_physical;
+    u_char  ifi_addrlen;
+    u_char  ifi_hdrlen;
+    u_char  ifi_link_state;
+    u_char  ifi_spare_char1;
+    u_char  ifi_spare_char2;
+    u_char  ifi_datalen;
+    u_long  ifi_mtu;
+    u_long  ifi_metric;
+    u_long  ifi_baudrate;
+    u_long  ifi_ipackets;
+    u_long  ifi_ierrors;
+    u_long  ifi_opackets;
+    u_long  ifi_oerrors;
+    u_long  ifi_collisions;
+    u_long  ifi_ibytes;
+    u_long  ifi_obytes;
+    u_long  ifi_imcasts;
+    u_long  ifi_omcasts;
+    u_long  ifi_iqdrops;
+    u_long  ifi_noproto;
+    u_long  ifi_hwassist;
 // FIXME: these are now unions, so maybe need to change definitions?
 #undef ifi_epoch
-	time_t  ifi_epoch;
+    time_t  ifi_epoch;
 #undef ifi_lastchange
-	struct  timeval ifi_lastchange;
+    struct  timeval ifi_lastchange;
 };
 
 // This structure is a duplicate of if_msghdr on FreeBSD 8-STABLE.
 // See /usr/include/net/if.h.
 struct if_msghdr8 {
-	u_short ifm_msglen;
-	u_char  ifm_version;
-	u_char  ifm_type;
-	int     ifm_addrs;
-	int     ifm_flags;
-	u_short ifm_index;
-	struct  if_data8 ifm_data;
+    u_short ifm_msglen;
+    u_char  ifm_version;
+    u_char  ifm_type;
+    int     ifm_addrs;
+    int     ifm_flags;
+    u_short ifm_index;
+    struct  if_data8 ifm_data;
 };
 */
 import "C"
@@ -113,20 +113,20 @@ import "C"
 // Machine characteristics
 
 const (
-	SizeofPtr      = C.sizeofPtr
-	SizeofShort    = C.sizeof_short
-	SizeofInt      = C.sizeof_int
-	SizeofLong     = C.sizeof_long
-	SizeofLongLong = C.sizeof_longlong
+    SizeofPtr      = C.sizeofPtr
+    SizeofShort    = C.sizeof_short
+    SizeofInt      = C.sizeof_int
+    SizeofLong     = C.sizeof_long
+    SizeofLongLong = C.sizeof_longlong
 )
 
 // Basic types
 
 type (
-	_C_short     C.short
-	_C_int       C.int
-	_C_long      C.long
-	_C_long_long C.longlong
+    _C_short     C.short
+    _C_int       C.int
+    _C_long      C.long
+    _C_long_long C.longlong
 )
 
 // Time
@@ -148,8 +148,8 @@ type _Gid_t C.gid_t
 // Files
 
 const (
-	_statfsVersion = C.STATFS_VERSION
-	_dirblksiz     = C.DIRBLKSIZ
+    _statfsVersion = C.STATFS_VERSION
+    _dirblksiz     = C.DIRBLKSIZ
 )
 
 type Stat_t C.struct_stat
@@ -165,18 +165,18 @@ type Fsid C.struct_fsid
 // File system limits
 
 const (
-	PathMax = C.PATH_MAX
+    PathMax = C.PATH_MAX
 )
 
 // Advice to Fadvise
 
 const (
-	FADV_NORMAL     = C.POSIX_FADV_NORMAL
-	FADV_RANDOM     = C.POSIX_FADV_RANDOM
-	FADV_SEQUENTIAL = C.POSIX_FADV_SEQUENTIAL
-	FADV_WILLNEED   = C.POSIX_FADV_WILLNEED
-	FADV_DONTNEED   = C.POSIX_FADV_DONTNEED
-	FADV_NOREUSE    = C.POSIX_FADV_NOREUSE
+    FADV_NORMAL     = C.POSIX_FADV_NORMAL
+    FADV_RANDOM     = C.POSIX_FADV_RANDOM
+    FADV_SEQUENTIAL = C.POSIX_FADV_SEQUENTIAL
+    FADV_WILLNEED   = C.POSIX_FADV_WILLNEED
+    FADV_DONTNEED   = C.POSIX_FADV_DONTNEED
+    FADV_NOREUSE    = C.POSIX_FADV_NOREUSE
 )
 
 // Sockets
@@ -218,29 +218,29 @@ type IPv6MTUInfo C.struct_ip6_mtuinfo
 type ICMPv6Filter C.struct_icmp6_filter
 
 const (
-	SizeofSockaddrInet4    = C.sizeof_struct_sockaddr_in
-	SizeofSockaddrInet6    = C.sizeof_struct_sockaddr_in6
-	SizeofSockaddrAny      = C.sizeof_struct_sockaddr_any
-	SizeofSockaddrUnix     = C.sizeof_struct_sockaddr_un
-	SizeofSockaddrDatalink = C.sizeof_struct_sockaddr_dl
-	SizeofXucred           = C.sizeof_struct_xucred
-	SizeofLinger           = C.sizeof_struct_linger
-	SizeofIovec            = C.sizeof_struct_iovec
-	SizeofIPMreq           = C.sizeof_struct_ip_mreq
-	SizeofIPMreqn          = C.sizeof_struct_ip_mreqn
-	SizeofIPv6Mreq         = C.sizeof_struct_ipv6_mreq
-	SizeofMsghdr           = C.sizeof_struct_msghdr
-	SizeofCmsghdr          = C.sizeof_struct_cmsghdr
-	SizeofInet6Pktinfo     = C.sizeof_struct_in6_pktinfo
-	SizeofIPv6MTUInfo      = C.sizeof_struct_ip6_mtuinfo
-	SizeofICMPv6Filter     = C.sizeof_struct_icmp6_filter
+    SizeofSockaddrInet4    = C.sizeof_struct_sockaddr_in
+    SizeofSockaddrInet6    = C.sizeof_struct_sockaddr_in6
+    SizeofSockaddrAny      = C.sizeof_struct_sockaddr_any
+    SizeofSockaddrUnix     = C.sizeof_struct_sockaddr_un
+    SizeofSockaddrDatalink = C.sizeof_struct_sockaddr_dl
+    SizeofXucred           = C.sizeof_struct_xucred
+    SizeofLinger           = C.sizeof_struct_linger
+    SizeofIovec            = C.sizeof_struct_iovec
+    SizeofIPMreq           = C.sizeof_struct_ip_mreq
+    SizeofIPMreqn          = C.sizeof_struct_ip_mreqn
+    SizeofIPv6Mreq         = C.sizeof_struct_ipv6_mreq
+    SizeofMsghdr           = C.sizeof_struct_msghdr
+    SizeofCmsghdr          = C.sizeof_struct_cmsghdr
+    SizeofInet6Pktinfo     = C.sizeof_struct_in6_pktinfo
+    SizeofIPv6MTUInfo      = C.sizeof_struct_ip6_mtuinfo
+    SizeofICMPv6Filter     = C.sizeof_struct_icmp6_filter
 )
 
 // Ptrace requests
 const (
-	PTRACE_TRACEME = C.PT_TRACE_ME
-	PTRACE_CONT    = C.PT_CONTINUE
-	PTRACE_KILL    = C.PT_KILL
+    PTRACE_TRACEME = C.PT_TRACE_ME
+    PTRACE_CONT    = C.PT_CONTINUE
+    PTRACE_KILL    = C.PT_KILL
 )
 
 type PtraceLwpInfoStruct C.struct_ptrace_lwpinfo
@@ -269,15 +269,15 @@ type FdSet C.fd_set
 // Routing and interface messages
 
 const (
-	sizeofIfMsghdr         = C.sizeof_struct_if_msghdr
-	SizeofIfMsghdr         = C.sizeof_struct_if_msghdr8
-	sizeofIfData           = C.sizeof_struct_if_data
-	SizeofIfData           = C.sizeof_struct_if_data8
-	SizeofIfaMsghdr        = C.sizeof_struct_ifa_msghdr
-	SizeofIfmaMsghdr       = C.sizeof_struct_ifma_msghdr
-	SizeofIfAnnounceMsghdr = C.sizeof_struct_if_announcemsghdr
-	SizeofRtMsghdr         = C.sizeof_struct_rt_msghdr
-	SizeofRtMetrics        = C.sizeof_struct_rt_metrics
+    sizeofIfMsghdr         = C.sizeof_struct_if_msghdr
+    SizeofIfMsghdr         = C.sizeof_struct_if_msghdr8
+    sizeofIfData           = C.sizeof_struct_if_data
+    SizeofIfData           = C.sizeof_struct_if_data8
+    SizeofIfaMsghdr        = C.sizeof_struct_ifa_msghdr
+    SizeofIfmaMsghdr       = C.sizeof_struct_ifma_msghdr
+    SizeofIfAnnounceMsghdr = C.sizeof_struct_if_announcemsghdr
+    SizeofRtMsghdr         = C.sizeof_struct_rt_msghdr
+    SizeofRtMetrics        = C.sizeof_struct_rt_metrics
 )
 
 type ifMsghdr C.struct_if_msghdr
@@ -301,13 +301,13 @@ type RtMetrics C.struct_rt_metrics
 // Berkeley packet filter
 
 const (
-	SizeofBpfVersion    = C.sizeof_struct_bpf_version
-	SizeofBpfStat       = C.sizeof_struct_bpf_stat
-	SizeofBpfZbuf       = C.sizeof_struct_bpf_zbuf
-	SizeofBpfProgram    = C.sizeof_struct_bpf_program
-	SizeofBpfInsn       = C.sizeof_struct_bpf_insn
-	SizeofBpfHdr        = C.sizeof_struct_bpf_hdr
-	SizeofBpfZbufHeader = C.sizeof_struct_bpf_zbuf_header
+    SizeofBpfVersion    = C.sizeof_struct_bpf_version
+    SizeofBpfStat       = C.sizeof_struct_bpf_stat
+    SizeofBpfZbuf       = C.sizeof_struct_bpf_zbuf
+    SizeofBpfProgram    = C.sizeof_struct_bpf_program
+    SizeofBpfInsn       = C.sizeof_struct_bpf_insn
+    SizeofBpfHdr        = C.sizeof_struct_bpf_hdr
+    SizeofBpfZbufHeader = C.sizeof_struct_bpf_zbuf_header
 )
 
 type BpfVersion C.struct_bpf_version
@@ -333,11 +333,11 @@ type Winsize C.struct_winsize
 // fchmodat-like syscalls.
 
 const (
-	AT_FDCWD            = C.AT_FDCWD
-	AT_EACCESS          = C.AT_EACCESS
-	AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
-	AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
-	AT_REMOVEDIR        = C.AT_REMOVEDIR
+    AT_FDCWD            = C.AT_FDCWD
+    AT_EACCESS          = C.AT_EACCESS
+    AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
+    AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
+    AT_REMOVEDIR        = C.AT_REMOVEDIR
 )
 
 // poll
@@ -345,17 +345,17 @@ const (
 type PollFd C.struct_pollfd
 
 const (
-	POLLERR      = C.POLLERR
-	POLLHUP      = C.POLLHUP
-	POLLIN       = C.POLLIN
-	POLLINIGNEOF = C.POLLINIGNEOF
-	POLLNVAL     = C.POLLNVAL
-	POLLOUT      = C.POLLOUT
-	POLLPRI      = C.POLLPRI
-	POLLRDBAND   = C.POLLRDBAND
-	POLLRDNORM   = C.POLLRDNORM
-	POLLWRBAND   = C.POLLWRBAND
-	POLLWRNORM   = C.POLLWRNORM
+    POLLERR      = C.POLLERR
+    POLLHUP      = C.POLLHUP
+    POLLIN       = C.POLLIN
+    POLLINIGNEOF = C.POLLINIGNEOF
+    POLLNVAL     = C.POLLNVAL
+    POLLOUT      = C.POLLOUT
+    POLLPRI      = C.POLLPRI
+    POLLRDBAND   = C.POLLRDBAND
+    POLLRDNORM   = C.POLLRDNORM
+    POLLWRBAND   = C.POLLWRBAND
+    POLLWRNORM   = C.POLLWRNORM
 )
 
 // Capabilities

@@ -1,0 +1,41 @@
+{
+    "Version": "v2.0.0+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:bXhRBIXoTm9BYHS3gE0TtQuyNZyeEMux2sDi4oo5YOo=",
+    "Packages": {
+        "github.com/coreos/go-etcd/etcd": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "net",
+                "net/url",
+                "os",
+                "reflect",
+                "runtime",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

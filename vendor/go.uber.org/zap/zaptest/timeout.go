@@ -21,9 +21,9 @@
 package zaptest
 
 import (
-	"time"
+    "time"
 
-	"go.uber.org/zap/internal/ztest"
+    "go.uber.org/zap/internal/ztest"
 )
 
 // Timeout scales the provided duration by $TEST_TIMEOUT_SCALE.
@@ -32,7 +32,7 @@ import (
 // used outside zap itself. It was introduced before Go supported internal
 // packages.
 func Timeout(base time.Duration) time.Duration {
-	return ztest.Timeout(base)
+    return ztest.Timeout(base)
 }
 
 // Sleep scales the sleep duration by $TEST_TIMEOUT_SCALE.
@@ -41,5 +41,5 @@ func Timeout(base time.Duration) time.Duration {
 // used outside zap itself. It was introduced before Go supported internal
 // packages.
 func Sleep(base time.Duration) {
-	ztest.Sleep(base)
+    ztest.Sleep(base)
 }

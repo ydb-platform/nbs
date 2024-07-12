@@ -1,0 +1,25 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    accesslog
+    bootstrap
+    cluster
+    common
+    core
+    endpoint
+    filter
+    grpc_credential
+    health_checker
+    listener
+    metrics
+    overload
+    ratelimit
+    rbac
+    resource_monitor
+    retry
+    route
+    tap
+    trace
+    transport_socket
+    upstream
+)

@@ -1,15 +1,15 @@
 package runtime
 
 import (
-	"context"
-	"io"
-	"net/http"
+    "context"
+    "io"
+    "net/http"
 
-	"github.com/golang/protobuf/ptypes/any"
-	"github.com/grpc-ecosystem/grpc-gateway/internal"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/status"
+    "github.com/golang/protobuf/ptypes/any"
+    "github.com/grpc-ecosystem/grpc-gateway/internal"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/status"
 )
 
 // StreamErrorHandlerFunc accepts an error as a gRPC error generated via status package and translates it into a
@@ -33,50 +33,50 @@ var _ ProtoErrorHandlerFunc = DefaultHTTPProtoErrorHandler
 //
 // Do not set this function to HTTPError variable directly, use WithProtoErrorHandler option instead.
 func DefaultHTTPProtoErrorHandler(ctx context.Context, mux *ServeMux, marshaler Marshaler, w http.ResponseWriter, _ *http.Request, err error) {
-	// return Internal when Marshal failed
-	const fallback = `{"code": 13, "message": "failed to marshal error message"}`
+    // return Internal when Marshal failed
+    const fallback = `{"code": 13, "message": "failed to marshal error message"}`
 
-	s, ok := status.FromError(err)
-	if !ok {
-		s = status.New(codes.Unknown, err.Error())
-	}
+    s, ok := status.FromError(err)
+    if !ok {
+        s = status.New(codes.Unknown, err.Error())
+    }
 
-	w.Header().Del("Trailer")
+    w.Header().Del("Trailer")
 
-	contentType := marshaler.ContentType()
-	// Check marshaler on run time in order to keep backwards compatibility
-	// An interface param needs to be added to the ContentType() function on
-	// the Marshal interface to be able to remove this check
-	if typeMarshaler, ok := marshaler.(contentTypeMarshaler); ok {
-		pb := s.Proto()
-		contentType = typeMarshaler.ContentTypeFromMessage(pb)
-	}
-	w.Header().Set("Content-Type", contentType)
+    contentType := marshaler.ContentType()
+    // Check marshaler on run time in order to keep backwards compatibility
+    // An interface param needs to be added to the ContentType() function on
+    // the Marshal interface to be able to remove this check
+    if typeMarshaler, ok := marshaler.(contentTypeMarshaler); ok {
+        pb := s.Proto()
+        contentType = typeMarshaler.ContentTypeFromMessage(pb)
+    }
+    w.Header().Set("Content-Type", contentType)
 
-	buf, merr := marshaler.Marshal(s.Proto())
-	if merr != nil {
-		grpclog.Infof("Failed to marshal error message %q: %v", s.Proto(), merr)
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, err := io.WriteString(w, fallback); err != nil {
-			grpclog.Infof("Failed to write response: %v", err)
-		}
-		return
-	}
+    buf, merr := marshaler.Marshal(s.Proto())
+    if merr != nil {
+        grpclog.Infof("Failed to marshal error message %q: %v", s.Proto(), merr)
+        w.WriteHeader(http.StatusInternalServerError)
+        if _, err := io.WriteString(w, fallback); err != nil {
+            grpclog.Infof("Failed to write response: %v", err)
+        }
+        return
+    }
 
-	md, ok := ServerMetadataFromContext(ctx)
-	if !ok {
-		grpclog.Infof("Failed to extract ServerMetadata from context")
-	}
+    md, ok := ServerMetadataFromContext(ctx)
+    if !ok {
+        grpclog.Infof("Failed to extract ServerMetadata from context")
+    }
 
-	handleForwardResponseServerMetadata(w, mux, md)
-	handleForwardResponseTrailerHeader(w, md)
-	st := HTTPStatusFromCode(s.Code())
-	w.WriteHeader(st)
-	if _, err := w.Write(buf); err != nil {
-		grpclog.Infof("Failed to write response: %v", err)
-	}
+    handleForwardResponseServerMetadata(w, mux, md)
+    handleForwardResponseTrailerHeader(w, md)
+    st := HTTPStatusFromCode(s.Code())
+    w.WriteHeader(st)
+    if _, err := w.Write(buf); err != nil {
+        grpclog.Infof("Failed to write response: %v", err)
+    }
 
-	handleForwardResponseTrailer(w, md)
+    handleForwardResponseTrailer(w, md)
 }
 
 // DefaultHTTPStreamErrorHandler converts the given err into a *StreamError via
@@ -87,20 +87,20 @@ func DefaultHTTPProtoErrorHandler(ctx context.Context, mux *ServeMux, marshaler 
 // from the gRPC code via HTTPStatusFromCode. If the given err does not contain a
 // gRPC status, an "Unknown" gRPC code is used and "Internal Server Error" HTTP code.
 func DefaultHTTPStreamErrorHandler(_ context.Context, err error) *StreamError {
-	grpcCode := codes.Unknown
-	grpcMessage := err.Error()
-	var grpcDetails []*any.Any
-	if s, ok := status.FromError(err); ok {
-		grpcCode = s.Code()
-		grpcMessage = s.Message()
-		grpcDetails = s.Proto().GetDetails()
-	}
-	httpCode := HTTPStatusFromCode(grpcCode)
-	return &StreamError{
-		GrpcCode:   int32(grpcCode),
-		HttpCode:   int32(httpCode),
-		Message:    grpcMessage,
-		HttpStatus: http.StatusText(httpCode),
-		Details:    grpcDetails,
-	}
+    grpcCode := codes.Unknown
+    grpcMessage := err.Error()
+    var grpcDetails []*any.Any
+    if s, ok := status.FromError(err); ok {
+        grpcCode = s.Code()
+        grpcMessage = s.Message()
+        grpcDetails = s.Proto().GetDetails()
+    }
+    httpCode := HTTPStatusFromCode(grpcCode)
+    return &StreamError{
+        GrpcCode:   int32(grpcCode),
+        HttpCode:   int32(httpCode),
+        Message:    grpcMessage,
+        HttpStatus: http.StatusText(httpCode),
+        Details:    grpcDetails,
+    }
 }

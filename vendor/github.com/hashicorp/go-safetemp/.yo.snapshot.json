@@ -1,0 +1,20 @@
+{
+    "Version": "v1.0.0",
+    "GoVersion": "",
+    "Sum": "h1:2HR189eFNrjHQyENnQMMpCiBAsRxzbTMIgBhEyExpmo=",
+    "Packages": {
+        "github.com/hashicorp/go-safetemp": {
+            "Imports": [
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,189 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:jXtAWT2sw2Yu8mYU0BC7FDidR+ngxFPSE+pl6IUu3/0=",
+    "Packages": {
+        "github.com/google/go-attestation/attest": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/x509",
+                "encoding/asn1",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-attestation/attest/internal",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/legacy/tpm2/credactivation",
+                "github.com/google/go-tpm/tpm",
+                "github.com/google/go-tpm/tpmutil",
+                "github.com/google/go-tpm/tpmutil/tbs",
+                "github.com/google/go-tspi/verification",
+                "golang.org/x/sys/windows",
+                "io",
+                "math/big",
+                "net/url",
+                "os",
+                "path",
+                "sort",
+                "strings",
+                "syscall",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/subtle",
+                "crypto/x509",
+                "encoding/asn1",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "flag",
+                "fmt",
+                "github.com/google/go-attestation/attest",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-tpm-tools/simulator",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "log",
+                "math/big",
+                "math/rand",
+                "os",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/google/go-attestation/attest/attest-tool": {
+            "Imports": [
+                "bytes",
+                "crypto/ecdsa",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "encoding/hex",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-attestation/attest",
+                "github.com/google/go-attestation/attest/attest-tool/internal",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-attestation/attest/attest-tool/internal": {
+            "Imports": [
+                "github.com/google/go-attestation/attest",
+                "github.com/google/go-tpm/legacy/tpm2"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-attestation/attest/attest-tool/internal/eventlog": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "encoding/binary",
+                "fmt",
+                "github.com/google/go-attestation/attest",
+                "io",
+                "unicode/utf16"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/google/go-attestation/attest",
+                "github.com/google/go-attestation/attest/attest-tool/internal",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/go-attestation/attest/internal": {
+            "Imports": [
+                "bytes",
+                "crypto/x509",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "unicode/utf16"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "testing"
+            ]
+        },
+        "github.com/google/go-attestation/attributecert": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/asn1",
+                "errors",
+                "fmt",
+                "github.com/google/go-attestation/oid",
+                "math/big",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/x509",
+                "encoding/json",
+                "os",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-attestation/ci": {
+            "Imports": [
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/binary",
+                "encoding/hex",
+                "flag",
+                "fmt",
+                "math/big",
+                "os",
+                "os/exec",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-attestation/oid": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/go-attestation/x509": {
+            "Imports": [
+                "crypto/x509/pkix",
+                "encoding/asn1",
+                "errors",
+                "fmt",
+                "github.com/google/go-attestation/oid"
+            ],
+            "TestImports": null
+        }
+    }
+}

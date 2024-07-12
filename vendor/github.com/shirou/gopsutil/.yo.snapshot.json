@@ -1,0 +1,319 @@
+{
+    "Version": "v3.21.11+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=",
+    "Packages": {
+        "github.com/shirou/gopsutil": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/shirou/gopsutil/cpu": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/tklauser/go-sysconf",
+                "github.com/yusufpapurcu/wmi",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "math",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/stretchr/testify/assert",
+                "os",
+                "os/exec",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/shirou/gopsutil/disk": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "runtime",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/docker": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/cpu",
+                "github.com/shirou/gopsutil/internal/common",
+                "os",
+                "os/exec",
+                "path",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/host": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/shirou/gopsutil/process",
+                "github.com/yusufpapurcu/wmi",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io/ioutil",
+                "math",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync/atomic",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "os",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/internal/common": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/yusufpapurcu/wmi",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io",
+                "io/ioutil",
+                "math",
+                "net/url",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/shirou/gopsutil/load": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "github.com/shirou/gopsutil/internal/common",
+                "golang.org/x/sys/unix",
+                "io/ioutil",
+                "log",
+                "math",
+                "os/exec",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/mem": {
+            "Imports": [
+                "bufio",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io",
+                "math",
+                "os",
+                "os/exec",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/stretchr/testify/assert",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/net": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "golang.org/x/sys/windows",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "os/exec",
+                "regexp",
+                "strconv",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io/ioutil",
+                "math",
+                "net",
+                "os",
+                "runtime",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/shirou/gopsutil/process": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/shirou/gopsutil/cpu",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/shirou/gopsutil/mem",
+                "github.com/shirou/gopsutil/net",
+                "github.com/tklauser/go-sysconf",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "io",
+                "io/ioutil",
+                "math",
+                "os",
+                "os/exec",
+                "os/user",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/shirou/gopsutil/internal/common",
+                "github.com/stretchr/testify/assert",
+                "golang.org/x/sys/unix",
+                "io/ioutil",
+                "net",
+                "os",
+                "os/exec",
+                "os/user",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/shirou/gopsutil/winservices": {
+            "Imports": [
+                "context",
+                "golang.org/x/sys/windows",
+                "golang.org/x/sys/windows/svc",
+                "golang.org/x/sys/windows/svc/mgr",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

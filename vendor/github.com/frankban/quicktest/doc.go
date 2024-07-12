@@ -27,7 +27,7 @@ instance:
         })
     }
 
-Assertions
+# Assertions
 
 An assertion looks like this, where qt.Equals could be replaced by any
 available checker. If the assertion fails, the underlying Fatal method is
@@ -51,7 +51,7 @@ ErrorMatches, IsNil and others. More can be added by implementing the Checker
 interface. Below, we list the checkers implemented by the package in alphabetical
 order.
 
-All
+# All
 
 All returns a Checker that uses the given checker to check elements of slice or
 array or the values of a map. It succeeds if all elements pass the check.
@@ -64,7 +64,7 @@ For example:
 
 See also Any and Contains.
 
-Any
+# Any
 
 Any returns a Checker that uses the given checker to check elements of a slice
 or array or the values from a map. It succeeds if any element passes the check.
@@ -76,7 +76,7 @@ For example:
 
 See also All and Contains.
 
-CmpEquals
+# CmpEquals
 
 CmpEquals checks equality of two arbitrary values according to the provided
 compare options. DeepEquals is more commonly used when no compare options are
@@ -87,7 +87,7 @@ Example calls:
     c.Assert(list, qt.CmpEquals(cmpopts.SortSlices), []int{42, 47})
     c.Assert(got, qt.CmpEquals(), []int{42, 47}) // Same as qt.DeepEquals.
 
-CodecEquals
+# CodecEquals
 
 CodecEquals returns a checker that checks for codec value equivalence.
 
@@ -109,7 +109,7 @@ using CmpEquals(opts) to perform the check.
 
 See JSONEquals for an example of this in use.
 
-Contains
+# Contains
 
 Contains checks that a map, slice, array or string contains a value. It's the
 same as using Any(Equals), except that it has a special case for strings - if
@@ -121,7 +121,7 @@ For example:
     c.Assert("hello world", qt.Contains, "world")
     c.Assert([]int{3,5,7,99}, qt.Contains, 7)
 
-ContentEquals
+# ContentEquals
 
 ContentEquals is is like DeepEquals but any slices in the compared values will be sorted before being compared.
 
@@ -129,7 +129,7 @@ For example:
 
     c.Assert([]string{"c", "a", "b"}, qt.ContentEquals, []string{"a", "b", "c"})
 
-DeepEquals
+# DeepEquals
 
 DeepEquals checks that two arbitrary values are deeply equal.
 The comparison is done using the github.com/google/go-cmp/cmp package.
@@ -140,7 +140,7 @@ Example call:
 
     c.Assert(got, qt.DeepEquals, []int{42, 47})
 
-Equals
+# Equals
 
 Equals checks that two values are equal, as compared with Go's == operator.
 
@@ -154,7 +154,7 @@ Note that the following will fail:
 
 Use the IsNil checker below for this kind of nil check.
 
-ErrorAs
+# ErrorAs
 
 ErrorAs checks that the error is or wraps a specific error type. If so, it
 assigns it to the provided pointer. This is analogous to calling errors.As.
@@ -170,7 +170,7 @@ For instance:
         c.Assert(pathError.Path, Equals, "some_path")
     }
 
-ErrorIs
+# ErrorIs
 
 ErrorIs checks that the error is or wraps a specific error value. This is
 analogous to calling errors.Is.
@@ -179,7 +179,7 @@ For instance:
 
     c.Assert(err, qt.ErrorIs, os.ErrNotExist)
 
-ErrorMatches
+# ErrorMatches
 
 ErrorMatches checks that the provided value is an error whose message matches
 the provided regular expression.
@@ -188,7 +188,7 @@ For instance:
 
     c.Assert(err, qt.ErrorMatches, `bad wolf .*`)
 
-HasLen
+# HasLen
 
 HasLen checks that the provided value has the given length.
 
@@ -197,7 +197,7 @@ For instance:
     c.Assert([]int{42, 47}, qt.HasLen, 2)
     c.Assert(myMap, qt.HasLen, 42)
 
-Implements
+# Implements
 
 Implements checks that the provided value implements an interface. The
 interface is specified with a pointer to an interface variable.
@@ -207,7 +207,7 @@ For instance:
     var rc io.ReadCloser
     c.Assert(myReader, qt.Implements, &rc)
 
-IsFalse
+# IsFalse
 
 IsFalse checks that the provided value is false.
 The value must have a boolean underlying type.
@@ -217,7 +217,7 @@ For instance:
     c.Assert(false, qt.IsFalse)
     c.Assert(IsValid(), qt.IsFalse)
 
-IsNil
+# IsNil
 
 IsNil checks that the provided value is nil.
 
@@ -235,7 +235,7 @@ So it's just fine to check an error like this:
 
     c.Assert(err, qt.IsNil)
 
-IsNotNil
+# IsNotNil
 
 IsNotNil is a Checker checking that the provided value is not nil.
 IsNotNil is the equivalent of qt.Not(qt.IsNil)
@@ -244,7 +244,7 @@ For instance:
 
     c.Assert(got, qt.IsNotNil)
 
-IsTrue
+# IsTrue
 
 IsTrue checks that the provided value is true.
 The value must have a boolean underlying type.
@@ -254,7 +254,7 @@ For instance:
     c.Assert(true, qt.IsTrue)
     c.Assert(myBoolean(false), qt.IsTrue)
 
-JSONEquals
+# JSONEquals
 
 JSONEquals checks whether a byte slice or string is JSON-equivalent to a Go
 value. See CodecEquals for more information.
@@ -266,7 +266,7 @@ For instance:
 
     c.Assert(`{"First": 47.11}`, qt.JSONEquals, &MyStruct{First: 47.11})
 
-Matches
+# Matches
 
 Matches checks that a string or result of calling the String method
 (if the value implements fmt.Stringer) matches the provided regular expression.
@@ -276,7 +276,7 @@ For instance:
     c.Assert("these are the voyages", qt.Matches, `these are .*`)
     c.Assert(net.ParseIP("1.2.3.4"), qt.Matches, `1.*`)
 
-Not
+# Not
 
 Not returns a Checker negating the given Checker.
 
@@ -285,7 +285,7 @@ For instance:
     c.Assert(got, qt.Not(qt.IsNil))
     c.Assert(answer, qt.Not(qt.Equals), 42)
 
-PanicMatches
+# PanicMatches
 
 PanicMatches checks that the provided function panics with a message matching
 the provided regular expression.
@@ -294,7 +294,7 @@ For instance:
 
     c.Assert(func() {panic("bad wolf ...")}, qt.PanicMatches, `bad wolf .*`)
 
-Satisfies
+# Satisfies
 
 Satisfies checks that the provided value, when used as argument of the provided
 predicate function, causes the function to return true. The function must be of
@@ -308,7 +308,7 @@ For instance:
     // Check that a floating point number is a not-a-number.
     c.Assert(f, qt.Satisfies, math.IsNaN)
 
-Deferred Execution
+# Deferred Execution
 
 The testing.TB.Cleanup helper provides the ability to defer the execution of
 functions that will be run when the test completes. This is often useful for

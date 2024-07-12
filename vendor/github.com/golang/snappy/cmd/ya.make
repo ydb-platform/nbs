@@ -1,1 +1,5 @@
-RECURSE(snappytool)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    snappytool
+)

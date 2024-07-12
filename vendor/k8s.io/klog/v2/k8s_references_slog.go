@@ -20,20 +20,20 @@ limitations under the License.
 package klog
 
 import (
-	"log/slog"
+    "log/slog"
 )
 
 func (ref ObjectRef) LogValue() slog.Value {
-	if ref.Namespace != "" {
-		return slog.GroupValue(slog.String("name", ref.Name), slog.String("namespace", ref.Namespace))
-	}
-	return slog.GroupValue(slog.String("name", ref.Name))
+    if ref.Namespace != "" {
+        return slog.GroupValue(slog.String("name", ref.Name), slog.String("namespace", ref.Namespace))
+    }
+    return slog.GroupValue(slog.String("name", ref.Name))
 }
 
 var _ slog.LogValuer = ObjectRef{}
 
 func (ks kobjSlice) LogValue() slog.Value {
-	return slog.AnyValue(ks.MarshalLog())
+    return slog.AnyValue(ks.MarshalLog())
 }
 
 var _ slog.LogValuer = kobjSlice{}

@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type boolean, expected array
+-------------------------------------------------
+    testdata/builtinReverse_not_array:1:1-19    $
+
+std.reverse(false)
+
+-------------------------------------------------
+    During evaluation

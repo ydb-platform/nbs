@@ -17,19 +17,19 @@ limitations under the License.
 package klog_test
 
 import (
-	"testing"
+    "testing"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 func testVerbosity(t *testing.T, logger klog.Logger) {
-	// This runs with -v=5 -vmodule=klog_helper_test=10.
-	logger.V(11).Info("v11 not visible from klogr_helper_test.go")
-	if logger.V(11).Enabled() {
-		t.Error("V(11).Enabled() in klogr_helper_test.go should have returned false.")
-	}
-	logger.V(10).Info("v10 visible from klogr_helper_test.go")
-	if !logger.V(10).Enabled() {
-		t.Error("V(10).Enabled() in klogr_helper_test.go should have returned true.")
-	}
+    // This runs with -v=5 -vmodule=klog_helper_test=10.
+    logger.V(11).Info("v11 not visible from klogr_helper_test.go")
+    if logger.V(11).Enabled() {
+        t.Error("V(11).Enabled() in klogr_helper_test.go should have returned false.")
+    }
+    logger.V(10).Info("v10 visible from klogr_helper_test.go")
+    if !logger.V(10).Enabled() {
+        t.Error("V(10).Enabled() in klogr_helper_test.go should have returned true.")
+    }
 }

@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type string, expected number
+-------------------------------------------------
+    testdata/builtinChar7:1:1-16    $
+
+std.char("xxx")
+
+-------------------------------------------------
+    During evaluation

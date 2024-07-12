@@ -18,11 +18,11 @@
 package xdsresource
 
 import (
-	"net/url"
-	"sort"
-	"strings"
+    "net/url"
+    "sort"
+    "strings"
 
-	"google.golang.org/grpc/internal/envconfig"
+    "google.golang.org/grpc/internal/envconfig"
 )
 
 // FederationScheme is the scheme of a federation resource name.
@@ -37,14 +37,14 @@ const FederationScheme = "xdstp"
 // https://github.com/cncf/xds/blob/main/proposals/TP1-xds-transport-next.md#uri-based-xds-resource-names
 // for details, and examples.
 type Name struct {
-	Scheme    string
-	Authority string
-	Type      string
-	ID        string
+    Scheme    string
+    Authority string
+    Type      string
+    ID        string
 
-	ContextParams map[string]string
+    ContextParams map[string]string
 
-	processingDirective string
+    processingDirective string
 }
 
 // ParseName splits the name and returns a struct representation of the Name.
@@ -56,78 +56,78 @@ type Name struct {
 // The caller can tell if the parsing is successful by checking the returned
 // Scheme.
 func ParseName(name string) *Name {
-	if !envconfig.XDSFederation {
-		// Return "" scheme to use the default authority for the server.
-		return &Name{ID: name}
-	}
-	if !strings.Contains(name, "://") {
-		// Only the long form URL, with ://, is valid.
-		return &Name{ID: name}
-	}
-	parsed, err := url.Parse(name)
-	if err != nil {
-		return &Name{ID: name}
-	}
+    if !envconfig.XDSFederation {
+        // Return "" scheme to use the default authority for the server.
+        return &Name{ID: name}
+    }
+    if !strings.Contains(name, "://") {
+        // Only the long form URL, with ://, is valid.
+        return &Name{ID: name}
+    }
+    parsed, err := url.Parse(name)
+    if err != nil {
+        return &Name{ID: name}
+    }
 
-	ret := &Name{
-		Scheme:    parsed.Scheme,
-		Authority: parsed.Host,
-	}
-	split := strings.SplitN(parsed.Path, "/", 3)
-	if len(split) < 3 {
-		// Path is in the format of "/type/id". There must be at least 3
-		// segments after splitting.
-		return &Name{ID: name}
-	}
-	ret.Type = split[1]
-	ret.ID = split[2]
-	if len(parsed.Query()) != 0 {
-		ret.ContextParams = make(map[string]string)
-		for k, vs := range parsed.Query() {
-			if len(vs) > 0 {
-				// We only keep one value of each key. Behavior for multiple values
-				// is undefined.
-				ret.ContextParams[k] = vs[0]
-			}
-		}
-	}
-	// TODO: processing directive (the part comes after "#" in the URL, stored
-	// in parsed.RawFragment) is kept but not processed. Add support for that
-	// when it's needed.
-	ret.processingDirective = parsed.RawFragment
-	return ret
+    ret := &Name{
+        Scheme:    parsed.Scheme,
+        Authority: parsed.Host,
+    }
+    split := strings.SplitN(parsed.Path, "/", 3)
+    if len(split) < 3 {
+        // Path is in the format of "/type/id". There must be at least 3
+        // segments after splitting.
+        return &Name{ID: name}
+    }
+    ret.Type = split[1]
+    ret.ID = split[2]
+    if len(parsed.Query()) != 0 {
+        ret.ContextParams = make(map[string]string)
+        for k, vs := range parsed.Query() {
+            if len(vs) > 0 {
+                // We only keep one value of each key. Behavior for multiple values
+                // is undefined.
+                ret.ContextParams[k] = vs[0]
+            }
+        }
+    }
+    // TODO: processing directive (the part comes after "#" in the URL, stored
+    // in parsed.RawFragment) is kept but not processed. Add support for that
+    // when it's needed.
+    ret.processingDirective = parsed.RawFragment
+    return ret
 }
 
 // String returns a canonicalized string of name. The context parameters are
 // sorted by the keys.
 func (n *Name) String() string {
-	if n.Scheme == "" {
-		return n.ID
-	}
+    if n.Scheme == "" {
+        return n.ID
+    }
 
-	// Sort and build query.
-	keys := make([]string, 0, len(n.ContextParams))
-	for k := range n.ContextParams {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var pairs []string
-	for _, k := range keys {
-		pairs = append(pairs, strings.Join([]string{k, n.ContextParams[k]}, "="))
-	}
-	rawQuery := strings.Join(pairs, "&")
+    // Sort and build query.
+    keys := make([]string, 0, len(n.ContextParams))
+    for k := range n.ContextParams {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
+    var pairs []string
+    for _, k := range keys {
+        pairs = append(pairs, strings.Join([]string{k, n.ContextParams[k]}, "="))
+    }
+    rawQuery := strings.Join(pairs, "&")
 
-	path := n.Type
-	if n.ID != "" {
-		path = "/" + path + "/" + n.ID
-	}
+    path := n.Type
+    if n.ID != "" {
+        path = "/" + path + "/" + n.ID
+    }
 
-	tempURL := &url.URL{
-		Scheme:      n.Scheme,
-		Host:        n.Authority,
-		Path:        path,
-		RawQuery:    rawQuery,
-		RawFragment: n.processingDirective,
-	}
-	return tempURL.String()
+    tempURL := &url.URL{
+        Scheme:      n.Scheme,
+        Host:        n.Authority,
+        Path:        path,
+        RawQuery:    rawQuery,
+        RawFragment: n.processingDirective,
+    }
+    return tempURL.String()
 }

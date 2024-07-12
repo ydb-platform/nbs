@@ -1,0 +1,83 @@
+{
+    "Version": "v1.24.0",
+    "GoVersion": "1.15",
+    "Sum": "h1:6LRil7J+uh2SZ58Wkm/5aVRpBOZbTtwi8p8gdsix94c=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/defaults",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/protocol/restjson",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/aws/transport/http",
+                "github.com/aws/aws-sdk-go-v2/internal/auth",
+                "github.com/aws/aws-sdk-go-v2/internal/configsources",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/awsrulesfn",
+                "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/internal/endpoints",
+                "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/document",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/encoding/json",
+                "github.com/aws/smithy-go/endpoints",
+                "github.com/aws/smithy-go/io",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/rand",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "math",
+                "net",
+                "net/http",
+                "net/url",
+                "path",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/endpoints",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "github.com/aws/smithy-go/transport/http",
+                "github.com/google/go-cmp/cmp",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/internal/endpoints": {
+            "Imports": [
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+                "github.com/aws/smithy-go/logging",
+                "regexp"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/document"
+            ],
+            "TestImports": null
+        }
+    }
+}

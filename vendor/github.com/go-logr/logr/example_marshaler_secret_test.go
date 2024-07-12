@@ -17,31 +17,31 @@ limitations under the License.
 package logr_test
 
 import (
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // ComplexObjectRef contains more fields than it wants to get logged.
 type ComplexObjectRef struct {
-	Name      string
-	Namespace string
-	Secret    string
+    Name      string
+    Namespace string
+    Secret    string
 }
 
 func (ref ComplexObjectRef) MarshalLog() any {
-	return struct {
-		Name, Namespace string
-	}{
-		Name:      ref.Name,
-		Namespace: ref.Namespace,
-	}
+    return struct {
+        Name, Namespace string
+    }{
+        Name:      ref.Name,
+        Namespace: ref.Namespace,
+    }
 }
 
 var _ logr.Marshaler = ComplexObjectRef{}
 
 func ExampleMarshaler_secret() {
-	l := NewStdoutLogger()
-	secret := ComplexObjectRef{Namespace: "kube-system", Name: "some-secret", Secret: "do-not-log-me"}
-	l.Info("simplified", "secret", secret)
-	// Output:
-	// "level"=0 "msg"="simplified" "secret"={"Name"="some-secret" "Namespace"="kube-system"}
+    l := NewStdoutLogger()
+    secret := ComplexObjectRef{Namespace: "kube-system", Name: "some-secret", Secret: "do-not-log-me"}
+    l.Info("simplified", "secret", secret)
+    // Output:
+    // "level"=0 "msg"="simplified" "secret"={"Name"="some-secret" "Namespace"="kube-system"}
 }

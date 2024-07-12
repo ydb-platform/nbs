@@ -23,7 +23,7 @@
 package hierarchy
 
 import (
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/resolver"
 )
 
 type pathKeyType string
@@ -33,35 +33,35 @@ const pathKey = pathKeyType("grpc.internal.address.hierarchical_path")
 type pathValue []string
 
 func (p pathValue) Equal(o interface{}) bool {
-	op, ok := o.(pathValue)
-	if !ok {
-		return false
-	}
-	if len(op) != len(p) {
-		return false
-	}
-	for i, v := range p {
-		if v != op[i] {
-			return false
-		}
-	}
-	return true
+    op, ok := o.(pathValue)
+    if !ok {
+        return false
+    }
+    if len(op) != len(p) {
+        return false
+    }
+    for i, v := range p {
+        if v != op[i] {
+            return false
+        }
+    }
+    return true
 }
 
 // Get returns the hierarchical path of addr.
 func Get(addr resolver.Address) []string {
-	attrs := addr.BalancerAttributes
-	if attrs == nil {
-		return nil
-	}
-	path, _ := attrs.Value(pathKey).(pathValue)
-	return ([]string)(path)
+    attrs := addr.BalancerAttributes
+    if attrs == nil {
+        return nil
+    }
+    path, _ := attrs.Value(pathKey).(pathValue)
+    return ([]string)(path)
 }
 
 // Set overrides the hierarchical path in addr with path.
 func Set(addr resolver.Address, path []string) resolver.Address {
-	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(pathKey, pathValue(path))
-	return addr
+    addr.BalancerAttributes = addr.BalancerAttributes.WithValue(pathKey, pathValue(path))
+    return addr
 }
 
 // Group splits a slice of addresses into groups based on
@@ -71,10 +71,10 @@ func Set(addr resolver.Address, path []string) resolver.Address {
 // Input:
 // [
 //
-//	{addr0, path: [p0, wt0]}
-//	{addr1, path: [p0, wt1]}
-//	{addr2, path: [p1, wt2]}
-//	{addr3, path: [p1, wt3]}
+//    {addr0, path: [p0, wt0]}
+//    {addr1, path: [p0, wt1]}
+//    {addr2, path: [p1, wt2]}
+//    {addr3, path: [p1, wt3]}
 //
 // ]
 //
@@ -83,30 +83,30 @@ func Set(addr resolver.Address, path []string) resolver.Address {
 //
 // Output:
 //
-//	{
-//	  p0: [
-//	    {addr0, path: [wt0]},
-//	    {addr1, path: [wt1]},
-//	  ],
-//	  p1: [
-//	    {addr2, path: [wt2]},
-//	    {addr3, path: [wt3]},
-//	  ],
-//	}
+//    {
+//      p0: [
+//        {addr0, path: [wt0]},
+//        {addr1, path: [wt1]},
+//      ],
+//      p1: [
+//        {addr2, path: [wt2]},
+//        {addr3, path: [wt3]},
+//      ],
+//    }
 //
 // If hierarchical path is not set, or has no path in it, the address is
 // dropped.
 func Group(addrs []resolver.Address) map[string][]resolver.Address {
-	ret := make(map[string][]resolver.Address)
-	for _, addr := range addrs {
-		oldPath := Get(addr)
-		if len(oldPath) == 0 {
-			continue
-		}
-		curPath := oldPath[0]
-		newPath := oldPath[1:]
-		newAddr := Set(addr, newPath)
-		ret[curPath] = append(ret[curPath], newAddr)
-	}
-	return ret
+    ret := make(map[string][]resolver.Address)
+    for _, addr := range addrs {
+        oldPath := Get(addr)
+        if len(oldPath) == 0 {
+            continue
+        }
+        curPath := oldPath[0]
+        newPath := oldPath[1:]
+        newAddr := Set(addr, newPath)
+        ret[curPath] = append(ret[curPath], newAddr)
+    }
+    return ret
 }

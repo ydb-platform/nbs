@@ -1,0 +1,84 @@
+{
+    "Version": "v1.2.0",
+    "GoVersion": "",
+    "Sum": "h1:Ovs26xHkKqVztRpIrF/92BcuyuQ/YW4NSIpoGtfXNho=",
+    "Packages": {
+        "github.com/grpc-ecosystem/go-grpc-prometheus": {
+            "Imports": [
+                "github.com/prometheus/client_golang/prometheus",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "github.com/grpc-ecosystem/go-grpc-prometheus/examples/testproto",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "github.com/stretchr/testify/suite",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "io",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/grpc-ecosystem/go-grpc-prometheus/examples/grpc-server-with-prometheus/client": {
+            "Imports": [
+                "fmt",
+                "github.com/grpc-ecosystem/go-grpc-prometheus/examples/grpc-server-with-prometheus/protobuf",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/go-grpc-prometheus/examples/grpc-server-with-prometheus/protobuf": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/go-grpc-prometheus/examples/grpc-server-with-prometheus/server": {
+            "Imports": [
+                "fmt",
+                "github.com/grpc-ecosystem/go-grpc-prometheus",
+                "github.com/grpc-ecosystem/go-grpc-prometheus/examples/grpc-server-with-prometheus/protobuf",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "log",
+                "net",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/go-grpc-prometheus/examples/testproto": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        }
+    }
+}

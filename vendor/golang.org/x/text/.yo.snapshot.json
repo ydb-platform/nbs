@@ -1,0 +1,1202 @@
+{
+    "Version": "v0.14.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=",
+    "Packages": {
+        "golang.org/x/text": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/text/cases": {
+            "Imports": [
+                "golang.org/x/text/internal",
+                "golang.org/x/text/language",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/cases",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "golang.org/x/text/unicode/rangetable",
+                "path",
+                "strings",
+                "testing",
+                "unicode",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/cmd/gotext": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "flag",
+                "fmt",
+                "go/build",
+                "go/format",
+                "go/parser",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message/pipeline",
+                "golang.org/x/tools/go/buildutil",
+                "golang.org/x/tools/go/loader",
+                "io",
+                "log",
+                "os",
+                "strings",
+                "sync",
+                "text/template",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/cmd/gotext/examples/extract": {
+            "Imports": [
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/message/catalog"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/cmd/gotext/examples/extract_http": {
+            "Imports": [
+                "golang.org/x/text/cmd/gotext/examples/extract_http/pkg",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/message/catalog",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/cmd/gotext/examples/extract_http/pkg": {
+            "Imports": [
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/cmd/gotext/examples/rewrite": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/collate": {
+            "Imports": [
+                "bytes",
+                "golang.org/x/text/internal/colltab",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/norm",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/zip",
+                "bufio",
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/collate",
+                "golang.org/x/text/collate/build",
+                "golang.org/x/text/internal/colltab",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/norm",
+                "io",
+                "log",
+                "path",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/collate/build": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/internal/colltab",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/norm",
+                "hash/fnv",
+                "io",
+                "log",
+                "reflect",
+                "sort",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/internal/colltab",
+                "sort",
+                "strconv",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/collate/tools/colcmp": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/collate",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/norm",
+                "io",
+                "log",
+                "math",
+                "math/rand",
+                "os",
+                "runtime/pprof",
+                "sort",
+                "strconv",
+                "strings",
+                "text/template",
+                "time",
+                "unicode",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/currency": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/internal/number",
+                "golang.org/x/text/internal/tag",
+                "golang.org/x/text/language",
+                "sort",
+                "time"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "golang.org/x/text/currency",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/unicode/cldr",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/text/date": {
+            "Imports": [
+                "golang.org/x/text/internal/cldrtree"
+            ],
+            "TestImports": [
+                "golang.org/x/text/internal/cldrtree",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/cldr",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "io",
+                "strconv",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/unicode",
+                "golang.org/x/text/transform",
+                "io",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/charmap": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/htmlindex": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/encoding/japanese",
+                "golang.org/x/text/encoding/korean",
+                "golang.org/x/text/encoding/simplifiedchinese",
+                "golang.org/x/text/encoding/traditionalchinese",
+                "golang.org/x/text/encoding/unicode",
+                "golang.org/x/text/language",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/encoding/unicode",
+                "golang.org/x/text/language",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/ianaindex": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/encoding/japanese",
+                "golang.org/x/text/encoding/korean",
+                "golang.org/x/text/encoding/simplifiedchinese",
+                "golang.org/x/text/encoding/traditionalchinese",
+                "golang.org/x/text/encoding/unicode",
+                "golang.org/x/text/transform",
+                "sort",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/ianaindex",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/encoding/japanese",
+                "golang.org/x/text/encoding/korean",
+                "golang.org/x/text/encoding/simplifiedchinese",
+                "golang.org/x/text/encoding/traditionalchinese",
+                "golang.org/x/text/encoding/unicode",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/encoding/internal": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/encoding/internal/enctest": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "io",
+                "os",
+                "strings",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/encoding/internal/identifier": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/text/encoding/japanese": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/encoding/korean": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/simplifiedchinese": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/traditionalchinese": {
+            "Imports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/unicode": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/internal/utf8internal",
+                "golang.org/x/text/runes",
+                "golang.org/x/text/transform",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/encoding/unicode/utf32": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal/identifier",
+                "golang.org/x/text/transform",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/internal/enctest",
+                "golang.org/x/text/transform",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/feature/plural": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/internal/catmsg",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/internal/number",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message/catalog",
+                "io",
+                "reflect",
+                "strconv"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/feature/plural",
+                "golang.org/x/text/internal/catmsg",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/message/catalog",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal": {
+            "Imports": [
+                "golang.org/x/text/language",
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/language",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/catmsg": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/text/language",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "golang.org/x/text/language",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/cldrtree": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/cldr",
+                "io",
+                "log",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/cldr",
+                "log",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/colltab": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/norm",
+                "sort",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/collate",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/rangetable",
+                "reflect",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/internal/export/idna": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/secure/bidirule",
+                "golang.org/x/text/unicode/bidi",
+                "golang.org/x/text/unicode/norm",
+                "math",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "encoding/hex",
+                "fmt",
+                "golang.org/x/text/internal/export/idna",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "log",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/internal/export/unicode": {
+            "Imports": null,
+            "TestImports": [
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/internal/format": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/language",
+                "reflect",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/gen": {
+            "Imports": [
+                "bytes",
+                "encoding/gob",
+                "flag",
+                "fmt",
+                "go/build",
+                "go/format",
+                "golang.org/x/text/unicode/cldr",
+                "hash",
+                "hash/fnv",
+                "io",
+                "log",
+                "net/http",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/internal/gen/bitfield": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "io",
+                "reflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "os",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/language": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/text/internal/tag",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "golang.org/x/text/internal/tag",
+                "golang.org/x/text/internal/testtext",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/language/compact": {
+            "Imports": [
+                "golang.org/x/text/internal/language",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "golang.org/x/text/internal/language",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/number": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/internal/stringset",
+                "golang.org/x/text/language",
+                "math",
+                "strconv",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/language",
+                "golang.org/x/text/internal/language/compact",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/unicode/cldr",
+                "log",
+                "math",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/text/internal/stringset": {
+            "Imports": [
+                "sort"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/tag": {
+            "Imports": [
+                "sort"
+            ],
+            "TestImports": [
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/testtext": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/text/internal/triegen": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "hash/crc64",
+                "io",
+                "log",
+                "strings",
+                "text/template",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/triegen",
+                "io",
+                "math/rand",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/internal/ucd": {
+            "Imports": [
+                "bufio",
+                "errors",
+                "fmt",
+                "io",
+                "log",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/ucd",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/internal/utf8internal": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/text/language": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/text/internal/language",
+                "golang.org/x/text/internal/language/compact",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/language",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "golang.org/x/text/language",
+                "net/http",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/language/display": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/language",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/language/display",
+                "golang.org/x/text/message",
+                "reflect",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/message": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/feature/plural",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/internal/number",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message/catalog",
+                "io",
+                "math",
+                "os",
+                "reflect",
+                "strconv",
+                "sync",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/internal",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/message/catalog",
+                "io",
+                "math",
+                "net/http",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/text/message/catalog": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/text/internal",
+                "golang.org/x/text/internal/catmsg",
+                "golang.org/x/text/language",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "golang.org/x/text/internal/catmsg",
+                "golang.org/x/text/language",
+                "path",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/message/pipeline": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "go/ast",
+                "go/build",
+                "go/constant",
+                "go/format",
+                "go/parser",
+                "go/token",
+                "go/types",
+                "golang.org/x/text/collate",
+                "golang.org/x/text/feature/plural",
+                "golang.org/x/text/internal",
+                "golang.org/x/text/internal/catmsg",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/language",
+                "golang.org/x/text/runes",
+                "golang.org/x/tools/go/callgraph",
+                "golang.org/x/tools/go/callgraph/cha",
+                "golang.org/x/tools/go/loader",
+                "golang.org/x/tools/go/ssa",
+                "golang.org/x/tools/go/ssa/ssautil",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strings",
+                "text/template",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "go/build",
+                "golang.org/x/text/language",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/number": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/feature/plural",
+                "golang.org/x/text/internal/format",
+                "golang.org/x/text/internal/number",
+                "golang.org/x/text/language",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/feature/plural",
+                "golang.org/x/text/language",
+                "golang.org/x/text/message",
+                "golang.org/x/text/number",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/runes": {
+            "Imports": [
+                "golang.org/x/text/transform",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/cases",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/language",
+                "golang.org/x/text/runes",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "golang.org/x/text/width",
+                "strings",
+                "testing",
+                "unicode",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/search": {
+            "Imports": [
+                "golang.org/x/text/internal/colltab",
+                "golang.org/x/text/language",
+                "strings"
+            ],
+            "TestImports": [
+                "golang.org/x/text/language",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/secure": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/text/secure/bidirule": {
+            "Imports": [
+                "errors",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/bidi",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/bidi",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/secure/precis": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "golang.org/x/text/cases",
+                "golang.org/x/text/language",
+                "golang.org/x/text/runes",
+                "golang.org/x/text/secure/bidirule",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "golang.org/x/text/width",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/runes",
+                "golang.org/x/text/secure/bidirule",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/rangetable",
+                "math/rand",
+                "reflect",
+                "strings",
+                "testing",
+                "unicode",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/transform": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "io",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "io",
+                "strconv",
+                "strings",
+                "testing",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/unicode": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/text/unicode/bidi": {
+            "Imports": [
+                "bytes",
+                "container/list",
+                "fmt",
+                "log",
+                "sort",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "golang.org/x/text/unicode/norm",
+                "golang.org/x/text/unicode/rangetable",
+                "log",
+                "strconv",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/unicode/cldr": {
+            "Imports": [
+                "archive/zip",
+                "bufio",
+                "bytes",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/unicode/cldr",
+                "io",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/text/unicode/norm": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "golang.org/x/text/transform",
+                "io",
+                "sync",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/unicode/norm",
+                "io",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/text/unicode/rangetable": {
+            "Imports": [
+                "sort",
+                "unicode"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/unicode/runenames": {
+            "Imports": [
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "golang.org/x/text/unicode/runenames",
+                "strings",
+                "testing",
+                "unicode"
+            ]
+        },
+        "golang.org/x/text/width": {
+            "Imports": [
+                "golang.org/x/text/transform",
+                "strconv",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/text/internal/gen",
+                "golang.org/x/text/internal/testtext",
+                "golang.org/x/text/internal/ucd",
+                "golang.org/x/text/transform",
+                "golang.org/x/text/width",
+                "log",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

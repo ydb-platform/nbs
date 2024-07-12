@@ -1,0 +1,616 @@
+{
+    "Version": "v0.1.7",
+    "GoVersion": "1.19",
+    "Sum": "h1:60BLSyTrOV4/haCDW4zb1guZItoSq8foHCXrAnjBo/o=",
+    "Packages": {
+        "github.com/google/s2a-go": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/s2a-go/fallback",
+                "github.com/google/s2a-go/internal/handshaker",
+                "github.com/google/s2a-go/internal/handshaker/service",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "github.com/google/s2a-go/internal/v2",
+                "github.com/google/s2a-go/retry",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/peer",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "embed",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/s2a-go/fallback",
+                "github.com/google/s2a-go/internal/fakehandshaker/service",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/examples/helloworld_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "github.com/google/s2a-go/retry",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/peer",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "os",
+                "path/filepath",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/example/client": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/google/s2a-go",
+                "github.com/google/s2a-go/example/proto/echo_go_proto",
+                "google.golang.org/grpc",
+                "log",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/example/echo": {
+            "Imports": [
+                "context",
+                "github.com/google/s2a-go/example/proto/echo_go_proto"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/example/proto/echo_go_proto": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/example/server": {
+            "Imports": [
+                "flag",
+                "github.com/google/s2a-go",
+                "github.com/google/s2a-go/example/echo",
+                "github.com/google/s2a-go/example/proto/echo_go_proto",
+                "google.golang.org/grpc",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/fallback": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "fmt",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "net"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "net",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/authinfo": {
+            "Imports": [
+                "errors",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_context_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "google.golang.org/grpc/credentials"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "google.golang.org/grpc/credentials",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/fakehandshaker/service": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "google.golang.org/grpc/codes",
+                "os"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/protobuf/testing/protocmp",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/handshaker": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/authinfo",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "github.com/google/s2a-go/internal/record",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "io",
+                "net",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "golang.org/x/sync/errgroup",
+                "google.golang.org/grpc",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io",
+                "net",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/handshaker/service": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/insecure",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/tls",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/proto/common_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/examples/helloworld_go_proto": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/s2a_context_go_proto": {
+            "Imports": [
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/s2a_go_proto": {
+            "Imports": [
+                "context",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/v2/common_go_proto": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/v2/s2a_context_go_proto": {
+            "Imports": [
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto": {
+            "Imports": [
+                "context",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_context_go_proto",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/record": {
+            "Imports": [
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/handshaker/service",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "github.com/google/s2a-go/internal/record/internal/halfconn",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "math",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/s2a_go_proto",
+                "github.com/google/s2a-go/internal/record/internal/aeadcrypter/testutil",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/protobuf/testing/protocmp",
+                "net",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/record/internal/aeadcrypter": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "fmt",
+                "golang.org/x/crypto/chacha20poly1305"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/s2a-go/internal/record/internal/aeadcrypter/testutil",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/record/internal/aeadcrypter/testutil": {
+            "Imports": [
+                "bytes",
+                "encoding/hex",
+                "encoding/json",
+                "os",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/record/internal/halfconn": {
+            "Imports": [
+                "crypto/sha256",
+                "crypto/sha512",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/record/internal/aeadcrypter",
+                "golang.org/x/crypto/cryptobyte",
+                "golang.org/x/crypto/hkdf",
+                "hash",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/sha256",
+                "crypto/sha512",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/record/internal/aeadcrypter",
+                "github.com/google/s2a-go/internal/record/internal/aeadcrypter/testutil",
+                "hash",
+                "math",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/tokenmanager": {
+            "Imports": [
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "os"
+            ],
+            "TestImports": [
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/s2a-go/internal/v2": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "errors",
+                "github.com/golang/protobuf/proto",
+                "github.com/google/s2a-go/fallback",
+                "github.com/google/s2a-go/internal/handshaker/service",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "github.com/google/s2a-go/internal/v2/tlsconfigstore",
+                "github.com/google/s2a-go/retry",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "net",
+                "os",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "embed",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/s2a-go/fallback",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/examples/helloworld_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "github.com/google/s2a-go/retry",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io/ioutil",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/internal/v2/certverifier": {
+            "Imports": [
+                "crypto/x509",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog"
+            ],
+            "TestImports": [
+                "context",
+                "embed",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "log",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/internal/v2/fakes2av2": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "embed",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_context_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "google.golang.org/grpc/codes",
+                "log",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "crypto",
+                "crypto/rand",
+                "crypto/sha256",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_context_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/protobuf/testing/protocmp",
+                "log",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/internal/v2/fakes2av2_server": {
+            "Imports": [
+                "flag",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "google.golang.org/grpc",
+                "log",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/s2a-go/internal/v2/remotesigner": {
+            "Imports": [
+                "crypto",
+                "crypto/rsa",
+                "crypto/x509",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "embed",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/protobuf/testing/protocmp",
+                "log",
+                "net",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/internal/v2/tlsconfigstore": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "github.com/google/s2a-go/internal/v2/certverifier",
+                "github.com/google/s2a-go/internal/v2/remotesigner",
+                "github.com/google/s2a-go/stream",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "embed",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/s2a-go/internal/proto/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/common_go_proto",
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto",
+                "github.com/google/s2a-go/internal/tokenmanager",
+                "github.com/google/s2a-go/internal/v2/fakes2av2",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/credentials/insecure",
+                "google.golang.org/protobuf/testing/protocmp",
+                "log",
+                "net",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/retry": {
+            "Imports": [
+                "context",
+                "google.golang.org/grpc/grpclog",
+                "math/rand",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/s2a-go/stream": {
+            "Imports": [
+                "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto"
+            ],
+            "TestImports": null
+        }
+    }
+}

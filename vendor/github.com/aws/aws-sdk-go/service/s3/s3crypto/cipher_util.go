@@ -1,8 +1,8 @@
 package s3crypto
 
 import (
-	"encoding/base64"
-	"strconv"
+    "encoding/base64"
+    "strconv"
 )
 
 // AESGCMNoPadding is the constant value that is used to specify
@@ -13,23 +13,23 @@ const AESGCMNoPadding = "AES/GCM/NoPadding"
 const AESCBC = "AES/CBC"
 
 func encodeMeta(reader lengthReader, cd CipherData) (Envelope, error) {
-	iv := base64.StdEncoding.EncodeToString(cd.IV)
-	key := base64.StdEncoding.EncodeToString(cd.EncryptedKey)
+    iv := base64.StdEncoding.EncodeToString(cd.IV)
+    key := base64.StdEncoding.EncodeToString(cd.EncryptedKey)
 
-	contentLength := reader.GetContentLength()
+    contentLength := reader.GetContentLength()
 
-	matdesc, err := cd.MaterialDescription.encodeDescription()
-	if err != nil {
-		return Envelope{}, err
-	}
+    matdesc, err := cd.MaterialDescription.encodeDescription()
+    if err != nil {
+        return Envelope{}, err
+    }
 
-	return Envelope{
-		CipherKey:             key,
-		IV:                    iv,
-		MatDesc:               string(matdesc),
-		WrapAlg:               cd.WrapAlgorithm,
-		CEKAlg:                cd.CEKAlgorithm,
-		TagLen:                cd.TagLength,
-		UnencryptedContentLen: strconv.FormatInt(contentLength, 10),
-	}, nil
+    return Envelope{
+        CipherKey:             key,
+        IV:                    iv,
+        MatDesc:               string(matdesc),
+        WrapAlg:               cd.WrapAlgorithm,
+        CEKAlg:                cd.CEKAlgorithm,
+        TagLen:                cd.TagLength,
+        UnencryptedContentLen: strconv.FormatInt(contentLength, 10),
+    }, nil
 }

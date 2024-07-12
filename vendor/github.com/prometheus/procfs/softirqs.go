@@ -14,147 +14,147 @@
 package procfs
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"io"
-	"strconv"
-	"strings"
+    "bufio"
+    "bytes"
+    "fmt"
+    "io"
+    "strconv"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // Softirqs represents the softirq statistics.
 type Softirqs struct {
-	Hi      []uint64
-	Timer   []uint64
-	NetTx   []uint64
-	NetRx   []uint64
-	Block   []uint64
-	IRQPoll []uint64
-	Tasklet []uint64
-	Sched   []uint64
-	HRTimer []uint64
-	RCU     []uint64
+    Hi      []uint64
+    Timer   []uint64
+    NetTx   []uint64
+    NetRx   []uint64
+    Block   []uint64
+    IRQPoll []uint64
+    Tasklet []uint64
+    Sched   []uint64
+    HRTimer []uint64
+    RCU     []uint64
 }
 
 func (fs FS) Softirqs() (Softirqs, error) {
-	fileName := fs.proc.Path("softirqs")
-	data, err := util.ReadFileNoStat(fileName)
-	if err != nil {
-		return Softirqs{}, err
-	}
+    fileName := fs.proc.Path("softirqs")
+    data, err := util.ReadFileNoStat(fileName)
+    if err != nil {
+        return Softirqs{}, err
+    }
 
-	reader := bytes.NewReader(data)
+    reader := bytes.NewReader(data)
 
-	return parseSoftirqs(reader)
+    return parseSoftirqs(reader)
 }
 
 func parseSoftirqs(r io.Reader) (Softirqs, error) {
-	var (
-		softirqs = Softirqs{}
-		scanner  = bufio.NewScanner(r)
-	)
+    var (
+        softirqs = Softirqs{}
+        scanner  = bufio.NewScanner(r)
+    )
 
-	if !scanner.Scan() {
-		return Softirqs{}, fmt.Errorf("%w: softirqs empty", ErrFileRead)
-	}
+    if !scanner.Scan() {
+        return Softirqs{}, fmt.Errorf("%w: softirqs empty", ErrFileRead)
+    }
 
-	for scanner.Scan() {
-		parts := strings.Fields(scanner.Text())
-		var err error
+    for scanner.Scan() {
+        parts := strings.Fields(scanner.Text())
+        var err error
 
-		// require at least one cpu
-		if len(parts) < 2 {
-			continue
-		}
-		switch {
-		case parts[0] == "HI:":
-			perCPU := parts[1:]
-			softirqs.Hi = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.Hi[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (HI%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "TIMER:":
-			perCPU := parts[1:]
-			softirqs.Timer = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.Timer[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (TIMER%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "NET_TX:":
-			perCPU := parts[1:]
-			softirqs.NetTx = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.NetTx[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (NET_TX%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "NET_RX:":
-			perCPU := parts[1:]
-			softirqs.NetRx = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.NetRx[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (NET_RX%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "BLOCK:":
-			perCPU := parts[1:]
-			softirqs.Block = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.Block[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (BLOCK%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "IRQ_POLL:":
-			perCPU := parts[1:]
-			softirqs.IRQPoll = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.IRQPoll[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (IRQ_POLL%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "TASKLET:":
-			perCPU := parts[1:]
-			softirqs.Tasklet = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.Tasklet[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (TASKLET%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "SCHED:":
-			perCPU := parts[1:]
-			softirqs.Sched = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.Sched[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (SCHED%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "HRTIMER:":
-			perCPU := parts[1:]
-			softirqs.HRTimer = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.HRTimer[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (HRTIMER%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		case parts[0] == "RCU:":
-			perCPU := parts[1:]
-			softirqs.RCU = make([]uint64, len(perCPU))
-			for i, count := range perCPU {
-				if softirqs.RCU[i], err = strconv.ParseUint(count, 10, 64); err != nil {
-					return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (RCU%d): %w", ErrFileParse, count, i, err)
-				}
-			}
-		}
-	}
+        // require at least one cpu
+        if len(parts) < 2 {
+            continue
+        }
+        switch {
+        case parts[0] == "HI:":
+            perCPU := parts[1:]
+            softirqs.Hi = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.Hi[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (HI%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "TIMER:":
+            perCPU := parts[1:]
+            softirqs.Timer = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.Timer[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (TIMER%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "NET_TX:":
+            perCPU := parts[1:]
+            softirqs.NetTx = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.NetTx[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (NET_TX%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "NET_RX:":
+            perCPU := parts[1:]
+            softirqs.NetRx = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.NetRx[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (NET_RX%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "BLOCK:":
+            perCPU := parts[1:]
+            softirqs.Block = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.Block[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (BLOCK%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "IRQ_POLL:":
+            perCPU := parts[1:]
+            softirqs.IRQPoll = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.IRQPoll[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (IRQ_POLL%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "TASKLET:":
+            perCPU := parts[1:]
+            softirqs.Tasklet = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.Tasklet[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (TASKLET%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "SCHED:":
+            perCPU := parts[1:]
+            softirqs.Sched = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.Sched[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (SCHED%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "HRTIMER:":
+            perCPU := parts[1:]
+            softirqs.HRTimer = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.HRTimer[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (HRTIMER%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        case parts[0] == "RCU:":
+            perCPU := parts[1:]
+            softirqs.RCU = make([]uint64, len(perCPU))
+            for i, count := range perCPU {
+                if softirqs.RCU[i], err = strconv.ParseUint(count, 10, 64); err != nil {
+                    return Softirqs{}, fmt.Errorf("%s: couldn't parse %q (RCU%d): %w", ErrFileParse, count, i, err)
+                }
+            }
+        }
+    }
 
-	if err := scanner.Err(); err != nil {
-		return Softirqs{}, fmt.Errorf("%s: couldn't parse softirqs: %w", ErrFileParse, err)
-	}
+    if err := scanner.Err(); err != nil {
+        return Softirqs{}, fmt.Errorf("%s: couldn't parse softirqs: %w", ErrFileParse, err)
+    }
 
-	return softirqs, scanner.Err()
+    return softirqs, scanner.Err()
 }

@@ -1,0 +1,18 @@
+#define MACRO \
+  MOVQ AB BX \
+  \ // Some comment      \
+  \ // Another comment
+    MOVQ AB BX \
+MOVQ BX AX
+
+PCDATA "something"
+
+// blocks(d *digest, data []uint8)
+TEXT ·blocks(SB),4,$0-32
+    MOVQ BX AX
+
+FUNCDATA "something else"
+
+TEXT ·blocks(SB),4,$0-32
+    MOVQ BX AX
+FUNCDATA "something else"

@@ -1,0 +1,88 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:5BMeUDZ7vkXGfEr1x9B4bRcTH4lpkTkpdh0T/J+qjbQ=",
+    "Packages": {
+        "golang.org/x/sync/errgroup": {
+            "Imports": [
+                "context",
+                "fmt",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/md5",
+                "errors",
+                "fmt",
+                "golang.org/x/sync/errgroup",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "os",
+                "path/filepath",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/sync/semaphore": {
+            "Imports": [
+                "container/list",
+                "context",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "golang.org/x/sync/errgroup",
+                "golang.org/x/sync/semaphore",
+                "log",
+                "math/rand",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/sync/singleflight": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "runtime",
+                "runtime/debug",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "os",
+                "os/exec",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/sync/syncmap": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/sync/syncmap",
+                "math/rand",
+                "reflect",
+                "runtime",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "testing/quick"
+            ]
+        }
+    }
+}

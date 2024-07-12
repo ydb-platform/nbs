@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 # temporary disabled, fix in upstream: https://github.com/grpc-ecosystem/grpc-gateway/issues/1630

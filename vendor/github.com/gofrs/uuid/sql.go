@@ -22,88 +22,88 @@
 package uuid
 
 import (
-	"bytes"
-	"database/sql/driver"
-	"encoding/json"
-	"fmt"
+    "bytes"
+    "database/sql/driver"
+    "encoding/json"
+    "fmt"
 )
 
 // Value implements the driver.Valuer interface.
 func (u UUID) Value() (driver.Value, error) {
-	return u.String(), nil
+    return u.String(), nil
 }
 
 // Scan implements the sql.Scanner interface.
 // A 16-byte slice will be handled by UnmarshalBinary, while
 // a longer byte slice or a string will be handled by UnmarshalText.
 func (u *UUID) Scan(src interface{}) error {
-	switch src := src.(type) {
-	case UUID: // support gorm convert from UUID to NullUUID
-		*u = src
-		return nil
+    switch src := src.(type) {
+    case UUID: // support gorm convert from UUID to NullUUID
+        *u = src
+        return nil
 
-	case []byte:
-		if len(src) == Size {
-			return u.UnmarshalBinary(src)
-		}
-		return u.UnmarshalText(src)
+    case []byte:
+        if len(src) == Size {
+            return u.UnmarshalBinary(src)
+        }
+        return u.UnmarshalText(src)
 
-	case string:
-		return u.UnmarshalText([]byte(src))
-	}
+    case string:
+        return u.UnmarshalText([]byte(src))
+    }
 
-	return fmt.Errorf("uuid: cannot convert %T to UUID", src)
+    return fmt.Errorf("uuid: cannot convert %T to UUID", src)
 }
 
 // NullUUID can be used with the standard sql package to represent a
 // UUID value that can be NULL in the database.
 type NullUUID struct {
-	UUID  UUID
-	Valid bool
+    UUID  UUID
+    Valid bool
 }
 
 // Value implements the driver.Valuer interface.
 func (u NullUUID) Value() (driver.Value, error) {
-	if !u.Valid {
-		return nil, nil
-	}
-	// Delegate to UUID Value function
-	return u.UUID.Value()
+    if !u.Valid {
+        return nil, nil
+    }
+    // Delegate to UUID Value function
+    return u.UUID.Value()
 }
 
 // Scan implements the sql.Scanner interface.
 func (u *NullUUID) Scan(src interface{}) error {
-	if src == nil {
-		u.UUID, u.Valid = Nil, false
-		return nil
-	}
+    if src == nil {
+        u.UUID, u.Valid = Nil, false
+        return nil
+    }
 
-	// Delegate to UUID Scan function
-	u.Valid = true
-	return u.UUID.Scan(src)
+    // Delegate to UUID Scan function
+    u.Valid = true
+    return u.UUID.Scan(src)
 }
 
 // MarshalJSON marshals the NullUUID as null or the nested UUID
 func (u NullUUID) MarshalJSON() ([]byte, error) {
-	if !u.Valid {
-		return json.Marshal(nil)
-	}
+    if !u.Valid {
+        return json.Marshal(nil)
+    }
 
-	return json.Marshal(u.UUID)
+    return json.Marshal(u.UUID)
 }
 
 // UnmarshalJSON unmarshals a NullUUID
 func (u *NullUUID) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
-		u.UUID, u.Valid = Nil, false
-		return nil
-	}
+    if bytes.Equal(b, []byte("null")) {
+        u.UUID, u.Valid = Nil, false
+        return nil
+    }
 
-	if err := json.Unmarshal(b, &u.UUID); err != nil {
-		return err
-	}
+    if err := json.Unmarshal(b, &u.UUID); err != nil {
+        return err
+    }
 
-	u.Valid = true
+    u.Valid = true
 
-	return nil
+    return nil
 }

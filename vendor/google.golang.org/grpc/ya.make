@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -39,6 +41,8 @@ GO_TEST_SRCS(
     service_config_test.go
     trace_test.go
 )
+
+GO_XTEST_SRCS(server_ext_test.go)
 
 END()
 

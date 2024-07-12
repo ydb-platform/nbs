@@ -1,0 +1,63 @@
+{
+    "Version": "v5.1.1",
+    "GoVersion": "1.13",
+    "Sum": "h1:JLZ6s2K1pG2h9GkvEvMdEGqMDyVLEAccdX5TltWcLMU=",
+    "Packages": {
+        "github.com/DataDog/datadog-go/v5/example": {
+            "Imports": [
+                "github.com/DataDog/datadog-go/v5/statsd",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/DataDog/datadog-go/v5/statsd": {
+            "Imports": [
+                "bufio",
+                "errors",
+                "fmt",
+                "github.com/Microsoft/go-winio",
+                "io",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/DataDog/datadog-go/v5/statsd",
+                "github.com/Microsoft/go-winio",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/mock",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "sort",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/DataDog/datadog-go/v5/statsd/mocks": {
+            "Imports": [
+                "github.com/DataDog/datadog-go/v5/statsd",
+                "github.com/golang/mock/gomock",
+                "reflect",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

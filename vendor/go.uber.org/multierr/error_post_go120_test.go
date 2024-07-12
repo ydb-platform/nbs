@@ -24,42 +24,42 @@
 package multierr
 
 import (
-	"errors"
-	"testing"
+    "errors"
+    "testing"
 
-	"github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/assert"
 )
 
 func TestErrorsOnErrorsJoin(t *testing.T) {
-	err1 := errors.New("err1")
-	err2 := errors.New("err2")
-	err := errors.Join(err1, err2)
+    err1 := errors.New("err1")
+    err2 := errors.New("err2")
+    err := errors.Join(err1, err2)
 
-	errs := Errors(err)
-	assert.Equal(t, 2, len(errs))
-	assert.Equal(t, err1, errs[0])
-	assert.Equal(t, err2, errs[1])
+    errs := Errors(err)
+    assert.Equal(t, 2, len(errs))
+    assert.Equal(t, err1, errs[0])
+    assert.Equal(t, err2, errs[1])
 }
 
 func TestEveryWithErrorsJoin(t *testing.T) {
-	myError1 := errors.New("woeful misfortune")
-	myError2 := errors.New("worrisome travesty")
+    myError1 := errors.New("woeful misfortune")
+    myError2 := errors.New("worrisome travesty")
 
-	t.Run("all match", func(t *testing.T) {
-		err := errors.Join(myError1, myError1, myError1)
+    t.Run("all match", func(t *testing.T) {
+        err := errors.Join(myError1, myError1, myError1)
 
-		assert.True(t, errors.Is(err, myError1))
-		assert.True(t, Every(err, myError1))
-		assert.False(t, errors.Is(err, myError2))
-		assert.False(t, Every(err, myError2))
-	})
+        assert.True(t, errors.Is(err, myError1))
+        assert.True(t, Every(err, myError1))
+        assert.False(t, errors.Is(err, myError2))
+        assert.False(t, Every(err, myError2))
+    })
 
-	t.Run("one matches", func(t *testing.T) {
-		err := errors.Join(myError1, myError2)
+    t.Run("one matches", func(t *testing.T) {
+        err := errors.Join(myError1, myError2)
 
-		assert.True(t, errors.Is(err, myError1))
-		assert.False(t, Every(err, myError1))
-		assert.True(t, errors.Is(err, myError2))
-		assert.False(t, Every(err, myError2))
-	})
+        assert.True(t, errors.Is(err, myError1))
+        assert.False(t, Every(err, myError1))
+        assert.True(t, errors.Is(err, myError2))
+        assert.False(t, Every(err, myError2))
+    })
 }

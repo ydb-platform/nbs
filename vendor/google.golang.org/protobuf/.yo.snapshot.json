@@ -1,0 +1,1884 @@
+{
+    "Version": "v1.33.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:uNO2rsAINq/JlFpSdYEKIZ0uKD/R9cpdv0T+yoGwGmI=",
+    "Packages": {
+        "google.golang.org/protobuf": {
+            "Imports": null,
+            "TestImports": [
+                "archive/tar",
+                "archive/zip",
+                "bytes",
+                "compress/gzip",
+                "crypto/sha256",
+                "flag",
+                "fmt",
+                "google.golang.org/protobuf/internal/version",
+                "io",
+                "io/fs",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "google.golang.org/protobuf/cmd/protoc-gen-go": {
+            "Imports": [
+                "errors",
+                "flag",
+                "fmt",
+                "google.golang.org/protobuf/cmd/protoc-gen-go/internal_gengo",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/internal/version",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/retention",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "io/ioutil",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/cmd/protoc-gen-go/internal_gengo": {
+            "Imports": [
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/token",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/encoding/tag",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/version",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protopath",
+                "google.golang.org/protobuf/reflect/protorange",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/pluginpb",
+                "math",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/retention": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/compiler/protogen": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "go/ast",
+                "go/parser",
+                "go/printer",
+                "go/token",
+                "go/types",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/pluginpb",
+                "io/ioutil",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/pluginpb",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/encoding": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/encoding/protodelim": {
+            "Imports": [
+                "bufio",
+                "encoding/binary",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/proto",
+                "io"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/protodelim",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/testprotos/test3",
+                "google.golang.org/protobuf/testing/protocmp",
+                "io",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/encoding/protojson": {
+            "Imports": [
+                "bytes",
+                "encoding/base64",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/encoding/json",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/set",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "math",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/testprotos/editionsfuzztest",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test/weak1",
+                "google.golang.org/protobuf/internal/testprotos/textpb2",
+                "google.golang.org/protobuf/internal/testprotos/textpb3",
+                "google.golang.org/protobuf/internal/testprotos/textpbeditions",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/encoding/prototext": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/encoding/text",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/set",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "strconv",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/testprotos/editionsfuzztest",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test/weak1",
+                "google.golang.org/protobuf/internal/testprotos/textpb2",
+                "google.golang.org/protobuf/internal/testprotos/textpb3",
+                "google.golang.org/protobuf/internal/testprotos/textpbeditions",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/encoding/protowire": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/errors",
+                "io",
+                "math",
+                "math/bits"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "io",
+                "math",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/benchmarks": {
+            "Imports": null,
+            "TestImports": [
+                "flag",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message1/proto2",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message1/proto3",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message2",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message3",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message4",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "google.golang.org/protobuf/internal/benchmarks/micro": {
+            "Imports": null,
+            "TestImports": [
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/testprotos/benchmarks/micro",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/cmd/generate-corpus": {
+            "Imports": [
+                "crypto/sha1",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/testprotos/fuzz",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "io/ioutil",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/cmd/generate-protos": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "go/format",
+                "google.golang.org/protobuf/cmd/protoc-gen-go/internal_gengo",
+                "google.golang.org/protobuf/compiler/protogen",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/cmd/generate-types": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "go/format",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "regexp",
+                "strconv",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/cmd/pbdump": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/conformance": {
+            "Imports": null,
+            "TestImports": [
+                "encoding/binary",
+                "flag",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/testprotos/conformance",
+                "google.golang.org/protobuf/internal/testprotos/conformance/editions",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/descfmt": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "io",
+                "reflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/descfmt",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "reflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/descopts": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/detrand": {
+            "Imports": [
+                "encoding/binary",
+                "hash/fnv",
+                "os"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/editiondefaults": {
+            "Imports": [
+                "embed"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/encoding/defval": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/encoding/text",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "math",
+                "strconv"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/encoding/defval",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "math",
+                "reflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/encoding/json": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/strs",
+                "io",
+                "math",
+                "math/bits",
+                "regexp",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/encoding/json",
+                "math",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "google.golang.org/protobuf/internal/encoding/messageset": {
+            "Imports": [
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/encoding/tag": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/encoding/defval",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "reflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/encoding/tag",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "reflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/encoding/text": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/strs",
+                "io",
+                "math",
+                "math/bits",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf16",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/encoding/text",
+                "google.golang.org/protobuf/internal/flags",
+                "math",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "google.golang.org/protobuf/internal/errors": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "google.golang.org/protobuf/internal/detrand"
+            ],
+            "TestImports": [
+                "errors",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/filedesc": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/descfmt",
+                "google.golang.org/protobuf/internal/descopts",
+                "google.golang.org/protobuf/internal/editiondefaults",
+                "google.golang.org/protobuf/internal/encoding/defval",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "math",
+                "reflect",
+                "sort",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test/weak1",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "io/ioutil",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/filetype": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/descopts",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/flags": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/fuzz/jsonfuzz": {
+            "Imports": [
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/internal/testprotos/fuzz",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/fuzztest",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/fuzz/textfuzz": {
+            "Imports": [
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/testprotos/fuzz",
+                "google.golang.org/protobuf/proto"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/fuzztest",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/fuzz/wirefuzz": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/testprotos/fuzz",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/fuzztest",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/fuzztest": {
+            "Imports": [
+                "flag",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "sort",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/genid": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/impl": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "encoding/binary",
+                "encoding/json",
+                "fmt",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/descopts",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/encoding/tag",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "hash/crc32",
+                "io/ioutil",
+                "math",
+                "math/bits",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/protobuild",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160519_a4ab9ec5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180125_92554152",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180430_b4deda09",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180814_aa810b61",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20190205_c823c79e",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160519_a4ab9ec5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180125_92554152",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180430_b4deda09",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180814_aa810b61",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20190205_c823c79e",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "io",
+                "io/ioutil",
+                "math",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/msgfmt": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/msgfmt",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/textpb2",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "sync",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/order": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "sort",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "math/rand",
+                "sort",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/pragma": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/protobuild": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "math",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/protolegacy": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "errors",
+                "fmt",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io/ioutil"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/set": {
+            "Imports": [
+                "math/bits"
+            ],
+            "TestImports": [
+                "math/rand",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/strs": {
+            "Imports": [
+                "go/token",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "strings",
+                "unicode",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "strconv",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/testprotos/annotation": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message1/proto2": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message1/proto3": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message2": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message3": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/datasets/google_message4": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/benchmarks/micro": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/conformance": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/conformance/editions": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/editionsfuzztest": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/gofeaturespb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/enums": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/fieldtrack": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/annotation",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/fuzz": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test3",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/irregular": {
+            "Imports": [
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160519_a4ab9ec5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180125_92554152",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180430_b4deda09",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180814_aa810b61",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20190205_c823c79e",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160519_a4ab9ec5",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180125_92554152",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180430_b4deda09",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180814_aa810b61",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20190205_c823c79e",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/bug1052": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "math"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/testprotos/legacy/bug1052"
+            ]
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160519_a4ab9ec5": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180125_92554152": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180430_b4deda09": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20180814_aa810b61": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20190205_c823c79e": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160225_2fc053c5": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160519_a4ab9ec5": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180125_92554152": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180430_b4deda09": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20180814_aa810b61": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20190205_c823c79e": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/protolegacy",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/messageset/messagesetpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/messageset/msetextpb": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/messageset/messagesetpb",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/news": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/nullable": {
+            "Imports": [
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/testing/protocmp",
+                "reflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/testprotos/order": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/race": {
+            "Imports": null,
+            "TestImports": [
+                "google.golang.org/protobuf/internal/testprotos/race/extender",
+                "google.golang.org/protobuf/internal/testprotos/race/message",
+                "google.golang.org/protobuf/proto",
+                "sync",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/internal/testprotos/race/extender": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/race/message",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/race/message": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/registry": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/required": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/test": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/testprotos/enums",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/test/weak1": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/test/weak2": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/test3": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/testeditions": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/textpb2": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/textpb3": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/testprotos/textpbeditions": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/version": {
+            "Imports": [
+                "fmt",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/internal/weakdeps": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/proto": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "math",
+                "reflect",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/protobuild",
+                "google.golang.org/protobuf/internal/testprotos/editionsfuzztest",
+                "google.golang.org/protobuf/internal/testprotos/legacy",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/messageset/messagesetpb",
+                "google.golang.org/protobuf/internal/testprotos/messageset/msetextpb",
+                "google.golang.org/protobuf/internal/testprotos/order",
+                "google.golang.org/protobuf/internal/testprotos/required",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test/weak1",
+                "google.golang.org/protobuf/internal/testprotos/test3",
+                "google.golang.org/protobuf/internal/testprotos/testeditions",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "math",
+                "reflect",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/protoadapt": {
+            "Imports": [
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/reflect/protodesc": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/editiondefaults",
+                "google.golang.org/protobuf/internal/encoding/defval",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/internal/strs",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/gofeaturespb",
+                "os",
+                "strings",
+                "sync",
+                "unicode"
+            ],
+            "TestImports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/reflect/protopath": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/encoding/text",
+                "google.golang.org/protobuf/internal/msgfmt",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/reflect/protorange": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/order",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protopath",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/testprotos/news",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protopath",
+                "google.golang.org/protobuf/reflect/protorange",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "google.golang.org/protobuf/reflect/protoreflect": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/pragma",
+                "math",
+                "reflect",
+                "strconv",
+                "strings",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "math",
+                "reflect",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/reflect/protoregistry": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/encoding/messageset",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "os",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/testprotos/registry",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/runtime/protoiface": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/pragma",
+                "google.golang.org/protobuf/reflect/protoreflect"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/runtime/protoimpl": {
+            "Imports": [
+                "google.golang.org/protobuf/internal/filedesc",
+                "google.golang.org/protobuf/internal/filetype",
+                "google.golang.org/protobuf/internal/impl",
+                "google.golang.org/protobuf/internal/version"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/testing/protocmp": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/internal/genid",
+                "google.golang.org/protobuf/internal/msgfmt",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "math",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/textpb2",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/testing/protopack",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "math",
+                "math/rand",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/testing/protopack": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "io",
+                "math",
+                "path",
+                "reflect",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/reflect/protodesc",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "math",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/testing/prototest": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/encoding/protowire",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "math",
+                "reflect",
+                "sort",
+                "strings",
+                "testing"
+            ],
+            "TestImports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/flags",
+                "google.golang.org/protobuf/internal/testprotos/irregular",
+                "google.golang.org/protobuf/internal/testprotos/legacy",
+                "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test/weak1",
+                "google.golang.org/protobuf/internal/testprotos/test/weak2",
+                "google.golang.org/protobuf/internal/testprotos/test3",
+                "google.golang.org/protobuf/internal/testprotos/testeditions",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/testing/prototest",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/types/descriptorpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/dynamicpb": {
+            "Imports": [
+                "fmt",
+                "google.golang.org/protobuf/internal/errors",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoiface",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "math",
+                "strings",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "google.golang.org/protobuf/internal/testprotos/registry",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/internal/testprotos/test3",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/testing/prototest",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "google.golang.org/protobuf/types/dynamicpb",
+                "strings",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/types/gofeaturespb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/known/anypb": {
+            "Imports": [
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/reflect/protoregistry",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/emptypb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/types/known/apipb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/sourcecontextpb",
+                "google.golang.org/protobuf/types/known/typepb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/known/durationpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "math",
+                "reflect",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "math",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "google.golang.org/protobuf/types/known/emptypb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/known/fieldmaskpb": {
+            "Imports": [
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/internal/testprotos/test",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/fieldmaskpb",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/types/known/sourcecontextpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/known/structpb": {
+            "Imports": [
+                "encoding/base64",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "math",
+                "reflect",
+                "sync",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/known/structpb",
+                "math",
+                "testing"
+            ]
+        },
+        "google.golang.org/protobuf/types/known/timestamppb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "google.golang.org/protobuf/internal/detrand",
+                "google.golang.org/protobuf/testing/protocmp",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "math",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "google.golang.org/protobuf/types/known/typepb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/sourcecontextpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/known/wrapperspb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/protobuf/types/pluginpb": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/descriptorpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

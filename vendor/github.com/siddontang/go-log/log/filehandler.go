@@ -1,42 +1,42 @@
 package log
 
 import (
-	"fmt"
-	"os"
-	"path"
-	"time"
+    "fmt"
+    "os"
+    "path"
+    "time"
 )
 
 // FileHandler writes log to a file.
 type FileHandler struct {
-	fd *os.File
+    fd *os.File
 }
 
 // NewFileHandler creates a FileHander
 func NewFileHandler(fileName string, flag int) (*FileHandler, error) {
-	dir := path.Dir(fileName)
-	os.Mkdir(dir, 0777)
+    dir := path.Dir(fileName)
+    os.Mkdir(dir, 0777)
 
-	f, err := os.OpenFile(fileName, flag, 0755)
-	if err != nil {
-		return nil, err
-	}
+    f, err := os.OpenFile(fileName, flag, 0755)
+    if err != nil {
+        return nil, err
+    }
 
-	h := new(FileHandler)
+    h := new(FileHandler)
 
-	h.fd = f
+    h.fd = f
 
-	return h, nil
+    return h, nil
 }
 
 // Write implements Handler interface
 func (h *FileHandler) Write(b []byte) (n int, err error) {
-	return h.fd.Write(b)
+    return h.fd.Write(b)
 }
 
 // Close implements Handler interface
 func (h *FileHandler) Close() error {
-	return h.fd.Close()
+    return h.fd.Close()
 }
 
 // RotatingFileHandler writes log a file, if file size exceeds maxBytes,
@@ -44,98 +44,98 @@ func (h *FileHandler) Close() error {
 //
 // max backup file number is set by backupCount, it will delete oldest if backups too many.
 type RotatingFileHandler struct {
-	fd *os.File
+    fd *os.File
 
-	fileName    string
-	maxBytes    int
-	curBytes    int
-	backupCount int
+    fileName    string
+    maxBytes    int
+    curBytes    int
+    backupCount int
 }
 
 // NewRotatingFileHandler creates a RotatingFileHandler
 func NewRotatingFileHandler(fileName string, maxBytes int, backupCount int) (*RotatingFileHandler, error) {
-	dir := path.Dir(fileName)
-	os.MkdirAll(dir, 0777)
+    dir := path.Dir(fileName)
+    os.MkdirAll(dir, 0777)
 
-	h := new(RotatingFileHandler)
+    h := new(RotatingFileHandler)
 
-	if maxBytes <= 0 {
-		return nil, fmt.Errorf("invalid max bytes")
-	}
+    if maxBytes <= 0 {
+        return nil, fmt.Errorf("invalid max bytes")
+    }
 
-	h.fileName = fileName
-	h.maxBytes = maxBytes
-	h.backupCount = backupCount
+    h.fileName = fileName
+    h.maxBytes = maxBytes
+    h.backupCount = backupCount
 
-	var err error
-	h.fd, err = os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return nil, err
-	}
+    var err error
+    h.fd, err = os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+    if err != nil {
+        return nil, err
+    }
 
-	f, err := h.fd.Stat()
-	if err != nil {
-		return nil, err
-	}
-	h.curBytes = int(f.Size())
+    f, err := h.fd.Stat()
+    if err != nil {
+        return nil, err
+    }
+    h.curBytes = int(f.Size())
 
-	return h, nil
+    return h, nil
 }
 
 // Write implements Handler interface
 func (h *RotatingFileHandler) Write(p []byte) (n int, err error) {
-	h.doRollover()
-	n, err = h.fd.Write(p)
-	h.curBytes += n
-	return
+    h.doRollover()
+    n, err = h.fd.Write(p)
+    h.curBytes += n
+    return
 }
 
 // Close implements Handler interface
 func (h *RotatingFileHandler) Close() error {
-	if h.fd != nil {
-		return h.fd.Close()
-	}
-	return nil
+    if h.fd != nil {
+        return h.fd.Close()
+    }
+    return nil
 }
 
 func (h *RotatingFileHandler) doRollover() {
-	if h.curBytes < h.maxBytes {
-		return
-	}
+    if h.curBytes < h.maxBytes {
+        return
+    }
 
-	f, err := h.fd.Stat()
-	if err != nil {
-		return
-	}
+    f, err := h.fd.Stat()
+    if err != nil {
+        return
+    }
 
-	if h.maxBytes <= 0 {
-		return
-	} else if f.Size() < int64(h.maxBytes) {
-		h.curBytes = int(f.Size())
-		return
-	}
+    if h.maxBytes <= 0 {
+        return
+    } else if f.Size() < int64(h.maxBytes) {
+        h.curBytes = int(f.Size())
+        return
+    }
 
-	if h.backupCount > 0 {
-		h.fd.Close()
+    if h.backupCount > 0 {
+        h.fd.Close()
 
-		for i := h.backupCount - 1; i > 0; i-- {
-			sfn := fmt.Sprintf("%s.%d", h.fileName, i)
-			dfn := fmt.Sprintf("%s.%d", h.fileName, i+1)
+        for i := h.backupCount - 1; i > 0; i-- {
+            sfn := fmt.Sprintf("%s.%d", h.fileName, i)
+            dfn := fmt.Sprintf("%s.%d", h.fileName, i+1)
 
-			os.Rename(sfn, dfn)
-		}
+            os.Rename(sfn, dfn)
+        }
 
-		dfn := fmt.Sprintf("%s.1", h.fileName)
-		os.Rename(h.fileName, dfn)
+        dfn := fmt.Sprintf("%s.1", h.fileName)
+        os.Rename(h.fileName, dfn)
 
-		h.fd, _ = os.OpenFile(h.fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		h.curBytes = 0
-		f, err := h.fd.Stat()
-		if err != nil {
-			return
-		}
-		h.curBytes = int(f.Size())
-	}
+        h.fd, _ = os.OpenFile(h.fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+        h.curBytes = 0
+        f, err := h.fd.Stat()
+        if err != nil {
+            return
+        }
+        h.curBytes = int(f.Size())
+    }
 }
 
 // TimeRotatingFileHandler writes log to a file,
@@ -144,87 +144,87 @@ func (h *RotatingFileHandler) doRollover() {
 // refer: http://docs.python.org/2/library/logging.handlers.html.
 // same like python TimedRotatingFileHandler.
 type TimeRotatingFileHandler struct {
-	fd *os.File
+    fd *os.File
 
-	baseName   string
-	interval   int64
-	suffix     string
-	rolloverAt int64
+    baseName   string
+    interval   int64
+    suffix     string
+    rolloverAt int64
 }
 
 // TimeRotating way
 const (
-	WhenSecond = iota
-	WhenMinute
-	WhenHour
-	WhenDay
+    WhenSecond = iota
+    WhenMinute
+    WhenHour
+    WhenDay
 )
 
 // NewTimeRotatingFileHandler creates a TimeRotatingFileHandler
 func NewTimeRotatingFileHandler(baseName string, when int8, interval int) (*TimeRotatingFileHandler, error) {
-	dir := path.Dir(baseName)
-	os.MkdirAll(dir, 0777)
+    dir := path.Dir(baseName)
+    os.MkdirAll(dir, 0777)
 
-	h := new(TimeRotatingFileHandler)
+    h := new(TimeRotatingFileHandler)
 
-	h.baseName = baseName
+    h.baseName = baseName
 
-	switch when {
-	case WhenSecond:
-		h.interval = 1
-		h.suffix = "2006-01-02_15-04-05"
-	case WhenMinute:
-		h.interval = 60
-		h.suffix = "2006-01-02_15-04"
-	case WhenHour:
-		h.interval = 3600
-		h.suffix = "2006-01-02_15"
-	case WhenDay:
-		h.interval = 3600 * 24
-		h.suffix = "2006-01-02"
-	default:
-		return nil, fmt.Errorf("invalid when_rotate: %d", when)
-	}
+    switch when {
+    case WhenSecond:
+        h.interval = 1
+        h.suffix = "2006-01-02_15-04-05"
+    case WhenMinute:
+        h.interval = 60
+        h.suffix = "2006-01-02_15-04"
+    case WhenHour:
+        h.interval = 3600
+        h.suffix = "2006-01-02_15"
+    case WhenDay:
+        h.interval = 3600 * 24
+        h.suffix = "2006-01-02"
+    default:
+        return nil, fmt.Errorf("invalid when_rotate: %d", when)
+    }
 
-	h.interval = h.interval * int64(interval)
+    h.interval = h.interval * int64(interval)
 
-	var err error
-	h.fd, err = os.OpenFile(h.baseName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return nil, err
-	}
+    var err error
+    h.fd, err = os.OpenFile(h.baseName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+    if err != nil {
+        return nil, err
+    }
 
-	fInfo, _ := h.fd.Stat()
-	h.rolloverAt = fInfo.ModTime().Unix() + h.interval
+    fInfo, _ := h.fd.Stat()
+    h.rolloverAt = fInfo.ModTime().Unix() + h.interval
 
-	return h, nil
+    return h, nil
 }
 
 func (h *TimeRotatingFileHandler) doRollover() {
-	//refer http://hg.python.org/cpython/file/2.7/Lib/logging/handlers.py
-	now := time.Now()
+    //refer http://hg.python.org/cpython/file/2.7/Lib/logging/handlers.py
+    now := time.Now()
 
-	if h.rolloverAt <= now.Unix() {
-		fName := h.baseName + now.Format(h.suffix)
-		h.fd.Close()
-		e := os.Rename(h.baseName, fName)
-		if e != nil {
-			panic(e)
-		}
+    if h.rolloverAt <= now.Unix() {
+        fName := h.baseName + now.Format(h.suffix)
+        h.fd.Close()
+        e := os.Rename(h.baseName, fName)
+        if e != nil {
+            panic(e)
+        }
 
-		h.fd, _ = os.OpenFile(h.baseName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+        h.fd, _ = os.OpenFile(h.baseName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 
-		h.rolloverAt = time.Now().Unix() + h.interval
-	}
+        h.rolloverAt = time.Now().Unix() + h.interval
+    }
 }
 
 // Write implements Handler interface
 func (h *TimeRotatingFileHandler) Write(b []byte) (n int, err error) {
-	h.doRollover()
-	return h.fd.Write(b)
+    h.doRollover()
+    return h.fd.Write(b)
 }
 
 // Close implements Handler interface
 func (h *TimeRotatingFileHandler) Close() error {
-	return h.fd.Close()
+    return h.fd.Close()
 }

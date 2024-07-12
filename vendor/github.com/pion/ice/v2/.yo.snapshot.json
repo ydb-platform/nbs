@@ -1,0 +1,119 @@
+{
+    "Version": "v2.3.13",
+    "GoVersion": "1.13",
+    "Sum": "h1:xOxP+4V9nSDlUaGFRf/LvAuGHDXRcjIdsbbXPK/w7c8=",
+    "Packages": {
+        "github.com/pion/ice/v2": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/uuid",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/ice/v2/internal/atomic",
+                "github.com/pion/ice/v2/internal/fakenet",
+                "github.com/pion/ice/v2/internal/stun",
+                "github.com/pion/logging",
+                "github.com/pion/mdns",
+                "github.com/pion/randutil",
+                "github.com/pion/stun",
+                "github.com/pion/transport/v2",
+                "github.com/pion/transport/v2/packetio",
+                "github.com/pion/transport/v2/stdnet",
+                "github.com/pion/transport/v2/vnet",
+                "github.com/pion/turn/v2",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/proxy",
+                "hash/crc32",
+                "io",
+                "net",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/tls",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/pkg/crypto/selfsign",
+                "github.com/pion/ice/v2/internal/fakenet",
+                "github.com/pion/logging",
+                "github.com/pion/stun",
+                "github.com/pion/transport/v2/stdnet",
+                "github.com/pion/transport/v2/test",
+                "github.com/pion/transport/v2/vnet",
+                "github.com/pion/turn/v2",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "golang.org/x/net/proxy",
+                "io",
+                "net",
+                "net/url",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/ice/v2/examples/ping-pong": {
+            "Imports": [
+                "bufio",
+                "context",
+                "flag",
+                "fmt",
+                "github.com/pion/ice/v2",
+                "github.com/pion/randutil",
+                "net/http",
+                "net/url",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/ice/v2/internal": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pion/ice/v2/internal/atomic": {
+            "Imports": [
+                "sync/atomic"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/ice/v2/internal/fakenet": {
+            "Imports": [
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/ice/v2/internal/stun": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/stun",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

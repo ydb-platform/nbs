@@ -1,0 +1,132 @@
+{
+    "Version": "v0.1.0",
+    "GoVersion": "1.14",
+    "Sum": "h1:EwLKo8qawTKfsi0orxcQAZzu07cICaBeFMegAU9eaT8=",
+    "Packages": {
+        "github.com/google/safehtml": {
+            "Imports": [
+                "bytes",
+                "container/list",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/safehtml/internal/raw",
+                "github.com/google/safehtml/internal/safehtmlutil",
+                "golang.org/x/text/unicode/rangetable",
+                "html",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/legacyconversions",
+                "github.com/google/safehtml/template",
+                "github.com/google/safehtml/testconversions",
+                "github.com/google/safehtml/uncheckedconversions",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/safehtml/internal/raw": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/safehtml/internal/safehtmlutil": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "reflect",
+                "regexp"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/safehtml/internal/template/raw": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/safehtml/legacyconversions": {
+            "Imports": [
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/internal/raw"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/safehtml/template": {
+            "Imports": [
+                "bytes",
+                "embed",
+                "flag",
+                "fmt",
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/internal/safehtmlutil",
+                "github.com/google/safehtml/internal/template/raw",
+                "github.com/google/safehtml/uncheckedconversions",
+                "html",
+                "io",
+                "io/fs",
+                "io/ioutil",
+                "log",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync",
+                "text/template",
+                "text/template/parse"
+            ],
+            "TestImports": [
+                "bytes",
+                "embed",
+                "errors",
+                "fmt",
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/template",
+                "github.com/google/safehtml/testconversions",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "regexp",
+                "strings",
+                "sync",
+                "testing",
+                "text/template",
+                "text/template/parse"
+            ]
+        },
+        "github.com/google/safehtml/template/uncheckedconversions": {
+            "Imports": [
+                "github.com/google/safehtml/internal/template/raw",
+                "github.com/google/safehtml/template"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/safehtml/testconversions": {
+            "Imports": [
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/internal/raw"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/safehtml/uncheckedconversions": {
+            "Imports": [
+                "github.com/google/safehtml",
+                "github.com/google/safehtml/internal/raw"
+            ],
+            "TestImports": null
+        }
+    }
+}

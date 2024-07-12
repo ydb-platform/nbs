@@ -30,18 +30,18 @@
 package admin
 
 import (
-	"google.golang.org/grpc"
-	channelzservice "google.golang.org/grpc/channelz/service"
-	internaladmin "google.golang.org/grpc/internal/admin"
+    "google.golang.org/grpc"
+    channelzservice "google.golang.org/grpc/channelz/service"
+    internaladmin "google.golang.org/grpc/internal/admin"
 )
 
 func init() {
-	// Add a list of default services to admin here. Optional services, like
-	// CSDS, will be added by other packages.
-	internaladmin.AddService(func(registrar grpc.ServiceRegistrar) (func(), error) {
-		channelzservice.RegisterChannelzServiceToServer(registrar)
-		return nil, nil
-	})
+    // Add a list of default services to admin here. Optional services, like
+    // CSDS, will be added by other packages.
+    internaladmin.AddService(func(registrar grpc.ServiceRegistrar) (func(), error) {
+        channelzservice.RegisterChannelzServiceToServer(registrar)
+        return nil, nil
+    })
 }
 
 // Register registers the set of admin services to the given server.
@@ -54,5 +54,5 @@ func init() {
 // `grpc.ServiceRegistrar`.
 // https://github.com/envoyproxy/go-control-plane/issues/403
 func Register(s grpc.ServiceRegistrar) (cleanup func(), _ error) {
-	return internaladmin.Register(s)
+    return internaladmin.Register(s)
 }

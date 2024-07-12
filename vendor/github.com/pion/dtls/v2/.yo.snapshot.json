@@ -1,0 +1,478 @@
+{
+    "Version": "v2.2.8",
+    "GoVersion": "1.13",
+    "Sum": "h1:BUroldfiIbV9jSnC6cKOMnyiORRWrWWpV11JUyEu5OA=",
+    "Packages": {
+        "github.com/pion/dtls/v2": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha256",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/asn1",
+                "encoding/binary",
+                "encoding/gob",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/internal/ciphersuite",
+                "github.com/pion/dtls/v2/internal/ciphersuite/types",
+                "github.com/pion/dtls/v2/internal/closer",
+                "github.com/pion/dtls/v2/pkg/crypto/clientcertificate",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/prf",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/alert",
+                "github.com/pion/dtls/v2/pkg/protocol/extension",
+                "github.com/pion/dtls/v2/pkg/protocol/handshake",
+                "github.com/pion/dtls/v2/pkg/protocol/recordlayer",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/connctx",
+                "github.com/pion/transport/v2/deadline",
+                "github.com/pion/transport/v2/replaydetector",
+                "github.com/pion/transport/v2/udp",
+                "hash",
+                "io",
+                "math/big",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/dsa",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/hex",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/internal/ciphersuite",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/selfsign",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/alert",
+                "github.com/pion/dtls/v2/pkg/protocol/extension",
+                "github.com/pion/dtls/v2/pkg/protocol/handshake",
+                "github.com/pion/dtls/v2/pkg/protocol/recordlayer",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/dpipe",
+                "github.com/pion/transport/v2/test",
+                "golang.org/x/net/nettest",
+                "io",
+                "net",
+                "reflect",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/dtls/v2/e2e": {
+            "Imports": null,
+            "TestImports": [
+                "context",
+                "crypto/ed25519",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/pkg/crypto/selfsign",
+                "github.com/pion/transport/v2/test",
+                "io",
+                "math/rand",
+                "net",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/dtls/v2/examples/dial/psk": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/dial/selfsign": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "github.com/pion/dtls/v2/pkg/crypto/selfsign",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/dial/verify": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/listen/psk": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/listen/selfsign": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "github.com/pion/dtls/v2/pkg/crypto/selfsign",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/listen/verify": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/examples/util",
+                "net",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/examples/util": {
+            "Imports": [
+                "bufio",
+                "crypto/tls",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "path/filepath",
+                "strings",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/internal/ciphersuite": {
+            "Imports": [
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/internal/ciphersuite/types",
+                "github.com/pion/dtls/v2/pkg/crypto/ciphersuite",
+                "github.com/pion/dtls/v2/pkg/crypto/clientcertificate",
+                "github.com/pion/dtls/v2/pkg/crypto/prf",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/recordlayer",
+                "hash",
+                "sync/atomic"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/internal/ciphersuite/types": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/internal/closer": {
+            "Imports": [
+                "context"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/internal/util": {
+            "Imports": [
+                "encoding/binary"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/ccm": {
+            "Imports": [
+                "crypto/cipher",
+                "crypto/subtle",
+                "encoding/binary",
+                "errors",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/aes",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/ciphersuite": {
+            "Imports": [
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/hmac",
+                "crypto/rand",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/internal/util",
+                "github.com/pion/dtls/v2/pkg/crypto/ccm",
+                "github.com/pion/dtls/v2/pkg/crypto/prf",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/recordlayer",
+                "hash"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/clientcertificate": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/elliptic": {
+            "Imports": [
+                "crypto/elliptic",
+                "crypto/rand",
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/curve25519"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/fingerprint": {
+            "Imports": [
+                "crypto",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "strings"
+            ],
+            "TestImports": [
+                "crypto",
+                "crypto/x509",
+                "errors",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/hash": {
+            "Imports": [
+                "crypto",
+                "crypto/md5",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512"
+            ],
+            "TestImports": [
+                "github.com/pion/dtls/v2/pkg/crypto/fingerprint",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/prf": {
+            "Imports": [
+                "crypto/elliptic",
+                "crypto/hmac",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "golang.org/x/crypto/curve25519",
+                "hash",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/sha256",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/selfsign": {
+            "Imports": [
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "errors",
+                "math/big",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/signature": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/pion/dtls/v2/pkg/crypto/signaturehash": {
+            "Imports": [
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/ed25519",
+                "crypto/rsa",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "errors",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/protocol": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "net"
+            ],
+            "TestImports": [
+                "errors",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/protocol/alert": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/dtls/v2/pkg/protocol"
+            ],
+            "TestImports": [
+                "errors",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/protocol/extension": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "golang.org/x/crypto/cryptobyte",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/protocol/handshake": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/binary",
+                "errors",
+                "github.com/pion/dtls/v2/internal/ciphersuite/types",
+                "github.com/pion/dtls/v2/internal/util",
+                "github.com/pion/dtls/v2/pkg/crypto/clientcertificate",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/extension",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/x509",
+                "errors",
+                "github.com/pion/dtls/v2/internal/ciphersuite/types",
+                "github.com/pion/dtls/v2/pkg/crypto/clientcertificate",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/hash",
+                "github.com/pion/dtls/v2/pkg/crypto/signature",
+                "github.com/pion/dtls/v2/pkg/crypto/signaturehash",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/extension",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/dtls/v2/pkg/protocol/recordlayer": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "github.com/pion/dtls/v2/internal/util",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "github.com/pion/dtls/v2/pkg/protocol/alert",
+                "github.com/pion/dtls/v2/pkg/protocol/handshake"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/pion/dtls/v2/pkg/protocol",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

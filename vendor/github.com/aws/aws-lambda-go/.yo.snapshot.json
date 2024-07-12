@@ -1,0 +1,167 @@
+{
+    "Version": "v1.34.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:M3a/uFYBjii+tDcOJ0wL/WyFi2550FHoECdPf27zvOs=",
+    "Packages": {
+        "github.com/aws/aws-lambda-go/cfn": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-lambda-go/events",
+                "github.com/aws/aws-lambda-go/lambdacontext",
+                "io/ioutil",
+                "log",
+                "net/http"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-lambda-go/events/test",
+                "github.com/aws/aws-lambda-go/lambdacontext",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-lambda-go/cmd/build-lambda-zip": {
+            "Imports": [
+                "archive/zip",
+                "flag",
+                "fmt",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "archive/zip",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-lambda-go/events": {
+            "Imports": [
+                "bytes",
+                "compress/gzip",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "math",
+                "net/url",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "github.com/aws/aws-lambda-go/events/test",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io/ioutil",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-lambda-go/events/test": {
+            "Imports": [
+                "encoding/json",
+                "github.com/stretchr/testify/assert",
+                "io/ioutil",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-lambda-go/lambda": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-lambda-go/lambda/handlertrace",
+                "github.com/aws/aws-lambda-go/lambda/messages",
+                "github.com/aws/aws-lambda-go/lambdacontext",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "net/rpc",
+                "os",
+                "os/signal",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-lambda-go/lambda/handlertrace",
+                "github.com/aws/aws-lambda-go/lambda/messages",
+                "github.com/aws/aws-lambda-go/lambdacontext",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/rpc",
+                "os",
+                "os/exec",
+                "path",
+                "runtime",
+                "strings",
+                "testing",
+                "time",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/aws/aws-lambda-go/lambda/handlertrace": {
+            "Imports": [
+                "context"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-lambda-go/lambda/messages": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-lambda-go/lambdacontext": {
+            "Imports": [
+                "context",
+                "os",
+                "strconv"
+            ],
+            "TestImports": null
+        }
+    }
+}

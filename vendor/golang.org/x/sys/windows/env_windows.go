@@ -7,48 +7,51 @@
 package windows
 
 import (
-	"syscall"
-	"unsafe"
+    "syscall"
+    "unsafe"
 )
 
 func Getenv(key string) (value string, found bool) {
-	return syscall.Getenv(key)
+    return syscall.Getenv(key)
 }
 
 func Setenv(key, value string) error {
-	return syscall.Setenv(key, value)
+    return syscall.Setenv(key, value)
 }
 
 func Clearenv() {
-	syscall.Clearenv()
+    syscall.Clearenv()
 }
 
 func Environ() []string {
-	return syscall.Environ()
+    return syscall.Environ()
 }
 
 // Returns a default environment associated with the token, rather than the current
 // process. If inheritExisting is true, then this environment also inherits the
 // environment of the current process.
 func (token Token) Environ(inheritExisting bool) (env []string, err error) {
-	var block *uint16
-	err = CreateEnvironmentBlock(&block, token, inheritExisting)
-	if err != nil {
-		return nil, err
-	}
-	defer DestroyEnvironmentBlock(block)
-	blockp := unsafe.Pointer(block)
-	for {
-		entry := UTF16PtrToString((*uint16)(blockp))
-		if len(entry) == 0 {
-			break
-		}
-		env = append(env, entry)
-		blockp = unsafe.Add(blockp, 2*(len(entry)+1))
-	}
-	return env, nil
+    var block *uint16
+    err = CreateEnvironmentBlock(&block, token, inheritExisting)
+    if err != nil {
+        return nil, err
+    }
+    defer DestroyEnvironmentBlock(block)
+    size := unsafe.Sizeof(*block)
+    for *block != 0 {
+        // find NUL terminator
+        end := unsafe.Pointer(block)
+        for *(*uint16)(end) != 0 {
+            end = unsafe.Add(end, size)
+        }
+
+        entry := unsafe.Slice(block, (uintptr(end)-uintptr(unsafe.Pointer(block)))/size)
+        env = append(env, UTF16ToString(entry))
+        block = (*uint16)(unsafe.Add(end, size))
+    }
+    return env, nil
 }
 
 func Unsetenv(key string) error {
-	return syscall.Unsetenv(key)
+    return syscall.Unsetenv(key)
 }

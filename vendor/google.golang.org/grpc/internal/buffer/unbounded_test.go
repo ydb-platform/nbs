@@ -18,25 +18,25 @@
 package buffer
 
 import (
-	"reflect"
-	"sort"
-	"sync"
-	"testing"
+    "reflect"
+    "sort"
+    "sync"
+    "testing"
 
-	"google.golang.org/grpc/internal/grpctest"
+    "google.golang.org/grpc/internal/grpctest"
 )
 
 const (
-	numWriters = 10
-	numWrites  = 10
+    numWriters = 10
+    numWrites  = 10
 )
 
 type s struct {
-	grpctest.Tester
+    grpctest.Tester
 }
 
 func Test(t *testing.T) {
-	grpctest.RunSubTests(t, s{})
+    grpctest.RunSubTests(t, s{})
 }
 
 // wantReads contains the set of values expected to be read by the reader
@@ -44,94 +44,94 @@ func Test(t *testing.T) {
 var wantReads []int
 
 func init() {
-	for i := 0; i < numWriters; i++ {
-		for j := 0; j < numWrites; j++ {
-			wantReads = append(wantReads, i)
-		}
-	}
+    for i := 0; i < numWriters; i++ {
+        for j := 0; j < numWrites; j++ {
+            wantReads = append(wantReads, i)
+        }
+    }
 }
 
 // TestSingleWriter starts one reader and one writer goroutine and makes sure
 // that the reader gets all the value added to the buffer by the writer.
 func (s) TestSingleWriter(t *testing.T) {
-	ub := NewUnbounded()
-	reads := []int{}
+    ub := NewUnbounded()
+    reads := []int{}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ch := ub.Get()
-		for i := 0; i < numWriters*numWrites; i++ {
-			r := <-ch
-			reads = append(reads, r.(int))
-			ub.Load()
-		}
-	}()
+    var wg sync.WaitGroup
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        ch := ub.Get()
+        for i := 0; i < numWriters*numWrites; i++ {
+            r := <-ch
+            reads = append(reads, r.(int))
+            ub.Load()
+        }
+    }()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < numWriters; i++ {
-			for j := 0; j < numWrites; j++ {
-				ub.Put(i)
-			}
-		}
-	}()
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        for i := 0; i < numWriters; i++ {
+            for j := 0; j < numWrites; j++ {
+                ub.Put(i)
+            }
+        }
+    }()
 
-	wg.Wait()
-	if !reflect.DeepEqual(reads, wantReads) {
-		t.Errorf("reads: %#v, wantReads: %#v", reads, wantReads)
-	}
+    wg.Wait()
+    if !reflect.DeepEqual(reads, wantReads) {
+        t.Errorf("reads: %#v, wantReads: %#v", reads, wantReads)
+    }
 }
 
 // TestMultipleWriters starts multiple writers and one reader goroutine and
 // makes sure that the reader gets all the data written by all writers.
 func (s) TestMultipleWriters(t *testing.T) {
-	ub := NewUnbounded()
-	reads := []int{}
+    ub := NewUnbounded()
+    reads := []int{}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ch := ub.Get()
-		for i := 0; i < numWriters*numWrites; i++ {
-			r := <-ch
-			reads = append(reads, r.(int))
-			ub.Load()
-		}
-	}()
+    var wg sync.WaitGroup
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        ch := ub.Get()
+        for i := 0; i < numWriters*numWrites; i++ {
+            r := <-ch
+            reads = append(reads, r.(int))
+            ub.Load()
+        }
+    }()
 
-	wg.Add(numWriters)
-	for i := 0; i < numWriters; i++ {
-		go func(index int) {
-			defer wg.Done()
-			for j := 0; j < numWrites; j++ {
-				ub.Put(index)
-			}
-		}(i)
-	}
+    wg.Add(numWriters)
+    for i := 0; i < numWriters; i++ {
+        go func(index int) {
+            defer wg.Done()
+            for j := 0; j < numWrites; j++ {
+                ub.Put(index)
+            }
+        }(i)
+    }
 
-	wg.Wait()
-	sort.Ints(reads)
-	if !reflect.DeepEqual(reads, wantReads) {
-		t.Errorf("reads: %#v, wantReads: %#v", reads, wantReads)
-	}
+    wg.Wait()
+    sort.Ints(reads)
+    if !reflect.DeepEqual(reads, wantReads) {
+        t.Errorf("reads: %#v, wantReads: %#v", reads, wantReads)
+    }
 }
 
 // TestClose closes the buffer and makes sure that nothing is sent after the
 // buffer is closed.
 func (s) TestClose(t *testing.T) {
-	ub := NewUnbounded()
-	ub.Close()
-	if v, ok := <-ub.Get(); ok {
-		t.Errorf("Unbounded.Get() = %v, want closed channel", v)
-	}
-	ub.Put(1)
-	ub.Load()
-	if v, ok := <-ub.Get(); ok {
-		t.Errorf("Unbounded.Get() = %v, want closed channel", v)
-	}
-	ub.Close()
+    ub := NewUnbounded()
+    ub.Close()
+    if v, ok := <-ub.Get(); ok {
+        t.Errorf("Unbounded.Get() = %v, want closed channel", v)
+    }
+    ub.Put(1)
+    ub.Load()
+    if v, ok := <-ub.Get(); ok {
+        t.Errorf("Unbounded.Get() = %v, want closed channel", v)
+    }
+    ub.Close()
 }

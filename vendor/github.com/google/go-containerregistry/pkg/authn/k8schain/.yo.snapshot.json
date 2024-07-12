@@ -1,0 +1,63 @@
+{
+    "Version": "v0.0.0-20220517194345-84eb52633e96",
+    "GoVersion": "1.17",
+    "Sum": "h1:QwDEEOmXlkBRv+SYO9aghUBpQdUrfzzaeVJMCgfQ6FI=",
+    "Packages": {
+        "github.com/google/go-containerregistry/pkg/authn/k8schain": {
+            "Imports": [
+                "context",
+                "github.com/awslabs/amazon-ecr-credential-helper/ecr-login",
+                "github.com/chrismellard/docker-credential-acr-env/pkg/credhelper",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/authn/kubernetes",
+                "github.com/google/go-containerregistry/pkg/v1/google",
+                "io/ioutil",
+                "k8s.io/api/core/v1",
+                "k8s.io/client-go/kubernetes",
+                "k8s.io/client-go/rest"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/authn/k8schain/tests/explicit": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/pkg/authn/k8schain",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/authn/k8schain/tests/implicit": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/pkg/authn/k8schain",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/authn/k8schain/tests/noauth": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/pkg/authn/k8schain",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-containerregistry/pkg/authn/k8schain/tests/serviceaccount": {
+            "Imports": [
+                "context",
+                "github.com/google/go-containerregistry/pkg/authn/k8schain",
+                "github.com/google/go-containerregistry/pkg/name",
+                "github.com/google/go-containerregistry/pkg/v1/remote",
+                "log"
+            ],
+            "TestImports": null
+        }
+    }
+}

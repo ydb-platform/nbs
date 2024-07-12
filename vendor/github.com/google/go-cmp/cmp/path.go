@@ -5,13 +5,13 @@
 package cmp
 
 import (
-	"fmt"
-	"reflect"
-	"strings"
-	"unicode"
-	"unicode/utf8"
+    "fmt"
+    "reflect"
+    "strings"
+    "unicode"
+    "unicode/utf8"
 
-	"github.com/google/go-cmp/cmp/internal/value"
+    "github.com/google/go-cmp/cmp/internal/value"
 )
 
 // Path is a list of [PathStep] describing the sequence of operations to get
@@ -37,49 +37,49 @@ type Path []PathStep
 //   - [TypeAssertion]
 //   - [Transform]
 type PathStep interface {
-	String() string
+    String() string
 
-	// Type is the resulting type after performing the path step.
-	Type() reflect.Type
+    // Type is the resulting type after performing the path step.
+    Type() reflect.Type
 
-	// Values is the resulting values after performing the path step.
-	// The type of each valid value is guaranteed to be identical to Type.
-	//
-	// In some cases, one or both may be invalid or have restrictions:
-	//   - For StructField, both are not interface-able if the current field
-	//     is unexported and the struct type is not explicitly permitted by
-	//     an Exporter to traverse unexported fields.
-	//   - For SliceIndex, one may be invalid if an element is missing from
-	//     either the x or y slice.
-	//   - For MapIndex, one may be invalid if an entry is missing from
-	//     either the x or y map.
-	//
-	// The provided values must not be mutated.
-	Values() (vx, vy reflect.Value)
+    // Values is the resulting values after performing the path step.
+    // The type of each valid value is guaranteed to be identical to Type.
+    //
+    // In some cases, one or both may be invalid or have restrictions:
+    //   - For StructField, both are not interface-able if the current field
+    //     is unexported and the struct type is not explicitly permitted by
+    //     an Exporter to traverse unexported fields.
+    //   - For SliceIndex, one may be invalid if an element is missing from
+    //     either the x or y slice.
+    //   - For MapIndex, one may be invalid if an entry is missing from
+    //     either the x or y map.
+    //
+    // The provided values must not be mutated.
+    Values() (vx, vy reflect.Value)
 }
 
 var (
-	_ PathStep = StructField{}
-	_ PathStep = SliceIndex{}
-	_ PathStep = MapIndex{}
-	_ PathStep = Indirect{}
-	_ PathStep = TypeAssertion{}
-	_ PathStep = Transform{}
+    _ PathStep = StructField{}
+    _ PathStep = SliceIndex{}
+    _ PathStep = MapIndex{}
+    _ PathStep = Indirect{}
+    _ PathStep = TypeAssertion{}
+    _ PathStep = Transform{}
 )
 
 func (pa *Path) push(s PathStep) {
-	*pa = append(*pa, s)
+    *pa = append(*pa, s)
 }
 
 func (pa *Path) pop() {
-	*pa = (*pa)[:len(*pa)-1]
+    *pa = (*pa)[:len(*pa)-1]
 }
 
 // Last returns the last [PathStep] in the Path.
 // If the path is empty, this returns a non-nil [PathStep]
 // that reports a nil [PathStep.Type].
 func (pa Path) Last() PathStep {
-	return pa.Index(-1)
+    return pa.Index(-1)
 }
 
 // Index returns the ith step in the Path and supports negative indexing.
@@ -88,13 +88,13 @@ func (pa Path) Last() PathStep {
 // If index is invalid, this returns a non-nil [PathStep]
 // that reports a nil [PathStep.Type].
 func (pa Path) Index(i int) PathStep {
-	if i < 0 {
-		i = len(pa) + i
-	}
-	if i < 0 || i >= len(pa) {
-		return pathStep{}
-	}
-	return pa[i]
+    if i < 0 {
+        i = len(pa) + i
+    }
+    if i < 0 || i >= len(pa) {
+        return pathStep{}
+    }
+    return pa[i]
 }
 
 // String returns the simplified path to a node.
@@ -102,109 +102,109 @@ func (pa Path) Index(i int) PathStep {
 //
 // For example:
 //
-//	MyMap.MySlices.MyField
+//    MyMap.MySlices.MyField
 func (pa Path) String() string {
-	var ss []string
-	for _, s := range pa {
-		if _, ok := s.(StructField); ok {
-			ss = append(ss, s.String())
-		}
-	}
-	return strings.TrimPrefix(strings.Join(ss, ""), ".")
+    var ss []string
+    for _, s := range pa {
+        if _, ok := s.(StructField); ok {
+            ss = append(ss, s.String())
+        }
+    }
+    return strings.TrimPrefix(strings.Join(ss, ""), ".")
 }
 
 // GoString returns the path to a specific node using Go syntax.
 //
 // For example:
 //
-//	(*root.MyMap["key"].(*mypkg.MyStruct).MySlices)[2][3].MyField
+//    (*root.MyMap["key"].(*mypkg.MyStruct).MySlices)[2][3].MyField
 func (pa Path) GoString() string {
-	var ssPre, ssPost []string
-	var numIndirect int
-	for i, s := range pa {
-		var nextStep PathStep
-		if i+1 < len(pa) {
-			nextStep = pa[i+1]
-		}
-		switch s := s.(type) {
-		case Indirect:
-			numIndirect++
-			pPre, pPost := "(", ")"
-			switch nextStep.(type) {
-			case Indirect:
-				continue // Next step is indirection, so let them batch up
-			case StructField:
-				numIndirect-- // Automatic indirection on struct fields
-			case nil:
-				pPre, pPost = "", "" // Last step; no need for parenthesis
-			}
-			if numIndirect > 0 {
-				ssPre = append(ssPre, pPre+strings.Repeat("*", numIndirect))
-				ssPost = append(ssPost, pPost)
-			}
-			numIndirect = 0
-			continue
-		case Transform:
-			ssPre = append(ssPre, s.trans.name+"(")
-			ssPost = append(ssPost, ")")
-			continue
-		}
-		ssPost = append(ssPost, s.String())
-	}
-	for i, j := 0, len(ssPre)-1; i < j; i, j = i+1, j-1 {
-		ssPre[i], ssPre[j] = ssPre[j], ssPre[i]
-	}
-	return strings.Join(ssPre, "") + strings.Join(ssPost, "")
+    var ssPre, ssPost []string
+    var numIndirect int
+    for i, s := range pa {
+        var nextStep PathStep
+        if i+1 < len(pa) {
+            nextStep = pa[i+1]
+        }
+        switch s := s.(type) {
+        case Indirect:
+            numIndirect++
+            pPre, pPost := "(", ")"
+            switch nextStep.(type) {
+            case Indirect:
+                continue // Next step is indirection, so let them batch up
+            case StructField:
+                numIndirect-- // Automatic indirection on struct fields
+            case nil:
+                pPre, pPost = "", "" // Last step; no need for parenthesis
+            }
+            if numIndirect > 0 {
+                ssPre = append(ssPre, pPre+strings.Repeat("*", numIndirect))
+                ssPost = append(ssPost, pPost)
+            }
+            numIndirect = 0
+            continue
+        case Transform:
+            ssPre = append(ssPre, s.trans.name+"(")
+            ssPost = append(ssPost, ")")
+            continue
+        }
+        ssPost = append(ssPost, s.String())
+    }
+    for i, j := 0, len(ssPre)-1; i < j; i, j = i+1, j-1 {
+        ssPre[i], ssPre[j] = ssPre[j], ssPre[i]
+    }
+    return strings.Join(ssPre, "") + strings.Join(ssPost, "")
 }
 
 type pathStep struct {
-	typ    reflect.Type
-	vx, vy reflect.Value
+    typ    reflect.Type
+    vx, vy reflect.Value
 }
 
 func (ps pathStep) Type() reflect.Type             { return ps.typ }
 func (ps pathStep) Values() (vx, vy reflect.Value) { return ps.vx, ps.vy }
 func (ps pathStep) String() string {
-	if ps.typ == nil {
-		return "<nil>"
-	}
-	s := value.TypeString(ps.typ, false)
-	if s == "" || strings.ContainsAny(s, "{}\n") {
-		return "root" // Type too simple or complex to print
-	}
-	return fmt.Sprintf("{%s}", s)
+    if ps.typ == nil {
+        return "<nil>"
+    }
+    s := value.TypeString(ps.typ, false)
+    if s == "" || strings.ContainsAny(s, "{}\n") {
+        return "root" // Type too simple or complex to print
+    }
+    return fmt.Sprintf("{%s}", s)
 }
 
 // StructField is a [PathStep] that represents a struct field access
 // on a field called [StructField.Name].
 type StructField struct{ *structField }
 type structField struct {
-	pathStep
-	name string
-	idx  int
+    pathStep
+    name string
+    idx  int
 
-	// These fields are used for forcibly accessing an unexported field.
-	// pvx, pvy, and field are only valid if unexported is true.
-	unexported bool
-	mayForce   bool                // Forcibly allow visibility
-	paddr      bool                // Was parent addressable?
-	pvx, pvy   reflect.Value       // Parent values (always addressable)
-	field      reflect.StructField // Field information
+    // These fields are used for forcibly accessing an unexported field.
+    // pvx, pvy, and field are only valid if unexported is true.
+    unexported bool
+    mayForce   bool                // Forcibly allow visibility
+    paddr      bool                // Was parent addressable?
+    pvx, pvy   reflect.Value       // Parent values (always addressable)
+    field      reflect.StructField // Field information
 }
 
 func (sf StructField) Type() reflect.Type { return sf.typ }
 func (sf StructField) Values() (vx, vy reflect.Value) {
-	if !sf.unexported {
-		return sf.vx, sf.vy // CanInterface reports true
-	}
+    if !sf.unexported {
+        return sf.vx, sf.vy // CanInterface reports true
+    }
 
-	// Forcibly obtain read-write access to an unexported struct field.
-	if sf.mayForce {
-		vx = retrieveUnexportedField(sf.pvx, sf.field, sf.paddr)
-		vy = retrieveUnexportedField(sf.pvy, sf.field, sf.paddr)
-		return vx, vy // CanInterface reports true
-	}
-	return sf.vx, sf.vy // CanInterface reports false
+    // Forcibly obtain read-write access to an unexported struct field.
+    if sf.mayForce {
+        vx = retrieveUnexportedField(sf.pvx, sf.field, sf.paddr)
+        vy = retrieveUnexportedField(sf.pvy, sf.field, sf.paddr)
+        return vx, vy // CanInterface reports true
+    }
+    return sf.vx, sf.vy // CanInterface reports false
 }
 func (sf StructField) String() string { return fmt.Sprintf(".%s", sf.name) }
 
@@ -219,35 +219,35 @@ func (sf StructField) Index() int { return sf.idx }
 // a slice or array at some index [SliceIndex.Key].
 type SliceIndex struct{ *sliceIndex }
 type sliceIndex struct {
-	pathStep
-	xkey, ykey int
-	isSlice    bool // False for reflect.Array
+    pathStep
+    xkey, ykey int
+    isSlice    bool // False for reflect.Array
 }
 
 func (si SliceIndex) Type() reflect.Type             { return si.typ }
 func (si SliceIndex) Values() (vx, vy reflect.Value) { return si.vx, si.vy }
 func (si SliceIndex) String() string {
-	switch {
-	case si.xkey == si.ykey:
-		return fmt.Sprintf("[%d]", si.xkey)
-	case si.ykey == -1:
-		// [5->?] means "I don't know where X[5] went"
-		return fmt.Sprintf("[%d->?]", si.xkey)
-	case si.xkey == -1:
-		// [?->3] means "I don't know where Y[3] came from"
-		return fmt.Sprintf("[?->%d]", si.ykey)
-	default:
-		// [5->3] means "X[5] moved to Y[3]"
-		return fmt.Sprintf("[%d->%d]", si.xkey, si.ykey)
-	}
+    switch {
+    case si.xkey == si.ykey:
+        return fmt.Sprintf("[%d]", si.xkey)
+    case si.ykey == -1:
+        // [5->?] means "I don't know where X[5] went"
+        return fmt.Sprintf("[%d->?]", si.xkey)
+    case si.xkey == -1:
+        // [?->3] means "I don't know where Y[3] came from"
+        return fmt.Sprintf("[?->%d]", si.ykey)
+    default:
+        // [5->3] means "X[5] moved to Y[3]"
+        return fmt.Sprintf("[%d->%d]", si.xkey, si.ykey)
+    }
 }
 
 // Key is the index key; it may return -1 if in a split state
 func (si SliceIndex) Key() int {
-	if si.xkey != si.ykey {
-		return -1
-	}
-	return si.xkey
+    if si.xkey != si.ykey {
+        return -1
+    }
+    return si.xkey
 }
 
 // SplitKeys are the indexes for indexing into slices in the
@@ -264,8 +264,8 @@ func (si SliceIndex) SplitKeys() (ix, iy int) { return si.xkey, si.ykey }
 // MapIndex is a [PathStep] that represents an index operation on a map at some index Key.
 type MapIndex struct{ *mapIndex }
 type mapIndex struct {
-	pathStep
-	key reflect.Value
+    pathStep
+    key reflect.Value
 }
 
 func (mi MapIndex) Type() reflect.Type             { return mi.typ }
@@ -278,7 +278,7 @@ func (mi MapIndex) Key() reflect.Value { return mi.key }
 // Indirect is a [PathStep] that represents pointer indirection on the parent type.
 type Indirect struct{ *indirect }
 type indirect struct {
-	pathStep
+    pathStep
 }
 
 func (in Indirect) Type() reflect.Type             { return in.typ }
@@ -288,7 +288,7 @@ func (in Indirect) String() string                 { return "*" }
 // TypeAssertion is a [PathStep] that represents a type assertion on an interface.
 type TypeAssertion struct{ *typeAssertion }
 type typeAssertion struct {
-	pathStep
+    pathStep
 }
 
 func (ta TypeAssertion) Type() reflect.Type             { return ta.typ }
@@ -299,8 +299,8 @@ func (ta TypeAssertion) String() string                 { return fmt.Sprintf(".(
 // from the parent type to the current type.
 type Transform struct{ *transform }
 type transform struct {
-	pathStep
-	trans *transformer
+    pathStep
+    trans *transformer
 }
 
 func (tf Transform) Type() reflect.Type             { return tf.typ }
@@ -345,15 +345,15 @@ func (tf Transform) Option() Option { return tf.trans }
 // Using a map as a stack is more performant as we can perform cycle detection
 // in O(1) instead of O(N) where N is len(Path).
 type pointerPath struct {
-	// mx is keyed by x pointers, where the value is the associated y pointer.
-	mx map[value.Pointer]value.Pointer
-	// my is keyed by y pointers, where the value is the associated x pointer.
-	my map[value.Pointer]value.Pointer
+    // mx is keyed by x pointers, where the value is the associated y pointer.
+    mx map[value.Pointer]value.Pointer
+    // my is keyed by y pointers, where the value is the associated x pointer.
+    my map[value.Pointer]value.Pointer
 }
 
 func (p *pointerPath) Init() {
-	p.mx = make(map[value.Pointer]value.Pointer)
-	p.my = make(map[value.Pointer]value.Pointer)
+    p.mx = make(map[value.Pointer]value.Pointer)
+    p.my = make(map[value.Pointer]value.Pointer)
 }
 
 // Push indicates intent to descend into pointers vx and vy where
@@ -364,27 +364,27 @@ func (p *pointerPath) Init() {
 // The pointers vx and vy must be a reflect.Ptr, reflect.Slice, or reflect.Map
 // and be non-nil.
 func (p pointerPath) Push(vx, vy reflect.Value) (equal, visited bool) {
-	px := value.PointerOf(vx)
-	py := value.PointerOf(vy)
-	_, ok1 := p.mx[px]
-	_, ok2 := p.my[py]
-	if ok1 || ok2 {
-		equal = p.mx[px] == py && p.my[py] == px // Pointers paired together
-		return equal, true
-	}
-	p.mx[px] = py
-	p.my[py] = px
-	return false, false
+    px := value.PointerOf(vx)
+    py := value.PointerOf(vy)
+    _, ok1 := p.mx[px]
+    _, ok2 := p.my[py]
+    if ok1 || ok2 {
+        equal = p.mx[px] == py && p.my[py] == px // Pointers paired together
+        return equal, true
+    }
+    p.mx[px] = py
+    p.my[py] = px
+    return false, false
 }
 
 // Pop ascends from pointers vx and vy.
 func (p pointerPath) Pop(vx, vy reflect.Value) {
-	delete(p.mx, value.PointerOf(vx))
-	delete(p.my, value.PointerOf(vy))
+    delete(p.mx, value.PointerOf(vx))
+    delete(p.my, value.PointerOf(vy))
 }
 
 // isExported reports whether the identifier is exported.
 func isExported(id string) bool {
-	r, _ := utf8.DecodeRuneInString(id)
-	return unicode.IsUpper(r)
+    r, _ := utf8.DecodeRuneInString(id)
+    return unicode.IsUpper(r)
 }

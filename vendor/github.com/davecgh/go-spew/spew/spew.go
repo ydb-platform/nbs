@@ -17,8 +17,8 @@
 package spew
 
 import (
-	"fmt"
-	"io"
+    "fmt"
+    "io"
 )
 
 // Errorf is a wrapper for fmt.Errorf that treats each argument as if it were
@@ -28,9 +28,9 @@ import (
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Errorf(format, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Errorf(format, spew.NewFormatter(a), spew.NewFormatter(b))
 func Errorf(format string, a ...interface{}) (err error) {
-	return fmt.Errorf(format, convertArgs(a)...)
+    return fmt.Errorf(format, convertArgs(a)...)
 }
 
 // Fprint is a wrapper for fmt.Fprint that treats each argument as if it were
@@ -40,9 +40,9 @@ func Errorf(format string, a ...interface{}) (err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Fprint(w, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Fprint(w, spew.NewFormatter(a), spew.NewFormatter(b))
 func Fprint(w io.Writer, a ...interface{}) (n int, err error) {
-	return fmt.Fprint(w, convertArgs(a)...)
+    return fmt.Fprint(w, convertArgs(a)...)
 }
 
 // Fprintf is a wrapper for fmt.Fprintf that treats each argument as if it were
@@ -52,9 +52,9 @@ func Fprint(w io.Writer, a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Fprintf(w, format, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Fprintf(w, format, spew.NewFormatter(a), spew.NewFormatter(b))
 func Fprintf(w io.Writer, format string, a ...interface{}) (n int, err error) {
-	return fmt.Fprintf(w, format, convertArgs(a)...)
+    return fmt.Fprintf(w, format, convertArgs(a)...)
 }
 
 // Fprintln is a wrapper for fmt.Fprintln that treats each argument as if it
@@ -63,9 +63,9 @@ func Fprintf(w io.Writer, format string, a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Fprintln(w, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Fprintln(w, spew.NewFormatter(a), spew.NewFormatter(b))
 func Fprintln(w io.Writer, a ...interface{}) (n int, err error) {
-	return fmt.Fprintln(w, convertArgs(a)...)
+    return fmt.Fprintln(w, convertArgs(a)...)
 }
 
 // Print is a wrapper for fmt.Print that treats each argument as if it were
@@ -75,9 +75,9 @@ func Fprintln(w io.Writer, a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Print(spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Print(spew.NewFormatter(a), spew.NewFormatter(b))
 func Print(a ...interface{}) (n int, err error) {
-	return fmt.Print(convertArgs(a)...)
+    return fmt.Print(convertArgs(a)...)
 }
 
 // Printf is a wrapper for fmt.Printf that treats each argument as if it were
@@ -87,9 +87,9 @@ func Print(a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Printf(format, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Printf(format, spew.NewFormatter(a), spew.NewFormatter(b))
 func Printf(format string, a ...interface{}) (n int, err error) {
-	return fmt.Printf(format, convertArgs(a)...)
+    return fmt.Printf(format, convertArgs(a)...)
 }
 
 // Println is a wrapper for fmt.Println that treats each argument as if it were
@@ -99,9 +99,9 @@ func Printf(format string, a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Println(spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Println(spew.NewFormatter(a), spew.NewFormatter(b))
 func Println(a ...interface{}) (n int, err error) {
-	return fmt.Println(convertArgs(a)...)
+    return fmt.Println(convertArgs(a)...)
 }
 
 // Sprint is a wrapper for fmt.Sprint that treats each argument as if it were
@@ -110,9 +110,9 @@ func Println(a ...interface{}) (n int, err error) {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Sprint(spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Sprint(spew.NewFormatter(a), spew.NewFormatter(b))
 func Sprint(a ...interface{}) string {
-	return fmt.Sprint(convertArgs(a)...)
+    return fmt.Sprint(convertArgs(a)...)
 }
 
 // Sprintf is a wrapper for fmt.Sprintf that treats each argument as if it were
@@ -121,9 +121,9 @@ func Sprint(a ...interface{}) string {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Sprintf(format, spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Sprintf(format, spew.NewFormatter(a), spew.NewFormatter(b))
 func Sprintf(format string, a ...interface{}) string {
-	return fmt.Sprintf(format, convertArgs(a)...)
+    return fmt.Sprintf(format, convertArgs(a)...)
 }
 
 // Sprintln is a wrapper for fmt.Sprintln that treats each argument as if it
@@ -132,17 +132,17 @@ func Sprintf(format string, a ...interface{}) string {
 //
 // This function is shorthand for the following syntax:
 //
-//	fmt.Sprintln(spew.NewFormatter(a), spew.NewFormatter(b))
+//    fmt.Sprintln(spew.NewFormatter(a), spew.NewFormatter(b))
 func Sprintln(a ...interface{}) string {
-	return fmt.Sprintln(convertArgs(a)...)
+    return fmt.Sprintln(convertArgs(a)...)
 }
 
 // convertArgs accepts a slice of arguments and returns a slice of the same
 // length with each argument converted to a default spew Formatter interface.
 func convertArgs(args []interface{}) (formatters []interface{}) {
-	formatters = make([]interface{}, len(args))
-	for index, arg := range args {
-		formatters[index] = NewFormatter(arg)
-	}
-	return formatters
+    formatters = make([]interface{}, len(args))
+    for index, arg := range args {
+        formatters[index] = NewFormatter(arg)
+    }
+    return formatters
 }

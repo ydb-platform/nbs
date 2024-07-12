@@ -23,32 +23,32 @@ package zapcore
 import "sync"
 
 type lazyWithCore struct {
-	Core
-	sync.Once
-	fields []Field
+    Core
+    sync.Once
+    fields []Field
 }
 
 // NewLazyWith wraps a Core with a "lazy" Core that will only encode fields if
 // the logger is written to (or is further chained in a lon-lazy manner).
 func NewLazyWith(core Core, fields []Field) Core {
-	return &lazyWithCore{
-		Core:   core,
-		fields: fields,
-	}
+    return &lazyWithCore{
+        Core:   core,
+        fields: fields,
+    }
 }
 
 func (d *lazyWithCore) initOnce() {
-	d.Once.Do(func() {
-		d.Core = d.Core.With(d.fields)
-	})
+    d.Once.Do(func() {
+        d.Core = d.Core.With(d.fields)
+    })
 }
 
 func (d *lazyWithCore) With(fields []Field) Core {
-	d.initOnce()
-	return d.Core.With(fields)
+    d.initOnce()
+    return d.Core.With(fields)
 }
 
 func (d *lazyWithCore) Check(e Entry, ce *CheckedEntry) *CheckedEntry {
-	d.initOnce()
-	return d.Core.Check(e, ce)
+    d.initOnce()
+    return d.Core.Check(e, ce)
 }

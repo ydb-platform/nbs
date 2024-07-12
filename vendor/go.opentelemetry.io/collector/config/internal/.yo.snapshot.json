@@ -1,0 +1,19 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:Pjr2XMqSLCHXsmzZrW7zVZf1VBcal84tYNDoEsu8loA=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/internal": {
+            "Imports": [
+                "go.uber.org/zap",
+                "net",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        }
+    }
+}

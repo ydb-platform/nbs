@@ -1,0 +1,44 @@
+{
+    "Version": "v2.4.0",
+    "GoVersion": "1.15",
+    "Sum": "h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=",
+    "Packages": {
+        "gopkg.in/yaml.v2": {
+            "Imports": [
+                "bytes",
+                "encoding",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "io",
+                "math",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "gopkg.in/check.v1",
+                "gopkg.in/yaml.v2",
+                "io",
+                "log",
+                "math",
+                "net",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

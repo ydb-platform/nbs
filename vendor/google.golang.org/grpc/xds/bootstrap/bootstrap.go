@@ -26,9 +26,9 @@
 package bootstrap
 
 import (
-	"encoding/json"
+    "encoding/json"
 
-	"google.golang.org/grpc/credentials"
+    "google.golang.org/grpc/credentials"
 )
 
 // registry is a map from credential type name to Credential builder.
@@ -37,10 +37,10 @@ var registry = make(map[string]Credentials)
 // Credentials interface encapsulates a credentials.Bundle builder
 // that can be used for communicating with the xDS Management server.
 type Credentials interface {
-	// Build returns a credential bundle associated with this credential.
-	Build(config json.RawMessage) (credentials.Bundle, error)
-	// Name returns the credential name associated with this credential.
-	Name() string
+    // Build returns a credential bundle associated with this credential.
+    Build(config json.RawMessage) (credentials.Bundle, error)
+    // Name returns the credential name associated with this credential.
+    Name() string
 }
 
 // RegisterCredentials registers Credentials used for connecting to the xds
@@ -50,15 +50,15 @@ type Credentials interface {
 // an init() function), and is not thread-safe. If multiple credentials are
 // registered with the same name, the one registered last will take effect.
 func RegisterCredentials(c Credentials) {
-	registry[c.Name()] = c
+    registry[c.Name()] = c
 }
 
 // GetCredentials returns the credentials associated with a given name.
 // If no credentials are registered with the name, nil will be returned.
 func GetCredentials(name string) Credentials {
-	if c, ok := registry[name]; ok {
-		return c
-	}
+    if c, ok := registry[name]; ok {
+        return c
+    }
 
-	return nil
+    return nil
 }

@@ -1,5 +1,10 @@
 GO_LIBRARY()
 
+SUBSCRIBER(
+    g:go-contrib
+    g:marketsre
+)
+
 LICENSE(BSD-2-Clause)
 
 SRCS(
@@ -30,4 +35,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

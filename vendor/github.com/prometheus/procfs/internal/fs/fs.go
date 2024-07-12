@@ -14,20 +14,20 @@
 package fs
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+    "fmt"
+    "os"
+    "path/filepath"
 )
 
 const (
-	// DefaultProcMountPoint is the common mount point of the proc filesystem.
-	DefaultProcMountPoint = "/proc"
+    // DefaultProcMountPoint is the common mount point of the proc filesystem.
+    DefaultProcMountPoint = "/proc"
 
-	// DefaultSysMountPoint is the common mount point of the sys filesystem.
-	DefaultSysMountPoint = "/sys"
+    // DefaultSysMountPoint is the common mount point of the sys filesystem.
+    DefaultSysMountPoint = "/sys"
 
-	// DefaultConfigfsMountPoint is the common mount point of the configfs.
-	DefaultConfigfsMountPoint = "/sys/kernel/config"
+    // DefaultConfigfsMountPoint is the common mount point of the configfs.
+    DefaultConfigfsMountPoint = "/sys/kernel/config"
 )
 
 // FS represents a pseudo-filesystem, normally /proc or /sys, which provides an
@@ -37,19 +37,19 @@ type FS string
 // NewFS returns a new FS mounted under the given mountPoint. It will error
 // if the mount point can't be read.
 func NewFS(mountPoint string) (FS, error) {
-	info, err := os.Stat(mountPoint)
-	if err != nil {
-		return "", fmt.Errorf("could not read %q: %w", mountPoint, err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("mount point %q is not a directory", mountPoint)
-	}
+    info, err := os.Stat(mountPoint)
+    if err != nil {
+        return "", fmt.Errorf("could not read %q: %w", mountPoint, err)
+    }
+    if !info.IsDir() {
+        return "", fmt.Errorf("mount point %q is not a directory", mountPoint)
+    }
 
-	return FS(mountPoint), nil
+    return FS(mountPoint), nil
 }
 
 // Path appends the given path elements to the filesystem path, adding separators
 // as necessary.
 func (fs FS) Path(p ...string) string {
-	return filepath.Join(append([]string{string(fs)}, p...)...)
+    return filepath.Join(append([]string{string(fs)}, p...)...)
 }

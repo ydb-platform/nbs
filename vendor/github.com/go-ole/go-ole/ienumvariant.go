@@ -3,17 +3,17 @@ package ole
 import "unsafe"
 
 type IEnumVARIANT struct {
-	IUnknown
+    IUnknown
 }
 
 type IEnumVARIANTVtbl struct {
-	IUnknownVtbl
-	Next  uintptr
-	Skip  uintptr
-	Reset uintptr
-	Clone uintptr
+    IUnknownVtbl
+    Next  uintptr
+    Skip  uintptr
+    Reset uintptr
+    Clone uintptr
 }
 
 func (v *IEnumVARIANT) VTable() *IEnumVARIANTVtbl {
-	return (*IEnumVARIANTVtbl)(unsafe.Pointer(v.RawVTable))
+    return (*IEnumVARIANTVtbl)(unsafe.Pointer(v.RawVTable))
 }

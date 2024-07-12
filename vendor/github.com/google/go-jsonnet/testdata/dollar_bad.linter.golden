@@ -1,0 +1,3 @@
+../testdata/dollar_bad:1:1-2 No top-level object found.
+
+$(42)

@@ -1,0 +1,68 @@
+{
+    "Version": "v0.0.0-20240311173647-c811ad7063a7",
+    "GoVersion": "1.19",
+    "Sum": "h1:8EeVk1VKMD+GD/neyEHGmz7pFblqPjHoi+PGQIlLx2s=",
+    "Packages": {
+        "google.golang.org/genproto/googleapis/rpc/code": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/rpc/context": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/structpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/rpc/context/attribute_context": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/rpc/errdetails": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/durationpb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/rpc/http": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "google.golang.org/genproto/googleapis/rpc/status": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/anypb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

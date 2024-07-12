@@ -9,10 +9,10 @@ var _ ReadBatchOption = WithBatchMaxCount(0)
 
 // Apply implements ReadBatchOption interface
 func (count WithBatchMaxCount) Apply(
-	options topicreaderinternal.ReadMessageBatchOptions,
+    options topicreaderinternal.ReadMessageBatchOptions,
 ) topicreaderinternal.ReadMessageBatchOptions {
-	options.MaxCount = int(count)
-	return options
+    options.MaxCount = int(count)
+    return options
 }
 
 // WithBatchPreferMinCount set prefer min count for batch size. Sometime result batch can be less then count
@@ -27,11 +27,11 @@ type WithBatchPreferMinCount int
 
 // Apply implements ReadBatchOption interface
 func (count WithBatchPreferMinCount) Apply(
-	options topicreaderinternal.ReadMessageBatchOptions,
+    options topicreaderinternal.ReadMessageBatchOptions,
 ) topicreaderinternal.ReadMessageBatchOptions {
-	if count < 1 {
-		panic("ydb: min batch size must be 1 or greater")
-	}
-	options.MinCount = int(count)
-	return options
+    if count < 1 {
+        panic("ydb: min batch size must be 1 or greater")
+    }
+    options.MinCount = int(count)
+    return options
 }

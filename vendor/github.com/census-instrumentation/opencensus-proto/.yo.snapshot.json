@@ -1,0 +1,106 @@
+{
+    "Version": "v0.4.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:iKLQ0xPNFxR/2hzXZMrBo8f1j86j5WHzznCCQxV/b8g=",
+    "Packages": {
+        "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/agent/metrics/v1": {
+            "Imports": [
+                "context",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1",
+                "github.com/grpc-ecosystem/grpc-gateway/v2/runtime",
+                "github.com/grpc-ecosystem/grpc-gateway/v2/utilities",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io",
+                "net/http",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/agent/trace/v1": {
+            "Imports": [
+                "context",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1",
+                "github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1",
+                "github.com/grpc-ecosystem/grpc-gateway/v2/runtime",
+                "github.com/grpc-ecosystem/grpc-gateway/v2/utilities",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "io",
+                "net/http",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1": {
+            "Imports": [
+                "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/stats/v1": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1": {
+            "Imports": [
+                "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "google.golang.org/protobuf/types/known/wrapperspb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

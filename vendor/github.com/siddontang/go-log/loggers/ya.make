@@ -1,7 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
-SRCS(loggers.go)
+SRCS(
+    loggers.go
+)
 
 END()

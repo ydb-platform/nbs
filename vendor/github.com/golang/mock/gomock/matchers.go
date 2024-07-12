@@ -15,36 +15,36 @@
 package gomock
 
 import (
-	"fmt"
-	"reflect"
-	"strings"
+    "fmt"
+    "reflect"
+    "strings"
 )
 
 // A Matcher is a representation of a class of values.
 // It is used to represent the valid or expected arguments to a mocked method.
 type Matcher interface {
-	// Matches returns whether x is a match.
-	Matches(x interface{}) bool
+    // Matches returns whether x is a match.
+    Matches(x interface{}) bool
 
-	// String describes what the matcher matches.
-	String() string
+    // String describes what the matcher matches.
+    String() string
 }
 
 // WantFormatter modifies the given Matcher's String() method to the given
 // Stringer. This allows for control on how the "Want" is formatted when
 // printing .
 func WantFormatter(s fmt.Stringer, m Matcher) Matcher {
-	type matcher interface {
-		Matches(x interface{}) bool
-	}
+    type matcher interface {
+        Matches(x interface{}) bool
+    }
 
-	return struct {
-		matcher
-		fmt.Stringer
-	}{
-		matcher:  m,
-		Stringer: s,
-	}
+    return struct {
+        matcher
+        fmt.Stringer
+    }{
+        matcher:  m,
+        Stringer: s,
+    }
 }
 
 // StringerFunc type is an adapter to allow the use of ordinary functions as
@@ -54,16 +54,16 @@ type StringerFunc func() string
 
 // String implements fmt.Stringer.
 func (f StringerFunc) String() string {
-	return f()
+    return f()
 }
 
 // GotFormatter is used to better print failure messages. If a matcher
 // implements GotFormatter, it will use the result from Got when printing
 // the failure message.
 type GotFormatter interface {
-	// Got is invoked with the received value. The result is used when
-	// printing the failure message.
-	Got(got interface{}) string
+    // Got is invoked with the received value. The result is used when
+    // printing the failure message.
+    Got(got interface{}) string
 }
 
 // GotFormatterFunc type is an adapter to allow the use of ordinary
@@ -73,202 +73,202 @@ type GotFormatterFunc func(got interface{}) string
 
 // Got implements GotFormatter.
 func (f GotFormatterFunc) Got(got interface{}) string {
-	return f(got)
+    return f(got)
 }
 
 // GotFormatterAdapter attaches a GotFormatter to a Matcher.
 func GotFormatterAdapter(s GotFormatter, m Matcher) Matcher {
-	return struct {
-		GotFormatter
-		Matcher
-	}{
-		GotFormatter: s,
-		Matcher:      m,
-	}
+    return struct {
+        GotFormatter
+        Matcher
+    }{
+        GotFormatter: s,
+        Matcher:      m,
+    }
 }
 
 type anyMatcher struct{}
 
 func (anyMatcher) Matches(interface{}) bool {
-	return true
+    return true
 }
 
 func (anyMatcher) String() string {
-	return "is anything"
+    return "is anything"
 }
 
 type eqMatcher struct {
-	x interface{}
+    x interface{}
 }
 
 func (e eqMatcher) Matches(x interface{}) bool {
-	// In case, some value is nil
-	if e.x == nil || x == nil {
-		return reflect.DeepEqual(e.x, x)
-	}
+    // In case, some value is nil
+    if e.x == nil || x == nil {
+        return reflect.DeepEqual(e.x, x)
+    }
 
-	// Check if types assignable and convert them to common type
-	x1Val := reflect.ValueOf(e.x)
-	x2Val := reflect.ValueOf(x)
+    // Check if types assignable and convert them to common type
+    x1Val := reflect.ValueOf(e.x)
+    x2Val := reflect.ValueOf(x)
 
-	if x1Val.Type().AssignableTo(x2Val.Type()) {
-		x1ValConverted := x1Val.Convert(x2Val.Type())
-		return reflect.DeepEqual(x1ValConverted.Interface(), x2Val.Interface())
-	}
+    if x1Val.Type().AssignableTo(x2Val.Type()) {
+        x1ValConverted := x1Val.Convert(x2Val.Type())
+        return reflect.DeepEqual(x1ValConverted.Interface(), x2Val.Interface())
+    }
 
-	return false
+    return false
 }
 
 func (e eqMatcher) String() string {
-	return fmt.Sprintf("is equal to %v (%T)", e.x, e.x)
+    return fmt.Sprintf("is equal to %v (%T)", e.x, e.x)
 }
 
 type nilMatcher struct{}
 
 func (nilMatcher) Matches(x interface{}) bool {
-	if x == nil {
-		return true
-	}
+    if x == nil {
+        return true
+    }
 
-	v := reflect.ValueOf(x)
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Slice:
-		return v.IsNil()
-	}
+    v := reflect.ValueOf(x)
+    switch v.Kind() {
+    case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+        reflect.Ptr, reflect.Slice:
+        return v.IsNil()
+    }
 
-	return false
+    return false
 }
 
 func (nilMatcher) String() string {
-	return "is nil"
+    return "is nil"
 }
 
 type notMatcher struct {
-	m Matcher
+    m Matcher
 }
 
 func (n notMatcher) Matches(x interface{}) bool {
-	return !n.m.Matches(x)
+    return !n.m.Matches(x)
 }
 
 func (n notMatcher) String() string {
-	return "not(" + n.m.String() + ")"
+    return "not(" + n.m.String() + ")"
 }
 
 type assignableToTypeOfMatcher struct {
-	targetType reflect.Type
+    targetType reflect.Type
 }
 
 func (m assignableToTypeOfMatcher) Matches(x interface{}) bool {
-	return reflect.TypeOf(x).AssignableTo(m.targetType)
+    return reflect.TypeOf(x).AssignableTo(m.targetType)
 }
 
 func (m assignableToTypeOfMatcher) String() string {
-	return "is assignable to " + m.targetType.Name()
+    return "is assignable to " + m.targetType.Name()
 }
 
 type allMatcher struct {
-	matchers []Matcher
+    matchers []Matcher
 }
 
 func (am allMatcher) Matches(x interface{}) bool {
-	for _, m := range am.matchers {
-		if !m.Matches(x) {
-			return false
-		}
-	}
-	return true
+    for _, m := range am.matchers {
+        if !m.Matches(x) {
+            return false
+        }
+    }
+    return true
 }
 
 func (am allMatcher) String() string {
-	ss := make([]string, 0, len(am.matchers))
-	for _, matcher := range am.matchers {
-		ss = append(ss, matcher.String())
-	}
-	return strings.Join(ss, "; ")
+    ss := make([]string, 0, len(am.matchers))
+    for _, matcher := range am.matchers {
+        ss = append(ss, matcher.String())
+    }
+    return strings.Join(ss, "; ")
 }
 
 type lenMatcher struct {
-	i int
+    i int
 }
 
 func (m lenMatcher) Matches(x interface{}) bool {
-	v := reflect.ValueOf(x)
-	switch v.Kind() {
-	case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
-		return v.Len() == m.i
-	default:
-		return false
-	}
+    v := reflect.ValueOf(x)
+    switch v.Kind() {
+    case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
+        return v.Len() == m.i
+    default:
+        return false
+    }
 }
 
 func (m lenMatcher) String() string {
-	return fmt.Sprintf("has length %d", m.i)
+    return fmt.Sprintf("has length %d", m.i)
 }
 
 type inAnyOrderMatcher struct {
-	x interface{}
+    x interface{}
 }
 
 func (m inAnyOrderMatcher) Matches(x interface{}) bool {
-	given, ok := m.prepareValue(x)
-	if !ok {
-		return false
-	}
-	wanted, ok := m.prepareValue(m.x)
-	if !ok {
-		return false
-	}
+    given, ok := m.prepareValue(x)
+    if !ok {
+        return false
+    }
+    wanted, ok := m.prepareValue(m.x)
+    if !ok {
+        return false
+    }
 
-	if given.Len() != wanted.Len() {
-		return false
-	}
+    if given.Len() != wanted.Len() {
+        return false
+    }
 
-	usedFromGiven := make([]bool, given.Len())
-	foundFromWanted := make([]bool, wanted.Len())
-	for i := 0; i < wanted.Len(); i++ {
-		wantedMatcher := Eq(wanted.Index(i).Interface())
-		for j := 0; j < given.Len(); j++ {
-			if usedFromGiven[j] {
-				continue
-			}
-			if wantedMatcher.Matches(given.Index(j).Interface()) {
-				foundFromWanted[i] = true
-				usedFromGiven[j] = true
-				break
-			}
-		}
-	}
+    usedFromGiven := make([]bool, given.Len())
+    foundFromWanted := make([]bool, wanted.Len())
+    for i := 0; i < wanted.Len(); i++ {
+        wantedMatcher := Eq(wanted.Index(i).Interface())
+        for j := 0; j < given.Len(); j++ {
+            if usedFromGiven[j] {
+                continue
+            }
+            if wantedMatcher.Matches(given.Index(j).Interface()) {
+                foundFromWanted[i] = true
+                usedFromGiven[j] = true
+                break
+            }
+        }
+    }
 
-	missingFromWanted := 0
-	for _, found := range foundFromWanted {
-		if !found {
-			missingFromWanted++
-		}
-	}
-	extraInGiven := 0
-	for _, used := range usedFromGiven {
-		if !used {
-			extraInGiven++
-		}
-	}
+    missingFromWanted := 0
+    for _, found := range foundFromWanted {
+        if !found {
+            missingFromWanted++
+        }
+    }
+    extraInGiven := 0
+    for _, used := range usedFromGiven {
+        if !used {
+            extraInGiven++
+        }
+    }
 
-	return extraInGiven == 0 && missingFromWanted == 0
+    return extraInGiven == 0 && missingFromWanted == 0
 }
 
 func (m inAnyOrderMatcher) prepareValue(x interface{}) (reflect.Value, bool) {
-	xValue := reflect.ValueOf(x)
-	switch xValue.Kind() {
-	case reflect.Slice, reflect.Array:
-		return xValue, true
-	default:
-		return reflect.Value{}, false
-	}
+    xValue := reflect.ValueOf(x)
+    switch xValue.Kind() {
+    case reflect.Slice, reflect.Array:
+        return xValue, true
+    default:
+        return reflect.Value{}, false
+    }
 }
 
 func (m inAnyOrderMatcher) String() string {
-	return fmt.Sprintf("has the same elements as %v", m.x)
+    return fmt.Sprintf("has the same elements as %v", m.x)
 }
 
 // Constructors
@@ -290,7 +290,7 @@ func Eq(x interface{}) Matcher { return eqMatcher{x} }
 // Len returns a matcher that matches on length. This matcher returns false if
 // is compared to a type that is not an array, chan, map, slice, or string.
 func Len(i int) Matcher {
-	return lenMatcher{i}
+    return lenMatcher{i}
 }
 
 // Nil returns a matcher that matches if the received value is nil.
@@ -308,10 +308,10 @@ func Nil() Matcher { return nilMatcher{} }
 //   Not(Eq(5)).Matches(4) // returns true
 //   Not(Eq(5)).Matches(5) // returns false
 func Not(x interface{}) Matcher {
-	if m, ok := x.(Matcher); ok {
-		return notMatcher{m}
-	}
-	return notMatcher{Eq(x)}
+    if m, ok := x.(Matcher); ok {
+        return notMatcher{m}
+    }
+    return notMatcher{Eq(x)}
 }
 
 // AssignableToTypeOf is a Matcher that matches if the parameter to the mock
@@ -325,10 +325,10 @@ func Not(x interface{}) Matcher {
 //   var ctx = reflect.TypeOf((*context.Context)(nil)).Elem()
 //   AssignableToTypeOf(ctx).Matches(context.Background()) // returns true
 func AssignableToTypeOf(x interface{}) Matcher {
-	if xt, ok := x.(reflect.Type); ok {
-		return assignableToTypeOfMatcher{xt}
-	}
-	return assignableToTypeOfMatcher{reflect.TypeOf(x)}
+    if xt, ok := x.(reflect.Type); ok {
+        return assignableToTypeOfMatcher{xt}
+    }
+    return assignableToTypeOfMatcher{reflect.TypeOf(x)}
 }
 
 // InAnyOrder is a Matcher that returns true for collections of the same elements ignoring the order.
@@ -337,5 +337,5 @@ func AssignableToTypeOf(x interface{}) Matcher {
 //   InAnyOrder([]int{1, 2, 3}).Matches([]int{1, 3, 2}) // returns true
 //   InAnyOrder([]int{1, 2, 3}).Matches([]int{1, 2}) // returns false
 func InAnyOrder(x interface{}) Matcher {
-	return inAnyOrderMatcher{x}
+    return inAnyOrderMatcher{x}
 }

@@ -1,0 +1,585 @@
+{
+    "Version": "v0.0.0-20240222234643-814bf88cf225",
+    "GoVersion": "1.20",
+    "Sum": "h1:LfspQV/FYTatPTr/3HzIcmiUFH7PGP+OQ6mgDYo3yuQ=",
+    "Packages": {
+        "golang.org/x/exp/apidiff": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "go/constant",
+                "go/token",
+                "go/types",
+                "golang.org/x/tools/go/types/typeutil",
+                "io",
+                "reflect",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bufio",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "go/types",
+                "golang.org/x/tools/go/packages",
+                "golang.org/x/tools/go/packages/packagestest",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/cmd/apidiff": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "fmt",
+                "go/token",
+                "go/types",
+                "golang.org/x/exp/apidiff",
+                "golang.org/x/tools/go/gcexportdata",
+                "golang.org/x/tools/go/packages",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "go/types",
+                "golang.org/x/exp/apidiff",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/cmd/gorelease": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "go/build",
+                "golang.org/x/exp/apidiff",
+                "golang.org/x/mod/modfile",
+                "golang.org/x/mod/module",
+                "golang.org/x/mod/semver",
+                "golang.org/x/mod/zip",
+                "golang.org/x/tools/go/packages",
+                "io",
+                "log",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "sort",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "golang.org/x/mod/module",
+                "golang.org/x/mod/semver",
+                "golang.org/x/mod/zip",
+                "golang.org/x/tools/txtar",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/exp/cmd/macos-roots-test": {
+            "Imports": [
+                "C",
+                "bytes",
+                "crypto/x509",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "log",
+                "os",
+                "os/exec",
+                "os/user",
+                "path/filepath",
+                "sync",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/cmd/modgraphviz": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/mod/semver",
+                "io",
+                "log",
+                "os",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "reflect",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/cmd/txtar": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/tools/txtar",
+                "io",
+                "os",
+                "path",
+                "path/filepath",
+                "regexp",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/constraints": {
+            "Imports": null,
+            "TestImports": [
+                "fmt",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/ebnf": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "io",
+                "strconv",
+                "text/scanner",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/ebnflint": {
+            "Imports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "go/scanner",
+                "go/token",
+                "golang.org/x/exp/ebnf",
+                "io",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "os",
+                "runtime",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/io/i2c": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/exp/io/i2c/driver",
+                "io",
+                "os",
+                "syscall"
+            ],
+            "TestImports": [
+                "golang.org/x/exp/io/i2c",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/io/i2c/driver": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/exp/io/i2c/example/displayip": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/io/i2c",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/io/spi": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/exp/io/spi/driver",
+                "os",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "golang.org/x/exp/io/spi"
+            ]
+        },
+        "golang.org/x/exp/io/spi/driver": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/exp/maps": {
+            "Imports": null,
+            "TestImports": [
+                "golang.org/x/exp/slices",
+                "math",
+                "sort",
+                "strconv",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/mmap": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "io",
+                "os",
+                "runtime",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "os",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/rand": {
+            "Imports": [
+                "encoding/binary",
+                "io",
+                "math",
+                "math/bits",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/exp/rand",
+                "io",
+                "math",
+                "math/big",
+                "math/rand",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "testing",
+                "testing/iotest",
+                "text/tabwriter",
+                "time"
+            ]
+        },
+        "golang.org/x/exp/slices": {
+            "Imports": [
+                "golang.org/x/exp/constraints",
+                "math/bits",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "math",
+                "math/rand",
+                "sort",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/slog": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/slices",
+                "golang.org/x/exp/slog/internal",
+                "golang.org/x/exp/slog/internal/buffer",
+                "io",
+                "log",
+                "math",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unicode",
+                "unicode/utf8",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/exp/slices",
+                "golang.org/x/exp/slog",
+                "golang.org/x/exp/slog/internal/buffer",
+                "golang.org/x/exp/slog/internal/testutil",
+                "golang.org/x/exp/slog/slogtest",
+                "io",
+                "log",
+                "math",
+                "net/http",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/exp/slog/benchmarks": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/slog",
+                "golang.org/x/exp/slog/internal/buffer",
+                "io",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "golang.org/x/exp/slices",
+                "golang.org/x/exp/slog",
+                "golang.org/x/exp/slog/internal",
+                "io",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/slog/internal": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/exp/slog/internal/buffer": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/slog/internal/testutil": {
+            "Imports": [
+                "golang.org/x/exp/slog"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/slog/slogtest": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/slog",
+                "reflect",
+                "runtime",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "golang.org/x/exp/slog",
+                "golang.org/x/exp/slog/slogtest"
+            ]
+        },
+        "golang.org/x/exp/trace": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "cmp",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/trace/internal/event",
+                "golang.org/x/exp/trace/internal/event/go122",
+                "golang.org/x/exp/trace/internal/version",
+                "io",
+                "math",
+                "math/bits",
+                "runtime/trace",
+                "slices",
+                "strings",
+                "sync",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "golang.org/x/exp/trace",
+                "golang.org/x/exp/trace/internal/raw",
+                "golang.org/x/exp/trace/internal/testtrace",
+                "golang.org/x/exp/trace/internal/version",
+                "io",
+                "os",
+                "path/filepath",
+                "runtime/trace",
+                "slices",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/exp/trace/cmd/gotraceraw": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "golang.org/x/exp/trace/internal/raw",
+                "golang.org/x/exp/trace/internal/version",
+                "io",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/cmd/gotracevalidate": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "golang.org/x/exp/trace",
+                "golang.org/x/exp/trace/internal/testtrace",
+                "io",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/event": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/event/go122": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/trace/internal/event"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/raw": {
+            "Imports": [
+                "bufio",
+                "encoding/binary",
+                "fmt",
+                "golang.org/x/exp/trace/internal/event",
+                "golang.org/x/exp/trace/internal/version",
+                "io",
+                "strconv",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/testgen/go122": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "golang.org/x/exp/trace",
+                "golang.org/x/exp/trace/internal/event",
+                "golang.org/x/exp/trace/internal/event/go122",
+                "golang.org/x/exp/trace/internal/raw",
+                "golang.org/x/exp/trace/internal/version",
+                "golang.org/x/tools/txtar",
+                "os",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/testtrace": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/trace",
+                "golang.org/x/exp/trace/internal/raw",
+                "golang.org/x/tools/txtar",
+                "io",
+                "regexp",
+                "slices",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/trace/internal/version": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/trace/internal/event",
+                "golang.org/x/exp/trace/internal/event/go122",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/utf8string": {
+            "Imports": [
+                "errors",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "math/rand",
+                "testing",
+                "unicode/utf8"
+            ]
+        }
+    }
+}

@@ -1,0 +1,67 @@
+{
+    "Version": "v0.0.0-20220411070212-51a1004ef6cb",
+    "GoVersion": "1.12",
+    "Sum": "h1:19450U8aLeER8XmZi/JkQapIpxajEq41ZK9uUwwSSqw=",
+    "Packages": {
+        "github.com/google/rpmpack": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "crypto/sha256",
+                "encoding/binary",
+                "fmt",
+                "github.com/cavaliergopher/cpio",
+                "github.com/klauspost/compress/zstd",
+                "github.com/klauspost/pgzip",
+                "github.com/pkg/errors",
+                "github.com/ulikunitz/xz",
+                "github.com/ulikunitz/xz/lzma",
+                "io",
+                "io/ioutil",
+                "path",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/klauspost/compress/zstd",
+                "github.com/klauspost/pgzip",
+                "github.com/ulikunitz/xz",
+                "github.com/ulikunitz/xz/lzma",
+                "io",
+                "io/ioutil",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/rpmpack/cmd/rpmsample": {
+            "Imports": [
+                "flag",
+                "github.com/google/rpmpack",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/rpmpack/cmd/tar2rpm": {
+            "Imports": [
+                "bufio",
+                "flag",
+                "fmt",
+                "github.com/google/rpmpack",
+                "io",
+                "log",
+                "math",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

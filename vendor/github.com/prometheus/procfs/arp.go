@@ -14,103 +14,103 @@
 package procfs
 
 import (
-	"fmt"
-	"net"
-	"os"
-	"strconv"
-	"strings"
+    "fmt"
+    "net"
+    "os"
+    "strconv"
+    "strings"
 )
 
 // Learned from include/uapi/linux/if_arp.h.
 const (
-	// completed entry (ha valid).
-	ATFComplete = 0x02
-	// permanent entry.
-	ATFPermanent = 0x04
-	// Publish entry.
-	ATFPublish = 0x08
-	// Has requested trailers.
-	ATFUseTrailers = 0x10
-	// Obsoleted: Want to use a netmask (only for proxy entries).
-	ATFNetmask = 0x20
-	// Don't answer this addresses.
-	ATFDontPublish = 0x40
+    // completed entry (ha valid).
+    ATFComplete = 0x02
+    // permanent entry.
+    ATFPermanent = 0x04
+    // Publish entry.
+    ATFPublish = 0x08
+    // Has requested trailers.
+    ATFUseTrailers = 0x10
+    // Obsoleted: Want to use a netmask (only for proxy entries).
+    ATFNetmask = 0x20
+    // Don't answer this addresses.
+    ATFDontPublish = 0x40
 )
 
 // ARPEntry contains a single row of the columnar data represented in
 // /proc/net/arp.
 type ARPEntry struct {
-	// IP address
-	IPAddr net.IP
-	// MAC address
-	HWAddr net.HardwareAddr
-	// Name of the device
-	Device string
-	// Flags
-	Flags byte
+    // IP address
+    IPAddr net.IP
+    // MAC address
+    HWAddr net.HardwareAddr
+    // Name of the device
+    Device string
+    // Flags
+    Flags byte
 }
 
 // GatherARPEntries retrieves all the ARP entries, parse the relevant columns,
 // and then return a slice of ARPEntry's.
 func (fs FS) GatherARPEntries() ([]ARPEntry, error) {
-	data, err := os.ReadFile(fs.proc.Path("net/arp"))
-	if err != nil {
-		return nil, fmt.Errorf("%s: error reading arp %s: %w", ErrFileRead, fs.proc.Path("net/arp"), err)
-	}
+    data, err := os.ReadFile(fs.proc.Path("net/arp"))
+    if err != nil {
+        return nil, fmt.Errorf("%s: error reading arp %s: %w", ErrFileRead, fs.proc.Path("net/arp"), err)
+    }
 
-	return parseARPEntries(data)
+    return parseARPEntries(data)
 }
 
 func parseARPEntries(data []byte) ([]ARPEntry, error) {
-	lines := strings.Split(string(data), "\n")
-	entries := make([]ARPEntry, 0)
-	var err error
-	const (
-		expectedDataWidth   = 6
-		expectedHeaderWidth = 9
-	)
-	for _, line := range lines {
-		columns := strings.Fields(line)
-		width := len(columns)
+    lines := strings.Split(string(data), "\n")
+    entries := make([]ARPEntry, 0)
+    var err error
+    const (
+        expectedDataWidth   = 6
+        expectedHeaderWidth = 9
+    )
+    for _, line := range lines {
+        columns := strings.Fields(line)
+        width := len(columns)
 
-		if width == expectedHeaderWidth || width == 0 {
-			continue
-		} else if width == expectedDataWidth {
-			entry, err := parseARPEntry(columns)
-			if err != nil {
-				return []ARPEntry{}, fmt.Errorf("%s: Failed to parse ARP entry: %v: %w", ErrFileParse, entry, err)
-			}
-			entries = append(entries, entry)
-		} else {
-			return []ARPEntry{}, fmt.Errorf("%s: %d columns found, but expected %d: %w", ErrFileParse, width, expectedDataWidth, err)
-		}
+        if width == expectedHeaderWidth || width == 0 {
+            continue
+        } else if width == expectedDataWidth {
+            entry, err := parseARPEntry(columns)
+            if err != nil {
+                return []ARPEntry{}, fmt.Errorf("%s: Failed to parse ARP entry: %v: %w", ErrFileParse, entry, err)
+            }
+            entries = append(entries, entry)
+        } else {
+            return []ARPEntry{}, fmt.Errorf("%s: %d columns found, but expected %d: %w", ErrFileParse, width, expectedDataWidth, err)
+        }
 
-	}
+    }
 
-	return entries, err
+    return entries, err
 }
 
 func parseARPEntry(columns []string) (ARPEntry, error) {
-	entry := ARPEntry{Device: columns[5]}
-	ip := net.ParseIP(columns[0])
-	entry.IPAddr = ip
+    entry := ARPEntry{Device: columns[5]}
+    ip := net.ParseIP(columns[0])
+    entry.IPAddr = ip
 
-	if mac, err := net.ParseMAC(columns[3]); err == nil {
-		entry.HWAddr = mac
-	} else {
-		return ARPEntry{}, err
-	}
+    if mac, err := net.ParseMAC(columns[3]); err == nil {
+        entry.HWAddr = mac
+    } else {
+        return ARPEntry{}, err
+    }
 
-	if flags, err := strconv.ParseUint(columns[2], 0, 8); err == nil {
-		entry.Flags = byte(flags)
-	} else {
-		return ARPEntry{}, err
-	}
+    if flags, err := strconv.ParseUint(columns[2], 0, 8); err == nil {
+        entry.Flags = byte(flags)
+    } else {
+        return ARPEntry{}, err
+    }
 
-	return entry, nil
+    return entry, nil
 }
 
 // IsComplete returns true if ARP entry is marked with complete flag.
 func (entry *ARPEntry) IsComplete() bool {
-	return entry.Flags&ATFComplete != 0
+    return entry.Flags&ATFComplete != 0
 }

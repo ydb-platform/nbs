@@ -22,17 +22,17 @@
 package uuid
 
 import (
-	"crypto/md5"
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/binary"
-	"errors"
-	"fmt"
-	"hash"
-	"io"
-	"net"
-	"sync"
-	"time"
+    "crypto/md5"
+    "crypto/rand"
+    "crypto/sha1"
+    "encoding/binary"
+    "errors"
+    "fmt"
+    "hash"
+    "io"
+    "net"
+    "sync"
+    "time"
 )
 
 // Difference in 100-nanosecond intervals between
@@ -49,22 +49,22 @@ var DefaultGenerator Generator = NewGen()
 
 // NewV1 returns a UUID based on the current timestamp and MAC address.
 func NewV1() (UUID, error) {
-	return DefaultGenerator.NewV1()
+    return DefaultGenerator.NewV1()
 }
 
 // NewV3 returns a UUID based on the MD5 hash of the namespace UUID and name.
 func NewV3(ns UUID, name string) UUID {
-	return DefaultGenerator.NewV3(ns, name)
+    return DefaultGenerator.NewV3(ns, name)
 }
 
 // NewV4 returns a randomly generated UUID.
 func NewV4() (UUID, error) {
-	return DefaultGenerator.NewV4()
+    return DefaultGenerator.NewV4()
 }
 
 // NewV5 returns a UUID based on SHA-1 hash of the namespace UUID and name.
 func NewV5(ns UUID, name string) UUID {
-	return DefaultGenerator.NewV5(ns, name)
+    return DefaultGenerator.NewV5(ns, name)
 }
 
 // NewV6 returns a k-sortable UUID based on a timestamp and 48 bits of
@@ -77,7 +77,7 @@ func NewV5(ns UUID, name string) UUID {
 // not be considered a breaking change. They will happen as a minor version
 // releases until the spec is final.
 func NewV6() (UUID, error) {
-	return DefaultGenerator.NewV6()
+    return DefaultGenerator.NewV6()
 }
 
 // NewV7 returns a k-sortable UUID based on the current UNIX epoch, with the
@@ -95,17 +95,17 @@ func NewV6() (UUID, error) {
 // not be considered a breaking change. They will happen as a minor version
 // releases until the spec is final.
 func NewV7(p Precision) (UUID, error) {
-	return DefaultGenerator.NewV7(p)
+    return DefaultGenerator.NewV7(p)
 }
 
 // Generator provides an interface for generating UUIDs.
 type Generator interface {
-	NewV1() (UUID, error)
-	NewV3(ns UUID, name string) UUID
-	NewV4() (UUID, error)
-	NewV5(ns UUID, name string) UUID
-	NewV6() (UUID, error)
-	NewV7(Precision) (UUID, error)
+    NewV1() (UUID, error)
+    NewV3(ns UUID, name string) UUID
+    NewV4() (UUID, error)
+    NewV5(ns UUID, name string) UUID
+    NewV6() (UUID, error)
+    NewV7(Precision) (UUID, error)
 }
 
 // Gen is a reference UUID generator based on the specifications laid out in
@@ -120,21 +120,21 @@ type Generator interface {
 // to obfuscate their MAC address, and so we recommend using NewGen() to create
 // a new generator.
 type Gen struct {
-	clockSequenceOnce sync.Once
-	hardwareAddrOnce  sync.Once
-	storageMutex      sync.Mutex
+    clockSequenceOnce sync.Once
+    hardwareAddrOnce  sync.Once
+    storageMutex      sync.Mutex
 
-	rand io.Reader
+    rand io.Reader
 
-	epochFunc     epochFunc
-	hwAddrFunc    HWAddrFunc
-	lastTime      uint64
-	clockSequence uint16
-	hardwareAddr  [6]byte
+    epochFunc     epochFunc
+    hwAddrFunc    HWAddrFunc
+    lastTime      uint64
+    clockSequence uint16
+    hardwareAddr  [6]byte
 
-	v7LastTime      uint64
-	v7LastSubsec    uint64
-	v7ClockSequence uint16
+    v7LastTime      uint64
+    v7LastSubsec    uint64
+    v7ClockSequence uint16
 }
 
 // interface check -- build will fail if *Gen doesn't satisfy Generator
@@ -143,7 +143,7 @@ var _ Generator = (*Gen)(nil)
 // NewGen returns a new instance of Gen with some default values set. Most
 // people should use this.
 func NewGen() *Gen {
-	return NewGenWithHWAF(defaultHWAddrFunc)
+    return NewGenWithHWAF(defaultHWAddrFunc)
 }
 
 // NewGenWithHWAF builds a new UUID generator with the HWAddrFunc provided. Most
@@ -158,66 +158,66 @@ func NewGen() *Gen {
 // MAC address being used, you'll need to create a new generator using this
 // function.
 func NewGenWithHWAF(hwaf HWAddrFunc) *Gen {
-	return &Gen{
-		epochFunc:  time.Now,
-		hwAddrFunc: hwaf,
-		rand:       rand.Reader,
-	}
+    return &Gen{
+        epochFunc:  time.Now,
+        hwAddrFunc: hwaf,
+        rand:       rand.Reader,
+    }
 }
 
 // NewV1 returns a UUID based on the current timestamp and MAC address.
 func (g *Gen) NewV1() (UUID, error) {
-	u := UUID{}
+    u := UUID{}
 
-	timeNow, clockSeq, err := g.getClockSequence()
-	if err != nil {
-		return Nil, err
-	}
-	binary.BigEndian.PutUint32(u[0:], uint32(timeNow))
-	binary.BigEndian.PutUint16(u[4:], uint16(timeNow>>32))
-	binary.BigEndian.PutUint16(u[6:], uint16(timeNow>>48))
-	binary.BigEndian.PutUint16(u[8:], clockSeq)
+    timeNow, clockSeq, err := g.getClockSequence()
+    if err != nil {
+        return Nil, err
+    }
+    binary.BigEndian.PutUint32(u[0:], uint32(timeNow))
+    binary.BigEndian.PutUint16(u[4:], uint16(timeNow>>32))
+    binary.BigEndian.PutUint16(u[6:], uint16(timeNow>>48))
+    binary.BigEndian.PutUint16(u[8:], clockSeq)
 
-	hardwareAddr, err := g.getHardwareAddr()
-	if err != nil {
-		return Nil, err
-	}
-	copy(u[10:], hardwareAddr)
+    hardwareAddr, err := g.getHardwareAddr()
+    if err != nil {
+        return Nil, err
+    }
+    copy(u[10:], hardwareAddr)
 
-	u.SetVersion(V1)
-	u.SetVariant(VariantRFC4122)
+    u.SetVersion(V1)
+    u.SetVariant(VariantRFC4122)
 
-	return u, nil
+    return u, nil
 }
 
 // NewV3 returns a UUID based on the MD5 hash of the namespace UUID and name.
 func (g *Gen) NewV3(ns UUID, name string) UUID {
-	u := newFromHash(md5.New(), ns, name)
-	u.SetVersion(V3)
-	u.SetVariant(VariantRFC4122)
+    u := newFromHash(md5.New(), ns, name)
+    u.SetVersion(V3)
+    u.SetVariant(VariantRFC4122)
 
-	return u
+    return u
 }
 
 // NewV4 returns a randomly generated UUID.
 func (g *Gen) NewV4() (UUID, error) {
-	u := UUID{}
-	if _, err := io.ReadFull(g.rand, u[:]); err != nil {
-		return Nil, err
-	}
-	u.SetVersion(V4)
-	u.SetVariant(VariantRFC4122)
+    u := UUID{}
+    if _, err := io.ReadFull(g.rand, u[:]); err != nil {
+        return Nil, err
+    }
+    u.SetVersion(V4)
+    u.SetVariant(VariantRFC4122)
 
-	return u, nil
+    return u, nil
 }
 
 // NewV5 returns a UUID based on SHA-1 hash of the namespace UUID and name.
 func (g *Gen) NewV5(ns UUID, name string) UUID {
-	u := newFromHash(sha1.New(), ns, name)
-	u.SetVersion(V5)
-	u.SetVariant(VariantRFC4122)
+    u := newFromHash(sha1.New(), ns, name)
+    u.SetVersion(V5)
+    u.SetVariant(VariantRFC4122)
 
-	return u
+    return u
 }
 
 // NewV6 returns a k-sortable UUID based on a timestamp and 48 bits of
@@ -230,54 +230,54 @@ func (g *Gen) NewV5(ns UUID, name string) UUID {
 // not be considered a breaking change. They will happen as a minor version
 // releases until the spec is final.
 func (g *Gen) NewV6() (UUID, error) {
-	var u UUID
+    var u UUID
 
-	if _, err := io.ReadFull(g.rand, u[10:]); err != nil {
-		return Nil, err
-	}
+    if _, err := io.ReadFull(g.rand, u[10:]); err != nil {
+        return Nil, err
+    }
 
-	timeNow, clockSeq, err := g.getClockSequence()
-	if err != nil {
-		return Nil, err
-	}
+    timeNow, clockSeq, err := g.getClockSequence()
+    if err != nil {
+        return Nil, err
+    }
 
-	binary.BigEndian.PutUint32(u[0:], uint32(timeNow>>28))   // set time_high
-	binary.BigEndian.PutUint16(u[4:], uint16(timeNow>>12))   // set time_mid
-	binary.BigEndian.PutUint16(u[6:], uint16(timeNow&0xfff)) // set time_low (minus four version bits)
-	binary.BigEndian.PutUint16(u[8:], clockSeq&0x3fff)       // set clk_seq_hi_res (minus two variant bits)
+    binary.BigEndian.PutUint32(u[0:], uint32(timeNow>>28))   // set time_high
+    binary.BigEndian.PutUint16(u[4:], uint16(timeNow>>12))   // set time_mid
+    binary.BigEndian.PutUint16(u[6:], uint16(timeNow&0xfff)) // set time_low (minus four version bits)
+    binary.BigEndian.PutUint16(u[8:], clockSeq&0x3fff)       // set clk_seq_hi_res (minus two variant bits)
 
-	u.SetVersion(V6)
-	u.SetVariant(VariantRFC4122)
+    u.SetVersion(V6)
+    u.SetVariant(VariantRFC4122)
 
-	return u, nil
+    return u, nil
 }
 
 // getClockSequence returns the epoch and clock sequence for V1 and V6 UUIDs.
 func (g *Gen) getClockSequence() (uint64, uint16, error) {
-	var err error
-	g.clockSequenceOnce.Do(func() {
-		buf := make([]byte, 2)
-		if _, err = io.ReadFull(g.rand, buf); err != nil {
-			return
-		}
-		g.clockSequence = binary.BigEndian.Uint16(buf)
-	})
-	if err != nil {
-		return 0, 0, err
-	}
+    var err error
+    g.clockSequenceOnce.Do(func() {
+        buf := make([]byte, 2)
+        if _, err = io.ReadFull(g.rand, buf); err != nil {
+            return
+        }
+        g.clockSequence = binary.BigEndian.Uint16(buf)
+    })
+    if err != nil {
+        return 0, 0, err
+    }
 
-	g.storageMutex.Lock()
-	defer g.storageMutex.Unlock()
+    g.storageMutex.Lock()
+    defer g.storageMutex.Unlock()
 
-	timeNow := g.getEpoch()
-	// Clock didn't change since last UUID generation.
-	// Should increase clock sequence.
-	if timeNow <= g.lastTime {
-		g.clockSequence++
-	}
-	g.lastTime = timeNow
+    timeNow := g.getEpoch()
+    // Clock didn't change since last UUID generation.
+    // Should increase clock sequence.
+    if timeNow <= g.lastTime {
+        g.clockSequence++
+    }
+    g.lastTime = timeNow
 
-	return timeNow, g.clockSequence, nil
+    return timeNow, g.clockSequence, nil
 }
 
 // Precision is used to configure the V7 generator, to specify how precise the
@@ -285,43 +285,43 @@ func (g *Gen) getClockSequence() (uint64, uint16, error) {
 type Precision byte
 
 const (
-	NanosecondPrecision Precision = iota
-	MicrosecondPrecision
-	MillisecondPrecision
+    NanosecondPrecision Precision = iota
+    MicrosecondPrecision
+    MillisecondPrecision
 )
 
 func (p Precision) String() string {
-	switch p {
-	case NanosecondPrecision:
-		return "nanosecond"
+    switch p {
+    case NanosecondPrecision:
+        return "nanosecond"
 
-	case MicrosecondPrecision:
-		return "microsecond"
+    case MicrosecondPrecision:
+        return "microsecond"
 
-	case MillisecondPrecision:
-		return "millisecond"
+    case MillisecondPrecision:
+        return "millisecond"
 
-	default:
-		return "unknown"
-	}
+    default:
+        return "unknown"
+    }
 }
 
 // Duration returns the time.Duration for a specific precision. If the Precision
 // value is not known, this returns 0.
 func (p Precision) Duration() time.Duration {
-	switch p {
-	case NanosecondPrecision:
-		return time.Nanosecond
+    switch p {
+    case NanosecondPrecision:
+        return time.Nanosecond
 
-	case MicrosecondPrecision:
-		return time.Microsecond
+    case MicrosecondPrecision:
+        return time.Microsecond
 
-	case MillisecondPrecision:
-		return time.Millisecond
+    case MillisecondPrecision:
+        return time.Millisecond
 
-	default:
-		return 0
-	}
+    default:
+        return 0
+    }
 }
 
 // NewV7 returns a k-sortable UUID based on the current UNIX epoch, with the
@@ -339,235 +339,235 @@ func (p Precision) Duration() time.Duration {
 // not be considered a breaking change. They will happen as a minor version
 // releases until the spec is final.
 func (g *Gen) NewV7(p Precision) (UUID, error) {
-	var u UUID
-	var err error
+    var u UUID
+    var err error
 
-	switch p {
-	case NanosecondPrecision:
-		u, err = g.newV7Nano()
+    switch p {
+    case NanosecondPrecision:
+        u, err = g.newV7Nano()
 
-	case MicrosecondPrecision:
-		u, err = g.newV7Micro()
+    case MicrosecondPrecision:
+        u, err = g.newV7Micro()
 
-	case MillisecondPrecision:
-		u, err = g.newV7Milli()
+    case MillisecondPrecision:
+        u, err = g.newV7Milli()
 
-	default:
-		panic(fmt.Sprintf("unknown precision value %d", p))
-	}
+    default:
+        panic(fmt.Sprintf("unknown precision value %d", p))
+    }
 
-	if err != nil {
-		return Nil, err
-	}
+    if err != nil {
+        return Nil, err
+    }
 
-	u.SetVersion(V7)
-	u.SetVariant(VariantRFC4122)
+    u.SetVersion(V7)
+    u.SetVariant(VariantRFC4122)
 
-	return u, nil
+    return u, nil
 }
 
 func (g *Gen) newV7Milli() (UUID, error) {
-	var u UUID
+    var u UUID
 
-	if _, err := io.ReadFull(g.rand, u[8:]); err != nil {
-		return Nil, err
-	}
+    if _, err := io.ReadFull(g.rand, u[8:]); err != nil {
+        return Nil, err
+    }
 
-	sec, nano, seq, err := g.getV7ClockSequence(MillisecondPrecision)
-	if err != nil {
-		return Nil, err
-	}
+    sec, nano, seq, err := g.getV7ClockSequence(MillisecondPrecision)
+    if err != nil {
+        return Nil, err
+    }
 
-	msec := (nano / 1000000) & 0xfff
+    msec := (nano / 1000000) & 0xfff
 
-	d := (sec << 28)           // set unixts field
-	d |= (msec << 16)          // set msec field
-	d |= (uint64(seq) & 0xfff) // set seq field
+    d := (sec << 28)           // set unixts field
+    d |= (msec << 16)          // set msec field
+    d |= (uint64(seq) & 0xfff) // set seq field
 
-	binary.BigEndian.PutUint64(u[:], d)
+    binary.BigEndian.PutUint64(u[:], d)
 
-	return u, nil
+    return u, nil
 }
 
 func (g *Gen) newV7Micro() (UUID, error) {
-	var u UUID
+    var u UUID
 
-	if _, err := io.ReadFull(g.rand, u[10:]); err != nil {
-		return Nil, err
-	}
+    if _, err := io.ReadFull(g.rand, u[10:]); err != nil {
+        return Nil, err
+    }
 
-	sec, nano, seq, err := g.getV7ClockSequence(MicrosecondPrecision)
-	if err != nil {
-		return Nil, err
-	}
+    sec, nano, seq, err := g.getV7ClockSequence(MicrosecondPrecision)
+    if err != nil {
+        return Nil, err
+    }
 
-	usec := nano / 1000
-	usech := (usec << 4) & 0xfff0000
-	usecl := usec & 0xfff
+    usec := nano / 1000
+    usech := (usec << 4) & 0xfff0000
+    usecl := usec & 0xfff
 
-	d := (sec << 28)   // set unixts field
-	d |= usech | usecl // set usec fields
+    d := (sec << 28)   // set unixts field
+    d |= usech | usecl // set usec fields
 
-	binary.BigEndian.PutUint64(u[:], d)
-	binary.BigEndian.PutUint16(u[8:], seq)
+    binary.BigEndian.PutUint64(u[:], d)
+    binary.BigEndian.PutUint16(u[8:], seq)
 
-	return u, nil
+    return u, nil
 }
 
 func (g *Gen) newV7Nano() (UUID, error) {
-	var u UUID
+    var u UUID
 
-	if _, err := io.ReadFull(g.rand, u[11:]); err != nil {
-		return Nil, err
-	}
+    if _, err := io.ReadFull(g.rand, u[11:]); err != nil {
+        return Nil, err
+    }
 
-	sec, nano, seq, err := g.getV7ClockSequence(NanosecondPrecision)
-	if err != nil {
-		return Nil, err
-	}
+    sec, nano, seq, err := g.getV7ClockSequence(NanosecondPrecision)
+    if err != nil {
+        return Nil, err
+    }
 
-	nano &= 0x3fffffffff
-	nanoh := nano >> 26
-	nanom := (nano >> 14) & 0xfff
-	nanol := uint16(nano & 0x3fff)
+    nano &= 0x3fffffffff
+    nanoh := nano >> 26
+    nanom := (nano >> 14) & 0xfff
+    nanol := uint16(nano & 0x3fff)
 
-	d := (sec << 28)           // set unixts field
-	d |= (nanoh << 16) | nanom // set nsec high and med fields
+    d := (sec << 28)           // set unixts field
+    d |= (nanoh << 16) | nanom // set nsec high and med fields
 
-	binary.BigEndian.PutUint64(u[:], d)
-	binary.BigEndian.PutUint16(u[8:], nanol) // set nsec low field
+    binary.BigEndian.PutUint64(u[:], d)
+    binary.BigEndian.PutUint16(u[8:], nanol) // set nsec low field
 
-	u[10] = byte(seq) // set seq field
+    u[10] = byte(seq) // set seq field
 
-	return u, nil
+    return u, nil
 }
 
 const (
-	maxSeq14 = (1 << 14) - 1
-	maxSeq12 = (1 << 12) - 1
-	maxSeq8  = (1 << 8) - 1
+    maxSeq14 = (1 << 14) - 1
+    maxSeq12 = (1 << 12) - 1
+    maxSeq8  = (1 << 8) - 1
 )
 
 // getV7ClockSequence returns the unix epoch, nanoseconds of current second, and
 // the sequence for V7 UUIDs.
 func (g *Gen) getV7ClockSequence(p Precision) (epoch uint64, nano uint64, seq uint16, err error) {
-	g.storageMutex.Lock()
-	defer g.storageMutex.Unlock()
+    g.storageMutex.Lock()
+    defer g.storageMutex.Unlock()
 
-	tn := g.epochFunc()
-	unix := uint64(tn.Unix())
-	nsec := uint64(tn.Nanosecond())
+    tn := g.epochFunc()
+    unix := uint64(tn.Unix())
+    nsec := uint64(tn.Nanosecond())
 
-	// V7 UUIDs have more precise requirements around how the clock sequence
-	// value is generated and used. Specifically they require that the sequence
-	// be zero, unless we've already generated a UUID within this unit of time
-	// (millisecond, microsecond, or nanosecond) at which point you should
-	// increment the sequence. Likewise if time has warped backwards for some reason (NTP
-	// adjustment?), we also increment the clock sequence to reduce the risk of a
-	// collision.
-	switch {
-	case unix < g.v7LastTime:
-		g.v7ClockSequence++
+    // V7 UUIDs have more precise requirements around how the clock sequence
+    // value is generated and used. Specifically they require that the sequence
+    // be zero, unless we've already generated a UUID within this unit of time
+    // (millisecond, microsecond, or nanosecond) at which point you should
+    // increment the sequence. Likewise if time has warped backwards for some reason (NTP
+    // adjustment?), we also increment the clock sequence to reduce the risk of a
+    // collision.
+    switch {
+    case unix < g.v7LastTime:
+        g.v7ClockSequence++
 
-	case unix > g.v7LastTime:
-		g.v7ClockSequence = 0
+    case unix > g.v7LastTime:
+        g.v7ClockSequence = 0
 
-	case unix == g.v7LastTime:
-		switch p {
-		case NanosecondPrecision:
-			if nsec <= g.v7LastSubsec {
-				if g.v7ClockSequence >= maxSeq8 {
-					return 0, 0, 0, errors.New("generating nanosecond precision UUIDv7s too fast: internal clock sequence would roll over")
-				}
+    case unix == g.v7LastTime:
+        switch p {
+        case NanosecondPrecision:
+            if nsec <= g.v7LastSubsec {
+                if g.v7ClockSequence >= maxSeq8 {
+                    return 0, 0, 0, errors.New("generating nanosecond precision UUIDv7s too fast: internal clock sequence would roll over")
+                }
 
-				g.v7ClockSequence++
-			} else {
-				g.v7ClockSequence = 0
-			}
+                g.v7ClockSequence++
+            } else {
+                g.v7ClockSequence = 0
+            }
 
-		case MicrosecondPrecision:
-			if nsec/1000 <= g.v7LastSubsec/1000 {
-				if g.v7ClockSequence >= maxSeq14 {
-					return 0, 0, 0, errors.New("generating microsecond precision UUIDv7s too fast: internal clock sequence would roll over")
-				}
+        case MicrosecondPrecision:
+            if nsec/1000 <= g.v7LastSubsec/1000 {
+                if g.v7ClockSequence >= maxSeq14 {
+                    return 0, 0, 0, errors.New("generating microsecond precision UUIDv7s too fast: internal clock sequence would roll over")
+                }
 
-				g.v7ClockSequence++
-			} else {
-				g.v7ClockSequence = 0
-			}
+                g.v7ClockSequence++
+            } else {
+                g.v7ClockSequence = 0
+            }
 
-		case MillisecondPrecision:
-			if nsec/1000000 <= g.v7LastSubsec/1000000 {
-				if g.v7ClockSequence >= maxSeq12 {
-					return 0, 0, 0, errors.New("generating millisecond precision UUIDv7s too fast: internal clock sequence would roll over")
-				}
+        case MillisecondPrecision:
+            if nsec/1000000 <= g.v7LastSubsec/1000000 {
+                if g.v7ClockSequence >= maxSeq12 {
+                    return 0, 0, 0, errors.New("generating millisecond precision UUIDv7s too fast: internal clock sequence would roll over")
+                }
 
-				g.v7ClockSequence++
-			} else {
-				g.v7ClockSequence = 0
-			}
+                g.v7ClockSequence++
+            } else {
+                g.v7ClockSequence = 0
+            }
 
-		default:
-			panic(fmt.Sprintf("unknown precision value %d", p))
-		}
-	}
+        default:
+            panic(fmt.Sprintf("unknown precision value %d", p))
+        }
+    }
 
-	g.v7LastTime = unix
-	g.v7LastSubsec = nsec
+    g.v7LastTime = unix
+    g.v7LastSubsec = nsec
 
-	return unix, nsec, g.v7ClockSequence, nil
+    return unix, nsec, g.v7ClockSequence, nil
 }
 
 // Returns the hardware address.
 func (g *Gen) getHardwareAddr() ([]byte, error) {
-	var err error
-	g.hardwareAddrOnce.Do(func() {
-		var hwAddr net.HardwareAddr
-		if hwAddr, err = g.hwAddrFunc(); err == nil {
-			copy(g.hardwareAddr[:], hwAddr)
-			return
-		}
+    var err error
+    g.hardwareAddrOnce.Do(func() {
+        var hwAddr net.HardwareAddr
+        if hwAddr, err = g.hwAddrFunc(); err == nil {
+            copy(g.hardwareAddr[:], hwAddr)
+            return
+        }
 
-		// Initialize hardwareAddr randomly in case
-		// of real network interfaces absence.
-		if _, err = io.ReadFull(g.rand, g.hardwareAddr[:]); err != nil {
-			return
-		}
-		// Set multicast bit as recommended by RFC-4122
-		g.hardwareAddr[0] |= 0x01
-	})
-	if err != nil {
-		return []byte{}, err
-	}
-	return g.hardwareAddr[:], nil
+        // Initialize hardwareAddr randomly in case
+        // of real network interfaces absence.
+        if _, err = io.ReadFull(g.rand, g.hardwareAddr[:]); err != nil {
+            return
+        }
+        // Set multicast bit as recommended by RFC-4122
+        g.hardwareAddr[0] |= 0x01
+    })
+    if err != nil {
+        return []byte{}, err
+    }
+    return g.hardwareAddr[:], nil
 }
 
 // Returns the difference between UUID epoch (October 15, 1582)
 // and current time in 100-nanosecond intervals.
 func (g *Gen) getEpoch() uint64 {
-	return epochStart + uint64(g.epochFunc().UnixNano()/100)
+    return epochStart + uint64(g.epochFunc().UnixNano()/100)
 }
 
 // Returns the UUID based on the hashing of the namespace UUID and name.
 func newFromHash(h hash.Hash, ns UUID, name string) UUID {
-	u := UUID{}
-	h.Write(ns[:])
-	h.Write([]byte(name))
-	copy(u[:], h.Sum(nil))
+    u := UUID{}
+    h.Write(ns[:])
+    h.Write([]byte(name))
+    copy(u[:], h.Sum(nil))
 
-	return u
+    return u
 }
 
 // Returns the hardware address.
 func defaultHWAddrFunc() (net.HardwareAddr, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return []byte{}, err
-	}
-	for _, iface := range ifaces {
-		if len(iface.HardwareAddr) >= 6 {
-			return iface.HardwareAddr, nil
-		}
-	}
-	return []byte{}, fmt.Errorf("uuid: no HW address found")
+    ifaces, err := net.Interfaces()
+    if err != nil {
+        return []byte{}, err
+    }
+    for _, iface := range ifaces {
+        if len(iface.HardwareAddr) >= 6 {
+            return iface.HardwareAddr, nil
+        }
+    }
+    return []byte{}, fmt.Errorf("uuid: no HW address found")
 }

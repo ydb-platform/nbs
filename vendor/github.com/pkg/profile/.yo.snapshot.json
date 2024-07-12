@@ -1,0 +1,34 @@
+{
+    "Version": "v1.7.0",
+    "GoVersion": "1.13",
+    "Sum": "h1:hnbDkaNWPCLMO9wGLdBFTIZvzDrDfBM2072E1S9gJkA=",
+    "Packages": {
+        "github.com/pkg/profile": {
+            "Imports": [
+                "github.com/felixge/fgprof",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/signal",
+                "path/filepath",
+                "runtime",
+                "runtime/pprof",
+                "runtime/trace",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "flag",
+                "github.com/pkg/profile",
+                "io",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

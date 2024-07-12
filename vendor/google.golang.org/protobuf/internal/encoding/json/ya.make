@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -10,12 +12,4 @@ SRCS(
     encode.go
 )
 
-GO_XTEST_SRCS(
-    bench_test.go
-    decode_test.go
-    encode_test.go
-)
-
 END()
-
-RECURSE(gotest)

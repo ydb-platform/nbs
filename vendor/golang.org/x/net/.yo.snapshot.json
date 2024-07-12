@@ -1,0 +1,953 @@
+{
+    "Version": "v0.23.0",
+    "GoVersion": "1.18",
+    "Sum": "h1:7EYJ93RZ9vYSZAIb2x3lnuvqO5zneoD6IvWjuhfxjTs=",
+    "Packages": {
+        "golang.org/x/net/bpf": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/net/bpf",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/ipv6",
+                "golang.org/x/net/nettest",
+                "golang.org/x/sys/cpu",
+                "io/ioutil",
+                "net",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/context": {
+            "Imports": [
+                "context",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/net/context",
+                "time"
+            ]
+        },
+        "golang.org/x/net/context/ctxhttp": {
+            "Imports": [
+                "context",
+                "io",
+                "net/http",
+                "net/url",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/dict": {
+            "Imports": [
+                "net/textproto",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/net/dns/dnsmessage": {
+            "Imports": [
+                "errors"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/net/dns/dnsmessage",
+                "io/ioutil",
+                "net",
+                "path/filepath",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/html": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/html/atom",
+                "io",
+                "strconv",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/html",
+                "golang.org/x/net/html/atom",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/net/html/atom": {
+            "Imports": null,
+            "TestImports": [
+                "sort",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/html/charset": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/net/html",
+                "golang.org/x/text/encoding",
+                "golang.org/x/text/encoding/charmap",
+                "golang.org/x/text/encoding/htmlindex",
+                "golang.org/x/text/transform",
+                "io",
+                "mime",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/xml",
+                "golang.org/x/text/transform",
+                "io/ioutil",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/http/httpguts": {
+            "Imports": [
+                "golang.org/x/net/idna",
+                "net",
+                "net/textproto",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "golang.org/x/net/http/httpproxy": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/net/idna",
+                "net",
+                "net/url",
+                "os",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/http/httpproxy",
+                "net/url",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/http2": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "crypto/rand",
+                "crypto/tls",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/net/http/httpguts",
+                "golang.org/x/net/http2/hpack",
+                "golang.org/x/net/idna",
+                "io",
+                "io/fs",
+                "log",
+                "math",
+                "math/bits",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/http/httptrace",
+                "net/textproto",
+                "net/url",
+                "os",
+                "reflect",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "compress/zlib",
+                "context",
+                "crypto/tls",
+                "encoding/hex",
+                "encoding/xml",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/net/http2/hpack",
+                "io",
+                "io/fs",
+                "io/ioutil",
+                "log",
+                "math",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/http/httptrace",
+                "net/textproto",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "slices",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time",
+                "unsafe"
+            ]
+        },
+        "golang.org/x/net/http2/h2c": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/base64",
+                "errors",
+                "fmt",
+                "golang.org/x/net/http/httpguts",
+                "golang.org/x/net/http2",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "net/textproto",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/tls",
+                "fmt",
+                "golang.org/x/net/http2",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/http2/h2i": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/tls",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/net/http2",
+                "golang.org/x/net/http2/hpack",
+                "golang.org/x/term",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/net/http2/hpack": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "sync"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/hex",
+                "fmt",
+                "math/rand",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/icmp": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/ipv6",
+                "net",
+                "os",
+                "runtime",
+                "strconv",
+                "strings",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/net/icmp",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/ipv6",
+                "golang.org/x/net/nettest",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/idna": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/text/secure/bidirule",
+                "golang.org/x/text/unicode/bidi",
+                "golang.org/x/text/unicode/norm",
+                "math",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/net/idna",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/internal/iana": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "golang.org/x/net/internal/quic/cmd/interop": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/tls",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/net/quic",
+                "golang.org/x/net/quic/qlog",
+                "io",
+                "log",
+                "log/slog",
+                "net",
+                "net/url",
+                "os",
+                "path/filepath",
+                "sync"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "net",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/internal/socket": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "net",
+                "os",
+                "runtime",
+                "strconv",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/net/nettest",
+                "io/ioutil",
+                "net",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "runtime",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/internal/socks": {
+            "Imports": [
+                "context",
+                "errors",
+                "io",
+                "net",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "golang.org/x/net/internal/socks",
+                "golang.org/x/net/internal/sockstest",
+                "io",
+                "math/rand",
+                "net",
+                "os",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/internal/sockstest": {
+            "Imports": [
+                "errors",
+                "golang.org/x/net/internal/socks",
+                "golang.org/x/net/nettest",
+                "io",
+                "net"
+            ],
+            "TestImports": [
+                "golang.org/x/net/internal/socks",
+                "net",
+                "reflect",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/internal/timeseries": {
+            "Imports": [
+                "fmt",
+                "log",
+                "time"
+            ],
+            "TestImports": [
+                "math",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/ipv4": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/net/bpf",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "net",
+                "runtime",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/net/bpf",
+                "golang.org/x/net/icmp",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/net/ipv4",
+                "golang.org/x/net/nettest",
+                "golang.org/x/sys/unix",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/ipv6": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/net/bpf",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/internal/socket",
+                "golang.org/x/sys/unix",
+                "golang.org/x/sys/windows",
+                "net",
+                "runtime",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "golang.org/x/net/bpf",
+                "golang.org/x/net/icmp",
+                "golang.org/x/net/internal/iana",
+                "golang.org/x/net/ipv6",
+                "golang.org/x/net/nettest",
+                "golang.org/x/sys/unix",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/nettest": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net",
+                "os",
+                "os/exec",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "net",
+                "os",
+                "runtime",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/netutil": {
+            "Imports": [
+                "net",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "io",
+                "net",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/proxy": {
+            "Imports": [
+                "context",
+                "errors",
+                "golang.org/x/net/internal/socks",
+                "net",
+                "net/url",
+                "os",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "golang.org/x/net/internal/socks",
+                "golang.org/x/net/internal/sockstest",
+                "golang.org/x/net/nettest",
+                "net",
+                "net/url",
+                "os",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/publicsuffix": {
+            "Imports": [
+                "embed",
+                "fmt",
+                "net/http/cookiejar",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "golang.org/x/net/publicsuffix",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/quic": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/sha256",
+                "crypto/tls",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "golang.org/x/crypto/chacha20",
+                "golang.org/x/crypto/chacha20poly1305",
+                "golang.org/x/crypto/cryptobyte",
+                "golang.org/x/crypto/hkdf",
+                "golang.org/x/sys/unix",
+                "hash",
+                "io",
+                "log/slog",
+                "math",
+                "net",
+                "net/netip",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/binary",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "golang.org/x/net/quic/qlog",
+                "io",
+                "log/slog",
+                "math",
+                "math/rand",
+                "net",
+                "net/netip",
+                "os",
+                "os/signal",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "runtime/debug",
+                "slices",
+                "strings",
+                "sync",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/quic/qlog": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "io",
+                "log/slog",
+                "os",
+                "path/filepath",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "log/slog",
+                "reflect",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/route": {
+            "Imports": [
+                "errors",
+                "os",
+                "runtime",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "os",
+                "os/exec",
+                "reflect",
+                "runtime",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/trace": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "golang.org/x/net/internal/timeseries",
+                "html/template",
+                "io",
+                "log",
+                "math",
+                "net",
+                "net/http",
+                "net/url",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": [
+                "math",
+                "net/http",
+                "reflect",
+                "testing"
+            ]
+        },
+        "golang.org/x/net/webdav": {
+            "Imports": [
+                "bytes",
+                "container/heap",
+                "context",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "golang.org/x/net/webdav/internal/xml",
+                "io",
+                "mime",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "golang.org/x/net/webdav/internal/xml",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/webdav/internal/xml": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding",
+                "errors",
+                "fmt",
+                "io",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "io",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/net/websocket": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/tls",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "golang.org/x/net/websocket",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "golang.org/x/net/xsrftoken": {
+            "Imports": [
+                "crypto/hmac",
+                "crypto/sha1",
+                "crypto/subtle",
+                "encoding/base64",
+                "fmt",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

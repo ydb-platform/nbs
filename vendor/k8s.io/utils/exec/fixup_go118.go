@@ -20,13 +20,13 @@ limitations under the License.
 package exec
 
 import (
-	osexec "os/exec"
+    osexec "os/exec"
 )
 
 func maskErrDotCmd(cmd *osexec.Cmd) *osexec.Cmd {
-	return cmd
+    return cmd
 }
 
 func maskErrDot(err error) error {
-	return err
+    return err
 }

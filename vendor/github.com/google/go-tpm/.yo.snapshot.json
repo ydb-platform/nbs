@@ -1,0 +1,337 @@
+{
+    "Version": "v0.9.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:sQF6YqWMi+SCXpsmS3fd21oPy/vSddwZry4JnmltHVk=",
+    "Packages": {
+        "github.com/google/go-tpm/examples/tpm-clear": {
+            "Imports": [
+                "crypto/sha1",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/tpm",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm-genaik": {
+            "Imports": [
+                "crypto/sha1",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/tpm",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm-keys": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/tpm",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm-sign": {
+            "Imports": [
+                "crypto",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/x509",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/tpm",
+                "io/ioutil",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm-takeownership": {
+            "Imports": [
+                "crypto/sha1",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/tpm",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm2-ekcert": {
+            "Imports": [
+                "crypto",
+                "crypto/x509",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "io/ioutil",
+                "os",
+                "reflect"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm2-nvread": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/examples/tpm2-seal-unseal": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/legacy/tpm2": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/hmac",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/go-tpm/tpmutil",
+                "github.com/google/go-tpm/tpmutil/tbs",
+                "hash",
+                "io",
+                "math/big",
+                "os",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "encoding/hex",
+                "github.com/google/go-tpm/tpmutil",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/legacy/tpm2/credactivation": {
+            "Imports": [
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/ecdh",
+                "crypto/ecdsa",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "errors",
+                "fmt",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/x509",
+                "encoding/base64",
+                "encoding/pem",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/legacy/tpm2/test": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "encoding/binary",
+                "flag",
+                "fmt",
+                "github.com/google/go-tpm-tools/simulator",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "hash",
+                "io",
+                "math",
+                "math/big",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/tpm": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/go-tpm/tpmutil",
+                "github.com/google/go-tpm/tpmutil/tbs",
+                "io",
+                "math/big",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/x509",
+                "github.com/google/go-tpm/tpmutil",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/tpm2": {
+            "Imports": [
+                "bytes",
+                "crypto",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/elliptic",
+                "crypto/hmac",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/binary",
+                "fmt",
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpm2/transport",
+                "io",
+                "math",
+                "math/big",
+                "reflect",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/tpm2/test": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "crypto",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/google/go-tpm/tpm2",
+                "github.com/google/go-tpm/tpm2/transport",
+                "github.com/google/go-tpm/tpm2/transport/simulator",
+                "github.com/google/go-tpm/tpmutil",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/google/go-tpm/tpm2/transport": {
+            "Imports": [
+                "github.com/google/go-tpm/legacy/tpm2",
+                "github.com/google/go-tpm/tpmutil",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/tpm2/transport/simulator": {
+            "Imports": [
+                "github.com/google/go-tpm-tools/simulator",
+                "github.com/google/go-tpm/tpm2/transport",
+                "github.com/google/go-tpm/tpmutil",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/tpmutil": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/go-tpm/tpmutil/tbs",
+                "golang.org/x/sys/unix",
+                "io",
+                "net",
+                "os",
+                "reflect",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "net",
+                "os",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-tpm/tpmutil/mssim": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "io",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-tpm/tpmutil/tbs": {
+            "Imports": [
+                "fmt",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "os",
+                "testing"
+            ]
+        }
+    }
+}

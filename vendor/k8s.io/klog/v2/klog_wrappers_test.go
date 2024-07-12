@@ -19,9 +19,9 @@ package klog
 // "klog_test.go". "klog_wrappers_test.go" must *not* be logged.
 
 func myInfoS(msg string, keyAndValues ...interface{}) {
-	InfoSDepth(1, msg, keyAndValues...)
+    InfoSDepth(1, msg, keyAndValues...)
 }
 
 func myErrorS(err error, msg string, keyAndValues ...interface{}) {
-	ErrorSDepth(1, err, msg, keyAndValues...)
+    ErrorSDepth(1, err, msg, keyAndValues...)
 }

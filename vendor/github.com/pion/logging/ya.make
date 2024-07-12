@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
 SRCS(
@@ -11,4 +13,6 @@ GO_XTEST_SRCS(logging_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

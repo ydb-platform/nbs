@@ -4,7 +4,7 @@
 package signal
 
 import (
-	"syscall"
+    "syscall"
 )
 
 // SignalMap is an empty map of signals for unsupported platform.

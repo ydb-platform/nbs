@@ -1,0 +1,30 @@
+{
+    "Version": "v1.5.1",
+    "GoVersion": "1.18",
+    "Sum": "h1:R+kOtfhWQE6TVQzY+4D7wJLBgkdVasCEFxSUBYBYIlA=",
+    "Packages": {
+        "github.com/spf13/cast": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "html/template",
+                "reflect",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/frankban/quicktest",
+                "html/template",
+                "path",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

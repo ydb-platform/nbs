@@ -1,0 +1,122 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:xuthJSiJGoSzq+lVEBIW1MTpaaZXknMCYC4WzVAWOsE=",
+    "Packages": {
+        "github.com/google/cel-spec/proto/test/v1/proto2/test_all_types": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/struct",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-spec/proto/test/v1/proto3/test_all_types": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/struct",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-spec/proto/test/v1/testpb": {
+            "Imports": [
+                "github.com/golang/protobuf/proto",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/cel-spec/tests/envcheck": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/cel-spec/tools/celrpc",
+                "google.golang.org/genproto/googleapis/api/expr/conformance/v1alpha1",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "google.golang.org/protobuf/proto",
+                "testing"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/google/cel-spec/proto/test/v1/testpb",
+                "github.com/google/cel-spec/tools/celrpc",
+                "google.golang.org/protobuf/encoding/prototext",
+                "io/ioutil",
+                "log",
+                "os",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-spec/tests/simple": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/google/cel-spec/proto/test/v1/testpb",
+                "github.com/google/cel-spec/tools/celrpc",
+                "google.golang.org/genproto/googleapis/api/expr/conformance/v1alpha1",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/prototext"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/google/cel-spec/proto/test/v1/proto2/test_all_types",
+                "github.com/google/cel-spec/proto/test/v1/proto3/test_all_types",
+                "github.com/google/cel-spec/proto/test/v1/testpb",
+                "github.com/google/cel-spec/tools/celrpc",
+                "google.golang.org/genproto/googleapis/api/expr/v1alpha1",
+                "google.golang.org/protobuf/encoding/prototext",
+                "google.golang.org/protobuf/proto",
+                "google.golang.org/protobuf/types/known/anypb",
+                "google.golang.org/protobuf/types/known/structpb",
+                "io/ioutil",
+                "log",
+                "os",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/cel-spec/tools/celrpc": {
+            "Imports": [
+                "bufio",
+                "context",
+                "fmt",
+                "google.golang.org/genproto/googleapis/api/expr/conformance/v1alpha1",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/reflection",
+                "google.golang.org/protobuf/encoding/protojson",
+                "google.golang.org/protobuf/proto",
+                "io",
+                "log",
+                "net",
+                "os",
+                "os/exec",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

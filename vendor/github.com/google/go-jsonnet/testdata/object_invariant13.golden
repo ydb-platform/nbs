@@ -1,0 +1,11 @@
+RUNTIME ERROR: x
+-------------------------------------------------
+    testdata/object_invariant13:1:10-19    object <anonymous>
+
+{ assert error "x" }
+
+-------------------------------------------------
+    Checking object assertions
+
+-------------------------------------------------
+    During manifestation

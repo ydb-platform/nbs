@@ -19,48 +19,48 @@
 package priority
 
 import (
-	"context"
-	"testing"
-	"time"
+    "context"
+    "testing"
+    "time"
 
-	"google.golang.org/grpc/internal/testutils"
-	"google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/internal/testutils"
+    "google.golang.org/grpc/resolver"
 )
 
 func (s) TestIgnoreResolveNowClientConn(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
-	ignoreCC := newIgnoreResolveNowClientConn(cc, false)
+    cc := testutils.NewTestClientConn(t)
+    ignoreCC := newIgnoreResolveNowClientConn(cc, false)
 
-	// Call ResolveNow() on the CC, it should be forwarded.
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
+    // Call ResolveNow() on the CC, it should be forwarded.
+    ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+    defer cancel()
 
-	ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
-	select {
-	case <-cc.ResolveNowCh:
-	case <-ctx.Done():
-		t.Fatalf("Timeout waiting for ResolveNow()")
-	}
+    ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
+    select {
+    case <-cc.ResolveNowCh:
+    case <-ctx.Done():
+        t.Fatalf("Timeout waiting for ResolveNow()")
+    }
 
-	// Update ignoreResolveNow to true, call ResolveNow() on the CC, they should
-	// all be ignored.
-	ignoreCC.updateIgnoreResolveNow(true)
-	for i := 0; i < 5; i++ {
-		ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
-	}
-	select {
-	case <-cc.ResolveNowCh:
-		t.Fatalf("got unexpected ResolveNow() call")
-	case <-time.After(defaultTestShortTimeout):
-	}
+    // Update ignoreResolveNow to true, call ResolveNow() on the CC, they should
+    // all be ignored.
+    ignoreCC.updateIgnoreResolveNow(true)
+    for i := 0; i < 5; i++ {
+        ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
+    }
+    select {
+    case <-cc.ResolveNowCh:
+        t.Fatalf("got unexpected ResolveNow() call")
+    case <-time.After(defaultTestShortTimeout):
+    }
 
-	// Update ignoreResolveNow to false, new ResolveNow() calls should be
-	// forwarded.
-	ignoreCC.updateIgnoreResolveNow(false)
-	ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
-	select {
-	case <-cc.ResolveNowCh:
-	case <-ctx.Done():
-		t.Fatalf("timeout waiting for ResolveNow()")
-	}
+    // Update ignoreResolveNow to false, new ResolveNow() calls should be
+    // forwarded.
+    ignoreCC.updateIgnoreResolveNow(false)
+    ignoreCC.ResolveNow(resolver.ResolveNowOptions{})
+    select {
+    case <-cc.ResolveNowCh:
+    case <-ctx.Done():
+        t.Fatalf("timeout waiting for ResolveNow()")
+    }
 }

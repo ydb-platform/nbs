@@ -17,11 +17,11 @@ limitations under the License.
 package funcr_test
 
 import (
-	"fmt"
-	"strings"
+    "fmt"
+    "strings"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
+    "github.com/go-logr/logr"
+    "github.com/go-logr/logr/funcr"
 )
 
 // NewStdoutLogger returns a logr.Logger that prints to stdout.
@@ -29,64 +29,64 @@ import (
 // controls whether INFO or ERROR are printed in front of the log
 // message.
 func NewStdoutLogger() logr.Logger {
-	l := &stdoutlogger{
-		Formatter: funcr.NewFormatter(funcr.Options{}),
-	}
-	return logr.New(l)
+    l := &stdoutlogger{
+        Formatter: funcr.NewFormatter(funcr.Options{}),
+    }
+    return logr.New(l)
 }
 
 type stdoutlogger struct {
-	funcr.Formatter
-	logMsgType bool
+    funcr.Formatter
+    logMsgType bool
 }
 
 func (l stdoutlogger) WithName(name string) logr.LogSink {
-	l.Formatter.AddName(name)
-	return &l
+    l.Formatter.AddName(name)
+    return &l
 }
 
 func (l stdoutlogger) WithValues(kvList ...any) logr.LogSink {
-	l.Formatter.AddValues(kvList)
-	return &l
+    l.Formatter.AddValues(kvList)
+    return &l
 }
 
 func (l stdoutlogger) WithCallDepth(depth int) logr.LogSink {
-	l.Formatter.AddCallDepth(depth)
-	return &l
+    l.Formatter.AddCallDepth(depth)
+    return &l
 }
 
 func (l stdoutlogger) Info(level int, msg string, kvList ...any) {
-	prefix, args := l.FormatInfo(level, msg, kvList)
-	l.write("INFO", prefix, args)
+    prefix, args := l.FormatInfo(level, msg, kvList)
+    l.write("INFO", prefix, args)
 }
 
 func (l stdoutlogger) Error(err error, msg string, kvList ...any) {
-	prefix, args := l.FormatError(err, msg, kvList)
-	l.write("ERROR", prefix, args)
+    prefix, args := l.FormatError(err, msg, kvList)
+    l.write("ERROR", prefix, args)
 }
 
 func (l stdoutlogger) write(msgType, prefix, args string) {
-	var parts []string
-	if l.logMsgType {
-		parts = append(parts, msgType)
-	}
-	if prefix != "" {
-		parts = append(parts, prefix)
-	}
-	parts = append(parts, args)
-	fmt.Println(strings.Join(parts, ": "))
+    var parts []string
+    if l.logMsgType {
+        parts = append(parts, msgType)
+    }
+    if prefix != "" {
+        parts = append(parts, prefix)
+    }
+    parts = append(parts, args)
+    fmt.Println(strings.Join(parts, ": "))
 }
 
 // WithLogMsgType returns a copy of the logger with new settings for
 // logging the message type. It returns the original logger if the
 // underlying LogSink is not a stdoutlogger.
 func WithLogMsgType(log logr.Logger, logMsgType bool) logr.Logger {
-	if l, ok := log.GetSink().(*stdoutlogger); ok {
-		clone := *l
-		clone.logMsgType = logMsgType
-		log = log.WithSink(&clone)
-	}
-	return log
+    if l, ok := log.GetSink().(*stdoutlogger); ok {
+        clone := *l
+        clone.logMsgType = logMsgType
+        log = log.WithSink(&clone)
+    }
+    return log
 }
 
 // Assert conformance to the interfaces.
@@ -94,10 +94,10 @@ var _ logr.LogSink = &stdoutlogger{}
 var _ logr.CallDepthLogSink = &stdoutlogger{}
 
 func ExampleFormatter() {
-	l := NewStdoutLogger()
-	l.Info("no message type")
-	WithLogMsgType(l, true).Info("with message type")
-	// Output:
-	// "level"=0 "msg"="no message type"
-	// INFO: "level"=0 "msg"="with message type"
+    l := NewStdoutLogger()
+    l.Info("no message type")
+    WithLogMsgType(l, true).Info("with message type")
+    // Output:
+    // "level"=0 "msg"="no message type"
+    // INFO: "level"=0 "msg"="with message type"
 }

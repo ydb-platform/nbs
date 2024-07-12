@@ -1,0 +1,28 @@
+{
+    "Version": "v1.16.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:zmkK9Ngbjj+K0yRhTVONQh1p/HknKYSlNT+vZCzyokM=",
+    "Packages": {
+        "github.com/fatih/color": {
+            "Imports": [
+                "fmt",
+                "github.com/mattn/go-colorable",
+                "github.com/mattn/go-isatty",
+                "golang.org/x/sys/windows",
+                "io",
+                "os",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/mattn/go-colorable",
+                "io",
+                "os",
+                "testing"
+            ]
+        }
+    }
+}

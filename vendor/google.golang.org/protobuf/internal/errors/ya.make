@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -7,8 +9,4 @@ SRCS(
     is_go113.go
 )
 
-GO_TEST_SRCS(errors_test.go)
-
 END()
-
-RECURSE(gotest)

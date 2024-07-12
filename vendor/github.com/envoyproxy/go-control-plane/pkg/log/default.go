@@ -1,3 +1,4 @@
+//nolint:all
 package log
 
 // DefaultLogger is enabled when no consuming clients provide
@@ -7,7 +8,7 @@ type DefaultLogger struct {
 
 // NewDefaultLogger creates a DefaultLogger which is a no-op to maintain current functionality
 func NewDefaultLogger() *DefaultLogger {
-	return &DefaultLogger{}
+    return &DefaultLogger{}
 }
 
 // Debugf logs a message at level debug on the standard logger.

@@ -1,0 +1,303 @@
+{
+    "Version": "v0.0.1",
+    "GoVersion": "",
+    "Sum": "h1:sNCoNyDEvN1xa+X0baata4RdcpKwcMS6DH+xwfqPgjw=",
+    "Packages": {
+        "github.com/hashicorp/go.net/context": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "code.google.com/p/go.net/context",
+                "fmt",
+                "math/rand",
+                "runtime",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go.net/dict": {
+            "Imports": [
+                "net/textproto",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go.net/html": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "code.google.com/p/go.net/html/atom",
+                "errors",
+                "fmt",
+                "io",
+                "strconv",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "code.google.com/p/go.net/html",
+                "code.google.com/p/go.net/html/atom",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "github.com/hashicorp/go.net/html/atom": {
+            "Imports": null,
+            "TestImports": [
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/html/charset": {
+            "Imports": [
+                "bytes",
+                "code.google.com/p/go.net/html",
+                "code.google.com/p/go.text/encoding",
+                "code.google.com/p/go.text/encoding/charmap",
+                "code.google.com/p/go.text/encoding/japanese",
+                "code.google.com/p/go.text/encoding/korean",
+                "code.google.com/p/go.text/encoding/simplifiedchinese",
+                "code.google.com/p/go.text/encoding/traditionalchinese",
+                "code.google.com/p/go.text/encoding/unicode",
+                "code.google.com/p/go.text/transform",
+                "io",
+                "mime",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "code.google.com/p/go.text/transform",
+                "io/ioutil",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/idna": {
+            "Imports": [
+                "fmt",
+                "math",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/internal/iana": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/go.net/internal/icmp": {
+            "Imports": [
+                "errors",
+                "github.com/hashicorp/go.net/internal/iana",
+                "github.com/hashicorp/go.net/ipv4",
+                "github.com/hashicorp/go.net/ipv6",
+                "net"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/go.net/internal/iana",
+                "github.com/hashicorp/go.net/internal/icmp",
+                "github.com/hashicorp/go.net/ipv4",
+                "github.com/hashicorp/go.net/ipv6",
+                "net",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/internal/nettest": {
+            "Imports": [
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/go.net/ipv4": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go.net/internal/iana",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "code.google.com/p/go.net/internal/nettest",
+                "code.google.com/p/go.net/ipv4",
+                "github.com/hashicorp/go.net/internal/iana",
+                "github.com/hashicorp/go.net/internal/icmp",
+                "github.com/hashicorp/go.net/internal/nettest",
+                "github.com/hashicorp/go.net/ipv4",
+                "log",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go.net/ipv6": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "net",
+                "os",
+                "reflect",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "code.google.com/p/go.net/ipv6",
+                "errors",
+                "fmt",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go.net/netutil": {
+            "Imports": [
+                "net",
+                "sync"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/go.net/proxy": {
+            "Imports": [
+                "errors",
+                "io",
+                "net",
+                "net/url",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "io",
+                "net",
+                "net/url",
+                "reflect",
+                "strconv",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/publicsuffix": {
+            "Imports": [
+                "fmt",
+                "net/http/cookiejar",
+                "strings"
+            ],
+            "TestImports": [
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/spdy": {
+            "Imports": [
+                "bytes",
+                "compress/zlib",
+                "encoding/binary",
+                "io",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/zlib",
+                "encoding/base64",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/go.net/websocket": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "crypto/rand",
+                "crypto/sha1",
+                "crypto/tls",
+                "encoding/base64",
+                "encoding/binary",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/url",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "code.google.com/p/go.net/websocket",
+                "fmt",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        }
+    }
+}

@@ -6,8 +6,8 @@
 package version
 
 import (
-	"fmt"
-	"strings"
+    "fmt"
+    "strings"
 )
 
 // These constants determine the current version of this module.
@@ -50,30 +50,30 @@ import (
 //
 //  10. Send out the CL for review and submit it.
 const (
-	Major      = 1
-	Minor      = 31
-	Patch      = 0
-	PreRelease = ""
+    Major      = 1
+    Minor      = 33
+    Patch      = 0
+    PreRelease = ""
 )
 
 // String formats the version string for this module in semver format.
 //
 // Examples:
 //
-//	v1.20.1
-//	v1.21.0-rc.1
+//    v1.20.1
+//    v1.21.0-rc.1
 func String() string {
-	v := fmt.Sprintf("v%d.%d.%d", Major, Minor, Patch)
-	if PreRelease != "" {
-		v += "-" + PreRelease
+    v := fmt.Sprintf("v%d.%d.%d", Major, Minor, Patch)
+    if PreRelease != "" {
+        v += "-" + PreRelease
 
-		// TODO: Add metadata about the commit or build hash.
-		// See https://golang.org/issue/29814
-		// See https://golang.org/issue/33533
-		var metadata string
-		if strings.Contains(PreRelease, "devel") && metadata != "" {
-			v += "+" + metadata
-		}
-	}
-	return v
+        // TODO: Add metadata about the commit or build hash.
+        // See https://golang.org/issue/29814
+        // See https://golang.org/issue/33533
+        var metadata string
+        if strings.Contains(PreRelease, "devel") && metadata != "" {
+            v += "+" + metadata
+        }
+    }
+    return v
 }

@@ -24,13 +24,13 @@ package procfs
 // > full avg10=0.00 avg60=0.13 avg300=0.96 total=8183134
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"io"
-	"strings"
+    "bufio"
+    "bytes"
+    "fmt"
+    "io"
+    "strings"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 const lineFormat = "avg10=%f avg60=%f avg300=%f total=%d"
@@ -40,10 +40,10 @@ const lineFormat = "avg10=%f avg60=%f avg300=%f total=%d"
 // The Avg entries are averages over n seconds, as a percentage.
 // The Total line is in microseconds.
 type PSILine struct {
-	Avg10  float64
-	Avg60  float64
-	Avg300 float64
-	Total  uint64
+    Avg10  float64
+    Avg60  float64
+    Avg300 float64
+    Total  uint64
 }
 
 // PSIStats represent pressure stall information from /proc/pressure/*
@@ -51,52 +51,52 @@ type PSILine struct {
 // "Some" indicates the share of time in which at least some tasks are stalled.
 // "Full" indicates the share of time in which all non-idle tasks are stalled simultaneously.
 type PSIStats struct {
-	Some *PSILine
-	Full *PSILine
+    Some *PSILine
+    Full *PSILine
 }
 
 // PSIStatsForResource reads pressure stall information for the specified
 // resource from /proc/pressure/<resource>. At time of writing this can be
 // either "cpu", "memory" or "io".
 func (fs FS) PSIStatsForResource(resource string) (PSIStats, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%s/%s", "pressure", resource)))
-	if err != nil {
-		return PSIStats{}, fmt.Errorf("%s: psi_stats: unavailable for %q: %w", ErrFileRead, resource, err)
-	}
+    data, err := util.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%s/%s", "pressure", resource)))
+    if err != nil {
+        return PSIStats{}, fmt.Errorf("%s: psi_stats: unavailable for %q: %w", ErrFileRead, resource, err)
+    }
 
-	return parsePSIStats(bytes.NewReader(data))
+    return parsePSIStats(bytes.NewReader(data))
 }
 
 // parsePSIStats parses the specified file for pressure stall information.
 func parsePSIStats(r io.Reader) (PSIStats, error) {
-	psiStats := PSIStats{}
+    psiStats := PSIStats{}
 
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		l := scanner.Text()
-		prefix := strings.Split(l, " ")[0]
-		switch prefix {
-		case "some":
-			psi := PSILine{}
-			_, err := fmt.Sscanf(l, fmt.Sprintf("some %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
-			if err != nil {
-				return PSIStats{}, err
-			}
-			psiStats.Some = &psi
-		case "full":
-			psi := PSILine{}
-			_, err := fmt.Sscanf(l, fmt.Sprintf("full %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
-			if err != nil {
-				return PSIStats{}, err
-			}
-			psiStats.Full = &psi
-		default:
-			// If we encounter a line with an unknown prefix, ignore it and move on
-			// Should new measurement types be added in the future we'll simply ignore them instead
-			// of erroring on retrieval
-			continue
-		}
-	}
+    scanner := bufio.NewScanner(r)
+    for scanner.Scan() {
+        l := scanner.Text()
+        prefix := strings.Split(l, " ")[0]
+        switch prefix {
+        case "some":
+            psi := PSILine{}
+            _, err := fmt.Sscanf(l, fmt.Sprintf("some %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
+            if err != nil {
+                return PSIStats{}, err
+            }
+            psiStats.Some = &psi
+        case "full":
+            psi := PSILine{}
+            _, err := fmt.Sscanf(l, fmt.Sprintf("full %s", lineFormat), &psi.Avg10, &psi.Avg60, &psi.Avg300, &psi.Total)
+            if err != nil {
+                return PSIStats{}, err
+            }
+            psiStats.Full = &psi
+        default:
+            // If we encounter a line with an unknown prefix, ignore it and move on
+            // Should new measurement types be added in the future we'll simply ignore them instead
+            // of erroring on retrieval
+            continue
+        }
+    }
 
-	return psiStats, nil
+    return psiStats, nil
 }

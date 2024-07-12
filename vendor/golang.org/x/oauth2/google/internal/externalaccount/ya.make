@@ -1,12 +1,14 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 GO_SKIP_TESTS(
-    TestRetrieveOutputFileSubjectTokenNotJSON
     TestRetrieveOutputFileSubjectTokenFailureTests
     TestRetrieveOutputFileSubjectTokenInvalidCache
     TestRetrieveOutputFileSubjectTokenJwt
+    TestRetrieveOutputFileSubjectTokenNotJSON
 )
 
 SRCS(

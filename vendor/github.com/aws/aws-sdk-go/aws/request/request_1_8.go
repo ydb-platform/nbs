@@ -4,9 +4,9 @@
 package request
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+    "github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 // NoBody is a http.NoBody reader instructing Go HTTP client to not include
@@ -25,13 +25,13 @@ var NoBody = http.NoBody
 // Will also set the Go 1.8's http.Request.GetBody member to allow retrying
 // PUT/POST redirects.
 func (r *Request) ResetBody() {
-	body, err := r.getNextRequestBody()
-	if err != nil {
-		r.Error = awserr.New(ErrCodeSerialization,
-			"failed to reset request body", err)
-		return
-	}
+    body, err := r.getNextRequestBody()
+    if err != nil {
+        r.Error = awserr.New(ErrCodeSerialization,
+            "failed to reset request body", err)
+        return
+    }
 
-	r.HTTPRequest.Body = body
-	r.HTTPRequest.GetBody = r.getNextRequestBody
+    r.HTTPRequest.Body = body
+    r.HTTPRequest.GetBody = r.getNextRequestBody
 }

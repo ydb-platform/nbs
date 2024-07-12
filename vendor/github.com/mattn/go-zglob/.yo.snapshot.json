@@ -1,0 +1,56 @@
+{
+    "Version": "v0.0.3",
+    "GoVersion": "",
+    "Sum": "h1:6Ry4EYsScDyt5di4OI6xw1bYhOqfE5S33Z1OPy+d+To=",
+    "Packages": {
+        "github.com/mattn/go-zglob": {
+            "Imports": [
+                "fmt",
+                "github.com/mattn/go-zglob/fastwalk",
+                "os",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/mattn/go-zglob/cmd/zglob": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/mattn/go-zglob",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/mattn/go-zglob/fastwalk": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "runtime",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,670 @@
+{
+    "Version": "v1.27.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:7bZWKoXhzI+mMR/HjdMx8ZCC5+6fY0lS5tr0bbgiLlo=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/aws": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/internal/rand",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/aws-sdk-go-v2/internal/sync/singleflight",
+                "github.com/aws/smithy-go/auth/bearer",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/ptr",
+                "net/http",
+                "reflect",
+                "strings",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/internal/rand",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "math/rand",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/arn": {
+            "Imports": [
+                "errors",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/defaults": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "reflect",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/rand",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/rand",
+                "github.com/aws/smithy-go/transport/http",
+                "os",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/internal/rand",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "net/http",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/emf": {
+            "Imports": [
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/middleware": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/readcloserwithmetrics",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net/http",
+                "net/http/httptrace",
+                "reflect",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/testutils",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net/http",
+                "net/http/httptrace",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/publisher": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/emf",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/readcloserwithmetrics": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "io"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/testutils",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics/testutils": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/smithy-go/middleware",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/ec2query": {
+            "Imports": [
+                "encoding/xml",
+                "fmt",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/query": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "math/big",
+                "net/url",
+                "sort"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/testing",
+                "github.com/aws/smithy-go/transport/http",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/restjson": {
+            "Imports": [
+                "encoding/json",
+                "github.com/aws/smithy-go",
+                "io",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/xml": {
+            "Imports": [
+                "encoding/xml",
+                "fmt",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/ratelimit": {
+            "Imports": [
+                "context",
+                "fmt",
+                "sync"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/retry": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware/private/metrics",
+                "github.com/aws/aws-sdk-go-v2/aws/ratelimit",
+                "github.com/aws/aws-sdk-go-v2/internal/rand",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/aws-sdk-go-v2/internal/timeconv",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "math",
+                "net",
+                "net/url",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/ratelimit",
+                "github.com/aws/aws-sdk-go-v2/aws/retry",
+                "github.com/aws/aws-sdk-go-v2/aws/retry/internal/mock",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/aws-sdk-go-v2/internal/timeconv",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io/ioutil",
+                "log",
+                "math",
+                "net",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/retry/internal/mock": {
+            "Imports": [
+                "context",
+                "github.com/aws/aws-sdk-go-v2/aws"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/signer/internal/v4": {
+            "Imports": [
+                "crypto/hmac",
+                "crypto/sha256",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/internal/strings",
+                "net/http",
+                "net/url",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "net/http",
+                "net/url",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/signer/v4": {
+            "Imports": [
+                "context",
+                "crypto/sha256",
+                "encoding/hex",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/internal/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/auth",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go/encoding/httpbinding",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "hash",
+                "io",
+                "net/http",
+                "net/textproto",
+                "net/url",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/internal/v4",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting/unit",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/aws/transport/http": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "errors",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/middleware",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net",
+                "net/http",
+                "reflect",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/auth": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http"
+            ],
+            "TestImports": [
+                "github.com/aws/smithy-go",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/auth/smithy": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/sdk",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/auth",
+                "github.com/aws/smithy-go/auth/bearer",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/transport/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/awstesting": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/json",
+                "encoding/pem",
+                "encoding/xml",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "io",
+                "io/ioutil",
+                "math/big",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strings",
+                "testing",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/xml",
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/awstesting/unit": {
+            "Imports": [
+                "context",
+                "crypto/rsa",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "math/big"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/awsutil": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/jmespath/go-jmespath",
+                "io",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/internal/awsutil",
+                "github.com/aws/smithy-go/ptr",
+                "io",
+                "io/ioutil",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/context": {
+            "Imports": [
+                "context",
+                "github.com/aws/smithy-go/middleware"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints": {
+            "Imports": [
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/aws/aws-sdk-go-v2/aws",
+                "reflect",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints/awsrulesfn": {
+            "Imports": [
+                "github.com/aws/smithy-go/transport/http",
+                "net",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/protocoltest": {
+            "Imports": [
+                "io/ioutil",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/rand": {
+            "Imports": [
+                "crypto/rand",
+                "fmt",
+                "io",
+                "math/big"
+            ],
+            "TestImports": [
+                "bytes",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/sdk": {
+            "Imports": [
+                "context",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/sdkio": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/shareddefaults": {
+            "Imports": [
+                "os",
+                "os/user",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "github.com/aws/aws-sdk-go-v2/internal/awstesting",
+                "github.com/aws/aws-sdk-go-v2/internal/shareddefaults",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/strings": {
+            "Imports": [
+                "strings"
+            ],
+            "TestImports": [
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/sync/singleflight": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "runtime",
+                "runtime/debug",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "os",
+                "os/exec",
+                "runtime",
+                "runtime/debug",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/aws/aws-sdk-go-v2/internal/timeconv": {
+            "Imports": [
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

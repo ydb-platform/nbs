@@ -26,11 +26,11 @@ function usage {
 This script should be run at the root of a module.
 
 -r <branch|tag>
-  Compare the exported API of the local working copy with the 
+  Compare the exported API of the local working copy with the
   exported API of the local repo at the specified branch or tag.
 
 -d <dir>
-  Compare the exported API of the local working copy with the 
+  Compare the exported API of the local working copy with the
   exported API of the specified directory, which should point
   to the root of a different version of the same module.
 
@@ -65,7 +65,7 @@ fi
 if ! which apidiff > /dev/null; then
   echo "Installing golang.org/x/exp/cmd/apidiff..."
   pushd "${TMPDIR:-/tmp}" > /dev/null
-    go install golang.org/x/exp/cmd/apidiff@latest
+    go get golang.org/x/exp/cmd/apidiff
   popd > /dev/null
 fi
 

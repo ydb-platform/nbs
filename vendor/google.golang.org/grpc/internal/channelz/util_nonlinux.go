@@ -23,5 +23,5 @@ package channelz
 
 // GetSocketOption gets the socket option info of the conn.
 func GetSocketOption(c interface{}) *SocketOptionData {
-	return nil
+    return nil
 }

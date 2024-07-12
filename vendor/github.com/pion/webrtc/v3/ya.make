@@ -1,0 +1,161 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(MIT)
+
+SIZE(MEDIUM)
+
+# Tests requires network connection
+
+GO_SKIP_TESTS(TestMulticastDNSCandidates)
+
+SRCS(
+    api.go
+    atomicbool.go
+    bundlepolicy.go
+    certificate.go
+    configuration.go
+    configuration_common.go
+    constants.go
+    datachannel.go
+    datachannelinit.go
+    datachannelmessage.go
+    datachannelparameters.go
+    datachannelstate.go
+    dtlsfingerprint.go
+    dtlsparameters.go
+    dtlsrole.go
+    dtlstransport.go
+    dtlstransportstate.go
+    errors.go
+    gathering_complete_promise.go
+    ice_go.go
+    icecandidate.go
+    icecandidateinit.go
+    icecandidatepair.go
+    icecandidatetype.go
+    icecomponent.go
+    iceconnectionstate.go
+    icecredentialtype.go
+    icegatherer.go
+    icegathererstate.go
+    icegatheringstate.go
+    icegatheroptions.go
+    icemux.go
+    iceparameters.go
+    iceprotocol.go
+    icerole.go
+    iceserver.go
+    icetransport.go
+    icetransportpolicy.go
+    icetransportstate.go
+    interceptor.go
+    mediaengine.go
+    networktype.go
+    oauthcredential.go
+    offeransweroptions.go
+    operations.go
+    peerconnection.go
+    peerconnectionstate.go
+    rtcpfeedback.go
+    rtcpmuxpolicy.go
+    rtpcapabilities.go
+    rtpcodec.go
+    rtpcodingparameters.go
+    rtpdecodingparameters.go
+    rtpencodingparameters.go
+    rtpreceiveparameters.go
+    rtpreceiver.go
+    rtpreceiver_go.go
+    rtpsender.go
+    rtpsendparameters.go
+    rtptransceiver.go
+    rtptransceiverdirection.go
+    rtptransceiverinit.go
+    sctpcapabilities.go
+    sctptransport.go
+    sctptransportstate.go
+    sdp.go
+    sdpsemantics.go
+    sdptype.go
+    sessiondescription.go
+    settingengine.go
+    signalingstate.go
+    srtp_writer_future.go
+    stats.go
+    stats_go.go
+    track_local.go
+    track_local_static.go
+    track_remote.go
+    webrtc.go
+)
+
+GO_TEST_SRCS(
+    api_test.go
+    bundlepolicy_test.go
+    certificate_test.go
+    configuration_test.go
+    datachannel_go_test.go
+    datachannel_test.go
+    datachannelstate_test.go
+    dtlsrole_test.go
+    dtlstransport_test.go
+    dtlstransportstate_test.go
+    gathering_complete_promise_example_test.go
+    icecandidate_test.go
+    icecandidateinit_test.go
+    icecandidatetype_test.go
+    icecomponent_test.go
+    iceconnectionstate_test.go
+    icecredentialtype_test.go
+    icegatherer_test.go
+    icegathererstate_test.go
+    icegatheringstate_test.go
+    iceprotocol_test.go
+    icerole_test.go
+    iceserver_test.go
+    icetransport_test.go
+    icetransportpolicy_test.go
+    icetransportstate_test.go
+    interceptor_test.go
+    mediaengine_test.go
+    networktype_test.go
+    operations_test.go
+    ortc_datachannel_test.go
+    ortc_media_test.go
+    ortc_test.go
+    peerconnection_close_test.go
+    peerconnection_go_test.go
+    peerconnection_media_test.go
+    peerconnection_renegotiation_test.go
+    peerconnection_test.go
+    peerconnectionstate_test.go
+    rtcpmuxpolicy_test.go
+    rtpreceiver_go_test.go
+    rtpreceiver_test.go
+    rtpsender_test.go
+    rtptransceiver_test.go
+    rtptransceiverdirection_test.go
+    sctptransport_test.go
+    sctptransportstate_test.go
+    sdp_test.go
+    sdpsemantics_test.go
+    sdptype_test.go
+    sessiondescription_test.go
+    settingengine_test.go
+    signalingstate_test.go
+    stats_go_test.go
+    track_local_static_test.go
+    track_test.go
+    vnet_test.go
+)
+
+END()
+
+RECURSE(
+    examples
+    gotest
+    internal
+    pkg
+)

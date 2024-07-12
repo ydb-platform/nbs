@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
 SRCS(
@@ -58,7 +60,9 @@ IF (OS_DARWIN)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(terminal_check_windows.go)
+    SRCS(
+        terminal_check_windows.go
+    )
 ENDIF()
 
 END()
@@ -70,9 +74,13 @@ RECURSE(
 )
 
 IF (OS_LINUX)
-    RECURSE(hooks/syslog)
+    RECURSE(
+        hooks/syslog
+    )
 ENDIF()
 
 IF (OS_DARWIN)
-    RECURSE(hooks/syslog)
+    RECURSE(
+        hooks/syslog
+    )
 ENDIF()

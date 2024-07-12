@@ -1,0 +1,52 @@
+{
+    "Version": "v0.50.0",
+    "GoVersion": "1.17",
+    "Sum": "h1:1wt8pQ4O6GaUeYEaR+dh3zHmYsFicduF2bbPGMZeSKk=",
+    "Packages": {
+        "go.opentelemetry.io/collector/model/otlp": {
+            "Imports": [
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace"
+            ],
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/otlpgrpc": {
+            "Imports": [
+                "go.opentelemetry.io/collector/pdata/plog/plogotlp",
+                "go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp",
+                "go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
+            ],
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/pdata": {
+            "Imports": [
+                "go.opentelemetry.io/collector/pdata/pcommon",
+                "go.opentelemetry.io/collector/pdata/plog",
+                "go.opentelemetry.io/collector/pdata/pmetric",
+                "go.opentelemetry.io/collector/pdata/ptrace"
+            ],
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/semconv/v1.5.0": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/semconv/v1.6.1": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/semconv/v1.7.0": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/semconv/v1.8.0": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "go.opentelemetry.io/collector/model/semconv/v1.9.0": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

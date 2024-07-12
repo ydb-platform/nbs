@@ -1,1 +1,5 @@
-RECURSE(certprovider)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    certprovider
+)

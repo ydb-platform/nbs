@@ -16,39 +16,39 @@ package cmp
 //
 // Lastly, the textNode.String method produces the final report as a string.
 type defaultReporter struct {
-	root *valueNode
-	curr *valueNode
+    root *valueNode
+    curr *valueNode
 }
 
 func (r *defaultReporter) PushStep(ps PathStep) {
-	r.curr = r.curr.PushStep(ps)
-	if r.root == nil {
-		r.root = r.curr
-	}
+    r.curr = r.curr.PushStep(ps)
+    if r.root == nil {
+        r.root = r.curr
+    }
 }
 func (r *defaultReporter) Report(rs Result) {
-	r.curr.Report(rs)
+    r.curr.Report(rs)
 }
 func (r *defaultReporter) PopStep() {
-	r.curr = r.curr.PopStep()
+    r.curr = r.curr.PopStep()
 }
 
 // String provides a full report of the differences detected as a structured
 // literal in pseudo-Go syntax. String may only be called after the entire tree
 // has been traversed.
 func (r *defaultReporter) String() string {
-	assert(r.root != nil && r.curr == nil)
-	if r.root.NumDiff == 0 {
-		return ""
-	}
-	ptrs := new(pointerReferences)
-	text := formatOptions{}.FormatDiff(r.root, ptrs)
-	resolveReferences(text)
-	return text.String()
+    assert(r.root != nil && r.curr == nil)
+    if r.root.NumDiff == 0 {
+        return ""
+    }
+    ptrs := new(pointerReferences)
+    text := formatOptions{}.FormatDiff(r.root, ptrs)
+    resolveReferences(text)
+    return text.String()
 }
 
 func assert(ok bool) {
-	if !ok {
-		panic("assertion failure")
-	}
+    if !ok {
+        panic("assertion failure")
+    }
 }

@@ -19,35 +19,35 @@
 package grpcsync
 
 import (
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
+    "sync"
+    "sync/atomic"
+    "testing"
+    "time"
 )
 
 // TestOnceFunc tests that a OnceFunc is executed only once even with multiple
 // simultaneous callers of it.
 func (s) TestOnceFunc(t *testing.T) {
-	var v int32
-	inc := OnceFunc(func() { atomic.AddInt32(&v, 1) })
+    var v int32
+    inc := OnceFunc(func() { atomic.AddInt32(&v, 1) })
 
-	const numWorkers = 100
-	var wg sync.WaitGroup // Blocks until all workers have called inc.
-	wg.Add(numWorkers)
+    const numWorkers = 100
+    var wg sync.WaitGroup // Blocks until all workers have called inc.
+    wg.Add(numWorkers)
 
-	block := NewEvent() // Signal to worker goroutines to call inc
+    block := NewEvent() // Signal to worker goroutines to call inc
 
-	for i := 0; i < numWorkers; i++ {
-		go func() {
-			<-block.Done() // Wait for a signal.
-			inc()          // Call the OnceFunc.
-			wg.Done()
-		}()
-	}
-	time.Sleep(time.Millisecond) // Allow goroutines to get to the block.
-	block.Fire()                 // Unblock them.
-	wg.Wait()                    // Wait for them to complete.
-	if v != 1 {
-		t.Fatalf("OnceFunc() called %v times; want 1", v)
-	}
+    for i := 0; i < numWorkers; i++ {
+        go func() {
+            <-block.Done() // Wait for a signal.
+            inc()          // Call the OnceFunc.
+            wg.Done()
+        }()
+    }
+    time.Sleep(time.Millisecond) // Allow goroutines to get to the block.
+    block.Fire()                 // Unblock them.
+    wg.Wait()                    // Wait for them to complete.
+    if v != 1 {
+        t.Fatalf("OnceFunc() called %v times; want 1", v)
+    }
 }

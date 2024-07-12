@@ -1,0 +1,58 @@
+{
+    "Version": "v0.0.12",
+    "GoVersion": "1.19",
+    "Sum": "h1:CiMYlY+O0azojWDmxdNr7ADGrnZ+V6Ilfner+6mSVK8=",
+    "Packages": {
+        "github.com/pion/mdns": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "golang.org/x/net/dns/dnsmessage",
+                "golang.org/x/net/ipv4",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "github.com/pion/transport/v3/test",
+                "golang.org/x/net/dns/dnsmessage",
+                "golang.org/x/net/ipv4",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/mdns/examples/query": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/pion/mdns",
+                "golang.org/x/net/ipv4",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/mdns/examples/server": {
+            "Imports": [
+                "github.com/pion/mdns",
+                "golang.org/x/net/ipv4",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/mdns/examples/server/publish_ip": {
+            "Imports": [
+                "flag",
+                "github.com/pion/mdns",
+                "golang.org/x/net/ipv4",
+                "net"
+            ],
+            "TestImports": null
+        }
+    }
+}

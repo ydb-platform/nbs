@@ -1,0 +1,670 @@
+{
+    "Version": "v3.2.24",
+    "GoVersion": "1.13",
+    "Sum": "h1:MiFL5DMo2bDaaIFWr0DDpwiV/L4EGbLZb+xoRvfEo1Y=",
+    "Packages": {
+        "github.com/pion/webrtc/v3": {
+            "Imports": [
+                "container/list",
+                "context",
+                "crypto",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "crypto/x509/pkix",
+                "encoding/base64",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/pion/datachannel",
+                "github.com/pion/dtls/v2",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/dtls/v2/pkg/crypto/fingerprint",
+                "github.com/pion/ice/v2",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/nack",
+                "github.com/pion/interceptor/pkg/report",
+                "github.com/pion/interceptor/pkg/twcc",
+                "github.com/pion/logging",
+                "github.com/pion/randutil",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/rtp/codecs",
+                "github.com/pion/sctp",
+                "github.com/pion/sdp/v3",
+                "github.com/pion/srtp/v2",
+                "github.com/pion/stun",
+                "github.com/pion/transport/v2",
+                "github.com/pion/transport/v2/packetio",
+                "github.com/pion/transport/v2/vnet",
+                "github.com/pion/webrtc/v3/internal/fmtp",
+                "github.com/pion/webrtc/v3/internal/mux",
+                "github.com/pion/webrtc/v3/internal/util",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/rtcerr",
+                "golang.org/x/net/proxy",
+                "io",
+                "math",
+                "math/big",
+                "net",
+                "net/url",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "crypto/tls",
+                "crypto/x509",
+                "encoding/binary",
+                "encoding/json",
+                "encoding/pem",
+                "errors",
+                "fmt",
+                "github.com/pion/datachannel",
+                "github.com/pion/dtls/v2/pkg/crypto/elliptic",
+                "github.com/pion/ice/v2",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/mock",
+                "github.com/pion/logging",
+                "github.com/pion/randutil",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/sdp/v3",
+                "github.com/pion/stun",
+                "github.com/pion/transport/v2/test",
+                "github.com/pion/transport/v2/vnet",
+                "github.com/pion/webrtc/v3/internal/util",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/rtcerr",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "io/ioutil",
+                "math/big",
+                "net",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/webrtc/v3/examples": {
+            "Imports": [
+                "encoding/json",
+                "flag",
+                "go/build",
+                "html/template",
+                "log",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/bandwidth-estimation-from-disk": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/cc",
+                "github.com/pion/interceptor/pkg/gcc",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfreader",
+                "io",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/broadcast": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/intervalpli",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/custom-logger": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/webrtc/v3",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/data-channels": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/data-channels-detach": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/data-channels-flow-control": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "log",
+                "os",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/ice-restart": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/ice-single-port": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/pion/ice/v2",
+                "github.com/pion/webrtc/v3",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/ice-tcp": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "io",
+                "net",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/insertable-streams": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfreader",
+                "io",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/internal/signal": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "encoding/base64",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/pion/randutil",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/ortc": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/pion-to-pion/answer": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/pion-to-pion/offer": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/play-from-disk": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfreader",
+                "github.com/pion/webrtc/v3/pkg/media/oggreader",
+                "io",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/play-from-disk-renegotiation": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/pion/randutil",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfreader",
+                "math/rand",
+                "net/http",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/reflect": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/intervalpli",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/rtcp-processing": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/rtp-forwarder": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/intervalpli",
+                "github.com/pion/rtp",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "net",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/rtp-to-webrtc": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io",
+                "net"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/save-to-disk": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/intervalpli",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfwriter",
+                "github.com/pion/webrtc/v3/pkg/media/oggwriter",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/save-to-disk-av1": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/intervalpli",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/pion/webrtc/v3/pkg/media/ivfwriter",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/simulcast": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/rtcp",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/stats": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/interceptor",
+                "github.com/pion/interceptor/pkg/stats",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/swap-tracks": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/webrtc/v3",
+                "github.com/pion/webrtc/v3/examples/internal/signal",
+                "io",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/trickle-ice": {
+            "Imports": [
+                "encoding/json",
+                "fmt",
+                "github.com/pion/webrtc/v3",
+                "golang.org/x/net/websocket",
+                "net/http",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/examples/vnet/show-network-usage": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/vnet",
+                "github.com/pion/webrtc/v3",
+                "log",
+                "net",
+                "os",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/internal/fmtp": {
+            "Imports": [
+                "encoding/hex",
+                "strings"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/internal/mux": {
+            "Imports": [
+                "errors",
+                "github.com/pion/ice/v2",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/packetio",
+                "io",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/pion/logging",
+                "github.com/pion/transport/v2/packetio",
+                "github.com/pion/transport/v2/test",
+                "github.com/stretchr/testify/require",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/webrtc/v3/internal/util": {
+            "Imports": [
+                "errors",
+                "github.com/pion/randutil",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media": {
+            "Imports": [
+                "github.com/pion/rtp",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/webrtc/v3/pkg/media/h264reader": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "io",
+                "strconv"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/stretchr/testify/require",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/h264writer": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "github.com/pion/rtp",
+                "github.com/pion/rtp/codecs",
+                "io",
+                "os"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/ivfreader": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/ivfwriter": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "github.com/pion/rtp",
+                "github.com/pion/rtp/codecs",
+                "github.com/pion/rtp/pkg/frame",
+                "io",
+                "os"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/pion/rtp",
+                "github.com/pion/rtp/codecs",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/oggreader": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/oggwriter": {
+            "Imports": [
+                "encoding/binary",
+                "errors",
+                "github.com/pion/randutil",
+                "github.com/pion/rtp",
+                "github.com/pion/rtp/codecs",
+                "io",
+                "os"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/pion/rtp",
+                "github.com/stretchr/testify/assert",
+                "io",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/rtpdump": {
+            "Imports": [
+                "bufio",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "net",
+                "regexp",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "io",
+                "net",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/media/samplebuilder": {
+            "Imports": [
+                "github.com/pion/rtp",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "math",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/pion/rtp",
+                "github.com/pion/webrtc/v3/pkg/media",
+                "github.com/stretchr/testify/assert",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/null": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "testing"
+            ]
+        },
+        "github.com/pion/webrtc/v3/pkg/rtcerr": {
+            "Imports": [
+                "fmt"
+            ],
+            "TestImports": null
+        }
+    }
+}

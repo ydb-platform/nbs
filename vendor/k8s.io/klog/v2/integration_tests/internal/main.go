@@ -14,33 +14,33 @@ is not supposed to be a (good) example on how to use klog.
 package main
 
 import (
-	"flag"
-	"fmt"
-	"os"
+    "flag"
+    "fmt"
+    "os"
 
-	"k8s.io/klog/v2"
+    "k8s.io/klog/v2"
 )
 
 func main() {
-	infoLogLine := getEnvOrDie("KLOG_INFO_LOG")
-	warningLogLine := getEnvOrDie("KLOG_WARNING_LOG")
-	errorLogLine := getEnvOrDie("KLOG_ERROR_LOG")
-	fatalLogLine := getEnvOrDie("KLOG_FATAL_LOG")
+    infoLogLine := getEnvOrDie("KLOG_INFO_LOG")
+    warningLogLine := getEnvOrDie("KLOG_WARNING_LOG")
+    errorLogLine := getEnvOrDie("KLOG_ERROR_LOG")
+    fatalLogLine := getEnvOrDie("KLOG_FATAL_LOG")
 
-	klog.InitFlags(nil)
-	flag.Parse()
-	klog.Info(infoLogLine)
-	klog.Warning(warningLogLine)
-	klog.Error(errorLogLine)
-	klog.Flush()
-	klog.Fatal(fatalLogLine)
+    klog.InitFlags(nil)
+    flag.Parse()
+    klog.Info(infoLogLine)
+    klog.Warning(warningLogLine)
+    klog.Error(errorLogLine)
+    klog.Flush()
+    klog.Fatal(fatalLogLine)
 }
 
 func getEnvOrDie(name string) string {
-	val, ok := os.LookupEnv(name)
-	if !ok {
-		fmt.Fprintf(os.Stderr, name+" could not be found in environment")
-		os.Exit(1)
-	}
-	return val
+    val, ok := os.LookupEnv(name)
+    if !ok {
+        fmt.Fprintf(os.Stderr, name+" could not be found in environment")
+        os.Exit(1)
+    }
+    return val
 }

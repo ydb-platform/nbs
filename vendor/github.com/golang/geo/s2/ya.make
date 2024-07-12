@@ -1,0 +1,142 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(Apache-2.0)
+
+SRCS(
+    bits_go19.go
+    builder.go
+    builder_snapper.go
+    cap.go
+    cell.go
+    cell_index.go
+    cellid.go
+    cellunion.go
+    centroids.go
+    contains_point_query.go
+    contains_vertex_query.go
+    convex_hull_query.go
+    crossing_edge_query.go
+    distance_target.go
+    doc.go
+    edge_clipping.go
+    edge_crosser.go
+    edge_crossings.go
+    edge_distances.go
+    edge_query.go
+    edge_tessellator.go
+    encode.go
+    interleave.go
+    latlng.go
+    lax_loop.go
+    lax_polygon.go
+    lax_polyline.go
+    lexicon.go
+    loop.go
+    matrix3x3.go
+    max_distance_targets.go
+    metric.go
+    min_distance_targets.go
+    nthderivative.go
+    paddedcell.go
+    point.go
+    point_measures.go
+    point_vector.go
+    pointcompression.go
+    polygon.go
+    polyline.go
+    polyline_measures.go
+    predicates.go
+    projections.go
+    query_entry.go
+    query_options.go
+    rect.go
+    rect_bounder.go
+    region.go
+    regioncoverer.go
+    regionunion.go
+    shape.go
+    shapeindex.go
+    shapeindex_region.go
+    shapeutil.go
+    shapeutil_edge_iterator.go
+    stuv.go
+    util.go
+    wedge_relations.go
+)
+
+GO_TEST_SRCS(
+    bits_test.go
+    builder_snapper_test.go
+    cap_test.go
+    cell_index_test.go
+    cell_test.go
+    cellid_test.go
+    cellunion_test.go
+    centroids_test.go
+    contains_point_query_test.go
+    contains_vertex_query_test.go
+    convex_hull_query_test.go
+    crossing_edge_query_test.go
+    edge_clipping_test.go
+    edge_crosser_test.go
+    edge_crossings_test.go
+    edge_distances_test.go
+    edge_query_closest_test.go
+    edge_query_furthest_test.go
+    edge_query_test.go
+    edge_tessellator_test.go
+    edge_vector_shape_test.go
+    edge_vector_shape_test_test.go
+    encode_test.go
+    interleave_test.go
+    latlng_test.go
+    lax_loop_test.go
+    lax_loop_test_test.go
+    lax_polygon_test.go
+    lax_polygon_test_test.go
+    lax_polyline_test.go
+    lax_polyline_test_test.go
+    lexicon_test.go
+    loop_test.go
+    matrix3x3_test.go
+    max_distance_targets_test.go
+    metric_test.go
+    min_distance_targets_test.go
+    nthderivative_test.go
+    paddedcell_test.go
+    point_measures_test.go
+    point_test.go
+    point_vector_test.go
+    pointcompression_test.go
+    polygon_test.go
+    polyline_measures_test.go
+    polyline_test.go
+    predicates_test.go
+    projections_test.go
+    query_entry_test.go
+    rect_bounder_test.go
+    rect_test.go
+    regioncoverer_test.go
+    regionunion_test.go
+    s2_test.go
+    s2_test_test.go
+    shapeindex_region_test.go
+    shapeindex_test.go
+    shapeutil_edge_iterator_test.go
+    shapeutil_test.go
+    stuv_test.go
+    textformat_test.go
+    textformat_test_test.go
+    wedge_relations_test.go
+)
+
+GO_XTEST_SRCS(example_test.go)
+
+END()
+
+RECURSE(
+    gotest
+    s2intersect
+)

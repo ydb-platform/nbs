@@ -1,0 +1,146 @@
+{
+    "Version": "v28.1.1",
+    "GoVersion": "1.13",
+    "Sum": "h1:kORf5ekX5qwXO2mGzXXOjMe/g6ap8ahVe0sBEulhSxo=",
+    "Packages": {
+        "github.com/google/go-github/v28/example/appengine": {
+            "Imports": [
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/oauth2",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/log",
+                "net/http",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/example/basicauth": {
+            "Imports": [
+                "bufio",
+                "context",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/crypto/ssh/terminal",
+                "os",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/example/commitpr": {
+            "Imports": [
+                "context",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/oauth2",
+                "io/ioutil",
+                "log",
+                "os",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/example/migrations": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/oauth2"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/example/newrepo": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/oauth2",
+                "log",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/example/simple": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/go-github/v28/github"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/github": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/hmac",
+                "crypto/sha1",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/google/go-querystring/query",
+                "golang.org/x/crypto/openpgp",
+                "hash",
+                "io",
+                "io/ioutil",
+                "mime",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/crypto/openpgp",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/go-github/v28/test/fields": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/google/go-github/v28/github",
+                "golang.org/x/oauth2",
+                "os",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/go-github/v28/test/integration": {
+            "Imports": null,
+            "TestImports": null
+        }
+    }
+}

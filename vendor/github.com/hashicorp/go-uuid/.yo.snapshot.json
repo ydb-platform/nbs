@@ -1,0 +1,22 @@
+{
+    "Version": "v1.0.3",
+    "GoVersion": "",
+    "Sum": "h1:2gKiV6YVmrJ1i2CKKa9obLvRieoRGviZFL26PcT/Co8=",
+    "Packages": {
+        "github.com/hashicorp/go-uuid": {
+            "Imports": [
+                "crypto/rand",
+                "encoding/hex",
+                "fmt",
+                "io"
+            ],
+            "TestImports": [
+                "crypto/rand",
+                "io",
+                "reflect",
+                "regexp",
+                "testing"
+            ]
+        }
+    }
+}

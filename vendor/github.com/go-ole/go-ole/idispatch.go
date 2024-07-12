@@ -3,39 +3,39 @@ package ole
 import "unsafe"
 
 type IDispatch struct {
-	IUnknown
+    IUnknown
 }
 
 type IDispatchVtbl struct {
-	IUnknownVtbl
-	GetTypeInfoCount uintptr
-	GetTypeInfo      uintptr
-	GetIDsOfNames    uintptr
-	Invoke           uintptr
+    IUnknownVtbl
+    GetTypeInfoCount uintptr
+    GetTypeInfo      uintptr
+    GetIDsOfNames    uintptr
+    Invoke           uintptr
 }
 
 func (v *IDispatch) VTable() *IDispatchVtbl {
-	return (*IDispatchVtbl)(unsafe.Pointer(v.RawVTable))
+    return (*IDispatchVtbl)(unsafe.Pointer(v.RawVTable))
 }
 
 func (v *IDispatch) GetIDsOfName(names []string) (dispid []int32, err error) {
-	dispid, err = getIDsOfName(v, names)
-	return
+    dispid, err = getIDsOfName(v, names)
+    return
 }
 
 func (v *IDispatch) Invoke(dispid int32, dispatch int16, params ...interface{}) (result *VARIANT, err error) {
-	result, err = invoke(v, dispid, dispatch, params...)
-	return
+    result, err = invoke(v, dispid, dispatch, params...)
+    return
 }
 
 func (v *IDispatch) GetTypeInfoCount() (c uint32, err error) {
-	c, err = getTypeInfoCount(v)
-	return
+    c, err = getTypeInfoCount(v)
+    return
 }
 
 func (v *IDispatch) GetTypeInfo() (tinfo *ITypeInfo, err error) {
-	tinfo, err = getTypeInfo(v)
-	return
+    tinfo, err = getTypeInfo(v)
+    return
 }
 
 // GetSingleIDOfName is a helper that returns single display ID for IDispatch name.
@@ -43,13 +43,13 @@ func (v *IDispatch) GetTypeInfo() (tinfo *ITypeInfo, err error) {
 // This replaces the common pattern of attempting to get a single name from the list of available
 // IDs. It gives the first ID, if it is available.
 func (v *IDispatch) GetSingleIDOfName(name string) (displayID int32, err error) {
-	var displayIDs []int32
-	displayIDs, err = v.GetIDsOfName([]string{name})
-	if err != nil {
-		return
-	}
-	displayID = displayIDs[0]
-	return
+    var displayIDs []int32
+    displayIDs, err = v.GetIDsOfName([]string{name})
+    if err != nil {
+        return
+    }
+    displayID = displayIDs[0]
+    return
 }
 
 // InvokeWithOptionalArgs accepts arguments as an array, works like Invoke.
@@ -60,23 +60,23 @@ func (v *IDispatch) GetSingleIDOfName(name string) (displayID int32, err error) 
 // prevent passing empty params. During testing it was discovered that this is an acceptable way of
 // getting around not being able to pass params normally.
 func (v *IDispatch) InvokeWithOptionalArgs(name string, dispatch int16, params []interface{}) (result *VARIANT, err error) {
-	displayID, err := v.GetSingleIDOfName(name)
-	if err != nil {
-		return
-	}
+    displayID, err := v.GetSingleIDOfName(name)
+    if err != nil {
+        return
+    }
 
-	if len(params) < 1 {
-		result, err = v.Invoke(displayID, dispatch)
-	} else {
-		result, err = v.Invoke(displayID, dispatch, params...)
-	}
+    if len(params) < 1 {
+        result, err = v.Invoke(displayID, dispatch)
+    } else {
+        result, err = v.Invoke(displayID, dispatch, params...)
+    }
 
-	return
+    return
 }
 
 // CallMethod invokes named function with arguments on object.
 func (v *IDispatch) CallMethod(name string, params ...interface{}) (*VARIANT, error) {
-	return v.InvokeWithOptionalArgs(name, DISPATCH_METHOD, params)
+    return v.InvokeWithOptionalArgs(name, DISPATCH_METHOD, params)
 }
 
 // GetProperty retrieves the property with the name with the ability to pass arguments.
@@ -85,10 +85,10 @@ func (v *IDispatch) CallMethod(name string, params ...interface{}) (*VARIANT, er
 // feature. Or at least, should not allow for this feature. Some servers don't follow best practices
 // and this is provided for those edge cases.
 func (v *IDispatch) GetProperty(name string, params ...interface{}) (*VARIANT, error) {
-	return v.InvokeWithOptionalArgs(name, DISPATCH_PROPERTYGET, params)
+    return v.InvokeWithOptionalArgs(name, DISPATCH_PROPERTYGET, params)
 }
 
 // PutProperty attempts to mutate a property in the object.
 func (v *IDispatch) PutProperty(name string, params ...interface{}) (*VARIANT, error) {
-	return v.InvokeWithOptionalArgs(name, DISPATCH_PROPERTYPUT, params)
+    return v.InvokeWithOptionalArgs(name, DISPATCH_PROPERTYPUT, params)
 }

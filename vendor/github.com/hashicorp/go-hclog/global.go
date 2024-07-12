@@ -4,22 +4,22 @@
 package hclog
 
 import (
-	"sync"
-	"time"
+    "sync"
+    "time"
 )
 
 var (
-	protect sync.Once
-	def     Logger
+    protect sync.Once
+    def     Logger
 
-	// DefaultOptions is used to create the Default logger. These are read
-	// only when the Default logger is created, so set them as soon as the
-	// process starts.
-	DefaultOptions = &LoggerOptions{
-		Level:  DefaultLevel,
-		Output: DefaultOutput,
-		TimeFn: time.Now,
-	}
+    // DefaultOptions is used to create the Default logger. These are read
+    // only when the Default logger is created, so set them as soon as the
+    // process starts.
+    DefaultOptions = &LoggerOptions{
+        Level:  DefaultLevel,
+        Output: DefaultOutput,
+        TimeFn: time.Now,
+    }
 )
 
 // Default returns a globally held logger. This can be a good starting
@@ -33,20 +33,20 @@ var (
 // in the program as that may result in race conditions and an unexpected
 // Logger being returned.
 func Default() Logger {
-	protect.Do(func() {
-		// If SetDefault was used before Default() was called, we need to
-		// detect that here.
-		if def == nil {
-			def = New(DefaultOptions)
-		}
-	})
+    protect.Do(func() {
+        // If SetDefault was used before Default() was called, we need to
+        // detect that here.
+        if def == nil {
+            def = New(DefaultOptions)
+        }
+    })
 
-	return def
+    return def
 }
 
 // L is a short alias for Default().
 func L() Logger {
-	return Default()
+    return Default()
 }
 
 // SetDefault changes the logger to be returned by Default()and L()
@@ -61,7 +61,7 @@ func L() Logger {
 // with other goroutines retrieving the default logger. Basically,
 // don't do that.
 func SetDefault(log Logger) Logger {
-	old := def
-	def = log
-	return old
+    old := def
+    def = log
+    return old
 }

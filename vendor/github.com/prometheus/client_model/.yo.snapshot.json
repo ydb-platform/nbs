@@ -1,0 +1,17 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:VQw1hfvPvk3Uv6Qf29VrPF32JB6rtbgI6cYPYQjL0Qw=",
+    "Packages": {
+        "github.com/prometheus/client_model/go": {
+            "Imports": [
+                "google.golang.org/protobuf/reflect/protoreflect",
+                "google.golang.org/protobuf/runtime/protoimpl",
+                "google.golang.org/protobuf/types/known/timestamppb",
+                "reflect",
+                "sync"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -17,24 +17,24 @@ limitations under the License.
 package strings
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 )
 
 func Example_trailingNewline() {
-	ld := NewLineDelimiter(os.Stdout, "|")
-	defer ld.Flush()
-	fmt.Fprint(ld, "  Hello  \n  World  \n")
-	// Output:
-	// |  Hello  |
-	// |  World  |
-	// ||
+    ld := NewLineDelimiter(os.Stdout, "|")
+    defer ld.Flush()
+    fmt.Fprint(ld, "  Hello  \n  World  \n")
+    // Output:
+    // |  Hello  |
+    // |  World  |
+    // ||
 }
 func Example_noTrailingNewline() {
-	ld := NewLineDelimiter(os.Stdout, "|")
-	defer ld.Flush()
-	fmt.Fprint(ld, "  Hello  \n  World  ")
-	// Output:
-	// |  Hello  |
-	// |  World  |
+    ld := NewLineDelimiter(os.Stdout, "|")
+    defer ld.Flush()
+    fmt.Fprint(ld, "  Hello  \n  World  ")
+    // Output:
+    // |  Hello  |
+    // |  World  |
 }

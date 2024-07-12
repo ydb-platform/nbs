@@ -1,0 +1,75 @@
+{
+    "Version": "v1.8.0",
+    "GoVersion": "1.15",
+    "Sum": "h1:7aJaZx1B85qltLMc546zn58BxxfZdR/W22ej9CFoEf0=",
+    "Packages": {
+        "github.com/spf13/cobra": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/inconshreveable/mousetrap",
+                "github.com/spf13/pflag",
+                "io",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "text/template",
+                "time",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/spf13/pflag",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strings",
+                "sync",
+                "testing",
+                "text/template"
+            ]
+        },
+        "github.com/spf13/cobra/doc": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/cpuguy83/go-md2man/v2/md2man",
+                "github.com/spf13/cobra",
+                "github.com/spf13/pflag",
+                "gopkg.in/yaml.v3",
+                "io",
+                "os",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/spf13/cobra",
+                "github.com/spf13/cobra/doc",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

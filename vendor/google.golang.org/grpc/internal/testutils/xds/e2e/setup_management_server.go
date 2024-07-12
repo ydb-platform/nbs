@@ -19,14 +19,14 @@
 package e2e
 
 import (
-	"encoding/json"
-	"path"
-	"testing"
+    "encoding/json"
+    "path"
+    "testing"
 
-	"github.com/google/uuid"
-	"google.golang.org/grpc/internal"
-	"google.golang.org/grpc/internal/testutils/xds/bootstrap"
-	"google.golang.org/grpc/resolver"
+    "github.com/google/uuid"
+    "google.golang.org/grpc/internal"
+    "google.golang.org/grpc/internal/testutils/xds/bootstrap"
+    "google.golang.org/grpc/resolver"
 )
 
 // SetupManagementServer performs the following:
@@ -42,61 +42,61 @@ import (
 // - xDS resolver builder to be used by the client
 // - a cleanup function to be invoked at the end of the test
 func SetupManagementServer(t *testing.T, opts ManagementServerOptions) (*ManagementServer, string, []byte, resolver.Builder, func()) {
-	t.Helper()
+    t.Helper()
 
-	// Spin up an xDS management server on a local port.
-	server, err := StartManagementServer(opts)
-	if err != nil {
-		t.Fatalf("Failed to spin up the xDS management server: %v", err)
-	}
-	defer func() {
-		if err != nil {
-			server.Stop()
-		}
-	}()
+    // Spin up an xDS management server on a local port.
+    server, err := StartManagementServer(opts)
+    if err != nil {
+        t.Fatalf("Failed to spin up the xDS management server: %v", err)
+    }
+    defer func() {
+        if err != nil {
+            server.Stop()
+        }
+    }()
 
-	// Create a directory to hold certs and key files used on the server side.
-	serverDir, err := createTmpDirWithFiles("testServerSideXDS*", "x509/server1_cert.pem", "x509/server1_key.pem", "x509/client_ca_cert.pem")
-	if err != nil {
-		server.Stop()
-		t.Fatal(err)
-	}
+    // Create a directory to hold certs and key files used on the server side.
+    serverDir, err := createTmpDirWithFiles("testServerSideXDS*", "x509/server1_cert.pem", "x509/server1_key.pem", "x509/client_ca_cert.pem")
+    if err != nil {
+        server.Stop()
+        t.Fatal(err)
+    }
 
-	// Create a directory to hold certs and key files used on the client side.
-	clientDir, err := createTmpDirWithFiles("testClientSideXDS*", "x509/client1_cert.pem", "x509/client1_key.pem", "x509/server_ca_cert.pem")
-	if err != nil {
-		server.Stop()
-		t.Fatal(err)
-	}
+    // Create a directory to hold certs and key files used on the client side.
+    clientDir, err := createTmpDirWithFiles("testClientSideXDS*", "x509/client1_cert.pem", "x509/client1_key.pem", "x509/server_ca_cert.pem")
+    if err != nil {
+        server.Stop()
+        t.Fatal(err)
+    }
 
-	// Create certificate providers section of the bootstrap config with entries
-	// for both the client and server sides.
-	cpc := map[string]json.RawMessage{
-		ServerSideCertProviderInstance: DefaultFileWatcherConfig(path.Join(serverDir, certFile), path.Join(serverDir, keyFile), path.Join(serverDir, rootFile)),
-		ClientSideCertProviderInstance: DefaultFileWatcherConfig(path.Join(clientDir, certFile), path.Join(clientDir, keyFile), path.Join(clientDir, rootFile)),
-	}
+    // Create certificate providers section of the bootstrap config with entries
+    // for both the client and server sides.
+    cpc := map[string]json.RawMessage{
+        ServerSideCertProviderInstance: DefaultFileWatcherConfig(path.Join(serverDir, certFile), path.Join(serverDir, keyFile), path.Join(serverDir, rootFile)),
+        ClientSideCertProviderInstance: DefaultFileWatcherConfig(path.Join(clientDir, certFile), path.Join(clientDir, keyFile), path.Join(clientDir, rootFile)),
+    }
 
-	// Create a bootstrap file in a temporary directory.
-	nodeID := uuid.New().String()
-	bootstrapContents, err := bootstrap.Contents(bootstrap.Options{
-		NodeID:                             nodeID,
-		ServerURI:                          server.Address,
-		CertificateProviders:               cpc,
-		ServerListenerResourceNameTemplate: ServerListenerResourceNameTemplate,
-	})
-	if err != nil {
-		server.Stop()
-		t.Fatalf("Failed to create bootstrap file: %v", err)
-	}
+    // Create a bootstrap file in a temporary directory.
+    nodeID := uuid.New().String()
+    bootstrapContents, err := bootstrap.Contents(bootstrap.Options{
+        NodeID:                             nodeID,
+        ServerURI:                          server.Address,
+        CertificateProviders:               cpc,
+        ServerListenerResourceNameTemplate: ServerListenerResourceNameTemplate,
+    })
+    if err != nil {
+        server.Stop()
+        t.Fatalf("Failed to create bootstrap file: %v", err)
+    }
 
-	var rb resolver.Builder
-	if newResolver := internal.NewXDSResolverWithConfigForTesting; newResolver != nil {
-		rb, err = newResolver.(func([]byte) (resolver.Builder, error))(bootstrapContents)
-		if err != nil {
-			server.Stop()
-			t.Fatalf("Failed to create xDS resolver for testing: %v", err)
-		}
-	}
+    var rb resolver.Builder
+    if newResolver := internal.NewXDSResolverWithConfigForTesting; newResolver != nil {
+        rb, err = newResolver.(func([]byte) (resolver.Builder, error))(bootstrapContents)
+        if err != nil {
+            server.Stop()
+            t.Fatalf("Failed to create xDS resolver for testing: %v", err)
+        }
+    }
 
-	return server, nodeID, bootstrapContents, rb, func() { server.Stop() }
+    return server, nodeID, bootstrapContents, rb, func() { server.Stop() }
 }

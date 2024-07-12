@@ -21,75 +21,75 @@
 package zap
 
 import (
-	"bytes"
-	"fmt"
-	"log"
-	"os"
-	"sync"
+    "bytes"
+    "fmt"
+    "log"
+    "os"
+    "sync"
 
-	"go.uber.org/zap/zapcore"
+    "go.uber.org/zap/zapcore"
 )
 
 const (
-	_stdLogDefaultDepth      = 1
-	_loggerWriterDepth       = 2
-	_programmerErrorTemplate = "You've found a bug in zap! Please file a bug at " +
-		"https://github.com/uber-go/zap/issues/new and reference this error: %v"
+    _stdLogDefaultDepth      = 1
+    _loggerWriterDepth       = 2
+    _programmerErrorTemplate = "You've found a bug in zap! Please file a bug at " +
+        "https://github.com/uber-go/zap/issues/new and reference this error: %v"
 )
 
 var (
-	_globalMu sync.RWMutex
-	_globalL  = NewNop()
-	_globalS  = _globalL.Sugar()
+    _globalMu sync.RWMutex
+    _globalL  = NewNop()
+    _globalS  = _globalL.Sugar()
 )
 
 // L returns the global Logger, which can be reconfigured with ReplaceGlobals.
 // It's safe for concurrent use.
 func L() *Logger {
-	_globalMu.RLock()
-	l := _globalL
-	_globalMu.RUnlock()
-	return l
+    _globalMu.RLock()
+    l := _globalL
+    _globalMu.RUnlock()
+    return l
 }
 
 // S returns the global SugaredLogger, which can be reconfigured with
 // ReplaceGlobals. It's safe for concurrent use.
 func S() *SugaredLogger {
-	_globalMu.RLock()
-	s := _globalS
-	_globalMu.RUnlock()
-	return s
+    _globalMu.RLock()
+    s := _globalS
+    _globalMu.RUnlock()
+    return s
 }
 
 // ReplaceGlobals replaces the global Logger and SugaredLogger, and returns a
 // function to restore the original values. It's safe for concurrent use.
 func ReplaceGlobals(logger *Logger) func() {
-	_globalMu.Lock()
-	prev := _globalL
-	_globalL = logger
-	_globalS = logger.Sugar()
-	_globalMu.Unlock()
-	return func() { ReplaceGlobals(prev) }
+    _globalMu.Lock()
+    prev := _globalL
+    _globalL = logger
+    _globalS = logger.Sugar()
+    _globalMu.Unlock()
+    return func() { ReplaceGlobals(prev) }
 }
 
 // NewStdLog returns a *log.Logger which writes to the supplied zap Logger at
 // InfoLevel. To redirect the standard library's package-global logging
 // functions, use RedirectStdLog instead.
 func NewStdLog(l *Logger) *log.Logger {
-	logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
-	f := logger.Info
-	return log.New(&loggerWriter{f}, "" /* prefix */, 0 /* flags */)
+    logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
+    f := logger.Info
+    return log.New(&loggerWriter{f}, "" /* prefix */, 0 /* flags */)
 }
 
 // NewStdLogAt returns *log.Logger which writes to supplied zap logger at
 // required level.
 func NewStdLogAt(l *Logger, level zapcore.Level) (*log.Logger, error) {
-	logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
-	logFunc, err := levelToFunc(logger, level)
-	if err != nil {
-		return nil, err
-	}
-	return log.New(&loggerWriter{logFunc}, "" /* prefix */, 0 /* flags */), nil
+    logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
+    logFunc, err := levelToFunc(logger, level)
+    if err != nil {
+        return nil, err
+    }
+    return log.New(&loggerWriter{logFunc}, "" /* prefix */, 0 /* flags */), nil
 }
 
 // RedirectStdLog redirects output from the standard library's package-global
@@ -100,13 +100,13 @@ func NewStdLogAt(l *Logger, level zapcore.Level) (*log.Logger, error) {
 // It returns a function to restore the original prefix and flags and reset the
 // standard library's output to os.Stderr.
 func RedirectStdLog(l *Logger) func() {
-	f, err := redirectStdLogAt(l, InfoLevel)
-	if err != nil {
-		// Can't get here, since passing InfoLevel to redirectStdLogAt always
-		// works.
-		panic(fmt.Sprintf(_programmerErrorTemplate, err))
-	}
-	return f
+    f, err := redirectStdLogAt(l, InfoLevel)
+    if err != nil {
+        // Can't get here, since passing InfoLevel to redirectStdLogAt always
+        // works.
+        panic(fmt.Sprintf(_programmerErrorTemplate, err))
+    }
+    return f
 }
 
 // RedirectStdLogAt redirects output from the standard library's package-global
@@ -117,53 +117,53 @@ func RedirectStdLog(l *Logger) func() {
 // It returns a function to restore the original prefix and flags and reset the
 // standard library's output to os.Stderr.
 func RedirectStdLogAt(l *Logger, level zapcore.Level) (func(), error) {
-	return redirectStdLogAt(l, level)
+    return redirectStdLogAt(l, level)
 }
 
 func redirectStdLogAt(l *Logger, level zapcore.Level) (func(), error) {
-	flags := log.Flags()
-	prefix := log.Prefix()
-	log.SetFlags(0)
-	log.SetPrefix("")
-	logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
-	logFunc, err := levelToFunc(logger, level)
-	if err != nil {
-		return nil, err
-	}
-	log.SetOutput(&loggerWriter{logFunc})
-	return func() {
-		log.SetFlags(flags)
-		log.SetPrefix(prefix)
-		log.SetOutput(os.Stderr)
-	}, nil
+    flags := log.Flags()
+    prefix := log.Prefix()
+    log.SetFlags(0)
+    log.SetPrefix("")
+    logger := l.WithOptions(AddCallerSkip(_stdLogDefaultDepth + _loggerWriterDepth))
+    logFunc, err := levelToFunc(logger, level)
+    if err != nil {
+        return nil, err
+    }
+    log.SetOutput(&loggerWriter{logFunc})
+    return func() {
+        log.SetFlags(flags)
+        log.SetPrefix(prefix)
+        log.SetOutput(os.Stderr)
+    }, nil
 }
 
 func levelToFunc(logger *Logger, lvl zapcore.Level) (func(string, ...Field), error) {
-	switch lvl {
-	case DebugLevel:
-		return logger.Debug, nil
-	case InfoLevel:
-		return logger.Info, nil
-	case WarnLevel:
-		return logger.Warn, nil
-	case ErrorLevel:
-		return logger.Error, nil
-	case DPanicLevel:
-		return logger.DPanic, nil
-	case PanicLevel:
-		return logger.Panic, nil
-	case FatalLevel:
-		return logger.Fatal, nil
-	}
-	return nil, fmt.Errorf("unrecognized level: %q", lvl)
+    switch lvl {
+    case DebugLevel:
+        return logger.Debug, nil
+    case InfoLevel:
+        return logger.Info, nil
+    case WarnLevel:
+        return logger.Warn, nil
+    case ErrorLevel:
+        return logger.Error, nil
+    case DPanicLevel:
+        return logger.DPanic, nil
+    case PanicLevel:
+        return logger.Panic, nil
+    case FatalLevel:
+        return logger.Fatal, nil
+    }
+    return nil, fmt.Errorf("unrecognized level: %q", lvl)
 }
 
 type loggerWriter struct {
-	logFunc func(msg string, fields ...Field)
+    logFunc func(msg string, fields ...Field)
 }
 
 func (l *loggerWriter) Write(p []byte) (int, error) {
-	p = bytes.TrimSpace(p)
-	l.logFunc(string(p))
-	return len(p), nil
+    p = bytes.TrimSpace(p)
+    l.logFunc(string(p))
+    return len(p), nil
 }

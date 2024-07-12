@@ -1,0 +1,289 @@
+{
+    "Version": "v0.5.2",
+    "GoVersion": "1.18",
+    "Sum": "h1:SfwMFnEXVVirpwkDuSF5kymUOhrUxrTq3udEseZdOD0=",
+    "Packages": {
+        "github.com/hashicorp/hc-install": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-multierror",
+                "github.com/hashicorp/hc-install/errors",
+                "github.com/hashicorp/hc-install/src",
+                "io/ioutil",
+                "log"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install",
+                "github.com/hashicorp/hc-install/build",
+                "github.com/hashicorp/hc-install/fs",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "github.com/hashicorp/hc-install/src",
+                "log",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/build": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/go-git/go-git/v5",
+                "github.com/go-git/go-git/v5/plumbing",
+                "github.com/hashicorp/hc-install/internal/src",
+                "github.com/hashicorp/hc-install/internal/validators",
+                "github.com/hashicorp/hc-install/product",
+                "io/ioutil",
+                "log",
+                "os",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/src",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/checkpoint": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-checkpoint",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/pubkey",
+                "github.com/hashicorp/hc-install/internal/releasesjson",
+                "github.com/hashicorp/hc-install/internal/src",
+                "github.com/hashicorp/hc-install/internal/validators",
+                "github.com/hashicorp/hc-install/product",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "runtime",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/src",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/cmd/hc-install": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "github.com/hashicorp/hc-install/src",
+                "github.com/hashicorp/hc-install/version",
+                "github.com/hashicorp/logutils",
+                "github.com/mitchellh/cli",
+                "log",
+                "os",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/errors": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/fs": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/errors",
+                "github.com/hashicorp/hc-install/internal/src",
+                "github.com/hashicorp/hc-install/internal/validators",
+                "github.com/hashicorp/hc-install/product",
+                "io/fs",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/errors",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/releases",
+                "github.com/hashicorp/hc-install/src",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/internal/build": {
+            "Imports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "golang.org/x/mod/modfile",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/internal/httpclient": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/go-cleanhttp",
+                "github.com/hashicorp/hc-install/version",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/internal/pubkey": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/internal/releasesjson": {
+            "Imports": [
+                "archive/zip",
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "encoding/hex",
+                "encoding/json",
+                "fmt",
+                "github.com/ProtonMail/go-crypto/openpgp",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/httpclient",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/internal/src": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/internal/testutil": {
+            "Imports": [
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "os",
+                "path/filepath",
+                "runtime",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/internal/validators": {
+            "Imports": [
+                "regexp"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/product": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/build",
+                "os/exec",
+                "regexp",
+                "runtime",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/releases": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/pubkey",
+                "github.com/hashicorp/hc-install/internal/releasesjson",
+                "github.com/hashicorp/hc-install/internal/src",
+                "github.com/hashicorp/hc-install/internal/validators",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/src",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "sort",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/hc-install/internal/testutil",
+                "github.com/hashicorp/hc-install/product",
+                "github.com/hashicorp/hc-install/src",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/hc-install/src": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/hc-install/internal/src",
+                "log"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/hc-install/version": {
+            "Imports": [
+                "embed",
+                "github.com/hashicorp/go-version",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

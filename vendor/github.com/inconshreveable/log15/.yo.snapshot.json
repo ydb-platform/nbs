@@ -1,0 +1,66 @@
+{
+    "Version": "v0.0.0-20201112154412-8562bdadbbac",
+    "GoVersion": "",
+    "Sum": "h1:n1DqxAo4oWPMvH1+v+DLYlMCecgumhhgnxAPdqDIFHI=",
+    "Packages": {
+        "github.com/inconshreveable/log15": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/go-stack/stack",
+                "github.com/mattn/go-colorable",
+                "github.com/mattn/go-isatty",
+                "io",
+                "log/syslog",
+                "net",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "io/ioutil",
+                "net",
+                "regexp",
+                "runtime",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/inconshreveable/log15/ext": {
+            "Imports": [
+                "fmt",
+                "github.com/inconshreveable/log15",
+                "math/rand",
+                "os",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/inconshreveable/log15",
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/inconshreveable/log15/term": {
+            "Imports": [
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        }
+    }
+}

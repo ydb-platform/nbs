@@ -1,0 +1,124 @@
+{
+    "name": "terraform",
+    "version": "0.14.11",
+    "shasums": "terraform_0.14.11_SHA256SUMS",
+    "shasums_signature": "terraform_0.14.11_SHA256SUMS.sig",
+    "shasums_signatures": [
+        "terraform_0.14.11_SHA256SUMS.2FCA0A85.sig",
+        "terraform_0.14.11_SHA256SUMS.sig"
+    ],
+    "builds": [
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "darwin",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_darwin_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_darwin_amd64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "darwin",
+            "arch": "arm64",
+            "filename": "terraform_0.14.11_darwin_arm64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_darwin_arm64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "freebsd",
+            "arch": "386",
+            "filename": "terraform_0.14.11_freebsd_386.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_freebsd_386.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "freebsd",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_freebsd_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_freebsd_amd64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "freebsd",
+            "arch": "arm",
+            "filename": "terraform_0.14.11_freebsd_arm.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_freebsd_arm.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "linux",
+            "arch": "386",
+            "filename": "terraform_0.14.11_linux_386.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_386.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "linux",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_linux_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_amd64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "linux",
+            "arch": "arm",
+            "filename": "terraform_0.14.11_linux_arm.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_arm.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "linux",
+            "arch": "arm64",
+            "filename": "terraform_0.14.11_linux_arm64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_linux_arm64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "openbsd",
+            "arch": "386",
+            "filename": "terraform_0.14.11_openbsd_386.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_openbsd_386.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "openbsd",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_openbsd_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_openbsd_amd64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "solaris",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_solaris_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_solaris_amd64.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "windows",
+            "arch": "386",
+            "filename": "terraform_0.14.11_windows_386.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_windows_386.zip"
+        },
+        {
+            "name": "terraform",
+            "version": "0.14.11",
+            "os": "windows",
+            "arch": "amd64",
+            "filename": "terraform_0.14.11_windows_amd64.zip",
+            "url": "https://releases.hashicorp.com/terraform/0.14.11/terraform_0.14.11_windows_amd64.zip"
+        }
+    ]
+}

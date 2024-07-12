@@ -19,36 +19,36 @@ limitations under the License.
 package inotify // import "k8s.io/utils/inotify"
 
 import (
-	"fmt"
-	"runtime"
+    "fmt"
+    "runtime"
 )
 
 var errNotSupported = fmt.Errorf("watch not supported on %s", runtime.GOOS)
 
 // NewWatcher creates and returns a new inotify instance using inotify_init(2)
 func NewWatcher() (*Watcher, error) {
-	return nil, errNotSupported
+    return nil, errNotSupported
 }
 
 // Close closes an inotify watcher instance
 // It sends a message to the reader goroutine to quit and removes all watches
 // associated with the inotify instance
 func (w *Watcher) Close() error {
-	return errNotSupported
+    return errNotSupported
 }
 
 // AddWatch adds path to the watched file set.
 // The flags are interpreted as described in inotify_add_watch(2).
 func (w *Watcher) AddWatch(path string, flags uint32) error {
-	return errNotSupported
+    return errNotSupported
 }
 
 // Watch adds path to the watched file set, watching all events.
 func (w *Watcher) Watch(path string) error {
-	return errNotSupported
+    return errNotSupported
 }
 
 // RemoveWatch removes path from the watched file set.
 func (w *Watcher) RemoveWatch(path string) error {
-	return errNotSupported
+    return errNotSupported
 }

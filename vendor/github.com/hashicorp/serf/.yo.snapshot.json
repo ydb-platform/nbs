@@ -1,0 +1,249 @@
+{
+    "Version": "v0.10.1",
+    "GoVersion": "1.12",
+    "Sum": "h1:Z1H2J60yRKvfDYAOZLd2MU0ND4AH/WDz7xYHDWQsIPY=",
+    "Packages": {
+        "github.com/hashicorp/serf/client": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/logutils",
+                "github.com/hashicorp/serf/coordinate",
+                "github.com/hashicorp/serf/serf",
+                "log",
+                "net",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/serf/cmd/serf": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/serf/cmd/serf/command",
+                "github.com/hashicorp/serf/cmd/serf/command/agent",
+                "github.com/hashicorp/serf/version",
+                "github.com/mitchellh/cli",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/signal"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/serf/cmd/serf/command": {
+            "Imports": [
+                "bytes",
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/hashicorp/logutils",
+                "github.com/hashicorp/serf/client",
+                "github.com/hashicorp/serf/cmd/serf/command/agent",
+                "github.com/hashicorp/serf/serf",
+                "github.com/mitchellh/cli",
+                "github.com/ryanuber/columnize",
+                "net",
+                "os",
+                "sort",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/memberlist",
+                "github.com/hashicorp/serf/client",
+                "github.com/hashicorp/serf/cmd/serf/command/agent",
+                "github.com/hashicorp/serf/serf",
+                "github.com/hashicorp/serf/testutil",
+                "github.com/mitchellh/cli",
+                "io",
+                "math/rand",
+                "net",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/serf/cmd/serf/command/agent": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/armon/circbuf",
+                "github.com/armon/go-metrics",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/go-syslog",
+                "github.com/hashicorp/logutils",
+                "github.com/hashicorp/mdns",
+                "github.com/hashicorp/memberlist",
+                "github.com/hashicorp/serf/coordinate",
+                "github.com/hashicorp/serf/serf",
+                "github.com/mitchellh/cli",
+                "github.com/mitchellh/mapstructure",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "os",
+                "os/exec",
+                "os/signal",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/go-syslog",
+                "github.com/hashicorp/logutils",
+                "github.com/hashicorp/serf/client",
+                "github.com/hashicorp/serf/serf",
+                "github.com/hashicorp/serf/testutil",
+                "github.com/mitchellh/cli",
+                "io",
+                "io/ioutil",
+                "log",
+                "math/rand",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/serf/coordinate": {
+            "Imports": [
+                "fmt",
+                "github.com/armon/go-metrics",
+                "math",
+                "math/rand",
+                "sort",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "math",
+                "reflect",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/serf/serf": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/armon/go-metrics",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/memberlist",
+                "github.com/hashicorp/serf/coordinate",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "fmt",
+                "github.com/hashicorp/go-msgpack/codec",
+                "github.com/hashicorp/memberlist",
+                "github.com/hashicorp/serf/coordinate",
+                "github.com/hashicorp/serf/serf/internal/race",
+                "github.com/hashicorp/serf/testutil",
+                "github.com/hashicorp/serf/testutil/retry",
+                "io/ioutil",
+                "log",
+                "net",
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/serf/serf/internal/race": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/serf/testutil": {
+            "Imports": [
+                "container/list",
+                "fmt",
+                "io",
+                "log",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/serf/testutil/retry": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "runtime",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/serf/version": {
+            "Imports": [
+                "fmt",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

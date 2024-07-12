@@ -30,13 +30,13 @@
 package binarylog
 
 var (
-	// AllLogger is a logger that logs all headers/messages for all RPCs. It's
-	// for testing only.
-	AllLogger = NewLoggerFromConfigString("*")
-	// MdToMetadataProto converts metadata to a binary logging proto message.
-	// It's for testing only.
-	MdToMetadataProto = mdToMetadataProto
-	// AddrToProto converts an address to a binary logging proto message. It's
-	// for testing only.
-	AddrToProto = addrToProto
+    // AllLogger is a logger that logs all headers/messages for all RPCs. It's
+    // for testing only.
+    AllLogger = NewLoggerFromConfigString("*")
+    // MdToMetadataProto converts metadata to a binary logging proto message.
+    // It's for testing only.
+    MdToMetadataProto = mdToMetadataProto
+    // AddrToProto converts an address to a binary logging proto message. It's
+    // for testing only.
+    AddrToProto = addrToProto
 )

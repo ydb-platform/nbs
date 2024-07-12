@@ -1,8 +1,12 @@
 GO_TEST_FOR(vendor/github.com/stretchr/testify/assert)
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
-DATA(arcadia/vendor/github.com/stretchr/testify)
+DATA(
+    arcadia/vendor/github.com/stretchr/testify
+)
 
 TEST_CWD(vendor/github.com/stretchr/testify/assert)
 

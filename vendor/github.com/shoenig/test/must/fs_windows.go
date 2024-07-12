@@ -5,15 +5,15 @@
 package must
 
 import (
-	"os"
+    "os"
 )
 
 var (
-	fsRoot = os.Getenv("HOMEDRIVE")
+    fsRoot = os.Getenv("HOMEDRIVE")
 )
 
 func init() {
-	if fsRoot == "" {
-		fsRoot = "C:"
-	}
+    if fsRoot == "" {
+        fsRoot = "C:"
+    }
 }

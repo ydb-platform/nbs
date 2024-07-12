@@ -1,0 +1,219 @@
+{
+    "Version": "v0.0.0-20210722185704-3043a050f148",
+    "GoVersion": "1.16",
+    "Sum": "h1:TJsAqW6zLRMDTyGmc9TPosfn9OyVlHs8Hrn3pY6ONSY=",
+    "Packages": {
+        "github.com/google/licenseclassifier": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/google/licenseclassifier/internal/sets",
+                "github.com/google/licenseclassifier/licenses",
+                "github.com/google/licenseclassifier/stringclassifier",
+                "github.com/google/licenseclassifier/stringclassifier/searchset",
+                "html",
+                "io",
+                "math",
+                "regexp",
+                "sort",
+                "strings",
+                "sync",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/google/licenseclassifier/stringclassifier",
+                "log",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/commentparser": {
+            "Imports": [
+                "bytes",
+                "github.com/google/licenseclassifier/commentparser/language",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/licenseclassifier/commentparser/language",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/commentparser/language": {
+            "Imports": [
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/licenseclassifier/internal/sets": {
+            "Imports": [
+                "fmt",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/licenses": {
+            "Imports": [
+                "embed",
+                "io/fs"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/licenseclassifier/serializer": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "github.com/google/licenseclassifier",
+                "github.com/google/licenseclassifier/stringclassifier/searchset",
+                "io",
+                "log",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "fmt",
+                "github.com/google/licenseclassifier",
+                "github.com/google/licenseclassifier/stringclassifier/searchset",
+                "io",
+                "log",
+                "os",
+                "reflect",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/stringclassifier": {
+            "Imports": [
+                "fmt",
+                "github.com/google/licenseclassifier/stringclassifier/internal/pq",
+                "github.com/google/licenseclassifier/stringclassifier/searchset",
+                "github.com/sergi/go-diff/diffmatchpatch",
+                "log",
+                "math",
+                "regexp",
+                "sort",
+                "sync"
+            ],
+            "TestImports": [
+                "github.com/sergi/go-diff/diffmatchpatch",
+                "reflect",
+                "regexp",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/stringclassifier/internal/pq": {
+            "Imports": [
+                "container/heap"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/stringclassifier/internal/sets": {
+            "Imports": [
+                "fmt",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/stringclassifier/searchset": {
+            "Imports": [
+                "encoding/gob",
+                "fmt",
+                "github.com/google/licenseclassifier/stringclassifier/searchset/tokenizer",
+                "io",
+                "sort"
+            ],
+            "TestImports": [
+                "github.com/google/licenseclassifier/stringclassifier/searchset/tokenizer",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/stringclassifier/searchset/tokenizer": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "hash/crc32",
+                "sort",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/google/licenseclassifier/tools/identify_license": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/google/licenseclassifier",
+                "github.com/google/licenseclassifier/tools/identify_license/backend",
+                "log",
+                "os",
+                "path/filepath",
+                "sort",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/licenseclassifier/tools/identify_license/backend": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/google/licenseclassifier",
+                "github.com/google/licenseclassifier/commentparser",
+                "github.com/google/licenseclassifier/commentparser/language",
+                "github.com/google/licenseclassifier/tools/identify_license/results",
+                "io/ioutil",
+                "log",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/licenseclassifier/tools/identify_license/results": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/licenseclassifier/tools/license_serializer": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/google/licenseclassifier",
+                "github.com/google/licenseclassifier/serializer",
+                "log",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

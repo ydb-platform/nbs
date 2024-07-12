@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package cel.testdata;
+
+import "cel/testdata/mutant.proto";
+
+message Team {
+  string name = 1;
+  repeated Mutant members = 2;
+}

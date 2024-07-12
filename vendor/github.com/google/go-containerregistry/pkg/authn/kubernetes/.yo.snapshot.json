@@ -1,0 +1,37 @@
+{
+    "Version": "v0.0.0-20220516044946-14395f1b4b4e",
+    "GoVersion": "1.17",
+    "Sum": "h1:xvh8QS12VXVDYdHG/AjEEKVjeFU9AP90kfLHJmySG7Y=",
+    "Packages": {
+        "github.com/google/go-containerregistry/pkg/authn/kubernetes": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "k8s.io/api/core/v1",
+                "k8s.io/apimachinery/pkg/apis/meta/v1",
+                "k8s.io/client-go/kubernetes",
+                "k8s.io/client-go/rest",
+                "net",
+                "net/url",
+                "path/filepath",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "crypto/md5",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-containerregistry/pkg/authn",
+                "github.com/google/go-containerregistry/pkg/name",
+                "k8s.io/api/core/v1",
+                "k8s.io/apimachinery/pkg/apis/meta/v1",
+                "k8s.io/client-go/kubernetes/fake",
+                "testing"
+            ]
+        }
+    }
+}

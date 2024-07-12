@@ -19,20 +19,20 @@
 package testutils
 
 import (
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/grpc/status"
+    "github.com/golang/protobuf/proto"
+    "google.golang.org/grpc/status"
 )
 
 // StatusErrEqual returns true iff both err1 and err2 wrap status.Status errors
 // and their underlying status protos are equal.
 func StatusErrEqual(err1, err2 error) bool {
-	status1, ok := status.FromError(err1)
-	if !ok {
-		return false
-	}
-	status2, ok := status.FromError(err2)
-	if !ok {
-		return false
-	}
-	return proto.Equal(status1.Proto(), status2.Proto())
+    status1, ok := status.FromError(err1)
+    if !ok {
+        return false
+    }
+    status2, ok := status.FromError(err2)
+    if !ok {
+        return false
+    }
+    return proto.Equal(status1.Proto(), status2.Proto())
 }

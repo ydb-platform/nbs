@@ -1,0 +1,55 @@
+{
+    "Version": "v2.0.18",
+    "GoVersion": "1.14",
+    "Sum": "h1:vKpAXfawO9RtTRKZJbG4y0v1b11NZxQnxRl85kGuUlo=",
+    "Packages": {
+        "github.com/pion/srtp/v2": {
+            "Imports": [
+                "bytes",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/hmac",
+                "crypto/sha1",
+                "crypto/subtle",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/transport/v2/packetio",
+                "github.com/pion/transport/v2/replaydetector",
+                "github.com/pion/transport/v2/utils/xor",
+                "hash",
+                "io",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/aes",
+                "crypto/cipher",
+                "crypto/rand",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/rtcp",
+                "github.com/pion/rtp",
+                "github.com/pion/transport/v2/packetio",
+                "github.com/pion/transport/v2/replaydetector",
+                "github.com/pion/transport/v2/test",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "math/rand",
+                "net",
+                "reflect",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

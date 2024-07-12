@@ -1,0 +1,630 @@
+{
+    "Version": "v1.16.0",
+    "GoVersion": "1.14",
+    "Sum": "h1:gmcG1KaJ57LophUzW0Hy8NmPhnMZb4M0+kPpLofRdBo=",
+    "Packages": {
+        "github.com/grpc-ecosystem/grpc-gateway/codegenerator": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "io",
+                "io/ioutil"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/codegenerator",
+                "io",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/abe": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/antihax/optional",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/pathenum",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/echo": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/antihax/optional",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/generateunboundmethods": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/responsebody": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/unannotatedecho": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "github.com/antihax/optional",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "mime/multipart",
+                "net/http",
+                "net/url",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/cmd/example-gateway-server": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/golang/glog",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/gateway"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/cmd/example-grpc-server": {
+            "Imports": [
+                "context",
+                "flag",
+                "github.com/golang/glog",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/server"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/gateway": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/connectivity",
+                "net",
+                "net/http",
+                "path",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/helloworld": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/descriptor",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/integration": {
+            "Imports": null,
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/descriptor",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/abe",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/echo",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/clients/unannotatedecho",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/gateway",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/pathenum",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/server",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "google.golang.org/genproto/googleapis/rpc/status",
+                "google.golang.org/genproto/protobuf/field_mask",
+                "google.golang.org/grpc/codes",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "os",
+                "reflect",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/protobuf/descriptor",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/pathenum",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub2",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/options",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "google.golang.org/genproto/protobuf/field_mask",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "math",
+                "net/http"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/pathenum": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub2": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/examples/internal/server": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/pathenum",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub",
+                "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/sub2",
+                "github.com/grpc-ecosystem/grpc-gateway/internal/casing",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "github.com/rogpeppe/fastuuid",
+                "google.golang.org/genproto/googleapis/rpc/errdetails",
+                "google.golang.org/genproto/protobuf/field_mask",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "reflect",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "google.golang.org/genproto/protobuf/field_mask",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/internal": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/any",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/internal/casing": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/codegenerator",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/internal/gengateway",
+                "os",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/ghodss/yaml",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/internal/casing",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule",
+                "google.golang.org/genproto/googleapis/api/annotations",
+                "io/ioutil",
+                "path",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator": {
+            "Imports": [
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "strings"
+            ],
+            "TestImports": [
+                "flag",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/internal/gengateway": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/internal/casing",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "go/format",
+                "path",
+                "path/filepath",
+                "strings",
+                "text/template"
+            ],
+            "TestImports": [
+                "errors",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger": {
+            "Imports": [
+                "flag",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/grpc-ecosystem/grpc-gateway/codegenerator",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/genswagger",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "flag",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/genswagger": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/glog",
+                "github.com/golang/protobuf/descriptor",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/golang/protobuf/ptypes/struct",
+                "github.com/grpc-ecosystem/grpc-gateway/internal",
+                "github.com/grpc-ecosystem/grpc-gateway/internal/casing",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/options",
+                "io/ioutil",
+                "math",
+                "net/textproto",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "text/template",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/protoc-gen-go/plugin",
+                "github.com/golang/protobuf/ptypes/struct",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule",
+                "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/options",
+                "math",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/options": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/golang/protobuf/ptypes/struct",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/runtime": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/descriptor",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/protoc-gen-go/descriptor",
+                "github.com/golang/protobuf/ptypes/any",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "github.com/grpc-ecosystem/grpc-gateway/internal",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "google.golang.org/genproto/googleapis/api/httpbody",
+                "google.golang.org/genproto/protobuf/field_mask",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/grpclog",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "io/ioutil",
+                "mime",
+                "net",
+                "net/http",
+                "net/textproto",
+                "net/url",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/protobuf/jsonpb",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes",
+                "github.com/golang/protobuf/ptypes/duration",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/golang/protobuf/ptypes/struct",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "github.com/golang/protobuf/ptypes/wrappers",
+                "github.com/grpc-ecosystem/grpc-gateway/internal",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime",
+                "github.com/grpc-ecosystem/grpc-gateway/runtime/internal/examplepb",
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "google.golang.org/genproto/googleapis/api/httpbody",
+                "google.golang.org/genproto/googleapis/rpc/errdetails",
+                "google.golang.org/genproto/protobuf/field_mask",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/runtime/internal/examplepb": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "github.com/golang/protobuf/ptypes/empty",
+                "github.com/golang/protobuf/ptypes/timestamp",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "github.com/grpc-ecosystem/grpc-gateway/utilities": {
+            "Imports": [
+                "bytes",
+                "io",
+                "io/ioutil",
+                "sort"
+            ],
+            "TestImports": [
+                "github.com/grpc-ecosystem/grpc-gateway/utilities",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

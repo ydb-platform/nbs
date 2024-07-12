@@ -1,0 +1,28 @@
+{
+    "Version": "v1.2.12",
+    "GoVersion": "1.13",
+    "Sum": "h1:bKWiX93XKgDZENEXCijvHRU/wRifm6JV5DGcH6twtSM=",
+    "Packages": {
+        "github.com/pion/rtcp": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "math",
+                "reflect",
+                "strings",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "math",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

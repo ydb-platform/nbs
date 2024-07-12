@@ -18,30 +18,30 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/internal/pretty"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/grpc/internal/pretty"
+    "google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
+    "google.golang.org/protobuf/proto"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
-	// RouteConfigTypeName represents the transport agnostic name for the
-	// route config resource.
-	RouteConfigTypeName = "RouteConfigResource"
+    // RouteConfigTypeName represents the transport agnostic name for the
+    // route config resource.
+    RouteConfigTypeName = "RouteConfigResource"
 )
 
 var (
-	// Compile time interface checks.
-	_ Type = routeConfigResourceType{}
+    // Compile time interface checks.
+    _ Type = routeConfigResourceType{}
 
-	// Singleton instantiation of the resource type implementation.
-	routeConfigType = routeConfigResourceType{
-		resourceTypeState: resourceTypeState{
-			typeURL:                    version.V3RouteConfigURL,
-			typeName:                   "RouteConfigResource",
-			allResourcesRequiredInSotW: false,
-		},
-	}
+    // Singleton instantiation of the resource type implementation.
+    routeConfigType = routeConfigResourceType{
+        resourceTypeState: resourceTypeState{
+            typeURL:                    version.V3RouteConfigURL,
+            typeName:                   "RouteConfigResource",
+            allResourcesRequiredInSotW: false,
+        },
+    }
 )
 
 // routeConfigResourceType provides the resource-type specific functionality for
@@ -49,23 +49,23 @@ var (
 //
 // Implements the Type interface.
 type routeConfigResourceType struct {
-	resourceTypeState
+    resourceTypeState
 }
 
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
 func (routeConfigResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, rc, err := unmarshalRouteConfigResource(resource)
-	switch {
-	case name == "":
-		// Name is unset only when protobuf deserialization fails.
-		return nil, err
-	case err != nil:
-		// Protobuf deserialization succeeded, but resource validation failed.
-		return &DecodeResult{Name: name, Resource: &RouteConfigResourceData{Resource: RouteConfigUpdate{}}}, err
-	}
+    name, rc, err := unmarshalRouteConfigResource(resource)
+    switch {
+    case name == "":
+        // Name is unset only when protobuf deserialization fails.
+        return nil, err
+    case err != nil:
+        // Protobuf deserialization succeeded, but resource validation failed.
+        return &DecodeResult{Name: name, Resource: &RouteConfigResourceData{Resource: RouteConfigUpdate{}}}, err
+    }
 
-	return &DecodeResult{Name: name, Resource: &RouteConfigResourceData{Resource: rc}}, nil
+    return &DecodeResult{Name: name, Resource: &RouteConfigResourceData{Resource: rc}}, nil
 
 }
 
@@ -74,77 +74,77 @@ func (routeConfigResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) 
 //
 // Implements the ResourceData interface.
 type RouteConfigResourceData struct {
-	ResourceData
+    ResourceData
 
-	// TODO: We have always stored update structs by value. See if this can be
-	// switched to a pointer?
-	Resource RouteConfigUpdate
+    // TODO: We have always stored update structs by value. See if this can be
+    // switched to a pointer?
+    Resource RouteConfigUpdate
 }
 
 // Equal returns true if other is equal to r.
 func (r *RouteConfigResourceData) Equal(other ResourceData) bool {
-	if r == nil && other == nil {
-		return true
-	}
-	if (r == nil) != (other == nil) {
-		return false
-	}
-	return proto.Equal(r.Resource.Raw, other.Raw())
+    if r == nil && other == nil {
+        return true
+    }
+    if (r == nil) != (other == nil) {
+        return false
+    }
+    return proto.Equal(r.Resource.Raw, other.Raw())
 
 }
 
 // ToJSON returns a JSON string representation of the resource data.
 func (r *RouteConfigResourceData) ToJSON() string {
-	return pretty.ToJSON(r.Resource)
+    return pretty.ToJSON(r.Resource)
 }
 
 // Raw returns the underlying raw protobuf form of the route configuration
 // resource.
 func (r *RouteConfigResourceData) Raw() *anypb.Any {
-	return r.Resource.Raw
+    return r.Resource.Raw
 }
 
 // RouteConfigWatcher wraps the callbacks to be invoked for different
 // events corresponding to the route configuration resource being watched.
 type RouteConfigWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*RouteConfigResourceData)
+    // OnUpdate is invoked to report an update for the resource being watched.
+    OnUpdate(*RouteConfigResourceData)
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error)
+    // OnError is invoked under different error conditions including but not
+    // limited to the following:
+    //    - authority mentioned in the resource is not found
+    //    - resource name parsing error
+    //    - resource deserialization error
+    //    - resource validation error
+    //    - ADS stream failure
+    //    - connection failure
+    OnError(error)
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+    // OnResourceDoesNotExist is invoked for a specific error condition where
+    // the requested resource is not found on the xDS management server.
+    OnResourceDoesNotExist()
 }
 
 type delegatingRouteConfigWatcher struct {
-	watcher RouteConfigWatcher
+    watcher RouteConfigWatcher
 }
 
 func (d *delegatingRouteConfigWatcher) OnUpdate(data ResourceData) {
-	rc := data.(*RouteConfigResourceData)
-	d.watcher.OnUpdate(rc)
+    rc := data.(*RouteConfigResourceData)
+    d.watcher.OnUpdate(rc)
 }
 
 func (d *delegatingRouteConfigWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+    d.watcher.OnError(err)
 }
 
 func (d *delegatingRouteConfigWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+    d.watcher.OnResourceDoesNotExist()
 }
 
 // WatchRouteConfig uses xDS to discover the configuration associated with the
 // provided route configuration resource name.
 func WatchRouteConfig(p Producer, name string, w RouteConfigWatcher) (cancel func()) {
-	delegator := &delegatingRouteConfigWatcher{watcher: w}
-	return p.WatchResource(routeConfigType, name, delegator)
+    delegator := &delegatingRouteConfigWatcher{watcher: w}
+    return p.WatchResource(routeConfigType, name, delegator)
 }

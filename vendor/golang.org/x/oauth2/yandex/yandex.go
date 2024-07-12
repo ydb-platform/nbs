@@ -6,11 +6,11 @@
 package yandex // import "golang.org/x/oauth2/yandex"
 
 import (
-	"golang.org/x/oauth2"
+    "golang.org/x/oauth2"
 )
 
 // Endpoint is the Yandex OAuth 2.0 endpoint.
 var Endpoint = oauth2.Endpoint{
-	AuthURL:  "https://oauth.yandex.com/authorize",
-	TokenURL: "https://oauth.yandex.com/token",
+    AuthURL:  "https://oauth.yandex.com/authorize",
+    TokenURL: "https://oauth.yandex.com/token",
 }

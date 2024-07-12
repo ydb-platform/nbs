@@ -1,0 +1,27 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "1.10",
+    "Sum": "h1:AnCroh3fv4ZBgVIf1Iwtovgjaw/GiKJo8M8yD/fhyJ8=",
+    "Packages": {
+        "github.com/google/go-querystring/query": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "net/url",
+                "reflect",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "net/url",
+                "reflect",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

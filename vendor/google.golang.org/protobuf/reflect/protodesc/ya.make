@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 SRCS(
@@ -7,11 +9,8 @@ SRCS(
     desc_init.go
     desc_resolve.go
     desc_validate.go
+    editions.go
     proto.go
 )
 
-GO_TEST_SRCS(file_test.go)
-
 END()
-
-RECURSE(gotest)

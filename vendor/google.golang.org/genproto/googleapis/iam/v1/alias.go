@@ -23,35 +23,35 @@
 package iam
 
 import (
-	src "cloud.google.com/go/iam/apiv1/iampb"
-	grpc "google.golang.org/grpc"
+    src "cloud.google.com/go/iam/apiv1/iampb"
+    grpc "google.golang.org/grpc"
 )
 
 // Deprecated: Please use consts in: cloud.google.com/go/iam/apiv1/iampb
 const (
-	AuditConfigDelta_ACTION_UNSPECIFIED = src.AuditConfigDelta_ACTION_UNSPECIFIED
-	AuditConfigDelta_ADD                = src.AuditConfigDelta_ADD
-	AuditConfigDelta_REMOVE             = src.AuditConfigDelta_REMOVE
-	AuditLogConfig_ADMIN_READ           = src.AuditLogConfig_ADMIN_READ
-	AuditLogConfig_DATA_READ            = src.AuditLogConfig_DATA_READ
-	AuditLogConfig_DATA_WRITE           = src.AuditLogConfig_DATA_WRITE
-	AuditLogConfig_LOG_TYPE_UNSPECIFIED = src.AuditLogConfig_LOG_TYPE_UNSPECIFIED
-	BindingDelta_ACTION_UNSPECIFIED     = src.BindingDelta_ACTION_UNSPECIFIED
-	BindingDelta_ADD                    = src.BindingDelta_ADD
-	BindingDelta_REMOVE                 = src.BindingDelta_REMOVE
+    AuditConfigDelta_ACTION_UNSPECIFIED = src.AuditConfigDelta_ACTION_UNSPECIFIED
+    AuditConfigDelta_ADD                = src.AuditConfigDelta_ADD
+    AuditConfigDelta_REMOVE             = src.AuditConfigDelta_REMOVE
+    AuditLogConfig_ADMIN_READ           = src.AuditLogConfig_ADMIN_READ
+    AuditLogConfig_DATA_READ            = src.AuditLogConfig_DATA_READ
+    AuditLogConfig_DATA_WRITE           = src.AuditLogConfig_DATA_WRITE
+    AuditLogConfig_LOG_TYPE_UNSPECIFIED = src.AuditLogConfig_LOG_TYPE_UNSPECIFIED
+    BindingDelta_ACTION_UNSPECIFIED     = src.BindingDelta_ACTION_UNSPECIFIED
+    BindingDelta_ADD                    = src.BindingDelta_ADD
+    BindingDelta_REMOVE                 = src.BindingDelta_REMOVE
 )
 
 // Deprecated: Please use vars in: cloud.google.com/go/iam/apiv1/iampb
 var (
-	AuditConfigDelta_Action_name        = src.AuditConfigDelta_Action_name
-	AuditConfigDelta_Action_value       = src.AuditConfigDelta_Action_value
-	AuditLogConfig_LogType_name         = src.AuditLogConfig_LogType_name
-	AuditLogConfig_LogType_value        = src.AuditLogConfig_LogType_value
-	BindingDelta_Action_name            = src.BindingDelta_Action_name
-	BindingDelta_Action_value           = src.BindingDelta_Action_value
-	File_google_iam_v1_iam_policy_proto = src.File_google_iam_v1_iam_policy_proto
-	File_google_iam_v1_options_proto    = src.File_google_iam_v1_options_proto
-	File_google_iam_v1_policy_proto     = src.File_google_iam_v1_policy_proto
+    AuditConfigDelta_Action_name        = src.AuditConfigDelta_Action_name
+    AuditConfigDelta_Action_value       = src.AuditConfigDelta_Action_value
+    AuditLogConfig_LogType_name         = src.AuditLogConfig_LogType_name
+    AuditLogConfig_LogType_value        = src.AuditLogConfig_LogType_value
+    BindingDelta_Action_name            = src.BindingDelta_Action_name
+    BindingDelta_Action_value           = src.BindingDelta_Action_value
+    File_google_iam_v1_iam_policy_proto = src.File_google_iam_v1_iam_policy_proto
+    File_google_iam_v1_options_proto    = src.File_google_iam_v1_options_proto
+    File_google_iam_v1_policy_proto     = src.File_google_iam_v1_policy_proto
 )
 
 // Specifies the audit configuration for a service. The configuration
@@ -199,10 +199,10 @@ type UnimplementedIAMPolicyServer = src.UnimplementedIAMPolicyServer
 
 // Deprecated: Please use funcs in: cloud.google.com/go/iam/apiv1/iampb
 func NewIAMPolicyClient(cc grpc.ClientConnInterface) IAMPolicyClient {
-	return src.NewIAMPolicyClient(cc)
+    return src.NewIAMPolicyClient(cc)
 }
 
 // Deprecated: Please use funcs in: cloud.google.com/go/iam/apiv1/iampb
 func RegisterIAMPolicyServer(s *grpc.Server, srv IAMPolicyServer) {
-	src.RegisterIAMPolicyServer(s, srv)
+    src.RegisterIAMPolicyServer(s, srv)
 }

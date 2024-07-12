@@ -4,46 +4,46 @@
 package core
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 
-	_type "github.com/envoyproxy/go-control-plane/envoy/type"
+    _type "github.com/envoyproxy/go-control-plane/envoy/type"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 
-	_ = _type.CodecClientType(0)
+    _ = _type.CodecClientType(0)
 )
 
 // Validate checks the field values on HealthCheck with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck with the rules defined in
@@ -51,667 +51,667 @@ func (m *HealthCheck) Validate() error {
 // result is a list of violation errors wrapped in HealthCheckMultiError, or
 // nil if none found.
 func (m *HealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if m.GetTimeout() == nil {
-		err := HealthCheckValidationError{
-			field:  "Timeout",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if m.GetTimeout() == nil {
+        err := HealthCheckValidationError{
+            field:  "Timeout",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if d := m.GetTimeout(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "Timeout",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetTimeout(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "Timeout",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "Timeout",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "Timeout",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	if m.GetInterval() == nil {
-		err := HealthCheckValidationError{
-			field:  "Interval",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if m.GetInterval() == nil {
+        err := HealthCheckValidationError{
+            field:  "Interval",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if d := m.GetInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "Interval",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetInterval(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "Interval",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "Interval",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "Interval",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetInitialJitter()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "InitialJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "InitialJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetInitialJitter()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "InitialJitter",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetInitialJitter()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "InitialJitter",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "InitialJitter",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetInitialJitter()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "InitialJitter",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetIntervalJitter()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "IntervalJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "IntervalJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetIntervalJitter()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "IntervalJitter",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetIntervalJitter()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "IntervalJitter",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "IntervalJitter",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetIntervalJitter()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "IntervalJitter",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for IntervalJitterPercent
+    // no validation rules for IntervalJitterPercent
 
-	if m.GetUnhealthyThreshold() == nil {
-		err := HealthCheckValidationError{
-			field:  "UnhealthyThreshold",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if m.GetUnhealthyThreshold() == nil {
+        err := HealthCheckValidationError{
+            field:  "UnhealthyThreshold",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if all {
-		switch v := interface{}(m.GetUnhealthyThreshold()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "UnhealthyThreshold",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "UnhealthyThreshold",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetUnhealthyThreshold()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "UnhealthyThreshold",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetUnhealthyThreshold()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "UnhealthyThreshold",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "UnhealthyThreshold",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetUnhealthyThreshold()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "UnhealthyThreshold",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if m.GetHealthyThreshold() == nil {
-		err := HealthCheckValidationError{
-			field:  "HealthyThreshold",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if m.GetHealthyThreshold() == nil {
+        err := HealthCheckValidationError{
+            field:  "HealthyThreshold",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if all {
-		switch v := interface{}(m.GetHealthyThreshold()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "HealthyThreshold",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "HealthyThreshold",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetHealthyThreshold()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "HealthyThreshold",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetHealthyThreshold()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "HealthyThreshold",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "HealthyThreshold",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetHealthyThreshold()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "HealthyThreshold",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetAltPort()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "AltPort",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "AltPort",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetAltPort()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "AltPort",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetAltPort()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "AltPort",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "AltPort",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetAltPort()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "AltPort",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetReuseConnection()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "ReuseConnection",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "ReuseConnection",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetReuseConnection()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "ReuseConnection",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetReuseConnection()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "ReuseConnection",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "ReuseConnection",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetReuseConnection()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "ReuseConnection",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if d := m.GetNoTrafficInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "NoTrafficInterval",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetNoTrafficInterval(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "NoTrafficInterval",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "NoTrafficInterval",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "NoTrafficInterval",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	if d := m.GetUnhealthyInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "UnhealthyInterval",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetUnhealthyInterval(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "UnhealthyInterval",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "UnhealthyInterval",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "UnhealthyInterval",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	if d := m.GetUnhealthyEdgeInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "UnhealthyEdgeInterval",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetUnhealthyEdgeInterval(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "UnhealthyEdgeInterval",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "UnhealthyEdgeInterval",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "UnhealthyEdgeInterval",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	if d := m.GetHealthyEdgeInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = HealthCheckValidationError{
-				field:  "HealthyEdgeInterval",
-				reason: "value is not a valid duration",
-				cause:  err,
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
+    if d := m.GetHealthyEdgeInterval(); d != nil {
+        dur, err := d.AsDuration(), d.CheckValid()
+        if err != nil {
+            err = HealthCheckValidationError{
+                field:  "HealthyEdgeInterval",
+                reason: "value is not a valid duration",
+                cause:  err,
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        } else {
 
-			gt := time.Duration(0*time.Second + 0*time.Nanosecond)
+            gt := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur <= gt {
-				err := HealthCheckValidationError{
-					field:  "HealthyEdgeInterval",
-					reason: "value must be greater than 0s",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
+            if dur <= gt {
+                err := HealthCheckValidationError{
+                    field:  "HealthyEdgeInterval",
+                    reason: "value must be greater than 0s",
+                }
+                if !all {
+                    return err
+                }
+                errors = append(errors, err)
+            }
 
-		}
-	}
+        }
+    }
 
-	// no validation rules for EventLogPath
+    // no validation rules for EventLogPath
 
-	if all {
-		switch v := interface{}(m.GetEventService()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "EventService",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "EventService",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetEventService()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "EventService",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetEventService()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "EventService",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "EventService",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetEventService()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "EventService",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for AlwaysLogHealthCheckFailures
+    // no validation rules for AlwaysLogHealthCheckFailures
 
-	if all {
-		switch v := interface{}(m.GetTlsOptions()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "TlsOptions",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheckValidationError{
-					field:  "TlsOptions",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetTlsOptions()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheckValidationError{
-				field:  "TlsOptions",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetTlsOptions()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "TlsOptions",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheckValidationError{
+                    field:  "TlsOptions",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetTlsOptions()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheckValidationError{
+                field:  "TlsOptions",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	oneofHealthCheckerPresent := false
-	switch v := m.HealthChecker.(type) {
-	case *HealthCheck_HttpHealthCheck_:
-		if v == nil {
-			err := HealthCheckValidationError{
-				field:  "HealthChecker",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofHealthCheckerPresent = true
+    oneofHealthCheckerPresent := false
+    switch v := m.HealthChecker.(type) {
+    case *HealthCheck_HttpHealthCheck_:
+        if v == nil {
+            err := HealthCheckValidationError{
+                field:  "HealthChecker",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofHealthCheckerPresent = true
 
-		if all {
-			switch v := interface{}(m.GetHttpHealthCheck()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "HttpHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "HttpHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetHttpHealthCheck()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheckValidationError{
-					field:  "HttpHealthCheck",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetHttpHealthCheck()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "HttpHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "HttpHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetHttpHealthCheck()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheckValidationError{
+                    field:  "HttpHealthCheck",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *HealthCheck_TcpHealthCheck_:
-		if v == nil {
-			err := HealthCheckValidationError{
-				field:  "HealthChecker",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofHealthCheckerPresent = true
+    case *HealthCheck_TcpHealthCheck_:
+        if v == nil {
+            err := HealthCheckValidationError{
+                field:  "HealthChecker",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofHealthCheckerPresent = true
 
-		if all {
-			switch v := interface{}(m.GetTcpHealthCheck()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "TcpHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "TcpHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetTcpHealthCheck()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheckValidationError{
-					field:  "TcpHealthCheck",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetTcpHealthCheck()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "TcpHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "TcpHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetTcpHealthCheck()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheckValidationError{
+                    field:  "TcpHealthCheck",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *HealthCheck_GrpcHealthCheck_:
-		if v == nil {
-			err := HealthCheckValidationError{
-				field:  "HealthChecker",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofHealthCheckerPresent = true
+    case *HealthCheck_GrpcHealthCheck_:
+        if v == nil {
+            err := HealthCheckValidationError{
+                field:  "HealthChecker",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofHealthCheckerPresent = true
 
-		if all {
-			switch v := interface{}(m.GetGrpcHealthCheck()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "GrpcHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "GrpcHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetGrpcHealthCheck()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheckValidationError{
-					field:  "GrpcHealthCheck",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetGrpcHealthCheck()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "GrpcHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "GrpcHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetGrpcHealthCheck()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheckValidationError{
+                    field:  "GrpcHealthCheck",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *HealthCheck_CustomHealthCheck_:
-		if v == nil {
-			err := HealthCheckValidationError{
-				field:  "HealthChecker",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofHealthCheckerPresent = true
+    case *HealthCheck_CustomHealthCheck_:
+        if v == nil {
+            err := HealthCheckValidationError{
+                field:  "HealthChecker",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofHealthCheckerPresent = true
 
-		if all {
-			switch v := interface{}(m.GetCustomHealthCheck()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "CustomHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheckValidationError{
-						field:  "CustomHealthCheck",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetCustomHealthCheck()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheckValidationError{
-					field:  "CustomHealthCheck",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetCustomHealthCheck()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "CustomHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheckValidationError{
+                        field:  "CustomHealthCheck",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetCustomHealthCheck()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheckValidationError{
+                    field:  "CustomHealthCheck",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	default:
-		_ = v // ensures v is used
-	}
-	if !oneofHealthCheckerPresent {
-		err := HealthCheckValidationError{
-			field:  "HealthChecker",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    default:
+        _ = v // ensures v is used
+    }
+    if !oneofHealthCheckerPresent {
+        err := HealthCheckValidationError{
+            field:  "HealthChecker",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if len(errors) > 0 {
-		return HealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheckMultiError is an error wrapping multiple validation errors
@@ -720,11 +720,11 @@ type HealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -733,10 +733,10 @@ func (m HealthCheckMultiError) AllErrors() []error { return m }
 // HealthCheckValidationError is the validation error returned by
 // HealthCheck.Validate if the designated constraints aren't met.
 type HealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -756,39 +756,39 @@ func (e HealthCheckValidationError) ErrorName() string { return "HealthCheckVali
 
 // Error satisfies the builtin error interface
 func (e HealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_Payload with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_Payload) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_Payload with the rules
@@ -796,74 +796,74 @@ func (m *HealthCheck_Payload) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_PayloadMultiError, or nil if none found.
 func (m *HealthCheck_Payload) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_Payload) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	oneofPayloadPresent := false
-	switch v := m.Payload.(type) {
-	case *HealthCheck_Payload_Text:
-		if v == nil {
-			err := HealthCheck_PayloadValidationError{
-				field:  "Payload",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofPayloadPresent = true
+    oneofPayloadPresent := false
+    switch v := m.Payload.(type) {
+    case *HealthCheck_Payload_Text:
+        if v == nil {
+            err := HealthCheck_PayloadValidationError{
+                field:  "Payload",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofPayloadPresent = true
 
-		if len(m.GetText()) < 1 {
-			err := HealthCheck_PayloadValidationError{
-				field:  "Text",
-				reason: "value length must be at least 1 bytes",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+        if len(m.GetText()) < 1 {
+            err := HealthCheck_PayloadValidationError{
+                field:  "Text",
+                reason: "value length must be at least 1 bytes",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-	case *HealthCheck_Payload_Binary:
-		if v == nil {
-			err := HealthCheck_PayloadValidationError{
-				field:  "Payload",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-		oneofPayloadPresent = true
-		// no validation rules for Binary
-	default:
-		_ = v // ensures v is used
-	}
-	if !oneofPayloadPresent {
-		err := HealthCheck_PayloadValidationError{
-			field:  "Payload",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    case *HealthCheck_Payload_Binary:
+        if v == nil {
+            err := HealthCheck_PayloadValidationError{
+                field:  "Payload",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
+        oneofPayloadPresent = true
+        // no validation rules for Binary
+    default:
+        _ = v // ensures v is used
+    }
+    if !oneofPayloadPresent {
+        err := HealthCheck_PayloadValidationError{
+            field:  "Payload",
+            reason: "value is required",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if len(errors) > 0 {
-		return HealthCheck_PayloadMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_PayloadMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_PayloadMultiError is an error wrapping multiple validation
@@ -873,11 +873,11 @@ type HealthCheck_PayloadMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_PayloadMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -886,10 +886,10 @@ func (m HealthCheck_PayloadMultiError) AllErrors() []error { return m }
 // HealthCheck_PayloadValidationError is the validation error returned by
 // HealthCheck_Payload.Validate if the designated constraints aren't met.
 type HealthCheck_PayloadValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -906,44 +906,44 @@ func (e HealthCheck_PayloadValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_PayloadValidationError) ErrorName() string {
-	return "HealthCheck_PayloadValidationError"
+    return "HealthCheck_PayloadValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_PayloadValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_Payload.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_Payload.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_PayloadValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_PayloadValidationError{}
 
 // Validate checks the field values on HealthCheck_HttpHealthCheck with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_HttpHealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_HttpHealthCheck with the
@@ -951,215 +951,215 @@ func (m *HealthCheck_HttpHealthCheck) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_HttpHealthCheckMultiError, or nil if none found.
 func (m *HealthCheck_HttpHealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_HttpHealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for Host
+    // no validation rules for Host
 
-	if len(m.GetPath()) < 1 {
-		err := HealthCheck_HttpHealthCheckValidationError{
-			field:  "Path",
-			reason: "value length must be at least 1 bytes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if len(m.GetPath()) < 1 {
+        err := HealthCheck_HttpHealthCheckValidationError{
+            field:  "Path",
+            reason: "value length must be at least 1 bytes",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if all {
-		switch v := interface{}(m.GetSend()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "Send",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "Send",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetSend()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheck_HttpHealthCheckValidationError{
-				field:  "Send",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetSend()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "Send",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "Send",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetSend()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheck_HttpHealthCheckValidationError{
+                field:  "Send",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if all {
-		switch v := interface{}(m.GetReceive()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "Receive",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "Receive",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetReceive()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheck_HttpHealthCheckValidationError{
-				field:  "Receive",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetReceive()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "Receive",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "Receive",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetReceive()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheck_HttpHealthCheckValidationError{
+                field:  "Receive",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	// no validation rules for ServiceName
+    // no validation rules for ServiceName
 
-	if len(m.GetRequestHeadersToAdd()) > 1000 {
-		err := HealthCheck_HttpHealthCheckValidationError{
-			field:  "RequestHeadersToAdd",
-			reason: "value must contain no more than 1000 item(s)",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if len(m.GetRequestHeadersToAdd()) > 1000 {
+        err := HealthCheck_HttpHealthCheckValidationError{
+            field:  "RequestHeadersToAdd",
+            reason: "value must contain no more than 1000 item(s)",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	for idx, item := range m.GetRequestHeadersToAdd() {
-		_, _ = idx, item
+    for idx, item := range m.GetRequestHeadersToAdd() {
+        _, _ = idx, item
 
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-						field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-						field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheck_HttpHealthCheckValidationError{
-					field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(item).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                        field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                        field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheck_HttpHealthCheckValidationError{
+                    field:  fmt.Sprintf("RequestHeadersToAdd[%v]", idx),
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	}
+    }
 
-	// no validation rules for UseHttp2
+    // no validation rules for UseHttp2
 
-	for idx, item := range m.GetExpectedStatuses() {
-		_, _ = idx, item
+    for idx, item := range m.GetExpectedStatuses() {
+        _, _ = idx, item
 
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-						field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-						field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheck_HttpHealthCheckValidationError{
-					field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(item).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                        field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                        field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheck_HttpHealthCheckValidationError{
+                    field:  fmt.Sprintf("ExpectedStatuses[%v]", idx),
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	}
+    }
 
-	if _, ok := _type.CodecClientType_name[int32(m.GetCodecClientType())]; !ok {
-		err := HealthCheck_HttpHealthCheckValidationError{
-			field:  "CodecClientType",
-			reason: "value must be one of the defined enum values",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if _, ok := _type.CodecClientType_name[int32(m.GetCodecClientType())]; !ok {
+        err := HealthCheck_HttpHealthCheckValidationError{
+            field:  "CodecClientType",
+            reason: "value must be one of the defined enum values",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	if all {
-		switch v := interface{}(m.GetServiceNameMatcher()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "ServiceNameMatcher",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
-					field:  "ServiceNameMatcher",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetServiceNameMatcher()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheck_HttpHealthCheckValidationError{
-				field:  "ServiceNameMatcher",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetServiceNameMatcher()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "ServiceNameMatcher",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheck_HttpHealthCheckValidationError{
+                    field:  "ServiceNameMatcher",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetServiceNameMatcher()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheck_HttpHealthCheckValidationError{
+                field:  "ServiceNameMatcher",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	if len(errors) > 0 {
-		return HealthCheck_HttpHealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_HttpHealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_HttpHealthCheckMultiError is an error wrapping multiple
@@ -1169,11 +1169,11 @@ type HealthCheck_HttpHealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_HttpHealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1183,10 +1183,10 @@ func (m HealthCheck_HttpHealthCheckMultiError) AllErrors() []error { return m }
 // by HealthCheck_HttpHealthCheck.Validate if the designated constraints
 // aren't met.
 type HealthCheck_HttpHealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1203,44 +1203,44 @@ func (e HealthCheck_HttpHealthCheckValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_HttpHealthCheckValidationError) ErrorName() string {
-	return "HealthCheck_HttpHealthCheckValidationError"
+    return "HealthCheck_HttpHealthCheckValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_HttpHealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_HttpHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_HttpHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_HttpHealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_HttpHealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_TcpHealthCheck with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_TcpHealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_TcpHealthCheck with the
@@ -1248,84 +1248,84 @@ func (m *HealthCheck_TcpHealthCheck) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_TcpHealthCheckMultiError, or nil if none found.
 func (m *HealthCheck_TcpHealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_TcpHealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if all {
-		switch v := interface{}(m.GetSend()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
-					field:  "Send",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
-					field:  "Send",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetSend()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return HealthCheck_TcpHealthCheckValidationError{
-				field:  "Send",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
+    if all {
+        switch v := interface{}(m.GetSend()).(type) {
+        case interface{ ValidateAll() error }:
+            if err := v.ValidateAll(); err != nil {
+                errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
+                    field:  "Send",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        case interface{ Validate() error }:
+            if err := v.Validate(); err != nil {
+                errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
+                    field:  "Send",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                })
+            }
+        }
+    } else if v, ok := interface{}(m.GetSend()).(interface{ Validate() error }); ok {
+        if err := v.Validate(); err != nil {
+            return HealthCheck_TcpHealthCheckValidationError{
+                field:  "Send",
+                reason: "embedded message failed validation",
+                cause:  err,
+            }
+        }
+    }
 
-	for idx, item := range m.GetReceive() {
-		_, _ = idx, item
+    for idx, item := range m.GetReceive() {
+        _, _ = idx, item
 
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
-						field:  fmt.Sprintf("Receive[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
-						field:  fmt.Sprintf("Receive[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheck_TcpHealthCheckValidationError{
-					field:  fmt.Sprintf("Receive[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(item).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
+                        field:  fmt.Sprintf("Receive[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheck_TcpHealthCheckValidationError{
+                        field:  fmt.Sprintf("Receive[%v]", idx),
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheck_TcpHealthCheckValidationError{
+                    field:  fmt.Sprintf("Receive[%v]", idx),
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	}
+    }
 
-	if len(errors) > 0 {
-		return HealthCheck_TcpHealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_TcpHealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_TcpHealthCheckMultiError is an error wrapping multiple
@@ -1335,11 +1335,11 @@ type HealthCheck_TcpHealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_TcpHealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1348,10 +1348,10 @@ func (m HealthCheck_TcpHealthCheckMultiError) AllErrors() []error { return m }
 // HealthCheck_TcpHealthCheckValidationError is the validation error returned
 // by HealthCheck_TcpHealthCheck.Validate if the designated constraints aren't met.
 type HealthCheck_TcpHealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1368,44 +1368,44 @@ func (e HealthCheck_TcpHealthCheckValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_TcpHealthCheckValidationError) ErrorName() string {
-	return "HealthCheck_TcpHealthCheckValidationError"
+    return "HealthCheck_TcpHealthCheckValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_TcpHealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_TcpHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_TcpHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_TcpHealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_TcpHealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_RedisHealthCheck with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_RedisHealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_RedisHealthCheck with the
@@ -1413,23 +1413,23 @@ func (m *HealthCheck_RedisHealthCheck) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_RedisHealthCheckMultiError, or nil if none found.
 func (m *HealthCheck_RedisHealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_RedisHealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for Key
+    // no validation rules for Key
 
-	if len(errors) > 0 {
-		return HealthCheck_RedisHealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_RedisHealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_RedisHealthCheckMultiError is an error wrapping multiple
@@ -1439,11 +1439,11 @@ type HealthCheck_RedisHealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_RedisHealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1453,10 +1453,10 @@ func (m HealthCheck_RedisHealthCheckMultiError) AllErrors() []error { return m }
 // by HealthCheck_RedisHealthCheck.Validate if the designated constraints
 // aren't met.
 type HealthCheck_RedisHealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1473,44 +1473,44 @@ func (e HealthCheck_RedisHealthCheckValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_RedisHealthCheckValidationError) ErrorName() string {
-	return "HealthCheck_RedisHealthCheckValidationError"
+    return "HealthCheck_RedisHealthCheckValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_RedisHealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_RedisHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_RedisHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_RedisHealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_RedisHealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_GrpcHealthCheck with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_GrpcHealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_GrpcHealthCheck with the
@@ -1518,25 +1518,25 @@ func (m *HealthCheck_GrpcHealthCheck) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_GrpcHealthCheckMultiError, or nil if none found.
 func (m *HealthCheck_GrpcHealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_GrpcHealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for ServiceName
+    // no validation rules for ServiceName
 
-	// no validation rules for Authority
+    // no validation rules for Authority
 
-	if len(errors) > 0 {
-		return HealthCheck_GrpcHealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_GrpcHealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_GrpcHealthCheckMultiError is an error wrapping multiple
@@ -1546,11 +1546,11 @@ type HealthCheck_GrpcHealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_GrpcHealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1560,10 +1560,10 @@ func (m HealthCheck_GrpcHealthCheckMultiError) AllErrors() []error { return m }
 // by HealthCheck_GrpcHealthCheck.Validate if the designated constraints
 // aren't met.
 type HealthCheck_GrpcHealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1580,44 +1580,44 @@ func (e HealthCheck_GrpcHealthCheckValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_GrpcHealthCheckValidationError) ErrorName() string {
-	return "HealthCheck_GrpcHealthCheckValidationError"
+    return "HealthCheck_GrpcHealthCheckValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_GrpcHealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_GrpcHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_GrpcHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_GrpcHealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_GrpcHealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_CustomHealthCheck with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_CustomHealthCheck) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_CustomHealthCheck with
@@ -1625,119 +1625,119 @@ func (m *HealthCheck_CustomHealthCheck) Validate() error {
 // are violated, the result is a list of violation errors wrapped in
 // HealthCheck_CustomHealthCheckMultiError, or nil if none found.
 func (m *HealthCheck_CustomHealthCheck) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_CustomHealthCheck) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(m.GetName()) < 1 {
-		err := HealthCheck_CustomHealthCheckValidationError{
-			field:  "Name",
-			reason: "value length must be at least 1 bytes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+    if len(m.GetName()) < 1 {
+        err := HealthCheck_CustomHealthCheckValidationError{
+            field:  "Name",
+            reason: "value length must be at least 1 bytes",
+        }
+        if !all {
+            return err
+        }
+        errors = append(errors, err)
+    }
 
-	switch v := m.ConfigType.(type) {
-	case *HealthCheck_CustomHealthCheck_Config:
-		if v == nil {
-			err := HealthCheck_CustomHealthCheckValidationError{
-				field:  "ConfigType",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+    switch v := m.ConfigType.(type) {
+    case *HealthCheck_CustomHealthCheck_Config:
+        if v == nil {
+            err := HealthCheck_CustomHealthCheckValidationError{
+                field:  "ConfigType",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-		if all {
-			switch v := interface{}(m.GetConfig()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
-						field:  "Config",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
-						field:  "Config",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheck_CustomHealthCheckValidationError{
-					field:  "Config",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetConfig()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
+                        field:  "Config",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
+                        field:  "Config",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheck_CustomHealthCheckValidationError{
+                    field:  "Config",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	case *HealthCheck_CustomHealthCheck_TypedConfig:
-		if v == nil {
-			err := HealthCheck_CustomHealthCheckValidationError{
-				field:  "ConfigType",
-				reason: "oneof value cannot be a typed-nil",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
+    case *HealthCheck_CustomHealthCheck_TypedConfig:
+        if v == nil {
+            err := HealthCheck_CustomHealthCheckValidationError{
+                field:  "ConfigType",
+                reason: "oneof value cannot be a typed-nil",
+            }
+            if !all {
+                return err
+            }
+            errors = append(errors, err)
+        }
 
-		if all {
-			switch v := interface{}(m.GetTypedConfig()).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
-						field:  "TypedConfig",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
-						field:  "TypedConfig",
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(m.GetTypedConfig()).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return HealthCheck_CustomHealthCheckValidationError{
-					field:  "TypedConfig",
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
+        if all {
+            switch v := interface{}(m.GetTypedConfig()).(type) {
+            case interface{ ValidateAll() error }:
+                if err := v.ValidateAll(); err != nil {
+                    errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
+                        field:  "TypedConfig",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            case interface{ Validate() error }:
+                if err := v.Validate(); err != nil {
+                    errors = append(errors, HealthCheck_CustomHealthCheckValidationError{
+                        field:  "TypedConfig",
+                        reason: "embedded message failed validation",
+                        cause:  err,
+                    })
+                }
+            }
+        } else if v, ok := interface{}(m.GetTypedConfig()).(interface{ Validate() error }); ok {
+            if err := v.Validate(); err != nil {
+                return HealthCheck_CustomHealthCheckValidationError{
+                    field:  "TypedConfig",
+                    reason: "embedded message failed validation",
+                    cause:  err,
+                }
+            }
+        }
 
-	default:
-		_ = v // ensures v is used
-	}
+    default:
+        _ = v // ensures v is used
+    }
 
-	if len(errors) > 0 {
-		return HealthCheck_CustomHealthCheckMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_CustomHealthCheckMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_CustomHealthCheckMultiError is an error wrapping multiple
@@ -1747,11 +1747,11 @@ type HealthCheck_CustomHealthCheckMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_CustomHealthCheckMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1761,10 +1761,10 @@ func (m HealthCheck_CustomHealthCheckMultiError) AllErrors() []error { return m 
 // returned by HealthCheck_CustomHealthCheck.Validate if the designated
 // constraints aren't met.
 type HealthCheck_CustomHealthCheckValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1781,44 +1781,44 @@ func (e HealthCheck_CustomHealthCheckValidationError) Key() bool { return e.key 
 
 // ErrorName returns error name.
 func (e HealthCheck_CustomHealthCheckValidationError) ErrorName() string {
-	return "HealthCheck_CustomHealthCheckValidationError"
+    return "HealthCheck_CustomHealthCheckValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_CustomHealthCheckValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_CustomHealthCheck.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_CustomHealthCheck.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_CustomHealthCheckValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_CustomHealthCheckValidationError{}
 
 // Validate checks the field values on HealthCheck_TlsOptions with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *HealthCheck_TlsOptions) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on HealthCheck_TlsOptions with the rules
@@ -1826,21 +1826,21 @@ func (m *HealthCheck_TlsOptions) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // HealthCheck_TlsOptionsMultiError, or nil if none found.
 func (m *HealthCheck_TlsOptions) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *HealthCheck_TlsOptions) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	if len(errors) > 0 {
-		return HealthCheck_TlsOptionsMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return HealthCheck_TlsOptionsMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // HealthCheck_TlsOptionsMultiError is an error wrapping multiple validation
@@ -1850,11 +1850,11 @@ type HealthCheck_TlsOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HealthCheck_TlsOptionsMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -1863,10 +1863,10 @@ func (m HealthCheck_TlsOptionsMultiError) AllErrors() []error { return m }
 // HealthCheck_TlsOptionsValidationError is the validation error returned by
 // HealthCheck_TlsOptions.Validate if the designated constraints aren't met.
 type HealthCheck_TlsOptionsValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -1883,35 +1883,35 @@ func (e HealthCheck_TlsOptionsValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e HealthCheck_TlsOptionsValidationError) ErrorName() string {
-	return "HealthCheck_TlsOptionsValidationError"
+    return "HealthCheck_TlsOptionsValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e HealthCheck_TlsOptionsValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sHealthCheck_TlsOptions.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sHealthCheck_TlsOptions.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = HealthCheck_TlsOptionsValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = HealthCheck_TlsOptionsValidationError{}

@@ -18,20 +18,20 @@
 package outlierdetection
 
 import (
-	"sync/atomic"
-	"unsafe"
+    "sync/atomic"
+    "unsafe"
 )
 
 type bucket struct {
-	numSuccesses uint32
-	numFailures  uint32
+    numSuccesses uint32
+    numFailures  uint32
 }
 
 func newCallCounter() *callCounter {
-	return &callCounter{
-		activeBucket:   unsafe.Pointer(&bucket{}),
-		inactiveBucket: &bucket{},
-	}
+    return &callCounter{
+        activeBucket:   unsafe.Pointer(&bucket{}),
+        inactiveBucket: &bucket{},
+    }
 }
 
 // callCounter has two buckets, which each count successful and failing RPC's.
@@ -39,16 +39,16 @@ func newCallCounter() *callCounter {
 // inactiveBucket is populated with this activeBucket's data every interval for
 // use by the Outlier Detection algorithm.
 type callCounter struct {
-	// activeBucket updates every time a call finishes (from picker passed to
-	// Client Conn), so protect pointer read with atomic load of unsafe.Pointer
-	// so picker does not have to grab a mutex per RPC, the critical path.
-	activeBucket   unsafe.Pointer // bucket
-	inactiveBucket *bucket
+    // activeBucket updates every time a call finishes (from picker passed to
+    // Client Conn), so protect pointer read with atomic load of unsafe.Pointer
+    // so picker does not have to grab a mutex per RPC, the critical path.
+    activeBucket   unsafe.Pointer // bucket
+    inactiveBucket *bucket
 }
 
 func (cc *callCounter) clear() {
-	atomic.StorePointer(&cc.activeBucket, unsafe.Pointer(&bucket{}))
-	cc.inactiveBucket = &bucket{}
+    atomic.StorePointer(&cc.activeBucket, unsafe.Pointer(&bucket{}))
+    cc.inactiveBucket = &bucket{}
 }
 
 // "When the timer triggers, the inactive bucket is zeroed and swapped with the
@@ -56,11 +56,11 @@ func (cc *callCounter) clear() {
 // failures since the last time the timer triggered. Those numbers are used to
 // evaluate the ejection criteria." - A50.
 func (cc *callCounter) swap() {
-	ib := cc.inactiveBucket
-	*ib = bucket{}
-	ab := (*bucket)(atomic.SwapPointer(&cc.activeBucket, unsafe.Pointer(ib)))
-	cc.inactiveBucket = &bucket{
-		numSuccesses: atomic.LoadUint32(&ab.numSuccesses),
-		numFailures:  atomic.LoadUint32(&ab.numFailures),
-	}
+    ib := cc.inactiveBucket
+    *ib = bucket{}
+    ab := (*bucket)(atomic.SwapPointer(&cc.activeBucket, unsafe.Pointer(ib)))
+    cc.inactiveBucket = &bucket{
+        numSuccesses: atomic.LoadUint32(&ab.numSuccesses),
+        numFailures:  atomic.LoadUint32(&ab.numFailures),
+    }
 }

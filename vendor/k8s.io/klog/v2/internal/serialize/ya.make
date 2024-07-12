@@ -1,15 +1,18 @@
 GO_LIBRARY()
 
-LICENSE(Apache-2.0)
+SUBSCRIBER(g:go-contrib)
 
-IF(GOSTD_VERSION == 1.21)
-    SRCS(keyvalues_slog.go)
-ELSE()
-    SRCS(keyvalues_no_slog.go)
-ENDIF()
+LICENSE(Apache-2.0)
 
 SRCS(
     keyvalues.go
+    keyvalues_slog.go
 )
 
+GO_XTEST_SRCS(keyvalues_test.go)
+
 END()
+
+RECURSE(
+    gotest
+)

@@ -18,10 +18,10 @@
 package bootstrap
 
 import (
-	"encoding/json"
-	"testing"
+    "encoding/json"
+    "testing"
 
-	"google.golang.org/grpc/credentials"
+    "google.golang.org/grpc/credentials"
 )
 
 const testCredsBuilderName = "test_creds"
@@ -29,35 +29,35 @@ const testCredsBuilderName = "test_creds"
 var builder = &testCredsBuilder{}
 
 func init() {
-	RegisterCredentials(builder)
+    RegisterCredentials(builder)
 }
 
 type testCredsBuilder struct {
-	config json.RawMessage
+    config json.RawMessage
 }
 
 func (t *testCredsBuilder) Build(config json.RawMessage) (credentials.Bundle, error) {
-	t.config = config
-	return nil, nil
+    t.config = config
+    return nil, nil
 }
 
 func (t *testCredsBuilder) Name() string {
-	return testCredsBuilderName
+    return testCredsBuilderName
 }
 
 func TestRegisterNew(t *testing.T) {
-	c := GetCredentials(testCredsBuilderName)
-	if c == nil {
-		t.Fatalf("GetCredentials(%q) credential = nil", testCredsBuilderName)
-	}
+    c := GetCredentials(testCredsBuilderName)
+    if c == nil {
+        t.Fatalf("GetCredentials(%q) credential = nil", testCredsBuilderName)
+    }
 
-	const sampleConfig = "sample_config"
-	rawMessage := json.RawMessage(sampleConfig)
-	if _, err := c.Build(rawMessage); err != nil {
-		t.Errorf("Build(%v) error = %v, want nil", rawMessage, err)
-	}
+    const sampleConfig = "sample_config"
+    rawMessage := json.RawMessage(sampleConfig)
+    if _, err := c.Build(rawMessage); err != nil {
+        t.Errorf("Build(%v) error = %v, want nil", rawMessage, err)
+    }
 
-	if got, want := string(builder.config), sampleConfig; got != want {
-		t.Errorf("Build config = %v, want %v", got, want)
-	}
+    if got, want := string(builder.config), sampleConfig; got != want {
+        t.Errorf("Build config = %v, want %v", got, want)
+    }
 }

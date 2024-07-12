@@ -19,42 +19,42 @@
 package oauth
 
 import (
-	"strings"
-	"testing"
+    "strings"
+    "testing"
 )
 
 func checkErrorMsg(err error, msg string) bool {
-	if err == nil && msg == "" {
-		return true
-	} else if err != nil {
-		return strings.Contains(err.Error(), msg)
-	}
-	return false
+    if err == nil && msg == "" {
+        return true
+    } else if err != nil {
+        return strings.Contains(err.Error(), msg)
+    }
+    return false
 }
 
 func TestRemoveServiceNameFromJWTURI(t *testing.T) {
-	tests := []struct {
-		name         string
-		uri          string
-		wantedURI    string
-		wantedErrMsg string
-	}{
-		{
-			name:         "invalid URI",
-			uri:          "ht tp://foo.com",
-			wantedErrMsg: "first path segment in URL cannot contain colon",
-		},
-		{
-			name:      "valid URI",
-			uri:       "https://foo.com/go/",
-			wantedURI: "https://foo.com/",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got, err := removeServiceNameFromJWTURI(tt.uri); got != tt.wantedURI || !checkErrorMsg(err, tt.wantedErrMsg) {
-				t.Errorf("RemoveServiceNameFromJWTURI() = %s, %v, want %s, %v", got, err, tt.wantedURI, tt.wantedErrMsg)
-			}
-		})
-	}
+    tests := []struct {
+        name         string
+        uri          string
+        wantedURI    string
+        wantedErrMsg string
+    }{
+        {
+            name:         "invalid URI",
+            uri:          "ht tp://foo.com",
+            wantedErrMsg: "first path segment in URL cannot contain colon",
+        },
+        {
+            name:      "valid URI",
+            uri:       "https://foo.com/go/",
+            wantedURI: "https://foo.com/",
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got, err := removeServiceNameFromJWTURI(tt.uri); got != tt.wantedURI || !checkErrorMsg(err, tt.wantedErrMsg) {
+                t.Errorf("RemoveServiceNameFromJWTURI() = %s, %v, want %s, %v", got, err, tt.wantedURI, tt.wantedErrMsg)
+            }
+        })
+    }
 }

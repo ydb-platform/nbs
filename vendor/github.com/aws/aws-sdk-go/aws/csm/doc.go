@@ -12,12 +12,12 @@
 // The configuration options for the CSM client via the SDK's session
 // configuration are:
 //
-//	* AWS_CSM_PORT=<port number>
-//	  The port number the CSM agent will receive metrics on.
+//    * AWS_CSM_PORT=<port number>
+//      The port number the CSM agent will receive metrics on.
 //
-//	* AWS_CSM_HOST=<hostname or ip>
-//	  The hostname, or IP address the CSM agent will receive metrics on.
-//	  Without port number.
+//    * AWS_CSM_HOST=<hostname or ip>
+//      The hostname, or IP address the CSM agent will receive metrics on.
+//      Without port number.
 //
 // Manually enabling the CSM client
 //
@@ -26,23 +26,23 @@
 // is safe to call Start concurrently, but if Start is called additional times
 // with different ClientID or address it will panic.
 //
-//		r, err := csm.Start("clientID", ":31000")
-//		if err != nil {
-//			panic(fmt.Errorf("failed starting CSM:  %v", err))
-//		}
+//        r, err := csm.Start("clientID", ":31000")
+//        if err != nil {
+//            panic(fmt.Errorf("failed starting CSM:  %v", err))
+//        }
 //
 // When controlling the CSM client manually, you must also inject its request
 // handlers into the SDK's Session configuration for the SDK's API clients to
 // publish metrics.
 //
-//		sess, err := session.NewSession(&aws.Config{})
-//		if err != nil {
-//			panic(fmt.Errorf("failed loading session: %v", err))
-//		}
+//        sess, err := session.NewSession(&aws.Config{})
+//        if err != nil {
+//            panic(fmt.Errorf("failed loading session: %v", err))
+//        }
 //
-//		// Add CSM client's metric publishing request handlers to the SDK's
-//		// Session Configuration.
-//		r.InjectHandlers(&sess.Handlers)
+//        // Add CSM client's metric publishing request handlers to the SDK's
+//        // Session Configuration.
+//        r.InjectHandlers(&sess.Handlers)
 //
 // Controlling CSM client
 //
@@ -54,16 +54,16 @@
 // The Pause method can be called to stop the CSM client publishing metrics to
 // the CSM agent. The Continue method will resume metric publishing.
 //
-//		// Get the CSM client Reporter.
-//		r := csm.Get()
+//        // Get the CSM client Reporter.
+//        r := csm.Get()
 //
-//		// Will pause monitoring
-//		r.Pause()
-//		resp, err = client.GetObject(&s3.GetObjectInput{
-//			Bucket: aws.String("bucket"),
-//			Key: aws.String("key"),
-//		})
+//        // Will pause monitoring
+//        r.Pause()
+//        resp, err = client.GetObject(&s3.GetObjectInput{
+//            Bucket: aws.String("bucket"),
+//            Key: aws.String("key"),
+//        })
 //
-//		// Resume monitoring
-//		r.Continue()
+//        // Resume monitoring
+//        r.Continue()
 package csm

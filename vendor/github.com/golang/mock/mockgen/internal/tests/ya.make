@@ -1,0 +1,26 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    aux_imports_embedded_interface
+    const_array_length
+    copyright_file
+    custom_package_name
+    dot_imports
+    empty_interface
+    extra_import
+    generated_identifier_conflict
+    import_embedded_interface
+    import_source
+    internal_pkg
+    missing_import
+    mock_in_test_package
+    overlapping_methods
+    panicing_test
+    parenthesized_parameter_type
+    performance
+    self_package
+    test_package
+    unexported_method
+    #vendor_dep
+    vendor_pkg
+)

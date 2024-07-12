@@ -4,56 +4,56 @@
 package topicreaderinternal
 
 import (
-	reflect "reflect"
+    reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
+    gomock "github.com/golang/mock/gomock"
 )
 
 // MockPool is a mock of Pool interface.
 type MockPool struct {
-	ctrl     *gomock.Controller
-	recorder *MockPoolMockRecorder
+    ctrl     *gomock.Controller
+    recorder *MockPoolMockRecorder
 }
 
 // MockPoolMockRecorder is the mock recorder for MockPool.
 type MockPoolMockRecorder struct {
-	mock *MockPool
+    mock *MockPool
 }
 
 // NewMockPool creates a new mock instance.
 func NewMockPool(ctrl *gomock.Controller) *MockPool {
-	mock := &MockPool{ctrl: ctrl}
-	mock.recorder = &MockPoolMockRecorder{mock}
-	return mock
+    mock := &MockPool{ctrl: ctrl}
+    mock.recorder = &MockPoolMockRecorder{mock}
+    return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockPool) EXPECT() *MockPoolMockRecorder {
-	return m.recorder
+    return m.recorder
 }
 
 // Get mocks base method.
 func (m *MockPool) Get() interface{} {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get")
-	ret0, _ := ret[0].(interface{})
-	return ret0
+    m.ctrl.T.Helper()
+    ret := m.ctrl.Call(m, "Get")
+    ret0, _ := ret[0].(interface{})
+    return ret0
 }
 
 // Get indicates an expected call of Get.
 func (mr *MockPoolMockRecorder) Get() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockPool)(nil).Get))
+    mr.mock.ctrl.T.Helper()
+    return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockPool)(nil).Get))
 }
 
 // Put mocks base method.
 func (m *MockPool) Put(arg0 interface{}) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Put", arg0)
+    m.ctrl.T.Helper()
+    m.ctrl.Call(m, "Put", arg0)
 }
 
 // Put indicates an expected call of Put.
 func (mr *MockPoolMockRecorder) Put(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockPool)(nil).Put), arg0)
+    mr.mock.ctrl.T.Helper()
+    return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockPool)(nil).Put), arg0)
 }

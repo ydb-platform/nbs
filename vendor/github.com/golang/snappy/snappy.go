@@ -20,7 +20,7 @@
 package snappy // import "github.com/golang/snappy"
 
 import (
-	"hash/crc32"
+    "hash/crc32"
 )
 
 /*
@@ -49,43 +49,43 @@ Lempel-Ziv compression algorithms. In particular:
     integer denoted by the next 4 bytes.
 */
 const (
-	tagLiteral = 0x00
-	tagCopy1   = 0x01
-	tagCopy2   = 0x02
-	tagCopy4   = 0x03
+    tagLiteral = 0x00
+    tagCopy1   = 0x01
+    tagCopy2   = 0x02
+    tagCopy4   = 0x03
 )
 
 const (
-	checksumSize    = 4
-	chunkHeaderSize = 4
-	magicChunk      = "\xff\x06\x00\x00" + magicBody
-	magicBody       = "sNaPpY"
+    checksumSize    = 4
+    chunkHeaderSize = 4
+    magicChunk      = "\xff\x06\x00\x00" + magicBody
+    magicBody       = "sNaPpY"
 
-	// maxBlockSize is the maximum size of the input to encodeBlock. It is not
-	// part of the wire format per se, but some parts of the encoder assume
-	// that an offset fits into a uint16.
-	//
-	// Also, for the framing format (Writer type instead of Encode function),
-	// https://github.com/google/snappy/blob/master/framing_format.txt says
-	// that "the uncompressed data in a chunk must be no longer than 65536
-	// bytes".
-	maxBlockSize = 65536
+    // maxBlockSize is the maximum size of the input to encodeBlock. It is not
+    // part of the wire format per se, but some parts of the encoder assume
+    // that an offset fits into a uint16.
+    //
+    // Also, for the framing format (Writer type instead of Encode function),
+    // https://github.com/google/snappy/blob/master/framing_format.txt says
+    // that "the uncompressed data in a chunk must be no longer than 65536
+    // bytes".
+    maxBlockSize = 65536
 
-	// maxEncodedLenOfMaxBlockSize equals MaxEncodedLen(maxBlockSize), but is
-	// hard coded to be a const instead of a variable, so that obufLen can also
-	// be a const. Their equivalence is confirmed by
-	// TestMaxEncodedLenOfMaxBlockSize.
-	maxEncodedLenOfMaxBlockSize = 76490
+    // maxEncodedLenOfMaxBlockSize equals MaxEncodedLen(maxBlockSize), but is
+    // hard coded to be a const instead of a variable, so that obufLen can also
+    // be a const. Their equivalence is confirmed by
+    // TestMaxEncodedLenOfMaxBlockSize.
+    maxEncodedLenOfMaxBlockSize = 76490
 
-	obufHeaderLen = len(magicChunk) + checksumSize + chunkHeaderSize
-	obufLen       = obufHeaderLen + maxEncodedLenOfMaxBlockSize
+    obufHeaderLen = len(magicChunk) + checksumSize + chunkHeaderSize
+    obufLen       = obufHeaderLen + maxEncodedLenOfMaxBlockSize
 )
 
 const (
-	chunkTypeCompressedData   = 0x00
-	chunkTypeUncompressedData = 0x01
-	chunkTypePadding          = 0xfe
-	chunkTypeStreamIdentifier = 0xff
+    chunkTypeCompressedData   = 0x00
+    chunkTypeUncompressedData = 0x01
+    chunkTypePadding          = 0xfe
+    chunkTypeStreamIdentifier = 0xff
 )
 
 var crcTable = crc32.MakeTable(crc32.Castagnoli)
@@ -93,6 +93,6 @@ var crcTable = crc32.MakeTable(crc32.Castagnoli)
 // crc implements the checksum specified in section 3 of
 // https://github.com/google/snappy/blob/master/framing_format.txt
 func crc(b []byte) uint32 {
-	c := crc32.Update(0, crcTable, b)
-	return uint32(c>>15|c<<17) + 0xa282ead8
+    c := crc32.Update(0, crcTable, b)
+    return uint32(c>>15|c<<17) + 0xa282ead8
 }

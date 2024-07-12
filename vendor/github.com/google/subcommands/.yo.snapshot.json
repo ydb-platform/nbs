@@ -1,0 +1,20 @@
+{
+    "Version": "v1.2.0",
+    "GoVersion": "",
+    "Sum": "h1:vWQspBTo2nEqTUFita5/KeEWlUL8kQObDFbub/EN9oE=",
+    "Packages": {
+        "github.com/google/subcommands": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "io",
+                "os",
+                "path",
+                "sort",
+                "strings"
+            ],
+            "TestImports": null
+        }
+    }
+}

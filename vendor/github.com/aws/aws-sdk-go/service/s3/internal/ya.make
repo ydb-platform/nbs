@@ -1,1 +1,5 @@
-RECURSE(s3testing)
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    s3testing
+)

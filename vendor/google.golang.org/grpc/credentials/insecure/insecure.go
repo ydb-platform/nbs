@@ -21,10 +21,10 @@
 package insecure
 
 import (
-	"context"
-	"net"
+    "context"
+    "net"
 
-	"google.golang.org/grpc/credentials"
+    "google.golang.org/grpc/credentials"
 )
 
 // NewCredentials returns a credentials which disables transport security.
@@ -32,7 +32,7 @@ import (
 // Note that using this credentials with per-RPC credentials which require
 // transport security is incompatible and will cause grpc.Dial() to fail.
 func NewCredentials() credentials.TransportCredentials {
-	return insecureTC{}
+    return insecureTC{}
 }
 
 // insecureTC implements the insecure transport credentials. The handshake
@@ -41,34 +41,34 @@ func NewCredentials() credentials.TransportCredentials {
 type insecureTC struct{}
 
 func (insecureTC) ClientHandshake(ctx context.Context, _ string, conn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return conn, info{credentials.CommonAuthInfo{SecurityLevel: credentials.NoSecurity}}, nil
+    return conn, info{credentials.CommonAuthInfo{SecurityLevel: credentials.NoSecurity}}, nil
 }
 
 func (insecureTC) ServerHandshake(conn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return conn, info{credentials.CommonAuthInfo{SecurityLevel: credentials.NoSecurity}}, nil
+    return conn, info{credentials.CommonAuthInfo{SecurityLevel: credentials.NoSecurity}}, nil
 }
 
 func (insecureTC) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{SecurityProtocol: "insecure"}
+    return credentials.ProtocolInfo{SecurityProtocol: "insecure"}
 }
 
 func (insecureTC) Clone() credentials.TransportCredentials {
-	return insecureTC{}
+    return insecureTC{}
 }
 
 func (insecureTC) OverrideServerName(string) error {
-	return nil
+    return nil
 }
 
 // info contains the auth information for an insecure connection.
 // It implements the AuthInfo interface.
 type info struct {
-	credentials.CommonAuthInfo
+    credentials.CommonAuthInfo
 }
 
 // AuthType returns the type of info as a string.
 func (info) AuthType() string {
-	return "insecure"
+    return "insecure"
 }
 
 // insecureBundle implements an insecure bundle.
@@ -78,21 +78,21 @@ type insecureBundle struct{}
 
 // NewBundle returns a bundle with disabled transport security and no per rpc credential.
 func NewBundle() credentials.Bundle {
-	return insecureBundle{}
+    return insecureBundle{}
 }
 
 // NewWithMode returns a new insecure Bundle. The mode is ignored.
 func (insecureBundle) NewWithMode(string) (credentials.Bundle, error) {
-	return insecureBundle{}, nil
+    return insecureBundle{}, nil
 }
 
 // PerRPCCredentials returns an nil implementation as insecure
 // bundle does not support a per rpc credential.
 func (insecureBundle) PerRPCCredentials() credentials.PerRPCCredentials {
-	return nil
+    return nil
 }
 
 // TransportCredentials returns the underlying insecure transport credential.
 func (insecureBundle) TransportCredentials() credentials.TransportCredentials {
-	return NewCredentials()
+    return NewCredentials()
 }

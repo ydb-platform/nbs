@@ -17,47 +17,47 @@
 package procfs
 
 import (
-	"os"
+    "os"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 // KernelRandom contains information about to the kernel's random number generator.
 type KernelRandom struct {
-	// EntropyAvaliable gives the available entropy, in bits.
-	EntropyAvaliable *uint64
-	// PoolSize gives the size of the entropy pool, in bits.
-	PoolSize *uint64
-	// URandomMinReseedSeconds is the number of seconds after which the DRNG will be reseeded.
-	URandomMinReseedSeconds *uint64
-	// WriteWakeupThreshold the number of bits of entropy below which we wake up processes
-	// that do a select(2) or poll(2) for write access to /dev/random.
-	WriteWakeupThreshold *uint64
-	// ReadWakeupThreshold is the number of bits of entropy required for waking up processes that sleep
-	// waiting for entropy from /dev/random.
-	ReadWakeupThreshold *uint64
+    // EntropyAvaliable gives the available entropy, in bits.
+    EntropyAvaliable *uint64
+    // PoolSize gives the size of the entropy pool, in bits.
+    PoolSize *uint64
+    // URandomMinReseedSeconds is the number of seconds after which the DRNG will be reseeded.
+    URandomMinReseedSeconds *uint64
+    // WriteWakeupThreshold the number of bits of entropy below which we wake up processes
+    // that do a select(2) or poll(2) for write access to /dev/random.
+    WriteWakeupThreshold *uint64
+    // ReadWakeupThreshold is the number of bits of entropy required for waking up processes that sleep
+    // waiting for entropy from /dev/random.
+    ReadWakeupThreshold *uint64
 }
 
 // KernelRandom returns values from /proc/sys/kernel/random.
 func (fs FS) KernelRandom() (KernelRandom, error) {
-	random := KernelRandom{}
+    random := KernelRandom{}
 
-	for file, p := range map[string]**uint64{
-		"entropy_avail":           &random.EntropyAvaliable,
-		"poolsize":                &random.PoolSize,
-		"urandom_min_reseed_secs": &random.URandomMinReseedSeconds,
-		"write_wakeup_threshold":  &random.WriteWakeupThreshold,
-		"read_wakeup_threshold":   &random.ReadWakeupThreshold,
-	} {
-		val, err := util.ReadUintFromFile(fs.proc.Path("sys", "kernel", "random", file))
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return random, err
-		}
-		*p = &val
-	}
+    for file, p := range map[string]**uint64{
+        "entropy_avail":           &random.EntropyAvaliable,
+        "poolsize":                &random.PoolSize,
+        "urandom_min_reseed_secs": &random.URandomMinReseedSeconds,
+        "write_wakeup_threshold":  &random.WriteWakeupThreshold,
+        "read_wakeup_threshold":   &random.ReadWakeupThreshold,
+    } {
+        val, err := util.ReadUintFromFile(fs.proc.Path("sys", "kernel", "random", file))
+        if os.IsNotExist(err) {
+            continue
+        }
+        if err != nil {
+            return random, err
+        }
+        *p = &val
+    }
 
-	return random, nil
+    return random, nil
 }

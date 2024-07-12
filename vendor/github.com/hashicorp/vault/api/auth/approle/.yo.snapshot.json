@@ -1,0 +1,28 @@
+{
+    "Version": "v0.6.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:ELfFFQlTM/e97WJKu1HvNFa7lQ3tlTwwzrR1NJE1V7Y=",
+    "Packages": {
+        "github.com/hashicorp/vault/api/auth/approle": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/vault/api",
+                "io",
+                "os",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/vault/api",
+                "net",
+                "net/http",
+                "os",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

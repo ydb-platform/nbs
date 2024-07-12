@@ -23,13 +23,13 @@ package zapcore
 import "fmt"
 
 type levelFilterCore struct {
-	core  Core
-	level LevelEnabler
+    core  Core
+    level LevelEnabler
 }
 
 var (
-	_ Core           = (*levelFilterCore)(nil)
-	_ leveledEnabler = (*levelFilterCore)(nil)
+    _ Core           = (*levelFilterCore)(nil)
+    _ leveledEnabler = (*levelFilterCore)(nil)
 )
 
 // NewIncreaseLevelCore creates a core that can be used to increase the level of
@@ -37,39 +37,39 @@ var (
 // as a filter before calling the underlying core. If level decreases the log level,
 // an error is returned.
 func NewIncreaseLevelCore(core Core, level LevelEnabler) (Core, error) {
-	for l := _maxLevel; l >= _minLevel; l-- {
-		if !core.Enabled(l) && level.Enabled(l) {
-			return nil, fmt.Errorf("invalid increase level, as level %q is allowed by increased level, but not by existing core", l)
-		}
-	}
+    for l := _maxLevel; l >= _minLevel; l-- {
+        if !core.Enabled(l) && level.Enabled(l) {
+            return nil, fmt.Errorf("invalid increase level, as level %q is allowed by increased level, but not by existing core", l)
+        }
+    }
 
-	return &levelFilterCore{core, level}, nil
+    return &levelFilterCore{core, level}, nil
 }
 
 func (c *levelFilterCore) Enabled(lvl Level) bool {
-	return c.level.Enabled(lvl)
+    return c.level.Enabled(lvl)
 }
 
 func (c *levelFilterCore) Level() Level {
-	return LevelOf(c.level)
+    return LevelOf(c.level)
 }
 
 func (c *levelFilterCore) With(fields []Field) Core {
-	return &levelFilterCore{c.core.With(fields), c.level}
+    return &levelFilterCore{c.core.With(fields), c.level}
 }
 
 func (c *levelFilterCore) Check(ent Entry, ce *CheckedEntry) *CheckedEntry {
-	if !c.Enabled(ent.Level) {
-		return ce
-	}
+    if !c.Enabled(ent.Level) {
+        return ce
+    }
 
-	return c.core.Check(ent, ce)
+    return c.core.Check(ent, ce)
 }
 
 func (c *levelFilterCore) Write(ent Entry, fields []Field) error {
-	return c.core.Write(ent, fields)
+    return c.core.Write(ent, fields)
 }
 
 func (c *levelFilterCore) Sync() error {
-	return c.core.Sync()
+    return c.core.Sync()
 }

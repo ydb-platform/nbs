@@ -17,21 +17,21 @@ limitations under the License.
 package klogr_test
 
 import (
-	"io"
-	"testing"
+    "io"
+    "testing"
 
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 
-	"k8s.io/klog/v2/klogr"
-	"k8s.io/klog/v2/test"
+    "k8s.io/klog/v2/klogr"
+    "k8s.io/klog/v2/test"
 )
 
 // TestKlogrOutput tests klogr output via klog.
 func TestKlogrOutput(t *testing.T) {
-	test.InitKlog(t)
-	test.Output(t, test.OutputConfig{
-		NewLogger: func(_ io.Writer, _ int, _ string) logr.Logger {
-			return klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog))
-		},
-	})
+    test.InitKlog(t)
+    test.Output(t, test.OutputConfig{
+        NewLogger: func(out io.Writer, v int, vmodule string) logr.Logger {
+            return klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog))
+        },
+    })
 }

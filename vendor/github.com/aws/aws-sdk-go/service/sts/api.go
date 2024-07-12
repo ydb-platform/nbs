@@ -3,13 +3,13 @@
 package sts
 
 import (
-	"fmt"
-	"time"
+    "fmt"
+    "time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awsutil"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
+    "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/awsutil"
+    "github.com/aws/aws-sdk-go/aws/credentials"
+    "github.com/aws/aws-sdk-go/aws/request"
 )
 
 const opAssumeRole = "AssumeRole"
@@ -28,29 +28,29 @@ const opAssumeRole = "AssumeRole"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the AssumeRoleRequest method.
-//	req, resp := client.AssumeRoleRequest(params)
+//    // Example sending a request using the AssumeRoleRequest method.
+//    req, resp := client.AssumeRoleRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRole
 func (c *STS) AssumeRoleRequest(input *AssumeRoleInput) (req *request.Request, output *AssumeRoleOutput) {
-	op := &request.Operation{
-		Name:       opAssumeRole,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opAssumeRole,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &AssumeRoleInput{}
-	}
+    if input == nil {
+        input = &AssumeRoleInput{}
+    }
 
-	output = &AssumeRoleOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &AssumeRoleOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // AssumeRole API operation for AWS Security Token Service.
@@ -194,8 +194,8 @@ func (c *STS) AssumeRoleRequest(input *AssumeRoleInput) (req *request.Request, o
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRole
 func (c *STS) AssumeRole(input *AssumeRoleInput) (*AssumeRoleOutput, error) {
-	req, out := c.AssumeRoleRequest(input)
-	return out, req.Send()
+    req, out := c.AssumeRoleRequest(input)
+    return out, req.Send()
 }
 
 // AssumeRoleWithContext is the same as AssumeRole with the addition of
@@ -208,10 +208,10 @@ func (c *STS) AssumeRole(input *AssumeRoleInput) (*AssumeRoleOutput, error) {
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) AssumeRoleWithContext(ctx aws.Context, input *AssumeRoleInput, opts ...request.Option) (*AssumeRoleOutput, error) {
-	req, out := c.AssumeRoleRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.AssumeRoleRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opAssumeRoleWithSAML = "AssumeRoleWithSAML"
@@ -230,30 +230,30 @@ const opAssumeRoleWithSAML = "AssumeRoleWithSAML"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the AssumeRoleWithSAMLRequest method.
-//	req, resp := client.AssumeRoleWithSAMLRequest(params)
+//    // Example sending a request using the AssumeRoleWithSAMLRequest method.
+//    req, resp := client.AssumeRoleWithSAMLRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRoleWithSAML
 func (c *STS) AssumeRoleWithSAMLRequest(input *AssumeRoleWithSAMLInput) (req *request.Request, output *AssumeRoleWithSAMLOutput) {
-	op := &request.Operation{
-		Name:       opAssumeRoleWithSAML,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opAssumeRoleWithSAML,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &AssumeRoleWithSAMLInput{}
-	}
+    if input == nil {
+        input = &AssumeRoleWithSAMLInput{}
+    }
 
-	output = &AssumeRoleWithSAMLOutput{}
-	req = c.newRequest(op, input, output)
-	req.Config.Credentials = credentials.AnonymousCredentials
-	return
+    output = &AssumeRoleWithSAMLOutput{}
+    req = c.newRequest(op, input, output)
+    req.Config.Credentials = credentials.AnonymousCredentials
+    return
 }
 
 // AssumeRoleWithSAML API operation for AWS Security Token Service.
@@ -440,8 +440,8 @@ func (c *STS) AssumeRoleWithSAMLRequest(input *AssumeRoleWithSAMLInput) (req *re
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRoleWithSAML
 func (c *STS) AssumeRoleWithSAML(input *AssumeRoleWithSAMLInput) (*AssumeRoleWithSAMLOutput, error) {
-	req, out := c.AssumeRoleWithSAMLRequest(input)
-	return out, req.Send()
+    req, out := c.AssumeRoleWithSAMLRequest(input)
+    return out, req.Send()
 }
 
 // AssumeRoleWithSAMLWithContext is the same as AssumeRoleWithSAML with the addition of
@@ -454,10 +454,10 @@ func (c *STS) AssumeRoleWithSAML(input *AssumeRoleWithSAMLInput) (*AssumeRoleWit
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) AssumeRoleWithSAMLWithContext(ctx aws.Context, input *AssumeRoleWithSAMLInput, opts ...request.Option) (*AssumeRoleWithSAMLOutput, error) {
-	req, out := c.AssumeRoleWithSAMLRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.AssumeRoleWithSAMLRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opAssumeRoleWithWebIdentity = "AssumeRoleWithWebIdentity"
@@ -476,30 +476,30 @@ const opAssumeRoleWithWebIdentity = "AssumeRoleWithWebIdentity"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the AssumeRoleWithWebIdentityRequest method.
-//	req, resp := client.AssumeRoleWithWebIdentityRequest(params)
+//    // Example sending a request using the AssumeRoleWithWebIdentityRequest method.
+//    req, resp := client.AssumeRoleWithWebIdentityRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRoleWithWebIdentity
 func (c *STS) AssumeRoleWithWebIdentityRequest(input *AssumeRoleWithWebIdentityInput) (req *request.Request, output *AssumeRoleWithWebIdentityOutput) {
-	op := &request.Operation{
-		Name:       opAssumeRoleWithWebIdentity,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opAssumeRoleWithWebIdentity,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &AssumeRoleWithWebIdentityInput{}
-	}
+    if input == nil {
+        input = &AssumeRoleWithWebIdentityInput{}
+    }
 
-	output = &AssumeRoleWithWebIdentityOutput{}
-	req = c.newRequest(op, input, output)
-	req.Config.Credentials = credentials.AnonymousCredentials
-	return
+    output = &AssumeRoleWithWebIdentityOutput{}
+    req = c.newRequest(op, input, output)
+    req.Config.Credentials = credentials.AnonymousCredentials
+    return
 }
 
 // AssumeRoleWithWebIdentity API operation for AWS Security Token Service.
@@ -705,8 +705,8 @@ func (c *STS) AssumeRoleWithWebIdentityRequest(input *AssumeRoleWithWebIdentityI
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/AssumeRoleWithWebIdentity
 func (c *STS) AssumeRoleWithWebIdentity(input *AssumeRoleWithWebIdentityInput) (*AssumeRoleWithWebIdentityOutput, error) {
-	req, out := c.AssumeRoleWithWebIdentityRequest(input)
-	return out, req.Send()
+    req, out := c.AssumeRoleWithWebIdentityRequest(input)
+    return out, req.Send()
 }
 
 // AssumeRoleWithWebIdentityWithContext is the same as AssumeRoleWithWebIdentity with the addition of
@@ -719,10 +719,10 @@ func (c *STS) AssumeRoleWithWebIdentity(input *AssumeRoleWithWebIdentityInput) (
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) AssumeRoleWithWebIdentityWithContext(ctx aws.Context, input *AssumeRoleWithWebIdentityInput, opts ...request.Option) (*AssumeRoleWithWebIdentityOutput, error) {
-	req, out := c.AssumeRoleWithWebIdentityRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.AssumeRoleWithWebIdentityRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opDecodeAuthorizationMessage = "DecodeAuthorizationMessage"
@@ -741,29 +741,29 @@ const opDecodeAuthorizationMessage = "DecodeAuthorizationMessage"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the DecodeAuthorizationMessageRequest method.
-//	req, resp := client.DecodeAuthorizationMessageRequest(params)
+//    // Example sending a request using the DecodeAuthorizationMessageRequest method.
+//    req, resp := client.DecodeAuthorizationMessageRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/DecodeAuthorizationMessage
 func (c *STS) DecodeAuthorizationMessageRequest(input *DecodeAuthorizationMessageInput) (req *request.Request, output *DecodeAuthorizationMessageOutput) {
-	op := &request.Operation{
-		Name:       opDecodeAuthorizationMessage,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opDecodeAuthorizationMessage,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &DecodeAuthorizationMessageInput{}
-	}
+    if input == nil {
+        input = &DecodeAuthorizationMessageInput{}
+    }
 
-	output = &DecodeAuthorizationMessageOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &DecodeAuthorizationMessageOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // DecodeAuthorizationMessage API operation for AWS Security Token Service.
@@ -819,8 +819,8 @@ func (c *STS) DecodeAuthorizationMessageRequest(input *DecodeAuthorizationMessag
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/DecodeAuthorizationMessage
 func (c *STS) DecodeAuthorizationMessage(input *DecodeAuthorizationMessageInput) (*DecodeAuthorizationMessageOutput, error) {
-	req, out := c.DecodeAuthorizationMessageRequest(input)
-	return out, req.Send()
+    req, out := c.DecodeAuthorizationMessageRequest(input)
+    return out, req.Send()
 }
 
 // DecodeAuthorizationMessageWithContext is the same as DecodeAuthorizationMessage with the addition of
@@ -833,10 +833,10 @@ func (c *STS) DecodeAuthorizationMessage(input *DecodeAuthorizationMessageInput)
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) DecodeAuthorizationMessageWithContext(ctx aws.Context, input *DecodeAuthorizationMessageInput, opts ...request.Option) (*DecodeAuthorizationMessageOutput, error) {
-	req, out := c.DecodeAuthorizationMessageRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.DecodeAuthorizationMessageRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opGetAccessKeyInfo = "GetAccessKeyInfo"
@@ -855,29 +855,29 @@ const opGetAccessKeyInfo = "GetAccessKeyInfo"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the GetAccessKeyInfoRequest method.
-//	req, resp := client.GetAccessKeyInfoRequest(params)
+//    // Example sending a request using the GetAccessKeyInfoRequest method.
+//    req, resp := client.GetAccessKeyInfoRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetAccessKeyInfo
 func (c *STS) GetAccessKeyInfoRequest(input *GetAccessKeyInfoInput) (req *request.Request, output *GetAccessKeyInfoOutput) {
-	op := &request.Operation{
-		Name:       opGetAccessKeyInfo,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opGetAccessKeyInfo,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &GetAccessKeyInfoInput{}
-	}
+    if input == nil {
+        input = &GetAccessKeyInfoInput{}
+    }
 
-	output = &GetAccessKeyInfoOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &GetAccessKeyInfoOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // GetAccessKeyInfo API operation for AWS Security Token Service.
@@ -915,8 +915,8 @@ func (c *STS) GetAccessKeyInfoRequest(input *GetAccessKeyInfoInput) (req *reques
 // API operation GetAccessKeyInfo for usage and error information.
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetAccessKeyInfo
 func (c *STS) GetAccessKeyInfo(input *GetAccessKeyInfoInput) (*GetAccessKeyInfoOutput, error) {
-	req, out := c.GetAccessKeyInfoRequest(input)
-	return out, req.Send()
+    req, out := c.GetAccessKeyInfoRequest(input)
+    return out, req.Send()
 }
 
 // GetAccessKeyInfoWithContext is the same as GetAccessKeyInfo with the addition of
@@ -929,10 +929,10 @@ func (c *STS) GetAccessKeyInfo(input *GetAccessKeyInfoInput) (*GetAccessKeyInfoO
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) GetAccessKeyInfoWithContext(ctx aws.Context, input *GetAccessKeyInfoInput, opts ...request.Option) (*GetAccessKeyInfoOutput, error) {
-	req, out := c.GetAccessKeyInfoRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.GetAccessKeyInfoRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opGetCallerIdentity = "GetCallerIdentity"
@@ -951,29 +951,29 @@ const opGetCallerIdentity = "GetCallerIdentity"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the GetCallerIdentityRequest method.
-//	req, resp := client.GetCallerIdentityRequest(params)
+//    // Example sending a request using the GetCallerIdentityRequest method.
+//    req, resp := client.GetCallerIdentityRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetCallerIdentity
 func (c *STS) GetCallerIdentityRequest(input *GetCallerIdentityInput) (req *request.Request, output *GetCallerIdentityOutput) {
-	op := &request.Operation{
-		Name:       opGetCallerIdentity,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opGetCallerIdentity,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &GetCallerIdentityInput{}
-	}
+    if input == nil {
+        input = &GetCallerIdentityInput{}
+    }
 
-	output = &GetCallerIdentityOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &GetCallerIdentityOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // GetCallerIdentity API operation for AWS Security Token Service.
@@ -997,8 +997,8 @@ func (c *STS) GetCallerIdentityRequest(input *GetCallerIdentityInput) (req *requ
 // API operation GetCallerIdentity for usage and error information.
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetCallerIdentity
 func (c *STS) GetCallerIdentity(input *GetCallerIdentityInput) (*GetCallerIdentityOutput, error) {
-	req, out := c.GetCallerIdentityRequest(input)
-	return out, req.Send()
+    req, out := c.GetCallerIdentityRequest(input)
+    return out, req.Send()
 }
 
 // GetCallerIdentityWithContext is the same as GetCallerIdentity with the addition of
@@ -1011,10 +1011,10 @@ func (c *STS) GetCallerIdentity(input *GetCallerIdentityInput) (*GetCallerIdenti
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) GetCallerIdentityWithContext(ctx aws.Context, input *GetCallerIdentityInput, opts ...request.Option) (*GetCallerIdentityOutput, error) {
-	req, out := c.GetCallerIdentityRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.GetCallerIdentityRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opGetFederationToken = "GetFederationToken"
@@ -1033,29 +1033,29 @@ const opGetFederationToken = "GetFederationToken"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the GetFederationTokenRequest method.
-//	req, resp := client.GetFederationTokenRequest(params)
+//    // Example sending a request using the GetFederationTokenRequest method.
+//    req, resp := client.GetFederationTokenRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetFederationToken
 func (c *STS) GetFederationTokenRequest(input *GetFederationTokenInput) (req *request.Request, output *GetFederationTokenOutput) {
-	op := &request.Operation{
-		Name:       opGetFederationToken,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opGetFederationToken,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &GetFederationTokenInput{}
-	}
+    if input == nil {
+        input = &GetFederationTokenInput{}
+    }
 
-	output = &GetFederationTokenOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &GetFederationTokenOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // GetFederationToken API operation for AWS Security Token Service.
@@ -1198,8 +1198,8 @@ func (c *STS) GetFederationTokenRequest(input *GetFederationTokenInput) (req *re
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetFederationToken
 func (c *STS) GetFederationToken(input *GetFederationTokenInput) (*GetFederationTokenOutput, error) {
-	req, out := c.GetFederationTokenRequest(input)
-	return out, req.Send()
+    req, out := c.GetFederationTokenRequest(input)
+    return out, req.Send()
 }
 
 // GetFederationTokenWithContext is the same as GetFederationToken with the addition of
@@ -1212,10 +1212,10 @@ func (c *STS) GetFederationToken(input *GetFederationTokenInput) (*GetFederation
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) GetFederationTokenWithContext(ctx aws.Context, input *GetFederationTokenInput, opts ...request.Option) (*GetFederationTokenOutput, error) {
-	req, out := c.GetFederationTokenRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.GetFederationTokenRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 const opGetSessionToken = "GetSessionToken"
@@ -1234,29 +1234,29 @@ const opGetSessionToken = "GetSessionToken"
 // This method is useful when you want to inject custom logic or configuration
 // into the SDK's request lifecycle. Such as custom headers, or retry logic.
 //
-//	// Example sending a request using the GetSessionTokenRequest method.
-//	req, resp := client.GetSessionTokenRequest(params)
+//    // Example sending a request using the GetSessionTokenRequest method.
+//    req, resp := client.GetSessionTokenRequest(params)
 //
-//	err := req.Send()
-//	if err == nil { // resp is now filled
-//	    fmt.Println(resp)
-//	}
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetSessionToken
 func (c *STS) GetSessionTokenRequest(input *GetSessionTokenInput) (req *request.Request, output *GetSessionTokenOutput) {
-	op := &request.Operation{
-		Name:       opGetSessionToken,
-		HTTPMethod: "POST",
-		HTTPPath:   "/",
-	}
+    op := &request.Operation{
+        Name:       opGetSessionToken,
+        HTTPMethod: "POST",
+        HTTPPath:   "/",
+    }
 
-	if input == nil {
-		input = &GetSessionTokenInput{}
-	}
+    if input == nil {
+        input = &GetSessionTokenInput{}
+    }
 
-	output = &GetSessionTokenOutput{}
-	req = c.newRequest(op, input, output)
-	return
+    output = &GetSessionTokenOutput{}
+    req = c.newRequest(op, input, output)
+    return
 }
 
 // GetSessionToken API operation for AWS Security Token Service.
@@ -1337,8 +1337,8 @@ func (c *STS) GetSessionTokenRequest(input *GetSessionTokenInput) (req *request.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sts-2011-06-15/GetSessionToken
 func (c *STS) GetSessionToken(input *GetSessionTokenInput) (*GetSessionTokenOutput, error) {
-	req, out := c.GetSessionTokenRequest(input)
-	return out, req.Send()
+    req, out := c.GetSessionTokenRequest(input)
+    return out, req.Send()
 }
 
 // GetSessionTokenWithContext is the same as GetSessionToken with the addition of
@@ -1351,225 +1351,228 @@ func (c *STS) GetSessionToken(input *GetSessionTokenInput) (*GetSessionTokenOutp
 // sub-contexts for http.Requests. See https://golang.org/pkg/context/
 // for more information on using Contexts.
 func (c *STS) GetSessionTokenWithContext(ctx aws.Context, input *GetSessionTokenInput, opts ...request.Option) (*GetSessionTokenOutput, error) {
-	req, out := c.GetSessionTokenRequest(input)
-	req.SetContext(ctx)
-	req.ApplyOptions(opts...)
-	return out, req.Send()
+    req, out := c.GetSessionTokenRequest(input)
+    req.SetContext(ctx)
+    req.ApplyOptions(opts...)
+    return out, req.Send()
 }
 
 type AssumeRoleInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The duration, in seconds, of the role session. The value specified can range
-	// from 900 seconds (15 minutes) up to the maximum session duration set for
-	// the role. The maximum session duration setting can have a value from 1 hour
-	// to 12 hours. If you specify a value higher than this setting or the administrator
-	// setting (whichever is lower), the operation fails. For example, if you specify
-	// a session duration of 12 hours, but your administrator set the maximum session
-	// duration to 6 hours, your operation fails.
-	//
-	// Role chaining limits your Amazon Web Services CLI or Amazon Web Services
-	// API role session to a maximum of one hour. When you use the AssumeRole API
-	// operation to assume a role, you can specify the duration of your role session
-	// with the DurationSeconds parameter. You can specify a parameter value of
-	// up to 43200 seconds (12 hours), depending on the maximum session duration
-	// setting for your role. However, if you assume a role using role chaining
-	// and provide a DurationSeconds parameter value greater than one hour, the
-	// operation fails. To learn how to view the maximum value for your role, see
-	// View the Maximum Session Duration Setting for a Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
-	// in the IAM User Guide.
-	//
-	// By default, the value is set to 3600 seconds.
-	//
-	// The DurationSeconds parameter is separate from the duration of a console
-	// session that you might request using the returned credentials. The request
-	// to the federation endpoint for a console sign-in token takes a SessionDuration
-	// parameter that specifies the maximum length of the console session. For more
-	// information, see Creating a URL that Enables Federated Users to Access the
-	// Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
-	// in the IAM User Guide.
-	DurationSeconds *int64 `min:"900" type:"integer"`
+    // The duration, in seconds, of the role session. The value specified can range
+    // from 900 seconds (15 minutes) up to the maximum session duration set for
+    // the role. The maximum session duration setting can have a value from 1 hour
+    // to 12 hours. If you specify a value higher than this setting or the administrator
+    // setting (whichever is lower), the operation fails. For example, if you specify
+    // a session duration of 12 hours, but your administrator set the maximum session
+    // duration to 6 hours, your operation fails.
+    //
+    // Role chaining limits your Amazon Web Services CLI or Amazon Web Services
+    // API role session to a maximum of one hour. When you use the AssumeRole API
+    // operation to assume a role, you can specify the duration of your role session
+    // with the DurationSeconds parameter. You can specify a parameter value of
+    // up to 43200 seconds (12 hours), depending on the maximum session duration
+    // setting for your role. However, if you assume a role using role chaining
+    // and provide a DurationSeconds parameter value greater than one hour, the
+    // operation fails. To learn how to view the maximum value for your role, see
+    // View the Maximum Session Duration Setting for a Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
+    // in the IAM User Guide.
+    //
+    // By default, the value is set to 3600 seconds.
+    //
+    // The DurationSeconds parameter is separate from the duration of a console
+    // session that you might request using the returned credentials. The request
+    // to the federation endpoint for a console sign-in token takes a SessionDuration
+    // parameter that specifies the maximum length of the console session. For more
+    // information, see Creating a URL that Enables Federated Users to Access the
+    // Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
+    // in the IAM User Guide.
+    DurationSeconds *int64 `min:"900" type:"integer"`
 
-	// A unique identifier that might be required when you assume a role in another
-	// account. If the administrator of the account to which the role belongs provided
-	// you with an external ID, then provide that value in the ExternalId parameter.
-	// This value can be any string, such as a passphrase or account number. A cross-account
-	// role is usually set up to trust everyone in an account. Therefore, the administrator
-	// of the trusting account might send an external ID to the administrator of
-	// the trusted account. That way, only someone with the ID can assume the role,
-	// rather than everyone in the account. For more information about the external
-	// ID, see How to Use an External ID When Granting Access to Your Amazon Web
-	// Services Resources to a Third Party (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html)
-	// in the IAM User Guide.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@:/-
-	ExternalId *string `min:"2" type:"string"`
+    // A unique identifier that might be required when you assume a role in another
+    // account. If the administrator of the account to which the role belongs provided
+    // you with an external ID, then provide that value in the ExternalId parameter.
+    // This value can be any string, such as a passphrase or account number. A cross-account
+    // role is usually set up to trust everyone in an account. Therefore, the administrator
+    // of the trusting account might send an external ID to the administrator of
+    // the trusted account. That way, only someone with the ID can assume the role,
+    // rather than everyone in the account. For more information about the external
+    // ID, see How to Use an External ID When Granting Access to Your Amazon Web
+    // Services Resources to a Third Party (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html)
+    // in the IAM User Guide.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@:/-
+    ExternalId *string `min:"2" type:"string"`
 
-	// An IAM policy in JSON format that you want to use as an inline session policy.
-	//
-	// This parameter is optional. Passing policies to this operation returns new
-	// temporary credentials. The resulting session's permissions are the intersection
-	// of the role's identity-based policy and the session policies. You can use
-	// the role's temporary credentials in subsequent Amazon Web Services API calls
-	// to access resources in the account that owns the role. You cannot use session
-	// policies to grant more permissions than those allowed by the identity-based
-	// policy of the role that is being assumed. For more information, see Session
-	// Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	//
-	// The plaintext that you use for both inline and managed session policies can't
-	// exceed 2,048 characters. The JSON policy characters can be any ASCII character
-	// from the space character to the end of the valid character list (\u0020 through
-	// \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
-	// return (\u000D) characters.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	Policy *string `min:"1" type:"string"`
+    // An IAM policy in JSON format that you want to use as an inline session policy.
+    //
+    // This parameter is optional. Passing policies to this operation returns new
+    // temporary credentials. The resulting session's permissions are the intersection
+    // of the role's identity-based policy and the session policies. You can use
+    // the role's temporary credentials in subsequent Amazon Web Services API calls
+    // to access resources in the account that owns the role. You cannot use session
+    // policies to grant more permissions than those allowed by the identity-based
+    // policy of the role that is being assumed. For more information, see Session
+    // Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    //
+    // The plaintext that you use for both inline and managed session policies can't
+    // exceed 2,048 characters. The JSON policy characters can be any ASCII character
+    // from the space character to the end of the valid character list (\u0020 through
+    // \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
+    // return (\u000D) characters.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    Policy *string `min:"1" type:"string"`
 
-	// The Amazon Resource Names (ARNs) of the IAM managed policies that you want
-	// to use as managed session policies. The policies must exist in the same account
-	// as the role.
-	//
-	// This parameter is optional. You can provide up to 10 managed policy ARNs.
-	// However, the plaintext that you use for both inline and managed session policies
-	// can't exceed 2,048 characters. For more information about ARNs, see Amazon
-	// Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
-	// in the Amazon Web Services General Reference.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	//
-	// Passing policies to this operation returns new temporary credentials. The
-	// resulting session's permissions are the intersection of the role's identity-based
-	// policy and the session policies. You can use the role's temporary credentials
-	// in subsequent Amazon Web Services API calls to access resources in the account
-	// that owns the role. You cannot use session policies to grant more permissions
-	// than those allowed by the identity-based policy of the role that is being
-	// assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	PolicyArns []*PolicyDescriptorType `type:"list"`
+    // The Amazon Resource Names (ARNs) of the IAM managed policies that you want
+    // to use as managed session policies. The policies must exist in the same account
+    // as the role.
+    //
+    // This parameter is optional. You can provide up to 10 managed policy ARNs.
+    // However, the plaintext that you use for both inline and managed session policies
+    // can't exceed 2,048 characters. For more information about ARNs, see Amazon
+    // Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
+    // in the Amazon Web Services General Reference.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    //
+    // Passing policies to this operation returns new temporary credentials. The
+    // resulting session's permissions are the intersection of the role's identity-based
+    // policy and the session policies. You can use the role's temporary credentials
+    // in subsequent Amazon Web Services API calls to access resources in the account
+    // that owns the role. You cannot use session policies to grant more permissions
+    // than those allowed by the identity-based policy of the role that is being
+    // assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    PolicyArns []*PolicyDescriptorType `type:"list"`
 
-	// The Amazon Resource Name (ARN) of the role to assume.
-	//
-	// RoleArn is a required field
-	RoleArn *string `min:"20" type:"string" required:"true"`
+    // Reserved for future use.
+    ProvidedContexts []*ProvidedContext `type:"list"`
 
-	// An identifier for the assumed role session.
-	//
-	// Use the role session name to uniquely identify a session when the same role
-	// is assumed by different principals or for different reasons. In cross-account
-	// scenarios, the role session name is visible to, and can be logged by the
-	// account that owns the role. The role session name is also used in the ARN
-	// of the assumed role principal. This means that subsequent cross-account API
-	// requests that use the temporary security credentials will expose the role
-	// session name to the external account in their CloudTrail logs.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	//
-	// RoleSessionName is a required field
-	RoleSessionName *string `min:"2" type:"string" required:"true"`
+    // The Amazon Resource Name (ARN) of the role to assume.
+    //
+    // RoleArn is a required field
+    RoleArn *string `min:"20" type:"string" required:"true"`
 
-	// The identification number of the MFA device that is associated with the user
-	// who is making the AssumeRole call. Specify this value if the trust policy
-	// of the role being assumed includes a condition that requires MFA authentication.
-	// The value is either the serial number for a hardware device (such as GAHT12345678)
-	// or an Amazon Resource Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	SerialNumber *string `min:"9" type:"string"`
+    // An identifier for the assumed role session.
+    //
+    // Use the role session name to uniquely identify a session when the same role
+    // is assumed by different principals or for different reasons. In cross-account
+    // scenarios, the role session name is visible to, and can be logged by the
+    // account that owns the role. The role session name is also used in the ARN
+    // of the assumed role principal. This means that subsequent cross-account API
+    // requests that use the temporary security credentials will expose the role
+    // session name to the external account in their CloudTrail logs.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    //
+    // RoleSessionName is a required field
+    RoleSessionName *string `min:"2" type:"string" required:"true"`
 
-	// The source identity specified by the principal that is calling the AssumeRole
-	// operation.
-	//
-	// You can require users to specify a source identity when they assume a role.
-	// You do this by using the sts:SourceIdentity condition key in a role trust
-	// policy. You can use source identity information in CloudTrail logs to determine
-	// who took actions with a role. You can use the aws:SourceIdentity condition
-	// key to further control access to Amazon Web Services resources based on the
-	// value of source identity. For more information about using source identity,
-	// see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
-	// in the IAM User Guide.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-. You cannot
-	// use a value that begins with the text aws:. This prefix is reserved for Amazon
-	// Web Services internal use.
-	SourceIdentity *string `min:"2" type:"string"`
+    // The identification number of the MFA device that is associated with the user
+    // who is making the AssumeRole call. Specify this value if the trust policy
+    // of the role being assumed includes a condition that requires MFA authentication.
+    // The value is either the serial number for a hardware device (such as GAHT12345678)
+    // or an Amazon Resource Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    SerialNumber *string `min:"9" type:"string"`
 
-	// A list of session tags that you want to pass. Each session tag consists of
-	// a key name and an associated value. For more information about session tags,
-	// see Tagging Amazon Web Services STS Sessions (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html)
-	// in the IAM User Guide.
-	//
-	// This parameter is optional. You can pass up to 50 session tags. The plaintext
-	// session tag keys can’t exceed 128 characters, and the values can’t exceed
-	// 256 characters. For these and additional limits, see IAM and STS Character
-	// Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
-	// in the IAM User Guide.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	//
-	// You can pass a session tag with the same key as a tag that is already attached
-	// to the role. When you do, session tags override a role tag with the same
-	// key.
-	//
-	// Tag key–value pairs are not case sensitive, but case is preserved. This
-	// means that you cannot have separate Department and department tag keys. Assume
-	// that the role has the Department=Marketing tag and you pass the department=engineering
-	// session tag. Department and department are not saved as separate tags, and
-	// the session tag passed in the request takes precedence over the role tag.
-	//
-	// Additionally, if you used temporary credentials to perform this operation,
-	// the new session inherits any transitive session tags from the calling session.
-	// If you pass a session tag with the same key as an inherited tag, the operation
-	// fails. To view the inherited tags for a session, see the CloudTrail logs.
-	// For more information, see Viewing Session Tags in CloudTrail (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_ctlogs)
-	// in the IAM User Guide.
-	Tags []*Tag `type:"list"`
+    // The source identity specified by the principal that is calling the AssumeRole
+    // operation.
+    //
+    // You can require users to specify a source identity when they assume a role.
+    // You do this by using the sts:SourceIdentity condition key in a role trust
+    // policy. You can use source identity information in CloudTrail logs to determine
+    // who took actions with a role. You can use the aws:SourceIdentity condition
+    // key to further control access to Amazon Web Services resources based on the
+    // value of source identity. For more information about using source identity,
+    // see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+    // in the IAM User Guide.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-. You cannot
+    // use a value that begins with the text aws:. This prefix is reserved for Amazon
+    // Web Services internal use.
+    SourceIdentity *string `min:"2" type:"string"`
 
-	// The value provided by the MFA device, if the trust policy of the role being
-	// assumed requires MFA. (In other words, if the policy includes a condition
-	// that tests for MFA). If the role being assumed requires MFA and if the TokenCode
-	// value is missing or expired, the AssumeRole call returns an "access denied"
-	// error.
-	//
-	// The format for this parameter, as described by its regex pattern, is a sequence
-	// of six numeric digits.
-	TokenCode *string `min:"6" type:"string"`
+    // A list of session tags that you want to pass. Each session tag consists of
+    // a key name and an associated value. For more information about session tags,
+    // see Tagging Amazon Web Services STS Sessions (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html)
+    // in the IAM User Guide.
+    //
+    // This parameter is optional. You can pass up to 50 session tags. The plaintext
+    // session tag keys can’t exceed 128 characters, and the values can’t exceed
+    // 256 characters. For these and additional limits, see IAM and STS Character
+    // Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
+    // in the IAM User Guide.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    //
+    // You can pass a session tag with the same key as a tag that is already attached
+    // to the role. When you do, session tags override a role tag with the same
+    // key.
+    //
+    // Tag key–value pairs are not case sensitive, but case is preserved. This
+    // means that you cannot have separate Department and department tag keys. Assume
+    // that the role has the Department=Marketing tag and you pass the department=engineering
+    // session tag. Department and department are not saved as separate tags, and
+    // the session tag passed in the request takes precedence over the role tag.
+    //
+    // Additionally, if you used temporary credentials to perform this operation,
+    // the new session inherits any transitive session tags from the calling session.
+    // If you pass a session tag with the same key as an inherited tag, the operation
+    // fails. To view the inherited tags for a session, see the CloudTrail logs.
+    // For more information, see Viewing Session Tags in CloudTrail (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_ctlogs)
+    // in the IAM User Guide.
+    Tags []*Tag `type:"list"`
 
-	// A list of keys for session tags that you want to set as transitive. If you
-	// set a tag key as transitive, the corresponding key and value passes to subsequent
-	// sessions in a role chain. For more information, see Chaining Roles with Session
-	// Tags (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_role-chaining)
-	// in the IAM User Guide.
-	//
-	// This parameter is optional. When you set session tags as transitive, the
-	// session policy and session tags packed binary limit is not affected.
-	//
-	// If you choose not to specify a transitive tag key, then no tags are passed
-	// from this session to any subsequent sessions.
-	TransitiveTagKeys []*string `type:"list"`
+    // The value provided by the MFA device, if the trust policy of the role being
+    // assumed requires MFA. (In other words, if the policy includes a condition
+    // that tests for MFA). If the role being assumed requires MFA and if the TokenCode
+    // value is missing or expired, the AssumeRole call returns an "access denied"
+    // error.
+    //
+    // The format for this parameter, as described by its regex pattern, is a sequence
+    // of six numeric digits.
+    TokenCode *string `min:"6" type:"string"`
+
+    // A list of keys for session tags that you want to set as transitive. If you
+    // set a tag key as transitive, the corresponding key and value passes to subsequent
+    // sessions in a role chain. For more information, see Chaining Roles with Session
+    // Tags (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_role-chaining)
+    // in the IAM User Guide.
+    //
+    // This parameter is optional. When you set session tags as transitive, the
+    // session policy and session tags packed binary limit is not affected.
+    //
+    // If you choose not to specify a transitive tag key, then no tags are passed
+    // from this session to any subsequent sessions.
+    TransitiveTagKeys []*string `type:"list"`
 }
 
 // String returns the string representation.
@@ -1578,7 +1581,7 @@ type AssumeRoleInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -1587,177 +1590,193 @@ func (s AssumeRoleInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *AssumeRoleInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "AssumeRoleInput"}
-	if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
-		invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
-	}
-	if s.ExternalId != nil && len(*s.ExternalId) < 2 {
-		invalidParams.Add(request.NewErrParamMinLen("ExternalId", 2))
-	}
-	if s.Policy != nil && len(*s.Policy) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
-	}
-	if s.RoleArn == nil {
-		invalidParams.Add(request.NewErrParamRequired("RoleArn"))
-	}
-	if s.RoleArn != nil && len(*s.RoleArn) < 20 {
-		invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
-	}
-	if s.RoleSessionName == nil {
-		invalidParams.Add(request.NewErrParamRequired("RoleSessionName"))
-	}
-	if s.RoleSessionName != nil && len(*s.RoleSessionName) < 2 {
-		invalidParams.Add(request.NewErrParamMinLen("RoleSessionName", 2))
-	}
-	if s.SerialNumber != nil && len(*s.SerialNumber) < 9 {
-		invalidParams.Add(request.NewErrParamMinLen("SerialNumber", 9))
-	}
-	if s.SourceIdentity != nil && len(*s.SourceIdentity) < 2 {
-		invalidParams.Add(request.NewErrParamMinLen("SourceIdentity", 2))
-	}
-	if s.TokenCode != nil && len(*s.TokenCode) < 6 {
-		invalidParams.Add(request.NewErrParamMinLen("TokenCode", 6))
-	}
-	if s.PolicyArns != nil {
-		for i, v := range s.PolicyArns {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
-	if s.Tags != nil {
-		for i, v := range s.Tags {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
+    invalidParams := request.ErrInvalidParams{Context: "AssumeRoleInput"}
+    if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
+        invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
+    }
+    if s.ExternalId != nil && len(*s.ExternalId) < 2 {
+        invalidParams.Add(request.NewErrParamMinLen("ExternalId", 2))
+    }
+    if s.Policy != nil && len(*s.Policy) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
+    }
+    if s.RoleArn == nil {
+        invalidParams.Add(request.NewErrParamRequired("RoleArn"))
+    }
+    if s.RoleArn != nil && len(*s.RoleArn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
+    }
+    if s.RoleSessionName == nil {
+        invalidParams.Add(request.NewErrParamRequired("RoleSessionName"))
+    }
+    if s.RoleSessionName != nil && len(*s.RoleSessionName) < 2 {
+        invalidParams.Add(request.NewErrParamMinLen("RoleSessionName", 2))
+    }
+    if s.SerialNumber != nil && len(*s.SerialNumber) < 9 {
+        invalidParams.Add(request.NewErrParamMinLen("SerialNumber", 9))
+    }
+    if s.SourceIdentity != nil && len(*s.SourceIdentity) < 2 {
+        invalidParams.Add(request.NewErrParamMinLen("SourceIdentity", 2))
+    }
+    if s.TokenCode != nil && len(*s.TokenCode) < 6 {
+        invalidParams.Add(request.NewErrParamMinLen("TokenCode", 6))
+    }
+    if s.PolicyArns != nil {
+        for i, v := range s.PolicyArns {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
+    if s.ProvidedContexts != nil {
+        for i, v := range s.ProvidedContexts {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "ProvidedContexts", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
+    if s.Tags != nil {
+        for i, v := range s.Tags {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetDurationSeconds sets the DurationSeconds field's value.
 func (s *AssumeRoleInput) SetDurationSeconds(v int64) *AssumeRoleInput {
-	s.DurationSeconds = &v
-	return s
+    s.DurationSeconds = &v
+    return s
 }
 
 // SetExternalId sets the ExternalId field's value.
 func (s *AssumeRoleInput) SetExternalId(v string) *AssumeRoleInput {
-	s.ExternalId = &v
-	return s
+    s.ExternalId = &v
+    return s
 }
 
 // SetPolicy sets the Policy field's value.
 func (s *AssumeRoleInput) SetPolicy(v string) *AssumeRoleInput {
-	s.Policy = &v
-	return s
+    s.Policy = &v
+    return s
 }
 
 // SetPolicyArns sets the PolicyArns field's value.
 func (s *AssumeRoleInput) SetPolicyArns(v []*PolicyDescriptorType) *AssumeRoleInput {
-	s.PolicyArns = v
-	return s
+    s.PolicyArns = v
+    return s
+}
+
+// SetProvidedContexts sets the ProvidedContexts field's value.
+func (s *AssumeRoleInput) SetProvidedContexts(v []*ProvidedContext) *AssumeRoleInput {
+    s.ProvidedContexts = v
+    return s
 }
 
 // SetRoleArn sets the RoleArn field's value.
 func (s *AssumeRoleInput) SetRoleArn(v string) *AssumeRoleInput {
-	s.RoleArn = &v
-	return s
+    s.RoleArn = &v
+    return s
 }
 
 // SetRoleSessionName sets the RoleSessionName field's value.
 func (s *AssumeRoleInput) SetRoleSessionName(v string) *AssumeRoleInput {
-	s.RoleSessionName = &v
-	return s
+    s.RoleSessionName = &v
+    return s
 }
 
 // SetSerialNumber sets the SerialNumber field's value.
 func (s *AssumeRoleInput) SetSerialNumber(v string) *AssumeRoleInput {
-	s.SerialNumber = &v
-	return s
+    s.SerialNumber = &v
+    return s
 }
 
 // SetSourceIdentity sets the SourceIdentity field's value.
 func (s *AssumeRoleInput) SetSourceIdentity(v string) *AssumeRoleInput {
-	s.SourceIdentity = &v
-	return s
+    s.SourceIdentity = &v
+    return s
 }
 
 // SetTags sets the Tags field's value.
 func (s *AssumeRoleInput) SetTags(v []*Tag) *AssumeRoleInput {
-	s.Tags = v
-	return s
+    s.Tags = v
+    return s
 }
 
 // SetTokenCode sets the TokenCode field's value.
 func (s *AssumeRoleInput) SetTokenCode(v string) *AssumeRoleInput {
-	s.TokenCode = &v
-	return s
+    s.TokenCode = &v
+    return s
 }
 
 // SetTransitiveTagKeys sets the TransitiveTagKeys field's value.
 func (s *AssumeRoleInput) SetTransitiveTagKeys(v []*string) *AssumeRoleInput {
-	s.TransitiveTagKeys = v
-	return s
+    s.TransitiveTagKeys = v
+    return s
 }
 
 // Contains the response to a successful AssumeRole request, including temporary
 // Amazon Web Services credentials that can be used to make Amazon Web Services
 // requests.
 type AssumeRoleOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) and the assumed role ID, which are identifiers
-	// that you can use to refer to the resulting temporary security credentials.
-	// For example, you can reference these credentials as a principal in a resource-based
-	// policy by using the ARN or assumed role ID. The ARN and ID include the RoleSessionName
-	// that you specified when you called AssumeRole.
-	AssumedRoleUser *AssumedRoleUser `type:"structure"`
+    // The Amazon Resource Name (ARN) and the assumed role ID, which are identifiers
+    // that you can use to refer to the resulting temporary security credentials.
+    // For example, you can reference these credentials as a principal in a resource-based
+    // policy by using the ARN or assumed role ID. The ARN and ID include the RoleSessionName
+    // that you specified when you called AssumeRole.
+    AssumedRoleUser *AssumedRoleUser `type:"structure"`
 
-	// The temporary security credentials, which include an access key ID, a secret
-	// access key, and a security (or session) token.
-	//
-	// The size of the security token that STS API operations return is not fixed.
-	// We strongly recommend that you make no assumptions about the maximum size.
-	Credentials *Credentials `type:"structure"`
+    // The temporary security credentials, which include an access key ID, a secret
+    // access key, and a security (or session) token.
+    //
+    // The size of the security token that STS API operations return is not fixed.
+    // We strongly recommend that you make no assumptions about the maximum size.
+    Credentials *Credentials `type:"structure"`
 
-	// A percentage value that indicates the packed size of the session policies
-	// and session tags combined passed in the request. The request fails if the
-	// packed size is greater than 100 percent, which means the policies and tags
-	// exceeded the allowed space.
-	PackedPolicySize *int64 `type:"integer"`
+    // A percentage value that indicates the packed size of the session policies
+    // and session tags combined passed in the request. The request fails if the
+    // packed size is greater than 100 percent, which means the policies and tags
+    // exceeded the allowed space.
+    PackedPolicySize *int64 `type:"integer"`
 
-	// The source identity specified by the principal that is calling the AssumeRole
-	// operation.
-	//
-	// You can require users to specify a source identity when they assume a role.
-	// You do this by using the sts:SourceIdentity condition key in a role trust
-	// policy. You can use source identity information in CloudTrail logs to determine
-	// who took actions with a role. You can use the aws:SourceIdentity condition
-	// key to further control access to Amazon Web Services resources based on the
-	// value of source identity. For more information about using source identity,
-	// see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
-	// in the IAM User Guide.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	SourceIdentity *string `min:"2" type:"string"`
+    // The source identity specified by the principal that is calling the AssumeRole
+    // operation.
+    //
+    // You can require users to specify a source identity when they assume a role.
+    // You do this by using the sts:SourceIdentity condition key in a role trust
+    // policy. You can use source identity information in CloudTrail logs to determine
+    // who took actions with a role. You can use the aws:SourceIdentity condition
+    // key to further control access to Amazon Web Services resources based on the
+    // value of source identity. For more information about using source identity,
+    // see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+    // in the IAM User Guide.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    SourceIdentity *string `min:"2" type:"string"`
 }
 
 // String returns the string representation.
@@ -1766,7 +1785,7 @@ type AssumeRoleOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -1775,131 +1794,135 @@ func (s AssumeRoleOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAssumedRoleUser sets the AssumedRoleUser field's value.
 func (s *AssumeRoleOutput) SetAssumedRoleUser(v *AssumedRoleUser) *AssumeRoleOutput {
-	s.AssumedRoleUser = v
-	return s
+    s.AssumedRoleUser = v
+    return s
 }
 
 // SetCredentials sets the Credentials field's value.
 func (s *AssumeRoleOutput) SetCredentials(v *Credentials) *AssumeRoleOutput {
-	s.Credentials = v
-	return s
+    s.Credentials = v
+    return s
 }
 
 // SetPackedPolicySize sets the PackedPolicySize field's value.
 func (s *AssumeRoleOutput) SetPackedPolicySize(v int64) *AssumeRoleOutput {
-	s.PackedPolicySize = &v
-	return s
+    s.PackedPolicySize = &v
+    return s
 }
 
 // SetSourceIdentity sets the SourceIdentity field's value.
 func (s *AssumeRoleOutput) SetSourceIdentity(v string) *AssumeRoleOutput {
-	s.SourceIdentity = &v
-	return s
+    s.SourceIdentity = &v
+    return s
 }
 
 type AssumeRoleWithSAMLInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The duration, in seconds, of the role session. Your role session lasts for
-	// the duration that you specify for the DurationSeconds parameter, or until
-	// the time specified in the SAML authentication response's SessionNotOnOrAfter
-	// value, whichever is shorter. You can provide a DurationSeconds value from
-	// 900 seconds (15 minutes) up to the maximum session duration setting for the
-	// role. This setting can have a value from 1 hour to 12 hours. If you specify
-	// a value higher than this setting, the operation fails. For example, if you
-	// specify a session duration of 12 hours, but your administrator set the maximum
-	// session duration to 6 hours, your operation fails. To learn how to view the
-	// maximum value for your role, see View the Maximum Session Duration Setting
-	// for a Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
-	// in the IAM User Guide.
-	//
-	// By default, the value is set to 3600 seconds.
-	//
-	// The DurationSeconds parameter is separate from the duration of a console
-	// session that you might request using the returned credentials. The request
-	// to the federation endpoint for a console sign-in token takes a SessionDuration
-	// parameter that specifies the maximum length of the console session. For more
-	// information, see Creating a URL that Enables Federated Users to Access the
-	// Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
-	// in the IAM User Guide.
-	DurationSeconds *int64 `min:"900" type:"integer"`
+    // The duration, in seconds, of the role session. Your role session lasts for
+    // the duration that you specify for the DurationSeconds parameter, or until
+    // the time specified in the SAML authentication response's SessionNotOnOrAfter
+    // value, whichever is shorter. You can provide a DurationSeconds value from
+    // 900 seconds (15 minutes) up to the maximum session duration setting for the
+    // role. This setting can have a value from 1 hour to 12 hours. If you specify
+    // a value higher than this setting, the operation fails. For example, if you
+    // specify a session duration of 12 hours, but your administrator set the maximum
+    // session duration to 6 hours, your operation fails. To learn how to view the
+    // maximum value for your role, see View the Maximum Session Duration Setting
+    // for a Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
+    // in the IAM User Guide.
+    //
+    // By default, the value is set to 3600 seconds.
+    //
+    // The DurationSeconds parameter is separate from the duration of a console
+    // session that you might request using the returned credentials. The request
+    // to the federation endpoint for a console sign-in token takes a SessionDuration
+    // parameter that specifies the maximum length of the console session. For more
+    // information, see Creating a URL that Enables Federated Users to Access the
+    // Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
+    // in the IAM User Guide.
+    DurationSeconds *int64 `min:"900" type:"integer"`
 
-	// An IAM policy in JSON format that you want to use as an inline session policy.
-	//
-	// This parameter is optional. Passing policies to this operation returns new
-	// temporary credentials. The resulting session's permissions are the intersection
-	// of the role's identity-based policy and the session policies. You can use
-	// the role's temporary credentials in subsequent Amazon Web Services API calls
-	// to access resources in the account that owns the role. You cannot use session
-	// policies to grant more permissions than those allowed by the identity-based
-	// policy of the role that is being assumed. For more information, see Session
-	// Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	//
-	// The plaintext that you use for both inline and managed session policies can't
-	// exceed 2,048 characters. The JSON policy characters can be any ASCII character
-	// from the space character to the end of the valid character list (\u0020 through
-	// \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
-	// return (\u000D) characters.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	Policy *string `min:"1" type:"string"`
+    // An IAM policy in JSON format that you want to use as an inline session policy.
+    //
+    // This parameter is optional. Passing policies to this operation returns new
+    // temporary credentials. The resulting session's permissions are the intersection
+    // of the role's identity-based policy and the session policies. You can use
+    // the role's temporary credentials in subsequent Amazon Web Services API calls
+    // to access resources in the account that owns the role. You cannot use session
+    // policies to grant more permissions than those allowed by the identity-based
+    // policy of the role that is being assumed. For more information, see Session
+    // Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    //
+    // The plaintext that you use for both inline and managed session policies can't
+    // exceed 2,048 characters. The JSON policy characters can be any ASCII character
+    // from the space character to the end of the valid character list (\u0020 through
+    // \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
+    // return (\u000D) characters.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    Policy *string `min:"1" type:"string"`
 
-	// The Amazon Resource Names (ARNs) of the IAM managed policies that you want
-	// to use as managed session policies. The policies must exist in the same account
-	// as the role.
-	//
-	// This parameter is optional. You can provide up to 10 managed policy ARNs.
-	// However, the plaintext that you use for both inline and managed session policies
-	// can't exceed 2,048 characters. For more information about ARNs, see Amazon
-	// Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
-	// in the Amazon Web Services General Reference.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	//
-	// Passing policies to this operation returns new temporary credentials. The
-	// resulting session's permissions are the intersection of the role's identity-based
-	// policy and the session policies. You can use the role's temporary credentials
-	// in subsequent Amazon Web Services API calls to access resources in the account
-	// that owns the role. You cannot use session policies to grant more permissions
-	// than those allowed by the identity-based policy of the role that is being
-	// assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	PolicyArns []*PolicyDescriptorType `type:"list"`
+    // The Amazon Resource Names (ARNs) of the IAM managed policies that you want
+    // to use as managed session policies. The policies must exist in the same account
+    // as the role.
+    //
+    // This parameter is optional. You can provide up to 10 managed policy ARNs.
+    // However, the plaintext that you use for both inline and managed session policies
+    // can't exceed 2,048 characters. For more information about ARNs, see Amazon
+    // Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
+    // in the Amazon Web Services General Reference.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    //
+    // Passing policies to this operation returns new temporary credentials. The
+    // resulting session's permissions are the intersection of the role's identity-based
+    // policy and the session policies. You can use the role's temporary credentials
+    // in subsequent Amazon Web Services API calls to access resources in the account
+    // that owns the role. You cannot use session policies to grant more permissions
+    // than those allowed by the identity-based policy of the role that is being
+    // assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    PolicyArns []*PolicyDescriptorType `type:"list"`
 
-	// The Amazon Resource Name (ARN) of the SAML provider in IAM that describes
-	// the IdP.
-	//
-	// PrincipalArn is a required field
-	PrincipalArn *string `min:"20" type:"string" required:"true"`
+    // The Amazon Resource Name (ARN) of the SAML provider in IAM that describes
+    // the IdP.
+    //
+    // PrincipalArn is a required field
+    PrincipalArn *string `min:"20" type:"string" required:"true"`
 
-	// The Amazon Resource Name (ARN) of the role that the caller is assuming.
-	//
-	// RoleArn is a required field
-	RoleArn *string `min:"20" type:"string" required:"true"`
+    // The Amazon Resource Name (ARN) of the role that the caller is assuming.
+    //
+    // RoleArn is a required field
+    RoleArn *string `min:"20" type:"string" required:"true"`
 
-	// The base64 encoded SAML authentication response provided by the IdP.
-	//
-	// For more information, see Configuring a Relying Party and Adding Claims (https://docs.aws.amazon.com/IAM/latest/UserGuide/create-role-saml-IdP-tasks.html)
-	// in the IAM User Guide.
-	//
-	// SAMLAssertion is a required field
-	SAMLAssertion *string `min:"4" type:"string" required:"true"`
+    // The base64 encoded SAML authentication response provided by the IdP.
+    //
+    // For more information, see Configuring a Relying Party and Adding Claims (https://docs.aws.amazon.com/IAM/latest/UserGuide/create-role-saml-IdP-tasks.html)
+    // in the IAM User Guide.
+    //
+    // SAMLAssertion is a sensitive parameter and its value will be
+    // replaced with "sensitive" in string returned by AssumeRoleWithSAMLInput's
+    // String and GoString methods.
+    //
+    // SAMLAssertion is a required field
+    SAMLAssertion *string `min:"4" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -1908,7 +1931,7 @@ type AssumeRoleWithSAMLInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithSAMLInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -1917,169 +1940,169 @@ func (s AssumeRoleWithSAMLInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithSAMLInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *AssumeRoleWithSAMLInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "AssumeRoleWithSAMLInput"}
-	if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
-		invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
-	}
-	if s.Policy != nil && len(*s.Policy) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
-	}
-	if s.PrincipalArn == nil {
-		invalidParams.Add(request.NewErrParamRequired("PrincipalArn"))
-	}
-	if s.PrincipalArn != nil && len(*s.PrincipalArn) < 20 {
-		invalidParams.Add(request.NewErrParamMinLen("PrincipalArn", 20))
-	}
-	if s.RoleArn == nil {
-		invalidParams.Add(request.NewErrParamRequired("RoleArn"))
-	}
-	if s.RoleArn != nil && len(*s.RoleArn) < 20 {
-		invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
-	}
-	if s.SAMLAssertion == nil {
-		invalidParams.Add(request.NewErrParamRequired("SAMLAssertion"))
-	}
-	if s.SAMLAssertion != nil && len(*s.SAMLAssertion) < 4 {
-		invalidParams.Add(request.NewErrParamMinLen("SAMLAssertion", 4))
-	}
-	if s.PolicyArns != nil {
-		for i, v := range s.PolicyArns {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
+    invalidParams := request.ErrInvalidParams{Context: "AssumeRoleWithSAMLInput"}
+    if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
+        invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
+    }
+    if s.Policy != nil && len(*s.Policy) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
+    }
+    if s.PrincipalArn == nil {
+        invalidParams.Add(request.NewErrParamRequired("PrincipalArn"))
+    }
+    if s.PrincipalArn != nil && len(*s.PrincipalArn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("PrincipalArn", 20))
+    }
+    if s.RoleArn == nil {
+        invalidParams.Add(request.NewErrParamRequired("RoleArn"))
+    }
+    if s.RoleArn != nil && len(*s.RoleArn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
+    }
+    if s.SAMLAssertion == nil {
+        invalidParams.Add(request.NewErrParamRequired("SAMLAssertion"))
+    }
+    if s.SAMLAssertion != nil && len(*s.SAMLAssertion) < 4 {
+        invalidParams.Add(request.NewErrParamMinLen("SAMLAssertion", 4))
+    }
+    if s.PolicyArns != nil {
+        for i, v := range s.PolicyArns {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetDurationSeconds sets the DurationSeconds field's value.
 func (s *AssumeRoleWithSAMLInput) SetDurationSeconds(v int64) *AssumeRoleWithSAMLInput {
-	s.DurationSeconds = &v
-	return s
+    s.DurationSeconds = &v
+    return s
 }
 
 // SetPolicy sets the Policy field's value.
 func (s *AssumeRoleWithSAMLInput) SetPolicy(v string) *AssumeRoleWithSAMLInput {
-	s.Policy = &v
-	return s
+    s.Policy = &v
+    return s
 }
 
 // SetPolicyArns sets the PolicyArns field's value.
 func (s *AssumeRoleWithSAMLInput) SetPolicyArns(v []*PolicyDescriptorType) *AssumeRoleWithSAMLInput {
-	s.PolicyArns = v
-	return s
+    s.PolicyArns = v
+    return s
 }
 
 // SetPrincipalArn sets the PrincipalArn field's value.
 func (s *AssumeRoleWithSAMLInput) SetPrincipalArn(v string) *AssumeRoleWithSAMLInput {
-	s.PrincipalArn = &v
-	return s
+    s.PrincipalArn = &v
+    return s
 }
 
 // SetRoleArn sets the RoleArn field's value.
 func (s *AssumeRoleWithSAMLInput) SetRoleArn(v string) *AssumeRoleWithSAMLInput {
-	s.RoleArn = &v
-	return s
+    s.RoleArn = &v
+    return s
 }
 
 // SetSAMLAssertion sets the SAMLAssertion field's value.
 func (s *AssumeRoleWithSAMLInput) SetSAMLAssertion(v string) *AssumeRoleWithSAMLInput {
-	s.SAMLAssertion = &v
-	return s
+    s.SAMLAssertion = &v
+    return s
 }
 
 // Contains the response to a successful AssumeRoleWithSAML request, including
 // temporary Amazon Web Services credentials that can be used to make Amazon
 // Web Services requests.
 type AssumeRoleWithSAMLOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The identifiers for the temporary security credentials that the operation
-	// returns.
-	AssumedRoleUser *AssumedRoleUser `type:"structure"`
+    // The identifiers for the temporary security credentials that the operation
+    // returns.
+    AssumedRoleUser *AssumedRoleUser `type:"structure"`
 
-	// The value of the Recipient attribute of the SubjectConfirmationData element
-	// of the SAML assertion.
-	Audience *string `type:"string"`
+    // The value of the Recipient attribute of the SubjectConfirmationData element
+    // of the SAML assertion.
+    Audience *string `type:"string"`
 
-	// The temporary security credentials, which include an access key ID, a secret
-	// access key, and a security (or session) token.
-	//
-	// The size of the security token that STS API operations return is not fixed.
-	// We strongly recommend that you make no assumptions about the maximum size.
-	Credentials *Credentials `type:"structure"`
+    // The temporary security credentials, which include an access key ID, a secret
+    // access key, and a security (or session) token.
+    //
+    // The size of the security token that STS API operations return is not fixed.
+    // We strongly recommend that you make no assumptions about the maximum size.
+    Credentials *Credentials `type:"structure"`
 
-	// The value of the Issuer element of the SAML assertion.
-	Issuer *string `type:"string"`
+    // The value of the Issuer element of the SAML assertion.
+    Issuer *string `type:"string"`
 
-	// A hash value based on the concatenation of the following:
-	//
-	//    * The Issuer response value.
-	//
-	//    * The Amazon Web Services account ID.
-	//
-	//    * The friendly name (the last part of the ARN) of the SAML provider in
-	//    IAM.
-	//
-	// The combination of NameQualifier and Subject can be used to uniquely identify
-	// a user.
-	//
-	// The following pseudocode shows how the hash value is calculated:
-	//
-	// BASE64 ( SHA1 ( "https://example.com/saml" + "123456789012" + "/MySAMLIdP"
-	// ) )
-	NameQualifier *string `type:"string"`
+    // A hash value based on the concatenation of the following:
+    //
+    //    * The Issuer response value.
+    //
+    //    * The Amazon Web Services account ID.
+    //
+    //    * The friendly name (the last part of the ARN) of the SAML provider in
+    //    IAM.
+    //
+    // The combination of NameQualifier and Subject can be used to uniquely identify
+    // a user.
+    //
+    // The following pseudocode shows how the hash value is calculated:
+    //
+    // BASE64 ( SHA1 ( "https://example.com/saml" + "123456789012" + "/MySAMLIdP"
+    // ) )
+    NameQualifier *string `type:"string"`
 
-	// A percentage value that indicates the packed size of the session policies
-	// and session tags combined passed in the request. The request fails if the
-	// packed size is greater than 100 percent, which means the policies and tags
-	// exceeded the allowed space.
-	PackedPolicySize *int64 `type:"integer"`
+    // A percentage value that indicates the packed size of the session policies
+    // and session tags combined passed in the request. The request fails if the
+    // packed size is greater than 100 percent, which means the policies and tags
+    // exceeded the allowed space.
+    PackedPolicySize *int64 `type:"integer"`
 
-	// The value in the SourceIdentity attribute in the SAML assertion.
-	//
-	// You can require users to set a source identity value when they assume a role.
-	// You do this by using the sts:SourceIdentity condition key in a role trust
-	// policy. That way, actions that are taken with the role are associated with
-	// that user. After the source identity is set, the value cannot be changed.
-	// It is present in the request for all actions that are taken by the role and
-	// persists across chained role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts#iam-term-role-chaining)
-	// sessions. You can configure your SAML identity provider to use an attribute
-	// associated with your users, like user name or email, as the source identity
-	// when calling AssumeRoleWithSAML. You do this by adding an attribute to the
-	// SAML assertion. For more information about using source identity, see Monitor
-	// and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
-	// in the IAM User Guide.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	SourceIdentity *string `min:"2" type:"string"`
+    // The value in the SourceIdentity attribute in the SAML assertion.
+    //
+    // You can require users to set a source identity value when they assume a role.
+    // You do this by using the sts:SourceIdentity condition key in a role trust
+    // policy. That way, actions that are taken with the role are associated with
+    // that user. After the source identity is set, the value cannot be changed.
+    // It is present in the request for all actions that are taken by the role and
+    // persists across chained role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts#iam-term-role-chaining)
+    // sessions. You can configure your SAML identity provider to use an attribute
+    // associated with your users, like user name or email, as the source identity
+    // when calling AssumeRoleWithSAML. You do this by adding an attribute to the
+    // SAML assertion. For more information about using source identity, see Monitor
+    // and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+    // in the IAM User Guide.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    SourceIdentity *string `min:"2" type:"string"`
 
-	// The value of the NameID element in the Subject element of the SAML assertion.
-	Subject *string `type:"string"`
+    // The value of the NameID element in the Subject element of the SAML assertion.
+    Subject *string `type:"string"`
 
-	// The format of the name ID, as defined by the Format attribute in the NameID
-	// element of the SAML assertion. Typical examples of the format are transient
-	// or persistent.
-	//
-	// If the format includes the prefix urn:oasis:names:tc:SAML:2.0:nameid-format,
-	// that prefix is removed. For example, urn:oasis:names:tc:SAML:2.0:nameid-format:transient
-	// is returned as transient. If the format includes any other prefix, the format
-	// is returned with no modifications.
-	SubjectType *string `type:"string"`
+    // The format of the name ID, as defined by the Format attribute in the NameID
+    // element of the SAML assertion. Typical examples of the format are transient
+    // or persistent.
+    //
+    // If the format includes the prefix urn:oasis:names:tc:SAML:2.0:nameid-format,
+    // that prefix is removed. For example, urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+    // is returned as transient. If the format includes any other prefix, the format
+    // is returned with no modifications.
+    SubjectType *string `type:"string"`
 }
 
 // String returns the string representation.
@@ -2088,7 +2111,7 @@ type AssumeRoleWithSAMLOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithSAMLOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2097,175 +2120,180 @@ func (s AssumeRoleWithSAMLOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithSAMLOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAssumedRoleUser sets the AssumedRoleUser field's value.
 func (s *AssumeRoleWithSAMLOutput) SetAssumedRoleUser(v *AssumedRoleUser) *AssumeRoleWithSAMLOutput {
-	s.AssumedRoleUser = v
-	return s
+    s.AssumedRoleUser = v
+    return s
 }
 
 // SetAudience sets the Audience field's value.
 func (s *AssumeRoleWithSAMLOutput) SetAudience(v string) *AssumeRoleWithSAMLOutput {
-	s.Audience = &v
-	return s
+    s.Audience = &v
+    return s
 }
 
 // SetCredentials sets the Credentials field's value.
 func (s *AssumeRoleWithSAMLOutput) SetCredentials(v *Credentials) *AssumeRoleWithSAMLOutput {
-	s.Credentials = v
-	return s
+    s.Credentials = v
+    return s
 }
 
 // SetIssuer sets the Issuer field's value.
 func (s *AssumeRoleWithSAMLOutput) SetIssuer(v string) *AssumeRoleWithSAMLOutput {
-	s.Issuer = &v
-	return s
+    s.Issuer = &v
+    return s
 }
 
 // SetNameQualifier sets the NameQualifier field's value.
 func (s *AssumeRoleWithSAMLOutput) SetNameQualifier(v string) *AssumeRoleWithSAMLOutput {
-	s.NameQualifier = &v
-	return s
+    s.NameQualifier = &v
+    return s
 }
 
 // SetPackedPolicySize sets the PackedPolicySize field's value.
 func (s *AssumeRoleWithSAMLOutput) SetPackedPolicySize(v int64) *AssumeRoleWithSAMLOutput {
-	s.PackedPolicySize = &v
-	return s
+    s.PackedPolicySize = &v
+    return s
 }
 
 // SetSourceIdentity sets the SourceIdentity field's value.
 func (s *AssumeRoleWithSAMLOutput) SetSourceIdentity(v string) *AssumeRoleWithSAMLOutput {
-	s.SourceIdentity = &v
-	return s
+    s.SourceIdentity = &v
+    return s
 }
 
 // SetSubject sets the Subject field's value.
 func (s *AssumeRoleWithSAMLOutput) SetSubject(v string) *AssumeRoleWithSAMLOutput {
-	s.Subject = &v
-	return s
+    s.Subject = &v
+    return s
 }
 
 // SetSubjectType sets the SubjectType field's value.
 func (s *AssumeRoleWithSAMLOutput) SetSubjectType(v string) *AssumeRoleWithSAMLOutput {
-	s.SubjectType = &v
-	return s
+    s.SubjectType = &v
+    return s
 }
 
 type AssumeRoleWithWebIdentityInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The duration, in seconds, of the role session. The value can range from 900
-	// seconds (15 minutes) up to the maximum session duration setting for the role.
-	// This setting can have a value from 1 hour to 12 hours. If you specify a value
-	// higher than this setting, the operation fails. For example, if you specify
-	// a session duration of 12 hours, but your administrator set the maximum session
-	// duration to 6 hours, your operation fails. To learn how to view the maximum
-	// value for your role, see View the Maximum Session Duration Setting for a
-	// Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
-	// in the IAM User Guide.
-	//
-	// By default, the value is set to 3600 seconds.
-	//
-	// The DurationSeconds parameter is separate from the duration of a console
-	// session that you might request using the returned credentials. The request
-	// to the federation endpoint for a console sign-in token takes a SessionDuration
-	// parameter that specifies the maximum length of the console session. For more
-	// information, see Creating a URL that Enables Federated Users to Access the
-	// Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
-	// in the IAM User Guide.
-	DurationSeconds *int64 `min:"900" type:"integer"`
+    // The duration, in seconds, of the role session. The value can range from 900
+    // seconds (15 minutes) up to the maximum session duration setting for the role.
+    // This setting can have a value from 1 hour to 12 hours. If you specify a value
+    // higher than this setting, the operation fails. For example, if you specify
+    // a session duration of 12 hours, but your administrator set the maximum session
+    // duration to 6 hours, your operation fails. To learn how to view the maximum
+    // value for your role, see View the Maximum Session Duration Setting for a
+    // Role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html#id_roles_use_view-role-max-session)
+    // in the IAM User Guide.
+    //
+    // By default, the value is set to 3600 seconds.
+    //
+    // The DurationSeconds parameter is separate from the duration of a console
+    // session that you might request using the returned credentials. The request
+    // to the federation endpoint for a console sign-in token takes a SessionDuration
+    // parameter that specifies the maximum length of the console session. For more
+    // information, see Creating a URL that Enables Federated Users to Access the
+    // Amazon Web Services Management Console (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
+    // in the IAM User Guide.
+    DurationSeconds *int64 `min:"900" type:"integer"`
 
-	// An IAM policy in JSON format that you want to use as an inline session policy.
-	//
-	// This parameter is optional. Passing policies to this operation returns new
-	// temporary credentials. The resulting session's permissions are the intersection
-	// of the role's identity-based policy and the session policies. You can use
-	// the role's temporary credentials in subsequent Amazon Web Services API calls
-	// to access resources in the account that owns the role. You cannot use session
-	// policies to grant more permissions than those allowed by the identity-based
-	// policy of the role that is being assumed. For more information, see Session
-	// Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	//
-	// The plaintext that you use for both inline and managed session policies can't
-	// exceed 2,048 characters. The JSON policy characters can be any ASCII character
-	// from the space character to the end of the valid character list (\u0020 through
-	// \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
-	// return (\u000D) characters.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	Policy *string `min:"1" type:"string"`
+    // An IAM policy in JSON format that you want to use as an inline session policy.
+    //
+    // This parameter is optional. Passing policies to this operation returns new
+    // temporary credentials. The resulting session's permissions are the intersection
+    // of the role's identity-based policy and the session policies. You can use
+    // the role's temporary credentials in subsequent Amazon Web Services API calls
+    // to access resources in the account that owns the role. You cannot use session
+    // policies to grant more permissions than those allowed by the identity-based
+    // policy of the role that is being assumed. For more information, see Session
+    // Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    //
+    // The plaintext that you use for both inline and managed session policies can't
+    // exceed 2,048 characters. The JSON policy characters can be any ASCII character
+    // from the space character to the end of the valid character list (\u0020 through
+    // \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
+    // return (\u000D) characters.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    Policy *string `min:"1" type:"string"`
 
-	// The Amazon Resource Names (ARNs) of the IAM managed policies that you want
-	// to use as managed session policies. The policies must exist in the same account
-	// as the role.
-	//
-	// This parameter is optional. You can provide up to 10 managed policy ARNs.
-	// However, the plaintext that you use for both inline and managed session policies
-	// can't exceed 2,048 characters. For more information about ARNs, see Amazon
-	// Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
-	// in the Amazon Web Services General Reference.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	//
-	// Passing policies to this operation returns new temporary credentials. The
-	// resulting session's permissions are the intersection of the role's identity-based
-	// policy and the session policies. You can use the role's temporary credentials
-	// in subsequent Amazon Web Services API calls to access resources in the account
-	// that owns the role. You cannot use session policies to grant more permissions
-	// than those allowed by the identity-based policy of the role that is being
-	// assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	PolicyArns []*PolicyDescriptorType `type:"list"`
+    // The Amazon Resource Names (ARNs) of the IAM managed policies that you want
+    // to use as managed session policies. The policies must exist in the same account
+    // as the role.
+    //
+    // This parameter is optional. You can provide up to 10 managed policy ARNs.
+    // However, the plaintext that you use for both inline and managed session policies
+    // can't exceed 2,048 characters. For more information about ARNs, see Amazon
+    // Resource Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
+    // in the Amazon Web Services General Reference.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    //
+    // Passing policies to this operation returns new temporary credentials. The
+    // resulting session's permissions are the intersection of the role's identity-based
+    // policy and the session policies. You can use the role's temporary credentials
+    // in subsequent Amazon Web Services API calls to access resources in the account
+    // that owns the role. You cannot use session policies to grant more permissions
+    // than those allowed by the identity-based policy of the role that is being
+    // assumed. For more information, see Session Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    PolicyArns []*PolicyDescriptorType `type:"list"`
 
-	// The fully qualified host component of the domain name of the OAuth 2.0 identity
-	// provider. Do not specify this value for an OpenID Connect identity provider.
-	//
-	// Currently www.amazon.com and graph.facebook.com are the only supported identity
-	// providers for OAuth 2.0 access tokens. Do not include URL schemes and port
-	// numbers.
-	//
-	// Do not specify this value for OpenID Connect ID tokens.
-	ProviderId *string `min:"4" type:"string"`
+    // The fully qualified host component of the domain name of the OAuth 2.0 identity
+    // provider. Do not specify this value for an OpenID Connect identity provider.
+    //
+    // Currently www.amazon.com and graph.facebook.com are the only supported identity
+    // providers for OAuth 2.0 access tokens. Do not include URL schemes and port
+    // numbers.
+    //
+    // Do not specify this value for OpenID Connect ID tokens.
+    ProviderId *string `min:"4" type:"string"`
 
-	// The Amazon Resource Name (ARN) of the role that the caller is assuming.
-	//
-	// RoleArn is a required field
-	RoleArn *string `min:"20" type:"string" required:"true"`
+    // The Amazon Resource Name (ARN) of the role that the caller is assuming.
+    //
+    // RoleArn is a required field
+    RoleArn *string `min:"20" type:"string" required:"true"`
 
-	// An identifier for the assumed role session. Typically, you pass the name
-	// or identifier that is associated with the user who is using your application.
-	// That way, the temporary security credentials that your application will use
-	// are associated with that user. This session name is included as part of the
-	// ARN and assumed role ID in the AssumedRoleUser response element.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	//
-	// RoleSessionName is a required field
-	RoleSessionName *string `min:"2" type:"string" required:"true"`
+    // An identifier for the assumed role session. Typically, you pass the name
+    // or identifier that is associated with the user who is using your application.
+    // That way, the temporary security credentials that your application will use
+    // are associated with that user. This session name is included as part of the
+    // ARN and assumed role ID in the AssumedRoleUser response element.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    //
+    // RoleSessionName is a required field
+    RoleSessionName *string `min:"2" type:"string" required:"true"`
 
-	// The OAuth 2.0 access token or OpenID Connect ID token that is provided by
-	// the identity provider. Your application must get this token by authenticating
-	// the user who is using your application with a web identity provider before
-	// the application makes an AssumeRoleWithWebIdentity call.
-	//
-	// WebIdentityToken is a required field
-	WebIdentityToken *string `min:"4" type:"string" required:"true"`
+    // The OAuth 2.0 access token or OpenID Connect ID token that is provided by
+    // the identity provider. Your application must get this token by authenticating
+    // the user who is using your application with a web identity provider before
+    // the application makes an AssumeRoleWithWebIdentity call. Only tokens with
+    // RSA algorithms (RS256) are supported.
+    //
+    // WebIdentityToken is a sensitive parameter and its value will be
+    // replaced with "sensitive" in string returned by AssumeRoleWithWebIdentityInput's
+    // String and GoString methods.
+    //
+    // WebIdentityToken is a required field
+    WebIdentityToken *string `min:"4" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -2274,7 +2302,7 @@ type AssumeRoleWithWebIdentityInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithWebIdentityInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2283,165 +2311,165 @@ func (s AssumeRoleWithWebIdentityInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithWebIdentityInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *AssumeRoleWithWebIdentityInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "AssumeRoleWithWebIdentityInput"}
-	if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
-		invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
-	}
-	if s.Policy != nil && len(*s.Policy) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
-	}
-	if s.ProviderId != nil && len(*s.ProviderId) < 4 {
-		invalidParams.Add(request.NewErrParamMinLen("ProviderId", 4))
-	}
-	if s.RoleArn == nil {
-		invalidParams.Add(request.NewErrParamRequired("RoleArn"))
-	}
-	if s.RoleArn != nil && len(*s.RoleArn) < 20 {
-		invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
-	}
-	if s.RoleSessionName == nil {
-		invalidParams.Add(request.NewErrParamRequired("RoleSessionName"))
-	}
-	if s.RoleSessionName != nil && len(*s.RoleSessionName) < 2 {
-		invalidParams.Add(request.NewErrParamMinLen("RoleSessionName", 2))
-	}
-	if s.WebIdentityToken == nil {
-		invalidParams.Add(request.NewErrParamRequired("WebIdentityToken"))
-	}
-	if s.WebIdentityToken != nil && len(*s.WebIdentityToken) < 4 {
-		invalidParams.Add(request.NewErrParamMinLen("WebIdentityToken", 4))
-	}
-	if s.PolicyArns != nil {
-		for i, v := range s.PolicyArns {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
+    invalidParams := request.ErrInvalidParams{Context: "AssumeRoleWithWebIdentityInput"}
+    if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
+        invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
+    }
+    if s.Policy != nil && len(*s.Policy) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
+    }
+    if s.ProviderId != nil && len(*s.ProviderId) < 4 {
+        invalidParams.Add(request.NewErrParamMinLen("ProviderId", 4))
+    }
+    if s.RoleArn == nil {
+        invalidParams.Add(request.NewErrParamRequired("RoleArn"))
+    }
+    if s.RoleArn != nil && len(*s.RoleArn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("RoleArn", 20))
+    }
+    if s.RoleSessionName == nil {
+        invalidParams.Add(request.NewErrParamRequired("RoleSessionName"))
+    }
+    if s.RoleSessionName != nil && len(*s.RoleSessionName) < 2 {
+        invalidParams.Add(request.NewErrParamMinLen("RoleSessionName", 2))
+    }
+    if s.WebIdentityToken == nil {
+        invalidParams.Add(request.NewErrParamRequired("WebIdentityToken"))
+    }
+    if s.WebIdentityToken != nil && len(*s.WebIdentityToken) < 4 {
+        invalidParams.Add(request.NewErrParamMinLen("WebIdentityToken", 4))
+    }
+    if s.PolicyArns != nil {
+        for i, v := range s.PolicyArns {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetDurationSeconds sets the DurationSeconds field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetDurationSeconds(v int64) *AssumeRoleWithWebIdentityInput {
-	s.DurationSeconds = &v
-	return s
+    s.DurationSeconds = &v
+    return s
 }
 
 // SetPolicy sets the Policy field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetPolicy(v string) *AssumeRoleWithWebIdentityInput {
-	s.Policy = &v
-	return s
+    s.Policy = &v
+    return s
 }
 
 // SetPolicyArns sets the PolicyArns field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetPolicyArns(v []*PolicyDescriptorType) *AssumeRoleWithWebIdentityInput {
-	s.PolicyArns = v
-	return s
+    s.PolicyArns = v
+    return s
 }
 
 // SetProviderId sets the ProviderId field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetProviderId(v string) *AssumeRoleWithWebIdentityInput {
-	s.ProviderId = &v
-	return s
+    s.ProviderId = &v
+    return s
 }
 
 // SetRoleArn sets the RoleArn field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetRoleArn(v string) *AssumeRoleWithWebIdentityInput {
-	s.RoleArn = &v
-	return s
+    s.RoleArn = &v
+    return s
 }
 
 // SetRoleSessionName sets the RoleSessionName field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetRoleSessionName(v string) *AssumeRoleWithWebIdentityInput {
-	s.RoleSessionName = &v
-	return s
+    s.RoleSessionName = &v
+    return s
 }
 
 // SetWebIdentityToken sets the WebIdentityToken field's value.
 func (s *AssumeRoleWithWebIdentityInput) SetWebIdentityToken(v string) *AssumeRoleWithWebIdentityInput {
-	s.WebIdentityToken = &v
-	return s
+    s.WebIdentityToken = &v
+    return s
 }
 
 // Contains the response to a successful AssumeRoleWithWebIdentity request,
 // including temporary Amazon Web Services credentials that can be used to make
 // Amazon Web Services requests.
 type AssumeRoleWithWebIdentityOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) and the assumed role ID, which are identifiers
-	// that you can use to refer to the resulting temporary security credentials.
-	// For example, you can reference these credentials as a principal in a resource-based
-	// policy by using the ARN or assumed role ID. The ARN and ID include the RoleSessionName
-	// that you specified when you called AssumeRole.
-	AssumedRoleUser *AssumedRoleUser `type:"structure"`
+    // The Amazon Resource Name (ARN) and the assumed role ID, which are identifiers
+    // that you can use to refer to the resulting temporary security credentials.
+    // For example, you can reference these credentials as a principal in a resource-based
+    // policy by using the ARN or assumed role ID. The ARN and ID include the RoleSessionName
+    // that you specified when you called AssumeRole.
+    AssumedRoleUser *AssumedRoleUser `type:"structure"`
 
-	// The intended audience (also known as client ID) of the web identity token.
-	// This is traditionally the client identifier issued to the application that
-	// requested the web identity token.
-	Audience *string `type:"string"`
+    // The intended audience (also known as client ID) of the web identity token.
+    // This is traditionally the client identifier issued to the application that
+    // requested the web identity token.
+    Audience *string `type:"string"`
 
-	// The temporary security credentials, which include an access key ID, a secret
-	// access key, and a security token.
-	//
-	// The size of the security token that STS API operations return is not fixed.
-	// We strongly recommend that you make no assumptions about the maximum size.
-	Credentials *Credentials `type:"structure"`
+    // The temporary security credentials, which include an access key ID, a secret
+    // access key, and a security token.
+    //
+    // The size of the security token that STS API operations return is not fixed.
+    // We strongly recommend that you make no assumptions about the maximum size.
+    Credentials *Credentials `type:"structure"`
 
-	// A percentage value that indicates the packed size of the session policies
-	// and session tags combined passed in the request. The request fails if the
-	// packed size is greater than 100 percent, which means the policies and tags
-	// exceeded the allowed space.
-	PackedPolicySize *int64 `type:"integer"`
+    // A percentage value that indicates the packed size of the session policies
+    // and session tags combined passed in the request. The request fails if the
+    // packed size is greater than 100 percent, which means the policies and tags
+    // exceeded the allowed space.
+    PackedPolicySize *int64 `type:"integer"`
 
-	// The issuing authority of the web identity token presented. For OpenID Connect
-	// ID tokens, this contains the value of the iss field. For OAuth 2.0 access
-	// tokens, this contains the value of the ProviderId parameter that was passed
-	// in the AssumeRoleWithWebIdentity request.
-	Provider *string `type:"string"`
+    // The issuing authority of the web identity token presented. For OpenID Connect
+    // ID tokens, this contains the value of the iss field. For OAuth 2.0 access
+    // tokens, this contains the value of the ProviderId parameter that was passed
+    // in the AssumeRoleWithWebIdentity request.
+    Provider *string `type:"string"`
 
-	// The value of the source identity that is returned in the JSON web token (JWT)
-	// from the identity provider.
-	//
-	// You can require users to set a source identity value when they assume a role.
-	// You do this by using the sts:SourceIdentity condition key in a role trust
-	// policy. That way, actions that are taken with the role are associated with
-	// that user. After the source identity is set, the value cannot be changed.
-	// It is present in the request for all actions that are taken by the role and
-	// persists across chained role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts#iam-term-role-chaining)
-	// sessions. You can configure your identity provider to use an attribute associated
-	// with your users, like user name or email, as the source identity when calling
-	// AssumeRoleWithWebIdentity. You do this by adding a claim to the JSON web
-	// token. To learn more about OIDC tokens and claims, see Using Tokens with
-	// User Pools (https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-with-identity-providers.html)
-	// in the Amazon Cognito Developer Guide. For more information about using source
-	// identity, see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
-	// in the IAM User Guide.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	SourceIdentity *string `min:"2" type:"string"`
+    // The value of the source identity that is returned in the JSON web token (JWT)
+    // from the identity provider.
+    //
+    // You can require users to set a source identity value when they assume a role.
+    // You do this by using the sts:SourceIdentity condition key in a role trust
+    // policy. That way, actions that are taken with the role are associated with
+    // that user. After the source identity is set, the value cannot be changed.
+    // It is present in the request for all actions that are taken by the role and
+    // persists across chained role (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts#iam-term-role-chaining)
+    // sessions. You can configure your identity provider to use an attribute associated
+    // with your users, like user name or email, as the source identity when calling
+    // AssumeRoleWithWebIdentity. You do this by adding a claim to the JSON web
+    // token. To learn more about OIDC tokens and claims, see Using Tokens with
+    // User Pools (https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-with-identity-providers.html)
+    // in the Amazon Cognito Developer Guide. For more information about using source
+    // identity, see Monitor and control actions taken with assumed roles (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html)
+    // in the IAM User Guide.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    SourceIdentity *string `min:"2" type:"string"`
 
-	// The unique user identifier that is returned by the identity provider. This
-	// identifier is associated with the WebIdentityToken that was submitted with
-	// the AssumeRoleWithWebIdentity call. The identifier is typically unique to
-	// the user and the application that acquired the WebIdentityToken (pairwise
-	// identifier). For OpenID Connect ID tokens, this field contains the value
-	// returned by the identity provider as the token's sub (Subject) claim.
-	SubjectFromWebIdentityToken *string `min:"6" type:"string"`
+    // The unique user identifier that is returned by the identity provider. This
+    // identifier is associated with the WebIdentityToken that was submitted with
+    // the AssumeRoleWithWebIdentity call. The identifier is typically unique to
+    // the user and the application that acquired the WebIdentityToken (pairwise
+    // identifier). For OpenID Connect ID tokens, this field contains the value
+    // returned by the identity provider as the token's sub (Subject) claim.
+    SubjectFromWebIdentityToken *string `min:"6" type:"string"`
 }
 
 // String returns the string representation.
@@ -2450,7 +2478,7 @@ type AssumeRoleWithWebIdentityOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithWebIdentityOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2459,70 +2487,70 @@ func (s AssumeRoleWithWebIdentityOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumeRoleWithWebIdentityOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAssumedRoleUser sets the AssumedRoleUser field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetAssumedRoleUser(v *AssumedRoleUser) *AssumeRoleWithWebIdentityOutput {
-	s.AssumedRoleUser = v
-	return s
+    s.AssumedRoleUser = v
+    return s
 }
 
 // SetAudience sets the Audience field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetAudience(v string) *AssumeRoleWithWebIdentityOutput {
-	s.Audience = &v
-	return s
+    s.Audience = &v
+    return s
 }
 
 // SetCredentials sets the Credentials field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetCredentials(v *Credentials) *AssumeRoleWithWebIdentityOutput {
-	s.Credentials = v
-	return s
+    s.Credentials = v
+    return s
 }
 
 // SetPackedPolicySize sets the PackedPolicySize field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetPackedPolicySize(v int64) *AssumeRoleWithWebIdentityOutput {
-	s.PackedPolicySize = &v
-	return s
+    s.PackedPolicySize = &v
+    return s
 }
 
 // SetProvider sets the Provider field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetProvider(v string) *AssumeRoleWithWebIdentityOutput {
-	s.Provider = &v
-	return s
+    s.Provider = &v
+    return s
 }
 
 // SetSourceIdentity sets the SourceIdentity field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetSourceIdentity(v string) *AssumeRoleWithWebIdentityOutput {
-	s.SourceIdentity = &v
-	return s
+    s.SourceIdentity = &v
+    return s
 }
 
 // SetSubjectFromWebIdentityToken sets the SubjectFromWebIdentityToken field's value.
 func (s *AssumeRoleWithWebIdentityOutput) SetSubjectFromWebIdentityToken(v string) *AssumeRoleWithWebIdentityOutput {
-	s.SubjectFromWebIdentityToken = &v
-	return s
+    s.SubjectFromWebIdentityToken = &v
+    return s
 }
 
 // The identifiers for the temporary security credentials that the operation
 // returns.
 type AssumedRoleUser struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The ARN of the temporary security credentials that are returned from the
-	// AssumeRole action. For more information about ARNs and how to use them in
-	// policies, see IAM Identifiers (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html)
-	// in the IAM User Guide.
-	//
-	// Arn is a required field
-	Arn *string `min:"20" type:"string" required:"true"`
+    // The ARN of the temporary security credentials that are returned from the
+    // AssumeRole action. For more information about ARNs and how to use them in
+    // policies, see IAM Identifiers (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html)
+    // in the IAM User Guide.
+    //
+    // Arn is a required field
+    Arn *string `min:"20" type:"string" required:"true"`
 
-	// A unique identifier that contains the role ID and the role session name of
-	// the role that is being assumed. The role ID is generated by Amazon Web Services
-	// when the role is created.
-	//
-	// AssumedRoleId is a required field
-	AssumedRoleId *string `min:"2" type:"string" required:"true"`
+    // A unique identifier that contains the role ID and the role session name of
+    // the role that is being assumed. The role ID is generated by Amazon Web Services
+    // when the role is created.
+    //
+    // AssumedRoleId is a required field
+    AssumedRoleId *string `min:"2" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -2531,7 +2559,7 @@ type AssumedRoleUser struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumedRoleUser) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2540,44 +2568,48 @@ func (s AssumedRoleUser) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s AssumedRoleUser) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetArn sets the Arn field's value.
 func (s *AssumedRoleUser) SetArn(v string) *AssumedRoleUser {
-	s.Arn = &v
-	return s
+    s.Arn = &v
+    return s
 }
 
 // SetAssumedRoleId sets the AssumedRoleId field's value.
 func (s *AssumedRoleUser) SetAssumedRoleId(v string) *AssumedRoleUser {
-	s.AssumedRoleId = &v
-	return s
+    s.AssumedRoleId = &v
+    return s
 }
 
 // Amazon Web Services credentials for API authentication.
 type Credentials struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The access key ID that identifies the temporary security credentials.
-	//
-	// AccessKeyId is a required field
-	AccessKeyId *string `min:"16" type:"string" required:"true"`
+    // The access key ID that identifies the temporary security credentials.
+    //
+    // AccessKeyId is a required field
+    AccessKeyId *string `min:"16" type:"string" required:"true"`
 
-	// The date on which the current credentials expire.
-	//
-	// Expiration is a required field
-	Expiration *time.Time `type:"timestamp" required:"true"`
+    // The date on which the current credentials expire.
+    //
+    // Expiration is a required field
+    Expiration *time.Time `type:"timestamp" required:"true"`
 
-	// The secret access key that can be used to sign requests.
-	//
-	// SecretAccessKey is a required field
-	SecretAccessKey *string `type:"string" required:"true"`
+    // The secret access key that can be used to sign requests.
+    //
+    // SecretAccessKey is a sensitive parameter and its value will be
+    // replaced with "sensitive" in string returned by Credentials's
+    // String and GoString methods.
+    //
+    // SecretAccessKey is a required field
+    SecretAccessKey *string `type:"string" required:"true" sensitive:"true"`
 
-	// The token that users must pass to the service API to use the temporary credentials.
-	//
-	// SessionToken is a required field
-	SessionToken *string `type:"string" required:"true"`
+    // The token that users must pass to the service API to use the temporary credentials.
+    //
+    // SessionToken is a required field
+    SessionToken *string `type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -2586,7 +2618,7 @@ type Credentials struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s Credentials) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2595,40 +2627,40 @@ func (s Credentials) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s Credentials) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAccessKeyId sets the AccessKeyId field's value.
 func (s *Credentials) SetAccessKeyId(v string) *Credentials {
-	s.AccessKeyId = &v
-	return s
+    s.AccessKeyId = &v
+    return s
 }
 
 // SetExpiration sets the Expiration field's value.
 func (s *Credentials) SetExpiration(v time.Time) *Credentials {
-	s.Expiration = &v
-	return s
+    s.Expiration = &v
+    return s
 }
 
 // SetSecretAccessKey sets the SecretAccessKey field's value.
 func (s *Credentials) SetSecretAccessKey(v string) *Credentials {
-	s.SecretAccessKey = &v
-	return s
+    s.SecretAccessKey = &v
+    return s
 }
 
 // SetSessionToken sets the SessionToken field's value.
 func (s *Credentials) SetSessionToken(v string) *Credentials {
-	s.SessionToken = &v
-	return s
+    s.SessionToken = &v
+    return s
 }
 
 type DecodeAuthorizationMessageInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The encoded message that was returned with the response.
-	//
-	// EncodedMessage is a required field
-	EncodedMessage *string `min:"1" type:"string" required:"true"`
+    // The encoded message that was returned with the response.
+    //
+    // EncodedMessage is a required field
+    EncodedMessage *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -2637,7 +2669,7 @@ type DecodeAuthorizationMessageInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s DecodeAuthorizationMessageInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2646,39 +2678,39 @@ func (s DecodeAuthorizationMessageInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s DecodeAuthorizationMessageInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *DecodeAuthorizationMessageInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "DecodeAuthorizationMessageInput"}
-	if s.EncodedMessage == nil {
-		invalidParams.Add(request.NewErrParamRequired("EncodedMessage"))
-	}
-	if s.EncodedMessage != nil && len(*s.EncodedMessage) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("EncodedMessage", 1))
-	}
+    invalidParams := request.ErrInvalidParams{Context: "DecodeAuthorizationMessageInput"}
+    if s.EncodedMessage == nil {
+        invalidParams.Add(request.NewErrParamRequired("EncodedMessage"))
+    }
+    if s.EncodedMessage != nil && len(*s.EncodedMessage) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("EncodedMessage", 1))
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetEncodedMessage sets the EncodedMessage field's value.
 func (s *DecodeAuthorizationMessageInput) SetEncodedMessage(v string) *DecodeAuthorizationMessageInput {
-	s.EncodedMessage = &v
-	return s
+    s.EncodedMessage = &v
+    return s
 }
 
 // A document that contains additional information about the authorization status
 // of a request from an encoded message that is returned in response to an Amazon
 // Web Services request.
 type DecodeAuthorizationMessageOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The API returns a response with the decoded message.
-	DecodedMessage *string `type:"string"`
+    // The API returns a response with the decoded message.
+    DecodedMessage *string `type:"string"`
 }
 
 // String returns the string representation.
@@ -2687,7 +2719,7 @@ type DecodeAuthorizationMessageOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s DecodeAuthorizationMessageOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2696,32 +2728,32 @@ func (s DecodeAuthorizationMessageOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s DecodeAuthorizationMessageOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetDecodedMessage sets the DecodedMessage field's value.
 func (s *DecodeAuthorizationMessageOutput) SetDecodedMessage(v string) *DecodeAuthorizationMessageOutput {
-	s.DecodedMessage = &v
-	return s
+    s.DecodedMessage = &v
+    return s
 }
 
 // Identifiers for the federated user that is associated with the credentials.
 type FederatedUser struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The ARN that specifies the federated user that is associated with the credentials.
-	// For more information about ARNs and how to use them in policies, see IAM
-	// Identifiers (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html)
-	// in the IAM User Guide.
-	//
-	// Arn is a required field
-	Arn *string `min:"20" type:"string" required:"true"`
+    // The ARN that specifies the federated user that is associated with the credentials.
+    // For more information about ARNs and how to use them in policies, see IAM
+    // Identifiers (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html)
+    // in the IAM User Guide.
+    //
+    // Arn is a required field
+    Arn *string `min:"20" type:"string" required:"true"`
 
-	// The string that identifies the federated user associated with the credentials,
-	// similar to the unique ID of an IAM user.
-	//
-	// FederatedUserId is a required field
-	FederatedUserId *string `min:"2" type:"string" required:"true"`
+    // The string that identifies the federated user associated with the credentials,
+    // similar to the unique ID of an IAM user.
+    //
+    // FederatedUserId is a required field
+    FederatedUserId *string `min:"2" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -2730,7 +2762,7 @@ type FederatedUser struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s FederatedUser) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2739,31 +2771,31 @@ func (s FederatedUser) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s FederatedUser) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetArn sets the Arn field's value.
 func (s *FederatedUser) SetArn(v string) *FederatedUser {
-	s.Arn = &v
-	return s
+    s.Arn = &v
+    return s
 }
 
 // SetFederatedUserId sets the FederatedUserId field's value.
 func (s *FederatedUser) SetFederatedUserId(v string) *FederatedUser {
-	s.FederatedUserId = &v
-	return s
+    s.FederatedUserId = &v
+    return s
 }
 
 type GetAccessKeyInfoInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The identifier of an access key.
-	//
-	// This parameter allows (through its regex pattern) a string of characters
-	// that can consist of any upper- or lowercase letter or digit.
-	//
-	// AccessKeyId is a required field
-	AccessKeyId *string `min:"16" type:"string" required:"true"`
+    // The identifier of an access key.
+    //
+    // This parameter allows (through its regex pattern) a string of characters
+    // that can consist of any upper- or lowercase letter or digit.
+    //
+    // AccessKeyId is a required field
+    AccessKeyId *string `min:"16" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -2772,7 +2804,7 @@ type GetAccessKeyInfoInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetAccessKeyInfoInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2781,36 +2813,36 @@ func (s GetAccessKeyInfoInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetAccessKeyInfoInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *GetAccessKeyInfoInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "GetAccessKeyInfoInput"}
-	if s.AccessKeyId == nil {
-		invalidParams.Add(request.NewErrParamRequired("AccessKeyId"))
-	}
-	if s.AccessKeyId != nil && len(*s.AccessKeyId) < 16 {
-		invalidParams.Add(request.NewErrParamMinLen("AccessKeyId", 16))
-	}
+    invalidParams := request.ErrInvalidParams{Context: "GetAccessKeyInfoInput"}
+    if s.AccessKeyId == nil {
+        invalidParams.Add(request.NewErrParamRequired("AccessKeyId"))
+    }
+    if s.AccessKeyId != nil && len(*s.AccessKeyId) < 16 {
+        invalidParams.Add(request.NewErrParamMinLen("AccessKeyId", 16))
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetAccessKeyId sets the AccessKeyId field's value.
 func (s *GetAccessKeyInfoInput) SetAccessKeyId(v string) *GetAccessKeyInfoInput {
-	s.AccessKeyId = &v
-	return s
+    s.AccessKeyId = &v
+    return s
 }
 
 type GetAccessKeyInfoOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The number used to identify the Amazon Web Services account.
-	Account *string `type:"string"`
+    // The number used to identify the Amazon Web Services account.
+    Account *string `type:"string"`
 }
 
 // String returns the string representation.
@@ -2819,7 +2851,7 @@ type GetAccessKeyInfoOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetAccessKeyInfoOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2828,17 +2860,17 @@ func (s GetAccessKeyInfoOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetAccessKeyInfoOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAccount sets the Account field's value.
 func (s *GetAccessKeyInfoOutput) SetAccount(v string) *GetAccessKeyInfoOutput {
-	s.Account = &v
-	return s
+    s.Account = &v
+    return s
 }
 
 type GetCallerIdentityInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 }
 
 // String returns the string representation.
@@ -2847,7 +2879,7 @@ type GetCallerIdentityInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetCallerIdentityInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2856,26 +2888,26 @@ func (s GetCallerIdentityInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetCallerIdentityInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Contains the response to a successful GetCallerIdentity request, including
 // information about the entity making the request.
 type GetCallerIdentityOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The Amazon Web Services account ID number of the account that owns or contains
-	// the calling entity.
-	Account *string `type:"string"`
+    // The Amazon Web Services account ID number of the account that owns or contains
+    // the calling entity.
+    Account *string `type:"string"`
 
-	// The Amazon Web Services ARN associated with the calling entity.
-	Arn *string `min:"20" type:"string"`
+    // The Amazon Web Services ARN associated with the calling entity.
+    Arn *string `min:"20" type:"string"`
 
-	// The unique identifier of the calling entity. The exact value depends on the
-	// type of entity that is making the call. The values returned are those listed
-	// in the aws:userid column in the Principal table (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html#principaltable)
-	// found on the Policy Variables reference page in the IAM User Guide.
-	UserId *string `type:"string"`
+    // The unique identifier of the calling entity. The exact value depends on the
+    // type of entity that is making the call. The values returned are those listed
+    // in the aws:userid column in the Principal table (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html#principaltable)
+    // found on the Policy Variables reference page in the IAM User Guide.
+    UserId *string `type:"string"`
 }
 
 // String returns the string representation.
@@ -2884,7 +2916,7 @@ type GetCallerIdentityOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetCallerIdentityOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -2893,155 +2925,155 @@ func (s GetCallerIdentityOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetCallerIdentityOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetAccount sets the Account field's value.
 func (s *GetCallerIdentityOutput) SetAccount(v string) *GetCallerIdentityOutput {
-	s.Account = &v
-	return s
+    s.Account = &v
+    return s
 }
 
 // SetArn sets the Arn field's value.
 func (s *GetCallerIdentityOutput) SetArn(v string) *GetCallerIdentityOutput {
-	s.Arn = &v
-	return s
+    s.Arn = &v
+    return s
 }
 
 // SetUserId sets the UserId field's value.
 func (s *GetCallerIdentityOutput) SetUserId(v string) *GetCallerIdentityOutput {
-	s.UserId = &v
-	return s
+    s.UserId = &v
+    return s
 }
 
 type GetFederationTokenInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The duration, in seconds, that the session should last. Acceptable durations
-	// for federation sessions range from 900 seconds (15 minutes) to 129,600 seconds
-	// (36 hours), with 43,200 seconds (12 hours) as the default. Sessions obtained
-	// using root user credentials are restricted to a maximum of 3,600 seconds
-	// (one hour). If the specified duration is longer than one hour, the session
-	// obtained by using root user credentials defaults to one hour.
-	DurationSeconds *int64 `min:"900" type:"integer"`
+    // The duration, in seconds, that the session should last. Acceptable durations
+    // for federation sessions range from 900 seconds (15 minutes) to 129,600 seconds
+    // (36 hours), with 43,200 seconds (12 hours) as the default. Sessions obtained
+    // using root user credentials are restricted to a maximum of 3,600 seconds
+    // (one hour). If the specified duration is longer than one hour, the session
+    // obtained by using root user credentials defaults to one hour.
+    DurationSeconds *int64 `min:"900" type:"integer"`
 
-	// The name of the federated user. The name is used as an identifier for the
-	// temporary security credentials (such as Bob). For example, you can reference
-	// the federated user name in a resource-based policy, such as in an Amazon
-	// S3 bucket policy.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@-
-	//
-	// Name is a required field
-	Name *string `min:"2" type:"string" required:"true"`
+    // The name of the federated user. The name is used as an identifier for the
+    // temporary security credentials (such as Bob). For example, you can reference
+    // the federated user name in a resource-based policy, such as in an Amazon
+    // S3 bucket policy.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@-
+    //
+    // Name is a required field
+    Name *string `min:"2" type:"string" required:"true"`
 
-	// An IAM policy in JSON format that you want to use as an inline session policy.
-	//
-	// You must pass an inline or managed session policy (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// to this operation. You can pass a single JSON policy document to use as an
-	// inline session policy. You can also specify up to 10 managed policy Amazon
-	// Resource Names (ARNs) to use as managed session policies.
-	//
-	// This parameter is optional. However, if you do not pass any session policies,
-	// then the resulting federated user session has no permissions.
-	//
-	// When you pass session policies, the session permissions are the intersection
-	// of the IAM user policies and the session policies that you pass. This gives
-	// you a way to further restrict the permissions for a federated user. You cannot
-	// use session policies to grant more permissions than those that are defined
-	// in the permissions policy of the IAM user. For more information, see Session
-	// Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	//
-	// The resulting credentials can be used to access a resource that has a resource-based
-	// policy. If that policy specifically references the federated user session
-	// in the Principal element of the policy, the session has the permissions allowed
-	// by the policy. These permissions are granted in addition to the permissions
-	// that are granted by the session policies.
-	//
-	// The plaintext that you use for both inline and managed session policies can't
-	// exceed 2,048 characters. The JSON policy characters can be any ASCII character
-	// from the space character to the end of the valid character list (\u0020 through
-	// \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
-	// return (\u000D) characters.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	Policy *string `min:"1" type:"string"`
+    // An IAM policy in JSON format that you want to use as an inline session policy.
+    //
+    // You must pass an inline or managed session policy (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // to this operation. You can pass a single JSON policy document to use as an
+    // inline session policy. You can also specify up to 10 managed policy Amazon
+    // Resource Names (ARNs) to use as managed session policies.
+    //
+    // This parameter is optional. However, if you do not pass any session policies,
+    // then the resulting federated user session has no permissions.
+    //
+    // When you pass session policies, the session permissions are the intersection
+    // of the IAM user policies and the session policies that you pass. This gives
+    // you a way to further restrict the permissions for a federated user. You cannot
+    // use session policies to grant more permissions than those that are defined
+    // in the permissions policy of the IAM user. For more information, see Session
+    // Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    //
+    // The resulting credentials can be used to access a resource that has a resource-based
+    // policy. If that policy specifically references the federated user session
+    // in the Principal element of the policy, the session has the permissions allowed
+    // by the policy. These permissions are granted in addition to the permissions
+    // that are granted by the session policies.
+    //
+    // The plaintext that you use for both inline and managed session policies can't
+    // exceed 2,048 characters. The JSON policy characters can be any ASCII character
+    // from the space character to the end of the valid character list (\u0020 through
+    // \u00FF). It can also include the tab (\u0009), linefeed (\u000A), and carriage
+    // return (\u000D) characters.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    Policy *string `min:"1" type:"string"`
 
-	// The Amazon Resource Names (ARNs) of the IAM managed policies that you want
-	// to use as a managed session policy. The policies must exist in the same account
-	// as the IAM user that is requesting federated access.
-	//
-	// You must pass an inline or managed session policy (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// to this operation. You can pass a single JSON policy document to use as an
-	// inline session policy. You can also specify up to 10 managed policy Amazon
-	// Resource Names (ARNs) to use as managed session policies. The plaintext that
-	// you use for both inline and managed session policies can't exceed 2,048 characters.
-	// You can provide up to 10 managed policy ARNs. For more information about
-	// ARNs, see Amazon Resource Names (ARNs) and Amazon Web Services Service Namespaces
-	// (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
-	// in the Amazon Web Services General Reference.
-	//
-	// This parameter is optional. However, if you do not pass any session policies,
-	// then the resulting federated user session has no permissions.
-	//
-	// When you pass session policies, the session permissions are the intersection
-	// of the IAM user policies and the session policies that you pass. This gives
-	// you a way to further restrict the permissions for a federated user. You cannot
-	// use session policies to grant more permissions than those that are defined
-	// in the permissions policy of the IAM user. For more information, see Session
-	// Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
-	// in the IAM User Guide.
-	//
-	// The resulting credentials can be used to access a resource that has a resource-based
-	// policy. If that policy specifically references the federated user session
-	// in the Principal element of the policy, the session has the permissions allowed
-	// by the policy. These permissions are granted in addition to the permissions
-	// that are granted by the session policies.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	PolicyArns []*PolicyDescriptorType `type:"list"`
+    // The Amazon Resource Names (ARNs) of the IAM managed policies that you want
+    // to use as a managed session policy. The policies must exist in the same account
+    // as the IAM user that is requesting federated access.
+    //
+    // You must pass an inline or managed session policy (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // to this operation. You can pass a single JSON policy document to use as an
+    // inline session policy. You can also specify up to 10 managed policy Amazon
+    // Resource Names (ARNs) to use as managed session policies. The plaintext that
+    // you use for both inline and managed session policies can't exceed 2,048 characters.
+    // You can provide up to 10 managed policy ARNs. For more information about
+    // ARNs, see Amazon Resource Names (ARNs) and Amazon Web Services Service Namespaces
+    // (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
+    // in the Amazon Web Services General Reference.
+    //
+    // This parameter is optional. However, if you do not pass any session policies,
+    // then the resulting federated user session has no permissions.
+    //
+    // When you pass session policies, the session permissions are the intersection
+    // of the IAM user policies and the session policies that you pass. This gives
+    // you a way to further restrict the permissions for a federated user. You cannot
+    // use session policies to grant more permissions than those that are defined
+    // in the permissions policy of the IAM user. For more information, see Session
+    // Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session)
+    // in the IAM User Guide.
+    //
+    // The resulting credentials can be used to access a resource that has a resource-based
+    // policy. If that policy specifically references the federated user session
+    // in the Principal element of the policy, the session has the permissions allowed
+    // by the policy. These permissions are granted in addition to the permissions
+    // that are granted by the session policies.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    PolicyArns []*PolicyDescriptorType `type:"list"`
 
-	// A list of session tags. Each session tag consists of a key name and an associated
-	// value. For more information about session tags, see Passing Session Tags
-	// in STS (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html)
-	// in the IAM User Guide.
-	//
-	// This parameter is optional. You can pass up to 50 session tags. The plaintext
-	// session tag keys can’t exceed 128 characters and the values can’t exceed
-	// 256 characters. For these and additional limits, see IAM and STS Character
-	// Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
-	// in the IAM User Guide.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has
-	// a separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the
-	// upper size limit.
-	//
-	// You can pass a session tag with the same key as a tag that is already attached
-	// to the user you are federating. When you do, session tags override a user
-	// tag with the same key.
-	//
-	// Tag key–value pairs are not case sensitive, but case is preserved. This
-	// means that you cannot have separate Department and department tag keys. Assume
-	// that the role has the Department=Marketing tag and you pass the department=engineering
-	// session tag. Department and department are not saved as separate tags, and
-	// the session tag passed in the request takes precedence over the role tag.
-	Tags []*Tag `type:"list"`
+    // A list of session tags. Each session tag consists of a key name and an associated
+    // value. For more information about session tags, see Passing Session Tags
+    // in STS (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html)
+    // in the IAM User Guide.
+    //
+    // This parameter is optional. You can pass up to 50 session tags. The plaintext
+    // session tag keys can’t exceed 128 characters and the values can’t exceed
+    // 256 characters. For these and additional limits, see IAM and STS Character
+    // Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
+    // in the IAM User Guide.
+    //
+    // An Amazon Web Services conversion compresses the passed inline session policy,
+    // managed policy ARNs, and session tags into a packed binary format that has
+    // a separate limit. Your request can fail for this limit even if your plaintext
+    // meets the other requirements. The PackedPolicySize response element indicates
+    // by percentage how close the policies and tags for your request are to the
+    // upper size limit.
+    //
+    // You can pass a session tag with the same key as a tag that is already attached
+    // to the user you are federating. When you do, session tags override a user
+    // tag with the same key.
+    //
+    // Tag key–value pairs are not case sensitive, but case is preserved. This
+    // means that you cannot have separate Department and department tag keys. Assume
+    // that the role has the Department=Marketing tag and you pass the department=engineering
+    // session tag. Department and department are not saved as separate tags, and
+    // the session tag passed in the request takes precedence over the role tag.
+    Tags []*Tag `type:"list"`
 }
 
 // String returns the string representation.
@@ -3050,7 +3082,7 @@ type GetFederationTokenInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetFederationTokenInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3059,105 +3091,105 @@ func (s GetFederationTokenInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetFederationTokenInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *GetFederationTokenInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "GetFederationTokenInput"}
-	if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
-		invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
-	}
-	if s.Name == nil {
-		invalidParams.Add(request.NewErrParamRequired("Name"))
-	}
-	if s.Name != nil && len(*s.Name) < 2 {
-		invalidParams.Add(request.NewErrParamMinLen("Name", 2))
-	}
-	if s.Policy != nil && len(*s.Policy) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
-	}
-	if s.PolicyArns != nil {
-		for i, v := range s.PolicyArns {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
-	if s.Tags != nil {
-		for i, v := range s.Tags {
-			if v == nil {
-				continue
-			}
-			if err := v.Validate(); err != nil {
-				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
-			}
-		}
-	}
+    invalidParams := request.ErrInvalidParams{Context: "GetFederationTokenInput"}
+    if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
+        invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
+    }
+    if s.Name == nil {
+        invalidParams.Add(request.NewErrParamRequired("Name"))
+    }
+    if s.Name != nil && len(*s.Name) < 2 {
+        invalidParams.Add(request.NewErrParamMinLen("Name", 2))
+    }
+    if s.Policy != nil && len(*s.Policy) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("Policy", 1))
+    }
+    if s.PolicyArns != nil {
+        for i, v := range s.PolicyArns {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "PolicyArns", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
+    if s.Tags != nil {
+        for i, v := range s.Tags {
+            if v == nil {
+                continue
+            }
+            if err := v.Validate(); err != nil {
+                invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
+            }
+        }
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetDurationSeconds sets the DurationSeconds field's value.
 func (s *GetFederationTokenInput) SetDurationSeconds(v int64) *GetFederationTokenInput {
-	s.DurationSeconds = &v
-	return s
+    s.DurationSeconds = &v
+    return s
 }
 
 // SetName sets the Name field's value.
 func (s *GetFederationTokenInput) SetName(v string) *GetFederationTokenInput {
-	s.Name = &v
-	return s
+    s.Name = &v
+    return s
 }
 
 // SetPolicy sets the Policy field's value.
 func (s *GetFederationTokenInput) SetPolicy(v string) *GetFederationTokenInput {
-	s.Policy = &v
-	return s
+    s.Policy = &v
+    return s
 }
 
 // SetPolicyArns sets the PolicyArns field's value.
 func (s *GetFederationTokenInput) SetPolicyArns(v []*PolicyDescriptorType) *GetFederationTokenInput {
-	s.PolicyArns = v
-	return s
+    s.PolicyArns = v
+    return s
 }
 
 // SetTags sets the Tags field's value.
 func (s *GetFederationTokenInput) SetTags(v []*Tag) *GetFederationTokenInput {
-	s.Tags = v
-	return s
+    s.Tags = v
+    return s
 }
 
 // Contains the response to a successful GetFederationToken request, including
 // temporary Amazon Web Services credentials that can be used to make Amazon
 // Web Services requests.
 type GetFederationTokenOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The temporary security credentials, which include an access key ID, a secret
-	// access key, and a security (or session) token.
-	//
-	// The size of the security token that STS API operations return is not fixed.
-	// We strongly recommend that you make no assumptions about the maximum size.
-	Credentials *Credentials `type:"structure"`
+    // The temporary security credentials, which include an access key ID, a secret
+    // access key, and a security (or session) token.
+    //
+    // The size of the security token that STS API operations return is not fixed.
+    // We strongly recommend that you make no assumptions about the maximum size.
+    Credentials *Credentials `type:"structure"`
 
-	// Identifiers for the federated user associated with the credentials (such
-	// as arn:aws:sts::123456789012:federated-user/Bob or 123456789012:Bob). You
-	// can use the federated user's ARN in your resource-based policies, such as
-	// an Amazon S3 bucket policy.
-	FederatedUser *FederatedUser `type:"structure"`
+    // Identifiers for the federated user associated with the credentials (such
+    // as arn:aws:sts::123456789012:federated-user/Bob or 123456789012:Bob). You
+    // can use the federated user's ARN in your resource-based policies, such as
+    // an Amazon S3 bucket policy.
+    FederatedUser *FederatedUser `type:"structure"`
 
-	// A percentage value that indicates the packed size of the session policies
-	// and session tags combined passed in the request. The request fails if the
-	// packed size is greater than 100 percent, which means the policies and tags
-	// exceeded the allowed space.
-	PackedPolicySize *int64 `type:"integer"`
+    // A percentage value that indicates the packed size of the session policies
+    // and session tags combined passed in the request. The request fails if the
+    // packed size is greater than 100 percent, which means the policies and tags
+    // exceeded the allowed space.
+    PackedPolicySize *int64 `type:"integer"`
 }
 
 // String returns the string representation.
@@ -3166,7 +3198,7 @@ type GetFederationTokenOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetFederationTokenOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3175,60 +3207,60 @@ func (s GetFederationTokenOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetFederationTokenOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetCredentials sets the Credentials field's value.
 func (s *GetFederationTokenOutput) SetCredentials(v *Credentials) *GetFederationTokenOutput {
-	s.Credentials = v
-	return s
+    s.Credentials = v
+    return s
 }
 
 // SetFederatedUser sets the FederatedUser field's value.
 func (s *GetFederationTokenOutput) SetFederatedUser(v *FederatedUser) *GetFederationTokenOutput {
-	s.FederatedUser = v
-	return s
+    s.FederatedUser = v
+    return s
 }
 
 // SetPackedPolicySize sets the PackedPolicySize field's value.
 func (s *GetFederationTokenOutput) SetPackedPolicySize(v int64) *GetFederationTokenOutput {
-	s.PackedPolicySize = &v
-	return s
+    s.PackedPolicySize = &v
+    return s
 }
 
 type GetSessionTokenInput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The duration, in seconds, that the credentials should remain valid. Acceptable
-	// durations for IAM user sessions range from 900 seconds (15 minutes) to 129,600
-	// seconds (36 hours), with 43,200 seconds (12 hours) as the default. Sessions
-	// for Amazon Web Services account owners are restricted to a maximum of 3,600
-	// seconds (one hour). If the duration is longer than one hour, the session
-	// for Amazon Web Services account owners defaults to one hour.
-	DurationSeconds *int64 `min:"900" type:"integer"`
+    // The duration, in seconds, that the credentials should remain valid. Acceptable
+    // durations for IAM user sessions range from 900 seconds (15 minutes) to 129,600
+    // seconds (36 hours), with 43,200 seconds (12 hours) as the default. Sessions
+    // for Amazon Web Services account owners are restricted to a maximum of 3,600
+    // seconds (one hour). If the duration is longer than one hour, the session
+    // for Amazon Web Services account owners defaults to one hour.
+    DurationSeconds *int64 `min:"900" type:"integer"`
 
-	// The identification number of the MFA device that is associated with the IAM
-	// user who is making the GetSessionToken call. Specify this value if the IAM
-	// user has a policy that requires MFA authentication. The value is either the
-	// serial number for a hardware device (such as GAHT12345678) or an Amazon Resource
-	// Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
-	// You can find the device for an IAM user by going to the Amazon Web Services
-	// Management Console and viewing the user's security credentials.
-	//
-	// The regex used to validate this parameter is a string of characters consisting
-	// of upper- and lower-case alphanumeric characters with no spaces. You can
-	// also include underscores or any of the following characters: =,.@:/-
-	SerialNumber *string `min:"9" type:"string"`
+    // The identification number of the MFA device that is associated with the IAM
+    // user who is making the GetSessionToken call. Specify this value if the IAM
+    // user has a policy that requires MFA authentication. The value is either the
+    // serial number for a hardware device (such as GAHT12345678) or an Amazon Resource
+    // Name (ARN) for a virtual device (such as arn:aws:iam::123456789012:mfa/user).
+    // You can find the device for an IAM user by going to the Amazon Web Services
+    // Management Console and viewing the user's security credentials.
+    //
+    // The regex used to validate this parameter is a string of characters consisting
+    // of upper- and lower-case alphanumeric characters with no spaces. You can
+    // also include underscores or any of the following characters: =,.@:/-
+    SerialNumber *string `min:"9" type:"string"`
 
-	// The value provided by the MFA device, if MFA is required. If any policy requires
-	// the IAM user to submit an MFA code, specify this value. If MFA authentication
-	// is required, the user must provide a code when requesting a set of temporary
-	// security credentials. A user who fails to provide the code receives an "access
-	// denied" response when requesting resources that require MFA authentication.
-	//
-	// The format for this parameter, as described by its regex pattern, is a sequence
-	// of six numeric digits.
-	TokenCode *string `min:"6" type:"string"`
+    // The value provided by the MFA device, if MFA is required. If any policy requires
+    // the IAM user to submit an MFA code, specify this value. If MFA authentication
+    // is required, the user must provide a code when requesting a set of temporary
+    // security credentials. A user who fails to provide the code receives an "access
+    // denied" response when requesting resources that require MFA authentication.
+    //
+    // The format for this parameter, as described by its regex pattern, is a sequence
+    // of six numeric digits.
+    TokenCode *string `min:"6" type:"string"`
 }
 
 // String returns the string representation.
@@ -3237,7 +3269,7 @@ type GetSessionTokenInput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetSessionTokenInput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3246,58 +3278,58 @@ func (s GetSessionTokenInput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetSessionTokenInput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *GetSessionTokenInput) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "GetSessionTokenInput"}
-	if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
-		invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
-	}
-	if s.SerialNumber != nil && len(*s.SerialNumber) < 9 {
-		invalidParams.Add(request.NewErrParamMinLen("SerialNumber", 9))
-	}
-	if s.TokenCode != nil && len(*s.TokenCode) < 6 {
-		invalidParams.Add(request.NewErrParamMinLen("TokenCode", 6))
-	}
+    invalidParams := request.ErrInvalidParams{Context: "GetSessionTokenInput"}
+    if s.DurationSeconds != nil && *s.DurationSeconds < 900 {
+        invalidParams.Add(request.NewErrParamMinValue("DurationSeconds", 900))
+    }
+    if s.SerialNumber != nil && len(*s.SerialNumber) < 9 {
+        invalidParams.Add(request.NewErrParamMinLen("SerialNumber", 9))
+    }
+    if s.TokenCode != nil && len(*s.TokenCode) < 6 {
+        invalidParams.Add(request.NewErrParamMinLen("TokenCode", 6))
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetDurationSeconds sets the DurationSeconds field's value.
 func (s *GetSessionTokenInput) SetDurationSeconds(v int64) *GetSessionTokenInput {
-	s.DurationSeconds = &v
-	return s
+    s.DurationSeconds = &v
+    return s
 }
 
 // SetSerialNumber sets the SerialNumber field's value.
 func (s *GetSessionTokenInput) SetSerialNumber(v string) *GetSessionTokenInput {
-	s.SerialNumber = &v
-	return s
+    s.SerialNumber = &v
+    return s
 }
 
 // SetTokenCode sets the TokenCode field's value.
 func (s *GetSessionTokenInput) SetTokenCode(v string) *GetSessionTokenInput {
-	s.TokenCode = &v
-	return s
+    s.TokenCode = &v
+    return s
 }
 
 // Contains the response to a successful GetSessionToken request, including
 // temporary Amazon Web Services credentials that can be used to make Amazon
 // Web Services requests.
 type GetSessionTokenOutput struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The temporary security credentials, which include an access key ID, a secret
-	// access key, and a security (or session) token.
-	//
-	// The size of the security token that STS API operations return is not fixed.
-	// We strongly recommend that you make no assumptions about the maximum size.
-	Credentials *Credentials `type:"structure"`
+    // The temporary security credentials, which include an access key ID, a secret
+    // access key, and a security (or session) token.
+    //
+    // The size of the security token that STS API operations return is not fixed.
+    // We strongly recommend that you make no assumptions about the maximum size.
+    Credentials *Credentials `type:"structure"`
 }
 
 // String returns the string representation.
@@ -3306,7 +3338,7 @@ type GetSessionTokenOutput struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetSessionTokenOutput) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3315,25 +3347,25 @@ func (s GetSessionTokenOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s GetSessionTokenOutput) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // SetCredentials sets the Credentials field's value.
 func (s *GetSessionTokenOutput) SetCredentials(v *Credentials) *GetSessionTokenOutput {
-	s.Credentials = v
-	return s
+    s.Credentials = v
+    return s
 }
 
 // A reference to the IAM managed policy that is passed as a session policy
 // for a role session or a federated user session.
 type PolicyDescriptorType struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) of the IAM managed policy to use as a session
-	// policy for the role. For more information about ARNs, see Amazon Resource
-	// Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
-	// in the Amazon Web Services General Reference.
-	Arn *string `locationName:"arn" min:"20" type:"string"`
+    // The Amazon Resource Name (ARN) of the IAM managed policy to use as a session
+    // policy for the role. For more information about ARNs, see Amazon Resource
+    // Names (ARNs) and Amazon Web Services Service Namespaces (https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
+    // in the Amazon Web Services General Reference.
+    Arn *string `locationName:"arn" min:"20" type:"string"`
 }
 
 // String returns the string representation.
@@ -3342,7 +3374,7 @@ type PolicyDescriptorType struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s PolicyDescriptorType) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3351,26 +3383,83 @@ func (s PolicyDescriptorType) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s PolicyDescriptorType) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *PolicyDescriptorType) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "PolicyDescriptorType"}
-	if s.Arn != nil && len(*s.Arn) < 20 {
-		invalidParams.Add(request.NewErrParamMinLen("Arn", 20))
-	}
+    invalidParams := request.ErrInvalidParams{Context: "PolicyDescriptorType"}
+    if s.Arn != nil && len(*s.Arn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("Arn", 20))
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetArn sets the Arn field's value.
 func (s *PolicyDescriptorType) SetArn(v string) *PolicyDescriptorType {
-	s.Arn = &v
-	return s
+    s.Arn = &v
+    return s
+}
+
+// Reserved for future use.
+type ProvidedContext struct {
+    _ struct{} `type:"structure"`
+
+    // Reserved for future use.
+    ContextAssertion *string `min:"4" type:"string"`
+
+    // Reserved for future use.
+    ProviderArn *string `min:"20" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ProvidedContext) String() string {
+    return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ProvidedContext) GoString() string {
+    return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ProvidedContext) Validate() error {
+    invalidParams := request.ErrInvalidParams{Context: "ProvidedContext"}
+    if s.ContextAssertion != nil && len(*s.ContextAssertion) < 4 {
+        invalidParams.Add(request.NewErrParamMinLen("ContextAssertion", 4))
+    }
+    if s.ProviderArn != nil && len(*s.ProviderArn) < 20 {
+        invalidParams.Add(request.NewErrParamMinLen("ProviderArn", 20))
+    }
+
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
+}
+
+// SetContextAssertion sets the ContextAssertion field's value.
+func (s *ProvidedContext) SetContextAssertion(v string) *ProvidedContext {
+    s.ContextAssertion = &v
+    return s
+}
+
+// SetProviderArn sets the ProviderArn field's value.
+func (s *ProvidedContext) SetProviderArn(v string) *ProvidedContext {
+    s.ProviderArn = &v
+    return s
 }
 
 // You can pass custom key-value pair attributes when you assume a role or federate
@@ -3379,27 +3468,27 @@ func (s *PolicyDescriptorType) SetArn(v string) *PolicyDescriptorType {
 // Web Services STS Sessions (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html)
 // in the IAM User Guide.
 type Tag struct {
-	_ struct{} `type:"structure"`
+    _ struct{} `type:"structure"`
 
-	// The key for a session tag.
-	//
-	// You can pass up to 50 session tags. The plain text session tag keys can’t
-	// exceed 128 characters. For these and additional limits, see IAM and STS Character
-	// Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
-	// in the IAM User Guide.
-	//
-	// Key is a required field
-	Key *string `min:"1" type:"string" required:"true"`
+    // The key for a session tag.
+    //
+    // You can pass up to 50 session tags. The plain text session tag keys can’t
+    // exceed 128 characters. For these and additional limits, see IAM and STS Character
+    // Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
+    // in the IAM User Guide.
+    //
+    // Key is a required field
+    Key *string `min:"1" type:"string" required:"true"`
 
-	// The value for a session tag.
-	//
-	// You can pass up to 50 session tags. The plain text session tag values can’t
-	// exceed 256 characters. For these and additional limits, see IAM and STS Character
-	// Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
-	// in the IAM User Guide.
-	//
-	// Value is a required field
-	Value *string `type:"string" required:"true"`
+    // The value for a session tag.
+    //
+    // You can pass up to 50 session tags. The plain text session tag values can’t
+    // exceed 256 characters. For these and additional limits, see IAM and STS Character
+    // Limits (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html#reference_iam-limits-entity-length)
+    // in the IAM User Guide.
+    //
+    // Value is a required field
+    Value *string `type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -3408,7 +3497,7 @@ type Tag struct {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s Tag) String() string {
-	return awsutil.Prettify(s)
+    return awsutil.Prettify(s)
 }
 
 // GoString returns the string representation.
@@ -3417,36 +3506,36 @@ func (s Tag) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s Tag) GoString() string {
-	return s.String()
+    return s.String()
 }
 
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *Tag) Validate() error {
-	invalidParams := request.ErrInvalidParams{Context: "Tag"}
-	if s.Key == nil {
-		invalidParams.Add(request.NewErrParamRequired("Key"))
-	}
-	if s.Key != nil && len(*s.Key) < 1 {
-		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
-	}
-	if s.Value == nil {
-		invalidParams.Add(request.NewErrParamRequired("Value"))
-	}
+    invalidParams := request.ErrInvalidParams{Context: "Tag"}
+    if s.Key == nil {
+        invalidParams.Add(request.NewErrParamRequired("Key"))
+    }
+    if s.Key != nil && len(*s.Key) < 1 {
+        invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+    }
+    if s.Value == nil {
+        invalidParams.Add(request.NewErrParamRequired("Value"))
+    }
 
-	if invalidParams.Len() > 0 {
-		return invalidParams
-	}
-	return nil
+    if invalidParams.Len() > 0 {
+        return invalidParams
+    }
+    return nil
 }
 
 // SetKey sets the Key field's value.
 func (s *Tag) SetKey(v string) *Tag {
-	s.Key = &v
-	return s
+    s.Key = &v
+    return s
 }
 
 // SetValue sets the Value field's value.
 func (s *Tag) SetValue(v string) *Tag {
-	s.Value = &v
-	return s
+    s.Value = &v
+    return s
 }

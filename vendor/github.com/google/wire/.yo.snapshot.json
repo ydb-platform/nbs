@@ -1,0 +1,74 @@
+{
+    "Version": "v0.5.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:I7ELFeVBr3yfPIcc8+MWvrjk+3VjbcSzoXm3JVa+jD8=",
+    "Packages": {
+        "github.com/google/wire": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/google/wire/cmd/wire": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/google/subcommands",
+                "github.com/google/wire/internal/wire",
+                "github.com/pmezard/go-difflib/difflib",
+                "go/token",
+                "go/types",
+                "golang.org/x/tools/go/types/typeutil",
+                "io/ioutil",
+                "log",
+                "os",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/wire/internal/wire": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "go/ast",
+                "go/format",
+                "go/printer",
+                "go/token",
+                "go/types",
+                "golang.org/x/tools/go/ast/astutil",
+                "golang.org/x/tools/go/packages",
+                "golang.org/x/tools/go/types/typeutil",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "sort",
+                "strconv",
+                "strings",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "flag",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "go/build",
+                "go/types",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strings",
+                "testing",
+                "unicode",
+                "unicode/utf8"
+            ]
+        }
+    }
+}

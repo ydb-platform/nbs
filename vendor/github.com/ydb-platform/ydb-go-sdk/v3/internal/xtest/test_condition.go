@@ -1,8 +1,8 @@
 package xtest
 
 import (
-	"os"
-	"testing"
+    "os"
+    "testing"
 )
 
 // enableAllTestsFlag set the env var for run all tests
@@ -11,11 +11,11 @@ import (
 const enableAllTestsFlag = "YDB_GO_SDK_ENABLE_ALL_TESTS"
 
 func AllowByFlag(t testing.TB, flag string) {
-	if os.Getenv(flag) != "" {
-		return
-	}
-	if os.Getenv(enableAllTestsFlag) != "" {
-		return
-	}
-	t.Skipf("Skip test, because it need flag to run: '%v'", flag)
+    if os.Getenv(flag) != "" {
+        return
+    }
+    if os.Getenv(enableAllTestsFlag) != "" {
+        return
+    }
+    t.Skipf("Skip test, because it need flag to run: '%v'", flag)
 }

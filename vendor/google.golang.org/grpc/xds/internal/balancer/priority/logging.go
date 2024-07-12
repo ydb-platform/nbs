@@ -19,10 +19,10 @@
 package priority
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/grpc/grpclog"
-	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/grpclog"
+    internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
 const prefix = "[priority-lb %p] "
@@ -30,5 +30,5 @@ const prefix = "[priority-lb %p] "
 var logger = grpclog.Component("xds")
 
 func prefixLogger(p *priorityBalancer) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
+    return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
 }

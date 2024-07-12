@@ -21,60 +21,60 @@
 package ztest
 
 import (
-	"sync/atomic"
-	"testing"
-	"time"
+    "sync/atomic"
+    "testing"
+    "time"
 
-	"github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/assert"
 )
 
 func TestMockClock_NewTicker(t *testing.T) {
-	var n atomic.Int32
-	clock := NewMockClock()
+    var n atomic.Int32
+    clock := NewMockClock()
 
-	done := make(chan struct{})
-	defer func() { <-done }() // wait for end
+    done := make(chan struct{})
+    defer func() { <-done }() // wait for end
 
-	quit := make(chan struct{})
-	// Create a channel to increment every microsecond.
-	go func(ticker *time.Ticker) {
-		defer close(done)
-		for {
-			select {
-			case <-quit:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				n.Add(1)
-			}
-		}
-	}(clock.NewTicker(time.Microsecond))
+    quit := make(chan struct{})
+    // Create a channel to increment every microsecond.
+    go func(ticker *time.Ticker) {
+        defer close(done)
+        for {
+            select {
+            case <-quit:
+                ticker.Stop()
+                return
+            case <-ticker.C:
+                n.Add(1)
+            }
+        }
+    }(clock.NewTicker(time.Microsecond))
 
-	// Move clock forward.
-	clock.Add(2 * time.Microsecond)
-	assert.Equal(t, int32(2), n.Load())
-	close(quit)
+    // Move clock forward.
+    clock.Add(2 * time.Microsecond)
+    assert.Equal(t, int32(2), n.Load())
+    close(quit)
 }
 
 func TestMockClock_NewTicker_slowConsumer(t *testing.T) {
-	clock := NewMockClock()
+    clock := NewMockClock()
 
-	ticker := clock.NewTicker(time.Microsecond)
-	defer ticker.Stop()
+    ticker := clock.NewTicker(time.Microsecond)
+    defer ticker.Stop()
 
-	// Two ticks, only one consumed.
-	clock.Add(2 * time.Microsecond)
-	<-ticker.C
+    // Two ticks, only one consumed.
+    clock.Add(2 * time.Microsecond)
+    <-ticker.C
 
-	select {
-	case <-ticker.C:
-		t.Fatal("unexpected tick")
-	default:
-		// ok
-	}
+    select {
+    case <-ticker.C:
+        t.Fatal("unexpected tick")
+    default:
+        // ok
+    }
 }
 
 func TestMockClock_Add_negative(t *testing.T) {
-	clock := NewMockClock()
-	assert.Panics(t, func() { clock.Add(-1) })
+    clock := NewMockClock()
+    assert.Panics(t, func() { clock.Add(-1) })
 }

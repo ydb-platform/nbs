@@ -1,0 +1,41 @@
+{
+    "Version": "v1.2.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:xRy4A+RhZaiKjJ1bPfwQ8sedCA+YS2YcCHW6ec7JMi0=",
+    "Packages": {
+        "github.com/google/gofuzz": {
+            "Imports": [
+                "fmt",
+                "github.com/google/gofuzz/bytesource",
+                "math/rand",
+                "reflect",
+                "regexp",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/google/gofuzz",
+                "math/rand",
+                "reflect",
+                "regexp",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/gofuzz/bytesource": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "io",
+                "math/rand"
+            ],
+            "TestImports": [
+                "math/rand",
+                "testing"
+            ]
+        }
+    }
+}

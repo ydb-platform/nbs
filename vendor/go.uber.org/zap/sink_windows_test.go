@@ -23,49 +23,49 @@
 package zap
 
 import (
-	"os"
-	"testing"
+    "os"
+    "testing"
 
-	"github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/assert"
 )
 
 func TestWindowsPaths(t *testing.T) {
-	// See https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
-	tests := []struct {
-		msg  string
-		path string
-	}{
-		{
-			msg:  "local path with drive",
-			path: `c:\log.json`,
-		},
-		{
-			msg:  "local path with drive using forward slash",
-			path: `c:/log.json`,
-		},
-		{
-			msg:  "local path without drive",
-			path: `\Temp\log.json`,
-		},
-		{
-			msg:  "unc path",
-			path: `\\Server2\Logs\log.json`,
-		},
-	}
+    // See https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats
+    tests := []struct {
+        msg  string
+        path string
+    }{
+        {
+            msg:  "local path with drive",
+            path: `c:\log.json`,
+        },
+        {
+            msg:  "local path with drive using forward slash",
+            path: `c:/log.json`,
+        },
+        {
+            msg:  "local path without drive",
+            path: `\Temp\log.json`,
+        },
+        {
+            msg:  "unc path",
+            path: `\\Server2\Logs\log.json`,
+        },
+    }
 
-	for _, tt := range tests {
-		t.Run(tt.msg, func(t *testing.T) {
-			sr := newSinkRegistry()
+    for _, tt := range tests {
+        t.Run(tt.msg, func(t *testing.T) {
+            sr := newSinkRegistry()
 
-			openFilename := "<not called>"
-			sr.openFile = func(filename string, _ int, _ os.FileMode) (*os.File, error) {
-				openFilename = filename
-				return nil, assert.AnError
-			}
+            openFilename := "<not called>"
+            sr.openFile = func(filename string, _ int, _ os.FileMode) (*os.File, error) {
+                openFilename = filename
+                return nil, assert.AnError
+            }
 
-			_, err := sr.newSink(tt.path)
-			assert.Equal(t, assert.AnError, err, "expect stub error from OpenFile")
-			assert.Equal(t, tt.path, openFilename, "unexpected path opened")
-		})
-	}
+            _, err := sr.newSink(tt.path)
+            assert.Equal(t, assert.AnError, err, "expect stub error from OpenFile")
+            assert.Equal(t, tt.path, openFilename, "unexpected path opened")
+        })
+    }
 }

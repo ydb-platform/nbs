@@ -1,0 +1,8 @@
+RUNTIME ERROR: couldn't manifest function as JSON
+-------------------------------------------------
+    testdata/error_function_fail:1:1-23    $
+
+error (function(x) 42)
+
+-------------------------------------------------
+    During evaluation

@@ -1,0 +1,83 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(Apache-2.0)
+
+SRCS(
+    aggregation_temporality.go
+    encoding.go
+    exemplar_value_type.go
+    generated_exemplar.go
+    generated_exemplarslice.go
+    generated_exponentialhistogram.go
+    generated_exponentialhistogramdatapoint.go
+    generated_exponentialhistogramdatapointbuckets.go
+    generated_exponentialhistogramdatapointslice.go
+    generated_gauge.go
+    generated_histogram.go
+    generated_histogramdatapoint.go
+    generated_histogramdatapointslice.go
+    generated_metric.go
+    generated_metricslice.go
+    generated_numberdatapoint.go
+    generated_numberdatapointslice.go
+    generated_resourcemetrics.go
+    generated_resourcemetricsslice.go
+    generated_scopemetrics.go
+    generated_scopemetricsslice.go
+    generated_sum.go
+    generated_summary.go
+    generated_summarydatapoint.go
+    generated_summarydatapointslice.go
+    generated_summarydatapointvalueatquantile.go
+    generated_summarydatapointvalueatquantileslice.go
+    json.go
+    metric_data_point_flags.go
+    metric_type.go
+    metrics.go
+    number_data_point_value_type.go
+    pb.go
+)
+
+GO_TEST_SRCS(
+    aggregation_temporality_test.go
+    exemplar_value_type_test.go
+    generated_exemplar_test.go
+    generated_exemplarslice_test.go
+    generated_exponentialhistogram_test.go
+    generated_exponentialhistogramdatapoint_test.go
+    generated_exponentialhistogramdatapointbuckets_test.go
+    generated_exponentialhistogramdatapointslice_test.go
+    generated_gauge_test.go
+    generated_histogram_test.go
+    generated_histogramdatapoint_test.go
+    generated_histogramdatapointslice_test.go
+    generated_metric_test.go
+    generated_metricslice_test.go
+    generated_numberdatapoint_test.go
+    generated_numberdatapointslice_test.go
+    generated_resourcemetrics_test.go
+    generated_resourcemetricsslice_test.go
+    generated_scopemetrics_test.go
+    generated_scopemetricsslice_test.go
+    generated_sum_test.go
+    generated_summary_test.go
+    generated_summarydatapoint_test.go
+    generated_summarydatapointslice_test.go
+    generated_summarydatapointvalueatquantile_test.go
+    generated_summarydatapointvalueatquantileslice_test.go
+    json_test.go
+    metric_data_point_flags_test.go
+    metric_type_test.go
+    metrics_test.go
+    number_data_point_value_type_test.go
+    pb_test.go
+)
+
+END()
+
+RECURSE(
+    gotest
+    pmetricotlp
+)

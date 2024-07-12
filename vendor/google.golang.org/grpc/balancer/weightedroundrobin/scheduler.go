@@ -19,11 +19,11 @@
 package weightedroundrobin
 
 import (
-	"math"
+    "math"
 )
 
 type scheduler interface {
-	nextIndex() int
+    nextIndex() int
 }
 
 // newScheduler uses scWeights to create a new scheduler for selecting subconns
@@ -32,53 +32,53 @@ type scheduler interface {
 // will return an Earliest Deadline First (EDF) scheduler implementation that
 // selects the subchannels according to their weights.
 func newScheduler(scWeights []float64, inc func() uint32) scheduler {
-	n := len(scWeights)
-	if n == 0 {
-		return nil
-	}
-	if n == 1 {
-		return &rrScheduler{numSCs: 1, inc: inc}
-	}
-	sum := float64(0)
-	numZero := 0
-	max := float64(0)
-	for _, w := range scWeights {
-		sum += w
-		if w > max {
-			max = w
-		}
-		if w == 0 {
-			numZero++
-		}
-	}
-	if numZero >= n-1 {
-		return &rrScheduler{numSCs: uint32(n), inc: inc}
-	}
-	unscaledMean := sum / float64(n-numZero)
-	scalingFactor := maxWeight / max
-	mean := uint16(math.Round(scalingFactor * unscaledMean))
+    n := len(scWeights)
+    if n == 0 {
+        return nil
+    }
+    if n == 1 {
+        return &rrScheduler{numSCs: 1, inc: inc}
+    }
+    sum := float64(0)
+    numZero := 0
+    max := float64(0)
+    for _, w := range scWeights {
+        sum += w
+        if w > max {
+            max = w
+        }
+        if w == 0 {
+            numZero++
+        }
+    }
+    if numZero >= n-1 {
+        return &rrScheduler{numSCs: uint32(n), inc: inc}
+    }
+    unscaledMean := sum / float64(n-numZero)
+    scalingFactor := maxWeight / max
+    mean := uint16(math.Round(scalingFactor * unscaledMean))
 
-	weights := make([]uint16, n)
-	allEqual := true
-	for i, w := range scWeights {
-		if w == 0 {
-			// Backends with weight = 0 use the mean.
-			weights[i] = mean
-		} else {
-			scaledWeight := uint16(math.Round(scalingFactor * w))
-			weights[i] = scaledWeight
-			if scaledWeight != mean {
-				allEqual = false
-			}
-		}
-	}
+    weights := make([]uint16, n)
+    allEqual := true
+    for i, w := range scWeights {
+        if w == 0 {
+            // Backends with weight = 0 use the mean.
+            weights[i] = mean
+        } else {
+            scaledWeight := uint16(math.Round(scalingFactor * w))
+            weights[i] = scaledWeight
+            if scaledWeight != mean {
+                allEqual = false
+            }
+        }
+    }
 
-	if allEqual {
-		return &rrScheduler{numSCs: uint32(n), inc: inc}
-	}
+    if allEqual {
+        return &rrScheduler{numSCs: uint32(n), inc: inc}
+    }
 
-	logger.Infof("using edf scheduler with weights: %v", weights)
-	return &edfScheduler{weights: weights, inc: inc}
+    logger.Infof("using edf scheduler with weights: %v", weights)
+    return &edfScheduler{weights: weights, inc: inc}
 }
 
 const maxWeight = math.MaxUint16
@@ -87,52 +87,52 @@ const maxWeight = math.MaxUint16
 //
 // https://github.com/grpc/grpc/blob/master/src/core/ext/filters/client_channel/lb_policy/weighted_round_robin/static_stride_scheduler.cc
 type edfScheduler struct {
-	inc     func() uint32
-	weights []uint16
+    inc     func() uint32
+    weights []uint16
 }
 
 // Returns the index in s.weights for the picker to choose.
 func (s *edfScheduler) nextIndex() int {
-	const offset = maxWeight / 2
+    const offset = maxWeight / 2
 
-	for {
-		idx := uint64(s.inc())
+    for {
+        idx := uint64(s.inc())
 
-		// The sequence number (idx) is split in two: the lower %n gives the
-		// index of the backend, and the rest gives the number of times we've
-		// iterated through all backends. `generation` is used to
-		// deterministically decide whether we pick or skip the backend on this
-		// iteration, in proportion to the backend's weight.
+        // The sequence number (idx) is split in two: the lower %n gives the
+        // index of the backend, and the rest gives the number of times we've
+        // iterated through all backends. `generation` is used to
+        // deterministically decide whether we pick or skip the backend on this
+        // iteration, in proportion to the backend's weight.
 
-		backendIndex := idx % uint64(len(s.weights))
-		generation := idx / uint64(len(s.weights))
-		weight := uint64(s.weights[backendIndex])
+        backendIndex := idx % uint64(len(s.weights))
+        generation := idx / uint64(len(s.weights))
+        weight := uint64(s.weights[backendIndex])
 
-		// We pick a backend `weight` times per `maxWeight` generations. The
-		// multiply and modulus ~evenly spread out the picks for a given
-		// backend between different generations. The offset by `backendIndex`
-		// helps to reduce the chance of multiple consecutive non-picks: if we
-		// have two consecutive backends with an equal, say, 80% weight of the
-		// max, with no offset we would see 1/5 generations that skipped both.
-		// TODO(b/190488683): add test for offset efficacy.
-		mod := uint64(weight*generation+backendIndex*offset) % maxWeight
+        // We pick a backend `weight` times per `maxWeight` generations. The
+        // multiply and modulus ~evenly spread out the picks for a given
+        // backend between different generations. The offset by `backendIndex`
+        // helps to reduce the chance of multiple consecutive non-picks: if we
+        // have two consecutive backends with an equal, say, 80% weight of the
+        // max, with no offset we would see 1/5 generations that skipped both.
+        // TODO(b/190488683): add test for offset efficacy.
+        mod := uint64(weight*generation+backendIndex*offset) % maxWeight
 
-		if mod < maxWeight-weight {
-			continue
-		}
-		return int(backendIndex)
-	}
+        if mod < maxWeight-weight {
+            continue
+        }
+        return int(backendIndex)
+    }
 }
 
 // A simple RR scheduler to use for fallback when fewer than two backends have
 // non-zero weights, or all backends have the the same weight, or when only one
 // subconn exists.
 type rrScheduler struct {
-	inc    func() uint32
-	numSCs uint32
+    inc    func() uint32
+    numSCs uint32
 }
 
 func (s *rrScheduler) nextIndex() int {
-	idx := s.inc()
-	return int(idx % s.numSCs)
+    idx := s.inc()
+    return int(idx % s.numSCs)
 }

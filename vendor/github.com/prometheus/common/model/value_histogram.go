@@ -14,165 +14,165 @@
 package model
 
 import (
-	"encoding/json"
-	"fmt"
-	"strconv"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "strconv"
+    "strings"
 )
 
 type FloatString float64
 
 func (v FloatString) String() string {
-	return strconv.FormatFloat(float64(v), 'f', -1, 64)
+    return strconv.FormatFloat(float64(v), 'f', -1, 64)
 }
 
 func (v FloatString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(v.String())
+    return json.Marshal(v.String())
 }
 
 func (v *FloatString) UnmarshalJSON(b []byte) error {
-	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
-		return fmt.Errorf("float value must be a quoted string")
-	}
-	f, err := strconv.ParseFloat(string(b[1:len(b)-1]), 64)
-	if err != nil {
-		return err
-	}
-	*v = FloatString(f)
-	return nil
+    if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
+        return fmt.Errorf("float value must be a quoted string")
+    }
+    f, err := strconv.ParseFloat(string(b[1:len(b)-1]), 64)
+    if err != nil {
+        return err
+    }
+    *v = FloatString(f)
+    return nil
 }
 
 type HistogramBucket struct {
-	Boundaries int32
-	Lower      FloatString
-	Upper      FloatString
-	Count      FloatString
+    Boundaries int32
+    Lower      FloatString
+    Upper      FloatString
+    Count      FloatString
 }
 
 func (s HistogramBucket) MarshalJSON() ([]byte, error) {
-	b, err := json.Marshal(s.Boundaries)
-	if err != nil {
-		return nil, err
-	}
-	l, err := json.Marshal(s.Lower)
-	if err != nil {
-		return nil, err
-	}
-	u, err := json.Marshal(s.Upper)
-	if err != nil {
-		return nil, err
-	}
-	c, err := json.Marshal(s.Count)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[%s,%s,%s,%s]", b, l, u, c)), nil
+    b, err := json.Marshal(s.Boundaries)
+    if err != nil {
+        return nil, err
+    }
+    l, err := json.Marshal(s.Lower)
+    if err != nil {
+        return nil, err
+    }
+    u, err := json.Marshal(s.Upper)
+    if err != nil {
+        return nil, err
+    }
+    c, err := json.Marshal(s.Count)
+    if err != nil {
+        return nil, err
+    }
+    return []byte(fmt.Sprintf("[%s,%s,%s,%s]", b, l, u, c)), nil
 }
 
 func (s *HistogramBucket) UnmarshalJSON(buf []byte) error {
-	tmp := []interface{}{&s.Boundaries, &s.Lower, &s.Upper, &s.Count}
-	wantLen := len(tmp)
-	if err := json.Unmarshal(buf, &tmp); err != nil {
-		return err
-	}
-	if gotLen := len(tmp); gotLen != wantLen {
-		return fmt.Errorf("wrong number of fields: %d != %d", gotLen, wantLen)
-	}
-	return nil
+    tmp := []interface{}{&s.Boundaries, &s.Lower, &s.Upper, &s.Count}
+    wantLen := len(tmp)
+    if err := json.Unmarshal(buf, &tmp); err != nil {
+        return err
+    }
+    if gotLen := len(tmp); gotLen != wantLen {
+        return fmt.Errorf("wrong number of fields: %d != %d", gotLen, wantLen)
+    }
+    return nil
 }
 
 func (s *HistogramBucket) Equal(o *HistogramBucket) bool {
-	return s == o || (s.Boundaries == o.Boundaries && s.Lower == o.Lower && s.Upper == o.Upper && s.Count == o.Count)
+    return s == o || (s.Boundaries == o.Boundaries && s.Lower == o.Lower && s.Upper == o.Upper && s.Count == o.Count)
 }
 
 func (b HistogramBucket) String() string {
-	var sb strings.Builder
-	lowerInclusive := b.Boundaries == 1 || b.Boundaries == 3
-	upperInclusive := b.Boundaries == 0 || b.Boundaries == 3
-	if lowerInclusive {
-		sb.WriteRune('[')
-	} else {
-		sb.WriteRune('(')
-	}
-	fmt.Fprintf(&sb, "%g,%g", b.Lower, b.Upper)
-	if upperInclusive {
-		sb.WriteRune(']')
-	} else {
-		sb.WriteRune(')')
-	}
-	fmt.Fprintf(&sb, ":%v", b.Count)
-	return sb.String()
+    var sb strings.Builder
+    lowerInclusive := b.Boundaries == 1 || b.Boundaries == 3
+    upperInclusive := b.Boundaries == 0 || b.Boundaries == 3
+    if lowerInclusive {
+        sb.WriteRune('[')
+    } else {
+        sb.WriteRune('(')
+    }
+    fmt.Fprintf(&sb, "%g,%g", b.Lower, b.Upper)
+    if upperInclusive {
+        sb.WriteRune(']')
+    } else {
+        sb.WriteRune(')')
+    }
+    fmt.Fprintf(&sb, ":%v", b.Count)
+    return sb.String()
 }
 
 type HistogramBuckets []*HistogramBucket
 
 func (s HistogramBuckets) Equal(o HistogramBuckets) bool {
-	if len(s) != len(o) {
-		return false
-	}
+    if len(s) != len(o) {
+        return false
+    }
 
-	for i, bucket := range s {
-		if !bucket.Equal(o[i]) {
-			return false
-		}
-	}
-	return true
+    for i, bucket := range s {
+        if !bucket.Equal(o[i]) {
+            return false
+        }
+    }
+    return true
 }
 
 type SampleHistogram struct {
-	Count   FloatString      `json:"count"`
-	Sum     FloatString      `json:"sum"`
-	Buckets HistogramBuckets `json:"buckets"`
+    Count   FloatString      `json:"count"`
+    Sum     FloatString      `json:"sum"`
+    Buckets HistogramBuckets `json:"buckets"`
 }
 
 func (s SampleHistogram) String() string {
-	return fmt.Sprintf("Count: %f, Sum: %f, Buckets: %v", s.Count, s.Sum, s.Buckets)
+    return fmt.Sprintf("Count: %f, Sum: %f, Buckets: %v", s.Count, s.Sum, s.Buckets)
 }
 
 func (s *SampleHistogram) Equal(o *SampleHistogram) bool {
-	return s == o || (s.Count == o.Count && s.Sum == o.Sum && s.Buckets.Equal(o.Buckets))
+    return s == o || (s.Count == o.Count && s.Sum == o.Sum && s.Buckets.Equal(o.Buckets))
 }
 
 type SampleHistogramPair struct {
-	Timestamp Time
-	// Histogram should never be nil, it's only stored as pointer for efficiency.
-	Histogram *SampleHistogram
+    Timestamp Time
+    // Histogram should never be nil, it's only stored as pointer for efficiency.
+    Histogram *SampleHistogram
 }
 
 func (s SampleHistogramPair) MarshalJSON() ([]byte, error) {
-	if s.Histogram == nil {
-		return nil, fmt.Errorf("histogram is nil")
-	}
-	t, err := json.Marshal(s.Timestamp)
-	if err != nil {
-		return nil, err
-	}
-	v, err := json.Marshal(s.Histogram)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+    if s.Histogram == nil {
+        return nil, fmt.Errorf("histogram is nil")
+    }
+    t, err := json.Marshal(s.Timestamp)
+    if err != nil {
+        return nil, err
+    }
+    v, err := json.Marshal(s.Histogram)
+    if err != nil {
+        return nil, err
+    }
+    return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
 }
 
 func (s *SampleHistogramPair) UnmarshalJSON(buf []byte) error {
-	tmp := []interface{}{&s.Timestamp, &s.Histogram}
-	wantLen := len(tmp)
-	if err := json.Unmarshal(buf, &tmp); err != nil {
-		return err
-	}
-	if gotLen := len(tmp); gotLen != wantLen {
-		return fmt.Errorf("wrong number of fields: %d != %d", gotLen, wantLen)
-	}
-	if s.Histogram == nil {
-		return fmt.Errorf("histogram is null")
-	}
-	return nil
+    tmp := []interface{}{&s.Timestamp, &s.Histogram}
+    wantLen := len(tmp)
+    if err := json.Unmarshal(buf, &tmp); err != nil {
+        return err
+    }
+    if gotLen := len(tmp); gotLen != wantLen {
+        return fmt.Errorf("wrong number of fields: %d != %d", gotLen, wantLen)
+    }
+    if s.Histogram == nil {
+        return fmt.Errorf("histogram is null")
+    }
+    return nil
 }
 
 func (s SampleHistogramPair) String() string {
-	return fmt.Sprintf("%s @[%s]", s.Histogram, s.Timestamp)
+    return fmt.Sprintf("%s @[%s]", s.Histogram, s.Timestamp)
 }
 
 func (s *SampleHistogramPair) Equal(o *SampleHistogramPair) bool {
-	return s == o || (s.Histogram.Equal(o.Histogram) && s.Timestamp.Equal(o.Timestamp))
+    return s == o || (s.Histogram.Equal(o.Histogram) && s.Timestamp.Equal(o.Timestamp))
 }

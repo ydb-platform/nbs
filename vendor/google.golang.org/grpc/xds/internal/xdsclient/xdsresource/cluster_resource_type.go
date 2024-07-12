@@ -18,30 +18,30 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/internal/pretty"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/grpc/internal/pretty"
+    "google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
+    "google.golang.org/protobuf/proto"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
-	// ClusterResourceTypeName represents the transport agnostic name for the
-	// cluster resource.
-	ClusterResourceTypeName = "ClusterResource"
+    // ClusterResourceTypeName represents the transport agnostic name for the
+    // cluster resource.
+    ClusterResourceTypeName = "ClusterResource"
 )
 
 var (
-	// Compile time interface checks.
-	_ Type = clusterResourceType{}
+    // Compile time interface checks.
+    _ Type = clusterResourceType{}
 
-	// Singleton instantiation of the resource type implementation.
-	clusterType = clusterResourceType{
-		resourceTypeState: resourceTypeState{
-			typeURL:                    version.V3ClusterURL,
-			typeName:                   ClusterResourceTypeName,
-			allResourcesRequiredInSotW: true,
-		},
-	}
+    // Singleton instantiation of the resource type implementation.
+    clusterType = clusterResourceType{
+        resourceTypeState: resourceTypeState{
+            typeURL:                    version.V3ClusterURL,
+            typeName:                   ClusterResourceTypeName,
+            allResourcesRequiredInSotW: true,
+        },
+    }
 )
 
 // clusterResourceType provides the resource-type specific functionality for a
@@ -49,28 +49,28 @@ var (
 //
 // Implements the Type interface.
 type clusterResourceType struct {
-	resourceTypeState
+    resourceTypeState
 }
 
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
 func (clusterResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, cluster, err := unmarshalClusterResource(resource)
-	switch {
-	case name == "":
-		// Name is unset only when protobuf deserialization fails.
-		return nil, err
-	case err != nil:
-		// Protobuf deserialization succeeded, but resource validation failed.
-		return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
-	}
+    name, cluster, err := unmarshalClusterResource(resource)
+    switch {
+    case name == "":
+        // Name is unset only when protobuf deserialization fails.
+        return nil, err
+    case err != nil:
+        // Protobuf deserialization succeeded, but resource validation failed.
+        return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
+    }
 
-	// Perform extra validation here.
-	if err := securityConfigValidator(opts.BootstrapConfig, cluster.SecurityCfg); err != nil {
-		return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
-	}
+    // Perform extra validation here.
+    if err := securityConfigValidator(opts.BootstrapConfig, cluster.SecurityCfg); err != nil {
+        return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
+    }
 
-	return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: cluster}}, nil
+    return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: cluster}}, nil
 
 }
 
@@ -79,75 +79,75 @@ func (clusterResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*De
 //
 // Implements the ResourceData interface.
 type ClusterResourceData struct {
-	ResourceData
+    ResourceData
 
-	// TODO: We have always stored update structs by value. See if this can be
-	// switched to a pointer?
-	Resource ClusterUpdate
+    // TODO: We have always stored update structs by value. See if this can be
+    // switched to a pointer?
+    Resource ClusterUpdate
 }
 
 // Equal returns true if other is equal to r.
 func (c *ClusterResourceData) Equal(other ResourceData) bool {
-	if c == nil && other == nil {
-		return true
-	}
-	if (c == nil) != (other == nil) {
-		return false
-	}
-	return proto.Equal(c.Resource.Raw, other.Raw())
+    if c == nil && other == nil {
+        return true
+    }
+    if (c == nil) != (other == nil) {
+        return false
+    }
+    return proto.Equal(c.Resource.Raw, other.Raw())
 }
 
 // ToJSON returns a JSON string representation of the resource data.
 func (c *ClusterResourceData) ToJSON() string {
-	return pretty.ToJSON(c.Resource)
+    return pretty.ToJSON(c.Resource)
 }
 
 // Raw returns the underlying raw protobuf form of the cluster resource.
 func (c *ClusterResourceData) Raw() *anypb.Any {
-	return c.Resource.Raw
+    return c.Resource.Raw
 }
 
 // ClusterWatcher wraps the callbacks to be invoked for different events
 // corresponding to the cluster resource being watched.
 type ClusterWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ClusterResourceData)
+    // OnUpdate is invoked to report an update for the resource being watched.
+    OnUpdate(*ClusterResourceData)
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error)
+    // OnError is invoked under different error conditions including but not
+    // limited to the following:
+    //    - authority mentioned in the resource is not found
+    //    - resource name parsing error
+    //    - resource deserialization error
+    //    - resource validation error
+    //    - ADS stream failure
+    //    - connection failure
+    OnError(error)
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+    // OnResourceDoesNotExist is invoked for a specific error condition where
+    // the requested resource is not found on the xDS management server.
+    OnResourceDoesNotExist()
 }
 
 type delegatingClusterWatcher struct {
-	watcher ClusterWatcher
+    watcher ClusterWatcher
 }
 
 func (d *delegatingClusterWatcher) OnUpdate(data ResourceData) {
-	c := data.(*ClusterResourceData)
-	d.watcher.OnUpdate(c)
+    c := data.(*ClusterResourceData)
+    d.watcher.OnUpdate(c)
 }
 
 func (d *delegatingClusterWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+    d.watcher.OnError(err)
 }
 
 func (d *delegatingClusterWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+    d.watcher.OnResourceDoesNotExist()
 }
 
 // WatchCluster uses xDS to discover the configuration associated with the
 // provided cluster resource name.
 func WatchCluster(p Producer, name string, w ClusterWatcher) (cancel func()) {
-	delegator := &delegatingClusterWatcher{watcher: w}
-	return p.WatchResource(clusterType, name, delegator)
+    delegator := &delegatingClusterWatcher{watcher: w}
+    return p.WatchResource(clusterType, name, delegator)
 }

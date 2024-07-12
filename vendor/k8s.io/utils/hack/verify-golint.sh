@@ -23,7 +23,7 @@ source "${KUBE_ROOT}/hack/lib/util.sh"
 
 if ! which golint > /dev/null; then
     echo "installing golint"
-    go install golang.org/x/lint/golint@latest
+    go get golang.org/x/lint/golint
 fi
 
 cd "${KUBE_ROOT}"

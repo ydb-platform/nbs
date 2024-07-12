@@ -1,0 +1,48 @@
+{
+    "Version": "v1.0.1",
+    "GoVersion": "1.11",
+    "Sum": "h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=",
+    "Packages": {
+        "github.com/beorn7/perks/histogram": {
+            "Imports": [
+                "container/heap",
+                "math",
+                "sort"
+            ],
+            "TestImports": [
+                "math/rand",
+                "testing"
+            ]
+        },
+        "github.com/beorn7/perks/quantile": {
+            "Imports": [
+                "math",
+                "sort"
+            ],
+            "TestImports": [
+                "bufio",
+                "fmt",
+                "github.com/beorn7/perks/quantile",
+                "log",
+                "math",
+                "math/rand",
+                "os",
+                "sort",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/beorn7/perks/topk": {
+            "Imports": [
+                "sort"
+            ],
+            "TestImports": [
+                "fmt",
+                "math/rand",
+                "sort",
+                "testing"
+            ]
+        }
+    }
+}

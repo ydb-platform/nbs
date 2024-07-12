@@ -19,62 +19,62 @@
 package grpctest
 
 import (
-	"testing"
+    "testing"
 
-	"google.golang.org/grpc/grpclog"
-	grpclogi "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/grpclog"
+    grpclogi "google.golang.org/grpc/internal/grpclog"
 )
 
 type s struct {
-	Tester
+    Tester
 }
 
 func Test(t *testing.T) {
-	RunSubTests(t, s{})
+    RunSubTests(t, s{})
 }
 
 func (s) TestInfo(t *testing.T) {
-	grpclog.Info("Info", "message.")
+    grpclog.Info("Info", "message.")
 }
 
 func (s) TestInfoln(t *testing.T) {
-	grpclog.Infoln("Info", "message.")
+    grpclog.Infoln("Info", "message.")
 }
 
 func (s) TestInfof(t *testing.T) {
-	grpclog.Infof("%v %v.", "Info", "message")
+    grpclog.Infof("%v %v.", "Info", "message")
 }
 
 func (s) TestInfoDepth(t *testing.T) {
-	grpclogi.InfoDepth(0, "Info", "depth", "message.")
+    grpclogi.InfoDepth(0, "Info", "depth", "message.")
 }
 
 func (s) TestWarning(t *testing.T) {
-	grpclog.Warning("Warning", "message.")
+    grpclog.Warning("Warning", "message.")
 }
 
 func (s) TestWarningln(t *testing.T) {
-	grpclog.Warningln("Warning", "message.")
+    grpclog.Warningln("Warning", "message.")
 }
 
 func (s) TestWarningf(t *testing.T) {
-	grpclog.Warningf("%v %v.", "Warning", "message")
+    grpclog.Warningf("%v %v.", "Warning", "message")
 }
 
 func (s) TestWarningDepth(t *testing.T) {
-	grpclogi.WarningDepth(0, "Warning", "depth", "message.")
+    grpclogi.WarningDepth(0, "Warning", "depth", "message.")
 }
 
 func (s) TestError(t *testing.T) {
-	const numErrors = 10
-	TLogger.ExpectError("Expected error")
-	TLogger.ExpectError("Expected ln error")
-	TLogger.ExpectError("Expected formatted error")
-	TLogger.ExpectErrorN("Expected repeated error", numErrors)
-	grpclog.Error("Expected", "error")
-	grpclog.Errorln("Expected", "ln", "error")
-	grpclog.Errorf("%v %v %v", "Expected", "formatted", "error")
-	for i := 0; i < numErrors; i++ {
-		grpclog.Error("Expected repeated error")
-	}
+    const numErrors = 10
+    TLogger.ExpectError("Expected error")
+    TLogger.ExpectError("Expected ln error")
+    TLogger.ExpectError("Expected formatted error")
+    TLogger.ExpectErrorN("Expected repeated error", numErrors)
+    grpclog.Error("Expected", "error")
+    grpclog.Errorln("Expected", "ln", "error")
+    grpclog.Errorf("%v %v %v", "Expected", "formatted", "error")
+    for i := 0; i < numErrors; i++ {
+        grpclog.Error("Expected repeated error")
+    }
 }

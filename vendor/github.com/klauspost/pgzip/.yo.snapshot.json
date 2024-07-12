@@ -1,0 +1,42 @@
+{
+    "Version": "v1.2.6",
+    "GoVersion": "",
+    "Sum": "h1:8RXeL5crjEUFnR2/Sn6GJNWtSQ3Dk8pq4CL3jvdDyjU=",
+    "Packages": {
+        "github.com/klauspost/pgzip": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/klauspost/compress/flate",
+                "hash",
+                "hash/crc32",
+                "io",
+                "runtime",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "crypto/rand",
+                "fmt",
+                "github.com/klauspost/compress/gzip",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "runtime",
+                "runtime/debug",
+                "runtime/pprof",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

@@ -1,33 +1,33 @@
 package xerrors
 
 import (
-	"errors"
+    "errors"
 )
 
 type isYdbError interface {
-	isYdbError()
+    isYdbError()
 }
 
 func IsYdb(err error) bool {
-	var e isYdbError
-	return errors.As(err, &e)
+    var e isYdbError
+    return errors.As(err, &e)
 }
 
 type ydbError struct {
-	err error
+    err error
 }
 
 func (e *ydbError) isYdbError() {}
 
 func (e *ydbError) Error() string {
-	return e.err.Error()
+    return e.err.Error()
 }
 
 func (e *ydbError) Unwrap() error {
-	return e.err
+    return e.err
 }
 
 // Wrap makes internal ydb error
 func Wrap(err error) error {
-	return &ydbError{err: err}
+    return &ydbError{err: err}
 }

@@ -1,11 +1,11 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
-SRCS(protogen.go)
-
-GO_TEST_SRCS(protogen_test.go)
+SRCS(
+    protogen.go
+)
 
 END()
-
-RECURSE(gotest)

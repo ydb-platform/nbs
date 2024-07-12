@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(Apache-2.0)
 
 SRCS(
@@ -8,6 +10,7 @@ SRCS(
     fnv.go
     labels.go
     labelset.go
+    metadata.go
     metric.go
     model.go
     signature.go
@@ -35,4 +38,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

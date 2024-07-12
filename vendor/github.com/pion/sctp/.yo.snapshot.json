@@ -1,0 +1,78 @@
+{
+    "Version": "v1.8.13",
+    "GoVersion": "1.13",
+    "Sum": "h1:YUJR44pWM2FPUhkl8l+vDyF2EDE3aTWtr3c+LDhCRcQ=",
+    "Packages": {
+        "github.com/pion/sctp": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/binary",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/randutil",
+                "hash/crc32",
+                "io",
+                "math",
+                "net",
+                "os",
+                "sort",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/rand",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/transport/v3/test",
+                "github.com/pion/transport/v3/vnet",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "io",
+                "math",
+                "math/rand",
+                "net",
+                "os",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/pion/sctp/examples/ping-pong/ping": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/sctp",
+                "log",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/pion/sctp/examples/ping-pong/pong": {
+            "Imports": [
+                "fmt",
+                "github.com/pion/logging",
+                "github.com/pion/sctp",
+                "log",
+                "net",
+                "sync",
+                "time"
+            ],
+            "TestImports": null
+        }
+    }
+}

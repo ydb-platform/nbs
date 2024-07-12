@@ -1,0 +1,29 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    aes_cmac_go_proto
+    aes_cmac_prf_go_proto
+    aes_ctr_go_proto
+    aes_ctr_hmac_aead_go_proto
+    aes_ctr_hmac_streaming_go_proto
+    aes_gcm_go_proto
+    aes_gcm_hkdf_streaming_go_proto
+    aes_gcm_siv_go_proto
+    aes_siv_go_proto
+    chacha20_poly1305_go_proto
+    common_go_proto
+    ecdsa_go_proto
+    ecies_aead_hkdf_go_proto
+    ed25519_go_proto
+    hkdf_prf_go_proto
+    hmac_go_proto
+    hmac_prf_go_proto
+    hpke_go_proto
+    jwt_ecdsa_go_proto
+    jwt_hmac_go_proto
+    jwt_rsa_ssa_pkcs1_go_proto
+    kms_envelope_go_proto
+    rsa_ssa_pkcs1_go_proto
+    tink_go_proto
+    xchacha20_poly1305_go_proto
+)

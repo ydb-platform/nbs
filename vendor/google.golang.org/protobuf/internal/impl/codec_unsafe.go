@@ -10,9 +10,9 @@ package impl
 // When using unsafe pointers, we can just treat enum values as int32s.
 
 var (
-	coderEnumNoZero      = coderInt32NoZero
-	coderEnum            = coderInt32
-	coderEnumPtr         = coderInt32Ptr
-	coderEnumSlice       = coderInt32Slice
-	coderEnumPackedSlice = coderInt32PackedSlice
+    coderEnumNoZero      = coderInt32NoZero
+    coderEnum            = coderInt32
+    coderEnumPtr         = coderInt32Ptr
+    coderEnumSlice       = coderInt32Slice
+    coderEnumPackedSlice = coderInt32PackedSlice
 )

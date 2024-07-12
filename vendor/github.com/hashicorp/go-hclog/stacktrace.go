@@ -21,23 +21,23 @@
 package hclog
 
 import (
-	"bytes"
-	"runtime"
-	"strconv"
-	"strings"
-	"sync"
+    "bytes"
+    "runtime"
+    "strconv"
+    "strings"
+    "sync"
 )
 
 var (
-	_stacktraceIgnorePrefixes = []string{
-		"runtime.goexit",
-		"runtime.main",
-	}
-	_stacktracePool = sync.Pool{
-		New: func() interface{} {
-			return newProgramCounters(64)
-		},
-	}
+    _stacktraceIgnorePrefixes = []string{
+        "runtime.goexit",
+        "runtime.main",
+    }
+    _stacktracePool = sync.Pool{
+        New: func() interface{} {
+            return newProgramCounters(64)
+        },
+    }
 )
 
 // CapturedStacktrace represents a stacktrace captured by a previous call
@@ -48,62 +48,62 @@ type CapturedStacktrace string
 // Stacktrace captures a stacktrace of the current goroutine and returns
 // it to be passed to a logging function.
 func Stacktrace() CapturedStacktrace {
-	return CapturedStacktrace(takeStacktrace())
+    return CapturedStacktrace(takeStacktrace())
 }
 
 func takeStacktrace() string {
-	programCounters := _stacktracePool.Get().(*programCounters)
-	defer _stacktracePool.Put(programCounters)
+    programCounters := _stacktracePool.Get().(*programCounters)
+    defer _stacktracePool.Put(programCounters)
 
-	var buffer bytes.Buffer
+    var buffer bytes.Buffer
 
-	for {
-		// Skip the call to runtime.Counters and takeStacktrace so that the
-		// program counters start at the caller of takeStacktrace.
-		n := runtime.Callers(2, programCounters.pcs)
-		if n < cap(programCounters.pcs) {
-			programCounters.pcs = programCounters.pcs[:n]
-			break
-		}
-		// Don't put the too-short counter slice back into the pool; this lets
-		// the pool adjust if we consistently take deep stacktraces.
-		programCounters = newProgramCounters(len(programCounters.pcs) * 2)
-	}
+    for {
+        // Skip the call to runtime.Counters and takeStacktrace so that the
+        // program counters start at the caller of takeStacktrace.
+        n := runtime.Callers(2, programCounters.pcs)
+        if n < cap(programCounters.pcs) {
+            programCounters.pcs = programCounters.pcs[:n]
+            break
+        }
+        // Don't put the too-short counter slice back into the pool; this lets
+        // the pool adjust if we consistently take deep stacktraces.
+        programCounters = newProgramCounters(len(programCounters.pcs) * 2)
+    }
 
-	i := 0
-	frames := runtime.CallersFrames(programCounters.pcs)
-	for frame, more := frames.Next(); more; frame, more = frames.Next() {
-		if shouldIgnoreStacktraceFunction(frame.Function) {
-			continue
-		}
-		if i != 0 {
-			buffer.WriteByte('\n')
-		}
-		i++
-		buffer.WriteString(frame.Function)
-		buffer.WriteByte('\n')
-		buffer.WriteByte('\t')
-		buffer.WriteString(frame.File)
-		buffer.WriteByte(':')
-		buffer.WriteString(strconv.Itoa(int(frame.Line)))
-	}
+    i := 0
+    frames := runtime.CallersFrames(programCounters.pcs)
+    for frame, more := frames.Next(); more; frame, more = frames.Next() {
+        if shouldIgnoreStacktraceFunction(frame.Function) {
+            continue
+        }
+        if i != 0 {
+            buffer.WriteByte('\n')
+        }
+        i++
+        buffer.WriteString(frame.Function)
+        buffer.WriteByte('\n')
+        buffer.WriteByte('\t')
+        buffer.WriteString(frame.File)
+        buffer.WriteByte(':')
+        buffer.WriteString(strconv.Itoa(int(frame.Line)))
+    }
 
-	return buffer.String()
+    return buffer.String()
 }
 
 func shouldIgnoreStacktraceFunction(function string) bool {
-	for _, prefix := range _stacktraceIgnorePrefixes {
-		if strings.HasPrefix(function, prefix) {
-			return true
-		}
-	}
-	return false
+    for _, prefix := range _stacktraceIgnorePrefixes {
+        if strings.HasPrefix(function, prefix) {
+            return true
+        }
+    }
+    return false
 }
 
 type programCounters struct {
-	pcs []uintptr
+    pcs []uintptr
 }
 
 func newProgramCounters(size int) *programCounters {
-	return &programCounters{make([]uintptr, size)}
+    return &programCounters{make([]uintptr, size)}
 }

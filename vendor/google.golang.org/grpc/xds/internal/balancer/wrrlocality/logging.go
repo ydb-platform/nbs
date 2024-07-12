@@ -19,10 +19,10 @@
 package wrrlocality
 
 import (
-	"fmt"
+    "fmt"
 
-	"google.golang.org/grpc/grpclog"
-	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+    "google.golang.org/grpc/grpclog"
+    internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
 const prefix = "[wrrlocality-lb %p] "
@@ -30,5 +30,5 @@ const prefix = "[wrrlocality-lb %p] "
 var logger = grpclog.Component("xds")
 
 func prefixLogger(p *wrrLocalityBalancer) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
+    return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
 }

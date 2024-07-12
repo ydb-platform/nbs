@@ -19,28 +19,28 @@
 package googlecloud
 
 import (
-	"testing"
+    "testing"
 )
 
 func TestIsRunningOnGCE(t *testing.T) {
-	for _, tc := range []struct {
-		description      string
-		testOS           string
-		testManufacturer string
-		out              bool
-	}{
-		// Linux tests.
-		{"linux: not a GCP platform", "linux", "not GCP", false},
-		{"Linux: GCP platform (Google)", "linux", "Google", true},
-		{"Linux: GCP platform (Google Compute Engine)", "linux", "Google Compute Engine", true},
-		{"Linux: GCP platform (Google Compute Engine) with extra spaces", "linux", "  Google Compute Engine        ", true},
-		// Windows tests.
-		{"windows: not a GCP platform", "windows", "not GCP", false},
-		{"windows: GCP platform (Google)", "windows", "Google", true},
-		{"windows: GCP platform (Google) with extra spaces", "windows", "  Google     ", true},
-	} {
-		if got, want := isRunningOnGCE([]byte(tc.testManufacturer), tc.testOS), tc.out; got != want {
-			t.Errorf("%v: isRunningOnGCE()=%v, want %v", tc.description, got, want)
-		}
-	}
+    for _, tc := range []struct {
+        description      string
+        testOS           string
+        testManufacturer string
+        out              bool
+    }{
+        // Linux tests.
+        {"linux: not a GCP platform", "linux", "not GCP", false},
+        {"Linux: GCP platform (Google)", "linux", "Google", true},
+        {"Linux: GCP platform (Google Compute Engine)", "linux", "Google Compute Engine", true},
+        {"Linux: GCP platform (Google Compute Engine) with extra spaces", "linux", "  Google Compute Engine        ", true},
+        // Windows tests.
+        {"windows: not a GCP platform", "windows", "not GCP", false},
+        {"windows: GCP platform (Google)", "windows", "Google", true},
+        {"windows: GCP platform (Google) with extra spaces", "windows", "  Google     ", true},
+    } {
+        if got, want := isRunningOnGCE([]byte(tc.testManufacturer), tc.testOS), tc.out; got != want {
+            t.Errorf("%v: isRunningOnGCE()=%v, want %v", tc.description, got, want)
+        }
+    }
 }

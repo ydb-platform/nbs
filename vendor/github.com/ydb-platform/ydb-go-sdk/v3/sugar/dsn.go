@@ -10,18 +10,18 @@ import "net/url"
 
 // DSN makes connection string (data source name) by endpoint, database and secure
 func DSN(endpoint, database string, secure bool) (s string) {
-	qp := url.Values{}
+    qp := url.Values{}
 
-	dsn := url.URL{
-		Scheme:   "grpc",
-		Host:     endpoint,
-		Path:     database,
-		RawQuery: qp.Encode(),
-	}
+    dsn := url.URL{
+        Scheme:   "grpc",
+        Host:     endpoint,
+        Path:     database,
+        RawQuery: qp.Encode(),
+    }
 
-	if secure {
-		dsn.Scheme = "grpcs"
-	}
+    if secure {
+        dsn.Scheme = "grpcs"
+    }
 
-	return dsn.String()
+    return dsn.String()
 }

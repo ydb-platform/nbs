@@ -1,0 +1,53 @@
+---
+page_title: 'Plugin Development - Framework: Handling Data - Terraform Concepts'
+description: >-
+  Configuration, Schemas, Attributes and Blocks.
+---
+
+# Terraform Concepts
+
+Schemas specify the fields that a provider, resource or data source configuration can have.
+
+The fields defined within the schema are either attributes or blocks.
+
+Attributes and blocks within Terraform configuration have different syntax, either using, or omitting an equals sign in their definition, respectively.
+
+Providers, resources and data sources have their own type-specific schema, which use type-specific attributes and blocks.
+
+The following examples use a resource but the same schema attribute and block types are also defined with the schema for providers and data sources. The examples focus on type-related information, the `Optional` field is included just to provide working examples but refer to [Schema](/terraform/plugin/framework/handling-data/schemas) for information about the other fields that can be defined within attributes and blocks.
+
+## Attributes
+
+Attributes are used to set values.
+
+| Attribute Type        | Description                                                                     |
+|-----------------------|---------------------------------------------------------------------------------|
+| BoolAttribute         | Boolean values (i.e., true/false)                                               |
+| Float64Attribute      | 64 bit floating point number values                                             |
+| Int64Attribute        | 64 bit integer number values                                                    |
+| NumberAttribute       | Generic number with up to 512 bits of floating point or integer precision       |
+| StringAttribute       | String values                                                                   |
+| ListAttribute         | List with a single element type (e.g., types.StringType)                        |
+| MapAttribute          | Map with a single element type (e.g., types.Int64Type)                          |
+| SetAttribute          | Set with a single element type (e.g., types.BoolType)                           |
+| ObjectAttribute       | Object with only type information for underlying attributes                     |
+| ListNestedAttribute   | List containing nested objects where the object attributes can be fully defined |
+| MapNestedAttribute    | Map containing nested objects where the object attributes can be fully defined  |
+| SetNestedAttribute    | Set containing nested objects where the object attributes can be fully defined  |
+| SingleNestedAttribute | Single object where the object attributes can be fully defined                  |
+
+Refer to [Attributes - Terraform Configuration and Schema](/terraform/plugin/framework/handling-data/attributes#terraform-configuration-and-schema) for examples of Terraform configuration and schema that illustrate the usage of the various types of schema attributes.
+
+## Blocks
+
+The Terraform language uses a block as a container for other attributes and blocks. Terraform implements many top level blocks, such as `provider` and `resource`, while providers can implement nested blocks in their schema to enable practitioners to configure data.
+
+-> Use [nested attributes](/terraform/plugin/framework/handling-data/attributes#nested-attributes) for new schema implementations. Block support is mainly for migrating prior SDK-based providers.
+
+The available nesting modes are:
+
+- List: Ordered collection of objects
+- Set: Unordered collection of objects
+- Single: One object
+
+Refer to [Blocks - Terraform Configuration](/terraform/plugin/framework/handling-data/blocks#terraform-configuration) for examples of Terraform configuration and schema that illustrate the usage of nested blocks.

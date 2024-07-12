@@ -1,0 +1,23 @@
+{
+    "Version": "v0.4.9",
+    "GoVersion": "1.14",
+    "Sum": "h1:5883YPCtkSd8LFbs13nXplj9g9tlrwoJRjgpgMu1/fE=",
+    "Packages": {
+        "github.com/pkg/xattr": {
+            "Imports": [
+                "golang.org/x/sys/unix",
+                "os",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "io/ioutil",
+                "log",
+                "os",
+                "runtime",
+                "syscall",
+                "testing"
+            ]
+        }
+    }
+}

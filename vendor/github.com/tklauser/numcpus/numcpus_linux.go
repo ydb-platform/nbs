@@ -15,106 +15,106 @@
 package numcpus
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
+    "io/ioutil"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
 
-	"golang.org/x/sys/unix"
+    "golang.org/x/sys/unix"
 )
 
 const sysfsCPUBasePath = "/sys/devices/system/cpu"
 
 func getFromCPUAffinity() (int, error) {
-	var cpuSet unix.CPUSet
-	if err := unix.SchedGetaffinity(0, &cpuSet); err != nil {
-		return 0, err
-	}
-	return cpuSet.Count(), nil
+    var cpuSet unix.CPUSet
+    if err := unix.SchedGetaffinity(0, &cpuSet); err != nil {
+        return 0, err
+    }
+    return cpuSet.Count(), nil
 }
 
 func readCPURange(file string) (int, error) {
-	buf, err := ioutil.ReadFile(filepath.Join(sysfsCPUBasePath, file))
-	if err != nil {
-		return 0, err
-	}
-	return parseCPURange(strings.Trim(string(buf), "\n "))
+    buf, err := ioutil.ReadFile(filepath.Join(sysfsCPUBasePath, file))
+    if err != nil {
+        return 0, err
+    }
+    return parseCPURange(strings.Trim(string(buf), "\n "))
 }
 
 func parseCPURange(cpus string) (int, error) {
-	n := int(0)
-	for _, cpuRange := range strings.Split(cpus, ",") {
-		if len(cpuRange) == 0 {
-			continue
-		}
-		rangeOp := strings.SplitN(cpuRange, "-", 2)
-		first, err := strconv.ParseUint(rangeOp[0], 10, 32)
-		if err != nil {
-			return 0, err
-		}
-		if len(rangeOp) == 1 {
-			n++
-			continue
-		}
-		last, err := strconv.ParseUint(rangeOp[1], 10, 32)
-		if err != nil {
-			return 0, err
-		}
-		n += int(last - first + 1)
-	}
-	return n, nil
+    n := int(0)
+    for _, cpuRange := range strings.Split(cpus, ",") {
+        if len(cpuRange) == 0 {
+            continue
+        }
+        rangeOp := strings.SplitN(cpuRange, "-", 2)
+        first, err := strconv.ParseUint(rangeOp[0], 10, 32)
+        if err != nil {
+            return 0, err
+        }
+        if len(rangeOp) == 1 {
+            n++
+            continue
+        }
+        last, err := strconv.ParseUint(rangeOp[1], 10, 32)
+        if err != nil {
+            return 0, err
+        }
+        n += int(last - first + 1)
+    }
+    return n, nil
 }
 
 func getConfigured() (int, error) {
-	d, err := os.Open(sysfsCPUBasePath)
-	if err != nil {
-		return 0, err
-	}
-	defer d.Close()
-	fis, err := d.Readdir(-1)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, fi := range fis {
-		if name := fi.Name(); fi.IsDir() && strings.HasPrefix(name, "cpu") {
-			_, err := strconv.ParseInt(name[3:], 10, 64)
-			if err == nil {
-				count++
-			}
-		}
-	}
-	return count, nil
+    d, err := os.Open(sysfsCPUBasePath)
+    if err != nil {
+        return 0, err
+    }
+    defer d.Close()
+    fis, err := d.Readdir(-1)
+    if err != nil {
+        return 0, err
+    }
+    count := 0
+    for _, fi := range fis {
+        if name := fi.Name(); fi.IsDir() && strings.HasPrefix(name, "cpu") {
+            _, err := strconv.ParseInt(name[3:], 10, 64)
+            if err == nil {
+                count++
+            }
+        }
+    }
+    return count, nil
 }
 
 func getKernelMax() (int, error) {
-	buf, err := ioutil.ReadFile(filepath.Join(sysfsCPUBasePath, "kernel_max"))
-	if err != nil {
-		return 0, err
-	}
-	n, err := strconv.ParseInt(strings.Trim(string(buf), "\n "), 10, 32)
-	if err != nil {
-		return 0, err
-	}
-	return int(n), nil
+    buf, err := ioutil.ReadFile(filepath.Join(sysfsCPUBasePath, "kernel_max"))
+    if err != nil {
+        return 0, err
+    }
+    n, err := strconv.ParseInt(strings.Trim(string(buf), "\n "), 10, 32)
+    if err != nil {
+        return 0, err
+    }
+    return int(n), nil
 }
 
 func getOffline() (int, error) {
-	return readCPURange("offline")
+    return readCPURange("offline")
 }
 
 func getOnline() (int, error) {
-	if n, err := getFromCPUAffinity(); err == nil {
-		return n, nil
-	}
-	return readCPURange("online")
+    if n, err := getFromCPUAffinity(); err == nil {
+        return n, nil
+    }
+    return readCPURange("online")
 }
 
 func getPossible() (int, error) {
-	return readCPURange("possible")
+    return readCPURange("possible")
 }
 
 func getPresent() (int, error) {
-	return readCPURange("present")
+    return readCPURange("present")
 }

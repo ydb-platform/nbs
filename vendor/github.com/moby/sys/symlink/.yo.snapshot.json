@@ -1,0 +1,23 @@
+{
+    "Version": "v0.2.0",
+    "GoVersion": "1.16",
+    "Sum": "h1:tk1rOM+Ljp0nFmfOIBtlV3rTDlWOwFRhjEeAhZB0nZc=",
+    "Packages": {
+        "github.com/moby/sys/symlink": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "golang.org/x/sys/windows",
+                "os",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        }
+    }
+}

@@ -1,0 +1,3 @@
+testdata/obj:11:1-11 Indexed value is neither an array nor an object nor a string
+
+obj.bar[0]

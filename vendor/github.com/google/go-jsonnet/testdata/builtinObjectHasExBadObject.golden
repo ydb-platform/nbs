@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type number, expected object
+-------------------------------------------------
+    testdata/builtinObjectHasExBadObject:1:1-32    $
+
+std.objectHasEx(42, "x", false)
+
+-------------------------------------------------
+    During evaluation

@@ -1,0 +1,49 @@
+{
+    "Version": "v0.7.4",
+    "GoVersion": "1.13",
+    "Sum": "h1:ZQgVdpTdAL7WpMIwLzCfbalOcSUdkDZnpUv3/+BxzFA=",
+    "Packages": {
+        "github.com/hashicorp/go-retryablehttp": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/x509",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-cleanhttp",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "math/rand",
+                "net/http",
+                "net/url",
+                "os",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/http/httputil",
+                "net/url",
+                "reflect",
+                "strings",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

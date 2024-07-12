@@ -7,8 +7,8 @@ package detrand
 import "testing"
 
 func Benchmark(b *testing.B) {
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		binaryHash()
-	}
+    b.ReportAllocs()
+    for i := 0; i < b.N; i++ {
+        binaryHash()
+    }
 }

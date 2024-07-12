@@ -2,4 +2,4 @@
 
 This file is to be compressed with source.txt as the dictionary:
 
-	zstd -19 --patch-from=source.txt target.txt
+    zstd -19 --patch-from=source.txt target.txt

@@ -1,0 +1,19 @@
+{
+    "Version": "v1.1.0",
+    "GoVersion": "",
+    "Sum": "h1:OxrOeh75EUXMY8TBjag2fzXGZ40LB6IKw45YeGUDY2I=",
+    "Packages": {
+        "github.com/hashicorp/errwrap": {
+            "Imports": [
+                "errors",
+                "reflect",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "testing"
+            ]
+        }
+    }
+}

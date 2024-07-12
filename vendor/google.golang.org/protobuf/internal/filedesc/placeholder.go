@@ -5,26 +5,26 @@
 package filedesc
 
 import (
-	"google.golang.org/protobuf/internal/descopts"
-	"google.golang.org/protobuf/internal/pragma"
-	"google.golang.org/protobuf/reflect/protoreflect"
+    "google.golang.org/protobuf/internal/descopts"
+    "google.golang.org/protobuf/internal/pragma"
+    "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 var (
-	emptyNames           = new(Names)
-	emptyEnumRanges      = new(EnumRanges)
-	emptyFieldRanges     = new(FieldRanges)
-	emptyFieldNumbers    = new(FieldNumbers)
-	emptySourceLocations = new(SourceLocations)
+    emptyNames           = new(Names)
+    emptyEnumRanges      = new(EnumRanges)
+    emptyFieldRanges     = new(FieldRanges)
+    emptyFieldNumbers    = new(FieldNumbers)
+    emptySourceLocations = new(SourceLocations)
 
-	emptyFiles      = new(FileImports)
-	emptyMessages   = new(Messages)
-	emptyFields     = new(Fields)
-	emptyOneofs     = new(Oneofs)
-	emptyEnums      = new(Enums)
-	emptyEnumValues = new(EnumValues)
-	emptyExtensions = new(Extensions)
-	emptyServices   = new(Services)
+    emptyFiles      = new(FileImports)
+    emptyMessages   = new(Messages)
+    emptyFields     = new(Fields)
+    emptyOneofs     = new(Oneofs)
+    emptyEnums      = new(Enums)
+    emptyEnumValues = new(EnumValues)
+    emptyExtensions = new(Extensions)
+    emptyServices   = new(Services)
 )
 
 // PlaceholderFile is a placeholder, representing only the file path.
@@ -100,7 +100,7 @@ func (m PlaceholderMessage) ReservedRanges() protoreflect.FieldRanges   { return
 func (m PlaceholderMessage) RequiredNumbers() protoreflect.FieldNumbers { return emptyFieldNumbers }
 func (m PlaceholderMessage) ExtensionRanges() protoreflect.FieldRanges  { return emptyFieldRanges }
 func (m PlaceholderMessage) ExtensionRangeOptions(int) protoreflect.ProtoMessage {
-	panic("index out of range")
+    panic("index out of range")
 }
 func (m PlaceholderMessage) Messages() protoreflect.MessageDescriptors     { return emptyMessages }
 func (m PlaceholderMessage) Enums() protoreflect.EnumDescriptors           { return emptyEnums }

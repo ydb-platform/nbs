@@ -19,32 +19,32 @@
 package googlecloud
 
 import (
-	"errors"
-	"os/exec"
-	"regexp"
-	"strings"
+    "errors"
+    "os/exec"
+    "regexp"
+    "strings"
 )
 
 const (
-	windowsCheckCommand      = "powershell.exe"
-	windowsCheckCommandArgs  = "Get-WmiObject -Class Win32_BIOS"
-	powershellOutputFilter   = "Manufacturer"
-	windowsManufacturerRegex = ":(.*)"
+    windowsCheckCommand      = "powershell.exe"
+    windowsCheckCommandArgs  = "Get-WmiObject -Class Win32_BIOS"
+    powershellOutputFilter   = "Manufacturer"
+    windowsManufacturerRegex = ":(.*)"
 )
 
 func manufacturer() ([]byte, error) {
-	cmd := exec.Command(windowsCheckCommand, windowsCheckCommandArgs)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	for _, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
-		if strings.HasPrefix(line, powershellOutputFilter) {
-			re := regexp.MustCompile(windowsManufacturerRegex)
-			name := re.FindString(line)
-			name = strings.TrimLeft(name, ":")
-			return []byte(name), nil
-		}
-	}
-	return nil, errors.New("cannot determine the machine's manufacturer")
+    cmd := exec.Command(windowsCheckCommand, windowsCheckCommandArgs)
+    out, err := cmd.Output()
+    if err != nil {
+        return nil, err
+    }
+    for _, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
+        if strings.HasPrefix(line, powershellOutputFilter) {
+            re := regexp.MustCompile(windowsManufacturerRegex)
+            name := re.FindString(line)
+            name = strings.TrimLeft(name, ":")
+            return []byte(name), nil
+        }
+    }
+    return nil, errors.New("cannot determine the machine's manufacturer")
 }

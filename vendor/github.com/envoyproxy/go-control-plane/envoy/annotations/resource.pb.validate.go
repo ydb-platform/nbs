@@ -4,42 +4,42 @@
 package annotations
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"net"
-	"net/mail"
-	"net/url"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
-	"unicode/utf8"
+    "bytes"
+    "errors"
+    "fmt"
+    "net"
+    "net/mail"
+    "net/url"
+    "regexp"
+    "sort"
+    "strings"
+    "time"
+    "unicode/utf8"
 
-	"google.golang.org/protobuf/types/known/anypb"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 // ensure the imports are used
 var (
-	_ = bytes.MinRead
-	_ = errors.New("")
-	_ = fmt.Print
-	_ = utf8.UTFMax
-	_ = (*regexp.Regexp)(nil)
-	_ = (*strings.Reader)(nil)
-	_ = net.IPv4len
-	_ = time.Duration(0)
-	_ = (*url.URL)(nil)
-	_ = (*mail.Address)(nil)
-	_ = anypb.Any{}
-	_ = sort.Sort
+    _ = bytes.MinRead
+    _ = errors.New("")
+    _ = fmt.Print
+    _ = utf8.UTFMax
+    _ = (*regexp.Regexp)(nil)
+    _ = (*strings.Reader)(nil)
+    _ = net.IPv4len
+    _ = time.Duration(0)
+    _ = (*url.URL)(nil)
+    _ = (*mail.Address)(nil)
+    _ = anypb.Any{}
+    _ = sort.Sort
 )
 
 // Validate checks the field values on ResourceAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ResourceAnnotation) Validate() error {
-	return m.validate(false)
+    return m.validate(false)
 }
 
 // ValidateAll checks the field values on ResourceAnnotation with the rules
@@ -47,23 +47,23 @@ func (m *ResourceAnnotation) Validate() error {
 // violated, the result is a list of violation errors wrapped in
 // ResourceAnnotationMultiError, or nil if none found.
 func (m *ResourceAnnotation) ValidateAll() error {
-	return m.validate(true)
+    return m.validate(true)
 }
 
 func (m *ResourceAnnotation) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
+    if m == nil {
+        return nil
+    }
 
-	var errors []error
+    var errors []error
 
-	// no validation rules for Type
+    // no validation rules for Type
 
-	if len(errors) > 0 {
-		return ResourceAnnotationMultiError(errors)
-	}
+    if len(errors) > 0 {
+        return ResourceAnnotationMultiError(errors)
+    }
 
-	return nil
+    return nil
 }
 
 // ResourceAnnotationMultiError is an error wrapping multiple validation errors
@@ -73,11 +73,11 @@ type ResourceAnnotationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ResourceAnnotationMultiError) Error() string {
-	var msgs []string
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
+    var msgs []string
+    for _, err := range m {
+        msgs = append(msgs, err.Error())
+    }
+    return strings.Join(msgs, "; ")
 }
 
 // AllErrors returns a list of validation violation errors.
@@ -86,10 +86,10 @@ func (m ResourceAnnotationMultiError) AllErrors() []error { return m }
 // ResourceAnnotationValidationError is the validation error returned by
 // ResourceAnnotation.Validate if the designated constraints aren't met.
 type ResourceAnnotationValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
+    field  string
+    reason string
+    cause  error
+    key    bool
 }
 
 // Field function returns field value.
@@ -106,35 +106,35 @@ func (e ResourceAnnotationValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
 func (e ResourceAnnotationValidationError) ErrorName() string {
-	return "ResourceAnnotationValidationError"
+    return "ResourceAnnotationValidationError"
 }
 
 // Error satisfies the builtin error interface
 func (e ResourceAnnotationValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
+    cause := ""
+    if e.cause != nil {
+        cause = fmt.Sprintf(" | caused by: %v", e.cause)
+    }
 
-	key := ""
-	if e.key {
-		key = "key for "
-	}
+    key := ""
+    if e.key {
+        key = "key for "
+    }
 
-	return fmt.Sprintf(
-		"invalid %sResourceAnnotation.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
+    return fmt.Sprintf(
+        "invalid %sResourceAnnotation.%s: %s%s",
+        key,
+        e.field,
+        e.reason,
+        cause)
 }
 
 var _ error = ResourceAnnotationValidationError{}
 
 var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
+    Field() string
+    Reason() string
+    Key() bool
+    Cause() error
+    ErrorName() string
 } = ResourceAnnotationValidationError{}

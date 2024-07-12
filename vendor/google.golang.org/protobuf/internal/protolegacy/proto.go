@@ -7,77 +7,77 @@
 package protolegacy
 
 import (
-	"bytes"
-	"compress/gzip"
-	"errors"
-	"fmt"
-	"io/ioutil"
+    "bytes"
+    "compress/gzip"
+    "errors"
+    "fmt"
+    "io/ioutil"
 
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/reflect/protoregistry"
-	"google.golang.org/protobuf/runtime/protoiface"
-	"google.golang.org/protobuf/runtime/protoimpl"
+    "google.golang.org/protobuf/reflect/protoreflect"
+    "google.golang.org/protobuf/reflect/protoregistry"
+    "google.golang.org/protobuf/runtime/protoiface"
+    "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
-	ProtoPackageIsVersion1 = true
-	ProtoPackageIsVersion2 = true
-	ProtoPackageIsVersion3 = true
+    ProtoPackageIsVersion1 = true
+    ProtoPackageIsVersion2 = true
+    ProtoPackageIsVersion3 = true
 )
 
 const (
-	WireVarint     = 0
-	WireFixed32    = 5
-	WireFixed64    = 1
-	WireBytes      = 2
-	WireStartGroup = 3
-	WireEndGroup   = 4
+    WireVarint     = 0
+    WireFixed32    = 5
+    WireFixed64    = 1
+    WireBytes      = 2
+    WireStartGroup = 3
+    WireEndGroup   = 4
 )
 
 type (
-	Message                = protoiface.MessageV1
-	ExtensionRange         = protoiface.ExtensionRangeV1
-	ExtensionDesc          = protoimpl.ExtensionInfo
-	Extension              = protoimpl.ExtensionFieldV1
-	XXX_InternalExtensions = protoimpl.ExtensionFields
+    Message                = protoiface.MessageV1
+    ExtensionRange         = protoiface.ExtensionRangeV1
+    ExtensionDesc          = protoimpl.ExtensionInfo
+    Extension              = protoimpl.ExtensionFieldV1
+    XXX_InternalExtensions = protoimpl.ExtensionFields
 )
 
 func RegisterFile(s string, d []byte) {
-	// Decompress the descriptor.
-	zr, err := gzip.NewReader(bytes.NewReader(d))
-	if err != nil {
-		panic(fmt.Sprintf("proto: invalid compressed file descriptor: %v", err))
-	}
-	b, err := ioutil.ReadAll(zr)
-	if err != nil {
-		panic(fmt.Sprintf("proto: invalid compressed file descriptor: %v", err))
-	}
+    // Decompress the descriptor.
+    zr, err := gzip.NewReader(bytes.NewReader(d))
+    if err != nil {
+        panic(fmt.Sprintf("proto: invalid compressed file descriptor: %v", err))
+    }
+    b, err := ioutil.ReadAll(zr)
+    if err != nil {
+        panic(fmt.Sprintf("proto: invalid compressed file descriptor: %v", err))
+    }
 
-	// Construct a protoreflect.FileDescriptor from the raw descriptor.
-	// Note that DescBuilder.Build automatically registers the constructed
-	// file descriptor with the v2 registry.
-	protoimpl.DescBuilder{RawDescriptor: b}.Build()
+    // Construct a protoreflect.FileDescriptor from the raw descriptor.
+    // Note that DescBuilder.Build automatically registers the constructed
+    // file descriptor with the v2 registry.
+    protoimpl.DescBuilder{RawDescriptor: b}.Build()
 }
 
 func RegisterType(m Message, s string) {
-	mt := protoimpl.X.LegacyMessageTypeOf(m, protoreflect.FullName(s))
-	if err := protoregistry.GlobalTypes.RegisterMessage(mt); err != nil {
-		panic(err)
-	}
+    mt := protoimpl.X.LegacyMessageTypeOf(m, protoreflect.FullName(s))
+    if err := protoregistry.GlobalTypes.RegisterMessage(mt); err != nil {
+        panic(err)
+    }
 }
 
 func RegisterMapType(interface{}, string) {
-	// Do nothing.
+    // Do nothing.
 }
 
 func RegisterEnum(string, map[int32]string, map[string]int32) {
-	// Do nothing.
+    // Do nothing.
 }
 
 func RegisterExtension(d *ExtensionDesc) {
-	if err := protoregistry.GlobalTypes.RegisterExtension(d); err != nil {
-		panic(err)
-	}
+    if err := protoregistry.GlobalTypes.RegisterExtension(d); err != nil {
+        panic(err)
+    }
 }
 
 var ErrInternalBadWireType = errors.New("not implemented")

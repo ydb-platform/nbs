@@ -1,0 +1,26 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(Apache-2.0)
+
+SRCS(
+    copy.go
+    equal.go
+    path_value.go
+    prettify.go
+    string_value.go
+)
+
+GO_XTEST_SRCS(
+    copy_test.go
+    equal_test.go
+    path_value_test.go
+    string_value_test.go
+)
+
+END()
+
+RECURSE(
+    gotest
+)

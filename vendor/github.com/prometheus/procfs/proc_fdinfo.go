@@ -14,104 +14,110 @@
 package procfs
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"regexp"
+    "bufio"
+    "bytes"
+    "fmt"
+    "regexp"
 
-	"github.com/prometheus/procfs/internal/util"
+    "github.com/prometheus/procfs/internal/util"
 )
 
 var (
-	rPos          = regexp.MustCompile(`^pos:\s+(\d+)$`)
-	rFlags        = regexp.MustCompile(`^flags:\s+(\d+)$`)
-	rMntID        = regexp.MustCompile(`^mnt_id:\s+(\d+)$`)
-	rInotify      = regexp.MustCompile(`^inotify`)
-	rInotifyParts = regexp.MustCompile(`^inotify\s+wd:([0-9a-f]+)\s+ino:([0-9a-f]+)\s+sdev:([0-9a-f]+)(?:\s+mask:([0-9a-f]+))?`)
+    rPos          = regexp.MustCompile(`^pos:\s+(\d+)$`)
+    rFlags        = regexp.MustCompile(`^flags:\s+(\d+)$`)
+    rMntID        = regexp.MustCompile(`^mnt_id:\s+(\d+)$`)
+    rIno          = regexp.MustCompile(`^ino:\s+(\d+)$`)
+    rInotify      = regexp.MustCompile(`^inotify`)
+    rInotifyParts = regexp.MustCompile(`^inotify\s+wd:([0-9a-f]+)\s+ino:([0-9a-f]+)\s+sdev:([0-9a-f]+)(?:\s+mask:([0-9a-f]+))?`)
 )
 
 // ProcFDInfo contains represents file descriptor information.
 type ProcFDInfo struct {
-	// File descriptor
-	FD string
-	// File offset
-	Pos string
-	// File access mode and status flags
-	Flags string
-	// Mount point ID
-	MntID string
-	// List of inotify lines (structured) in the fdinfo file (kernel 3.8+ only)
-	InotifyInfos []InotifyInfo
+    // File descriptor
+    FD string
+    // File offset
+    Pos string
+    // File access mode and status flags
+    Flags string
+    // Mount point ID
+    MntID string
+    // Inode number
+    Ino string
+    // List of inotify lines (structured) in the fdinfo file (kernel 3.8+ only)
+    InotifyInfos []InotifyInfo
 }
 
 // FDInfo constructor. On kernels older than 3.8, InotifyInfos will always be empty.
 func (p Proc) FDInfo(fd string) (*ProcFDInfo, error) {
-	data, err := util.ReadFileNoStat(p.path("fdinfo", fd))
-	if err != nil {
-		return nil, err
-	}
+    data, err := util.ReadFileNoStat(p.path("fdinfo", fd))
+    if err != nil {
+        return nil, err
+    }
 
-	var text, pos, flags, mntid string
-	var inotify []InotifyInfo
+    var text, pos, flags, mntid, ino string
+    var inotify []InotifyInfo
 
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		text = scanner.Text()
-		if rPos.MatchString(text) {
-			pos = rPos.FindStringSubmatch(text)[1]
-		} else if rFlags.MatchString(text) {
-			flags = rFlags.FindStringSubmatch(text)[1]
-		} else if rMntID.MatchString(text) {
-			mntid = rMntID.FindStringSubmatch(text)[1]
-		} else if rInotify.MatchString(text) {
-			newInotify, err := parseInotifyInfo(text)
-			if err != nil {
-				return nil, err
-			}
-			inotify = append(inotify, *newInotify)
-		}
-	}
+    scanner := bufio.NewScanner(bytes.NewReader(data))
+    for scanner.Scan() {
+        text = scanner.Text()
+        if rPos.MatchString(text) {
+            pos = rPos.FindStringSubmatch(text)[1]
+        } else if rFlags.MatchString(text) {
+            flags = rFlags.FindStringSubmatch(text)[1]
+        } else if rMntID.MatchString(text) {
+            mntid = rMntID.FindStringSubmatch(text)[1]
+        } else if rIno.MatchString(text) {
+            ino = rIno.FindStringSubmatch(text)[1]
+        } else if rInotify.MatchString(text) {
+            newInotify, err := parseInotifyInfo(text)
+            if err != nil {
+                return nil, err
+            }
+            inotify = append(inotify, *newInotify)
+        }
+    }
 
-	i := &ProcFDInfo{
-		FD:           fd,
-		Pos:          pos,
-		Flags:        flags,
-		MntID:        mntid,
-		InotifyInfos: inotify,
-	}
+    i := &ProcFDInfo{
+        FD:           fd,
+        Pos:          pos,
+        Flags:        flags,
+        MntID:        mntid,
+        Ino:          ino,
+        InotifyInfos: inotify,
+    }
 
-	return i, nil
+    return i, nil
 }
 
 // InotifyInfo represents a single inotify line in the fdinfo file.
 type InotifyInfo struct {
-	// Watch descriptor number
-	WD string
-	// Inode number
-	Ino string
-	// Device ID
-	Sdev string
-	// Mask of events being monitored
-	Mask string
+    // Watch descriptor number
+    WD string
+    // Inode number
+    Ino string
+    // Device ID
+    Sdev string
+    // Mask of events being monitored
+    Mask string
 }
 
 // InotifyInfo constructor. Only available on kernel 3.8+.
 func parseInotifyInfo(line string) (*InotifyInfo, error) {
-	m := rInotifyParts.FindStringSubmatch(line)
-	if len(m) >= 4 {
-		var mask string
-		if len(m) == 5 {
-			mask = m[4]
-		}
-		i := &InotifyInfo{
-			WD:   m[1],
-			Ino:  m[2],
-			Sdev: m[3],
-			Mask: mask,
-		}
-		return i, nil
-	}
-	return nil, fmt.Errorf("%w: invalid inode entry: %q", ErrFileParse, line)
+    m := rInotifyParts.FindStringSubmatch(line)
+    if len(m) >= 4 {
+        var mask string
+        if len(m) == 5 {
+            mask = m[4]
+        }
+        i := &InotifyInfo{
+            WD:   m[1],
+            Ino:  m[2],
+            Sdev: m[3],
+            Mask: mask,
+        }
+        return i, nil
+    }
+    return nil, fmt.Errorf("%w: invalid inode entry: %q", ErrFileParse, line)
 }
 
 // ProcFDInfos represents a list of ProcFDInfo structs.
@@ -123,10 +129,10 @@ func (p ProcFDInfos) Less(i, j int) bool { return p[i].FD < p[j].FD }
 
 // InotifyWatchLen returns the total number of inotify watches.
 func (p ProcFDInfos) InotifyWatchLen() (int, error) {
-	length := 0
-	for _, f := range p {
-		length += len(f.InotifyInfos)
-	}
+    length := 0
+    for _, f := range p {
+        length += len(f.InotifyInfos)
+    }
 
-	return length, nil
+    return length, nil
 }

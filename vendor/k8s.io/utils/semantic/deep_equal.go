@@ -17,7 +17,7 @@ limitations under the License.
 package semantic
 
 import (
-	"k8s.io/utils/third_party/forked/golang/reflect"
+    "k8s.io/utils/third_party/forked/golang/reflect"
 )
 
 // Equalities is a map from type to a function comparing two values of
@@ -26,5 +26,5 @@ type Equalities = reflect.Equalities
 
 // EqualitiesOrDie adds the given funcs and panics on any error.
 func EqualitiesOrDie(funcs ...interface{}) Equalities {
-	return reflect.EqualitiesOrDie(funcs...)
+    return reflect.EqualitiesOrDie(funcs...)
 }

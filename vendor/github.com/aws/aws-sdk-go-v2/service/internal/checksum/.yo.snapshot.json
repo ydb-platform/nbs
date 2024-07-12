@@ -1,0 +1,54 @@
+{
+    "Version": "v1.3.9",
+    "GoVersion": "1.20",
+    "Sum": "h1:UXqEWQI0n+q0QixzU0yUUQBZXRd5037qdInTIHFTl98=",
+    "Packages": {
+        "github.com/aws/aws-sdk-go-v2/service/internal/checksum": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/md5",
+                "crypto/sha1",
+                "crypto/sha256",
+                "encoding/base64",
+                "encoding/hex",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/context",
+                "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+                "github.com/aws/smithy-go",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "hash",
+                "hash/crc32",
+                "io",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/sha1",
+                "crypto/sha256",
+                "encoding/base64",
+                "fmt",
+                "github.com/aws/aws-sdk-go-v2/aws/signer/v4",
+                "github.com/aws/aws-sdk-go-v2/internal/context",
+                "github.com/aws/smithy-go/logging",
+                "github.com/aws/smithy-go/middleware",
+                "github.com/aws/smithy-go/transport/http",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/url",
+                "reflect",
+                "strings",
+                "testing",
+                "testing/iotest"
+            ]
+        }
+    }
+}

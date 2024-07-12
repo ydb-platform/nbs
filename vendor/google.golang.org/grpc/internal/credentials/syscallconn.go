@@ -19,8 +19,8 @@
 package credentials
 
 import (
-	"net"
-	"syscall"
+    "net"
+    "syscall"
 )
 
 type sysConn = syscall.Conn
@@ -35,10 +35,10 @@ type sysConn = syscall.Conn
 // doesn't embed net.Conn, so even if syscall.Conn is part of net.Conn, it won't
 // help here).
 type syscallConn struct {
-	net.Conn
-	// sysConn is a type alias of syscall.Conn. It's necessary because the name
-	// `Conn` collides with `net.Conn`.
-	sysConn
+    net.Conn
+    // sysConn is a type alias of syscall.Conn. It's necessary because the name
+    // `Conn` collides with `net.Conn`.
+    sysConn
 }
 
 // WrapSyscallConn tries to wrap rawConn and newConn into a net.Conn that
@@ -47,12 +47,12 @@ type syscallConn struct {
 //
 // This function returns newConn if rawConn doesn't implement syscall.Conn.
 func WrapSyscallConn(rawConn, newConn net.Conn) net.Conn {
-	sysConn, ok := rawConn.(syscall.Conn)
-	if !ok {
-		return newConn
-	}
-	return &syscallConn{
-		Conn:    newConn,
-		sysConn: sysConn,
-	}
+    sysConn, ok := rawConn.(syscall.Conn)
+    if !ok {
+        return newConn
+    }
+    return &syscallConn{
+        Conn:    newConn,
+        sysConn: sysConn,
+    }
 }

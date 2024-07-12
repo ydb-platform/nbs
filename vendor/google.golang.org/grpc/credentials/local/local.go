@@ -30,83 +30,83 @@
 package local
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"strings"
+    "context"
+    "fmt"
+    "net"
+    "strings"
 
-	"google.golang.org/grpc/credentials"
+    "google.golang.org/grpc/credentials"
 )
 
 // info contains the auth information for a local connection.
 // It implements the AuthInfo interface.
 type info struct {
-	credentials.CommonAuthInfo
+    credentials.CommonAuthInfo
 }
 
 // AuthType returns the type of info as a string.
 func (info) AuthType() string {
-	return "local"
+    return "local"
 }
 
 // localTC is the credentials required to establish a local connection.
 type localTC struct {
-	info credentials.ProtocolInfo
+    info credentials.ProtocolInfo
 }
 
 func (c *localTC) Info() credentials.ProtocolInfo {
-	return c.info
+    return c.info
 }
 
 // getSecurityLevel returns the security level for a local connection.
 // It returns an error if a connection is not local.
 func getSecurityLevel(network, addr string) (credentials.SecurityLevel, error) {
-	switch {
-	// Local TCP connection
-	case strings.HasPrefix(addr, "127."), strings.HasPrefix(addr, "[::1]:"):
-		return credentials.NoSecurity, nil
-	// UDS connection
-	case network == "unix":
-		return credentials.PrivacyAndIntegrity, nil
-	// Not a local connection and should fail
-	default:
-		return credentials.InvalidSecurityLevel, fmt.Errorf("local credentials rejected connection to non-local address %q", addr)
-	}
+    switch {
+    // Local TCP connection
+    case strings.HasPrefix(addr, "127."), strings.HasPrefix(addr, "[::1]:"):
+        return credentials.NoSecurity, nil
+    // UDS connection
+    case network == "unix":
+        return credentials.PrivacyAndIntegrity, nil
+    // Not a local connection and should fail
+    default:
+        return credentials.InvalidSecurityLevel, fmt.Errorf("local credentials rejected connection to non-local address %q", addr)
+    }
 }
 
 func (*localTC) ClientHandshake(ctx context.Context, authority string, conn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	secLevel, err := getSecurityLevel(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
-	if err != nil {
-		return nil, nil, err
-	}
-	return conn, info{credentials.CommonAuthInfo{SecurityLevel: secLevel}}, nil
+    secLevel, err := getSecurityLevel(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
+    if err != nil {
+        return nil, nil, err
+    }
+    return conn, info{credentials.CommonAuthInfo{SecurityLevel: secLevel}}, nil
 }
 
 func (*localTC) ServerHandshake(conn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	secLevel, err := getSecurityLevel(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
-	if err != nil {
-		return nil, nil, err
-	}
-	return conn, info{credentials.CommonAuthInfo{SecurityLevel: secLevel}}, nil
+    secLevel, err := getSecurityLevel(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
+    if err != nil {
+        return nil, nil, err
+    }
+    return conn, info{credentials.CommonAuthInfo{SecurityLevel: secLevel}}, nil
 }
 
 // NewCredentials returns a local credential implementing credentials.TransportCredentials.
 func NewCredentials() credentials.TransportCredentials {
-	return &localTC{
-		info: credentials.ProtocolInfo{
-			SecurityProtocol: "local",
-		},
-	}
+    return &localTC{
+        info: credentials.ProtocolInfo{
+            SecurityProtocol: "local",
+        },
+    }
 }
 
 // Clone makes a copy of Local credentials.
 func (c *localTC) Clone() credentials.TransportCredentials {
-	return &localTC{info: c.info}
+    return &localTC{info: c.info}
 }
 
 // OverrideServerName overrides the server name used to verify the hostname on the returned certificates from the server.
 // Since this feature is specific to TLS (SNI + hostname verification check), it does not take any effet for local credentials.
 func (c *localTC) OverrideServerName(serverNameOverride string) error {
-	c.info.ServerName = serverNameOverride
-	return nil
+    c.info.ServerName = serverNameOverride
+    return nil
 }

@@ -1,0 +1,24 @@
+{
+    "Version": "v0.2.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:92LUg03NhfgZv44zpNTLBGIbiyTokQCDcdH5BhVHT3s=",
+    "Packages": {
+        "github.com/hashicorp/terraform-registry-address": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/terraform-svchost",
+                "golang.org/x/net/idna",
+                "path",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-svchost",
+                "log",
+                "testing"
+            ]
+        }
+    }
+}

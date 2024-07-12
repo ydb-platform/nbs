@@ -1,0 +1,45 @@
+{
+    "Version": "v0.26.2-rc.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:4OSQU30WVXG4oZfWnXDlMMTBiyEaWBXwNeaYOHWb7Do=",
+    "Packages": {
+        "k8s.io/mount-utils": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/moby/sys/mountinfo",
+                "io/fs",
+                "io/ioutil",
+                "k8s.io/klog/v2",
+                "k8s.io/utils/exec",
+                "k8s.io/utils/io",
+                "k8s.io/utils/keymutex",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "time"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "io/ioutil",
+                "k8s.io/utils/exec",
+                "k8s.io/utils/exec/testing",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        }
+    }
+}

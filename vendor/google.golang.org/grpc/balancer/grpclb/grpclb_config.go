@@ -19,49 +19,49 @@
 package grpclb
 
 import (
-	"encoding/json"
+    "encoding/json"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
-	"google.golang.org/grpc/serviceconfig"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/balancer/roundrobin"
+    "google.golang.org/grpc/serviceconfig"
 )
 
 const (
-	roundRobinName = roundrobin.Name
-	pickFirstName  = grpc.PickFirstBalancerName
+    roundRobinName = roundrobin.Name
+    pickFirstName  = grpc.PickFirstBalancerName
 )
 
 type grpclbServiceConfig struct {
-	serviceconfig.LoadBalancingConfig
-	ChildPolicy *[]map[string]json.RawMessage
-	ServiceName string
+    serviceconfig.LoadBalancingConfig
+    ChildPolicy *[]map[string]json.RawMessage
+    ServiceName string
 }
 
 func (b *lbBuilder) ParseConfig(lbConfig json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
-	ret := &grpclbServiceConfig{}
-	if err := json.Unmarshal(lbConfig, ret); err != nil {
-		return nil, err
-	}
-	return ret, nil
+    ret := &grpclbServiceConfig{}
+    if err := json.Unmarshal(lbConfig, ret); err != nil {
+        return nil, err
+    }
+    return ret, nil
 }
 
 func childIsPickFirst(sc *grpclbServiceConfig) bool {
-	if sc == nil {
-		return false
-	}
-	childConfigs := sc.ChildPolicy
-	if childConfigs == nil {
-		return false
-	}
-	for _, childC := range *childConfigs {
-		// If round_robin exists before pick_first, return false
-		if _, ok := childC[roundRobinName]; ok {
-			return false
-		}
-		// If pick_first is before round_robin, return true
-		if _, ok := childC[pickFirstName]; ok {
-			return true
-		}
-	}
-	return false
+    if sc == nil {
+        return false
+    }
+    childConfigs := sc.ChildPolicy
+    if childConfigs == nil {
+        return false
+    }
+    for _, childC := range *childConfigs {
+        // If round_robin exists before pick_first, return false
+        if _, ok := childC[roundRobinName]; ok {
+            return false
+        }
+        // If pick_first is before round_robin, return true
+        if _, ok := childC[pickFirstName]; ok {
+            return true
+        }
+    }
+    return false
 }

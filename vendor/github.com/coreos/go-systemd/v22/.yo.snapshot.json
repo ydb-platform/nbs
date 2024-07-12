@@ -1,0 +1,242 @@
+{
+    "Version": "v22.5.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8iXXhfZs=",
+    "Packages": {
+        "github.com/coreos/go-systemd/v22/activation": {
+            "Imports": [
+                "crypto/tls",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io",
+                "net",
+                "os",
+                "os/exec",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/daemon": {
+            "Imports": [
+                "fmt",
+                "net",
+                "os",
+                "strconv",
+                "time"
+            ],
+            "TestImports": [
+                "fmt",
+                "io/ioutil",
+                "net",
+                "os",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/dbus": {
+            "Imports": [
+                "context",
+                "encoding/hex",
+                "errors",
+                "fmt",
+                "github.com/godbus/dbus/v5",
+                "log",
+                "os",
+                "path",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/godbus/dbus/v5",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "syscall",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/examples/journal": {
+            "Imports": [
+                "fmt",
+                "github.com/coreos/go-systemd/v22/journal",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-systemd/v22/import1": {
+            "Imports": [
+                "fmt",
+                "github.com/godbus/dbus/v5",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "log",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/internal/dlopen": {
+            "Imports": [
+                "C",
+                "errors",
+                "fmt",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/journal": {
+            "Imports": [
+                "bytes",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "net",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/coreos/go-systemd/v22/journal",
+                "io/ioutil",
+                "os",
+                "os/exec",
+                "runtime",
+                "strconv",
+                "strings",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/login1": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/godbus/dbus/v5",
+                "os",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "os/user",
+                "regexp",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/machine1": {
+            "Imports": [
+                "fmt",
+                "github.com/coreos/go-systemd/v22/dbus",
+                "github.com/godbus/dbus/v5",
+                "os",
+                "strconv",
+                "syscall"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/coreos/go-systemd/v22/dbus",
+                "github.com/godbus/dbus/v5",
+                "math/rand",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/sdjournal": {
+            "Imports": [
+                "C",
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/coreos/go-systemd/v22/internal/dlopen",
+                "io",
+                "log",
+                "strings",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/coreos/go-systemd/v22/journal",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/unit": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "errors",
+                "fmt",
+                "io",
+                "strconv",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "io/ioutil",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/coreos/go-systemd/v22/util": {
+            "Imports": [
+                "C",
+                "fmt",
+                "github.com/coreos/go-systemd/v22/internal/dlopen",
+                "io/ioutil",
+                "os",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        }
+    }
+}

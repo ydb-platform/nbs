@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type string, expected number
+-------------------------------------------------
+    testdata/pow8:1:1-19    $
+
+std.pow("xxx", 42)
+
+-------------------------------------------------
+    During evaluation

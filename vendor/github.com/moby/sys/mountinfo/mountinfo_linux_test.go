@@ -1,12 +1,12 @@
 package mountinfo
 
 import (
-	"bytes"
-	"testing"
+    "bytes"
+    "testing"
 )
 
 const (
-	fedoraMountinfo = `15 35 0:3 / /proc rw,nosuid,nodev,noexec,relatime shared:5 - proc proc rw
+    fedoraMountinfo = `15 35 0:3 / /proc rw,nosuid,nodev,noexec,relatime shared:5 - proc proc rw
 16 35 0:14 / /sys rw,nosuid,nodev,noexec,relatime shared:6 - sysfs sysfs rw,seclabel
 17 35 0:5 / /dev rw,nosuid shared:2 - devtmpfs devtmpfs rw,seclabel,size=8056484k,nr_inodes=2014121,mode=755
 18 16 0:15 / /sys/kernel/security rw,nosuid,nodev,noexec,relatime shared:7 - securityfs securityfs rw
@@ -65,7 +65,7 @@ const (
 247 35 253:35 / /var/lib/docker/devicemapper/mnt/5fec11304b6f4713fea7b6ccdcc1adc0a1966187f590fe25a8227428a8df275d rw,relatime shared:229 - ext4 /dev/mapper/docker-253:2-425882-5fec11304b6f4713fea7b6ccdcc1adc0a1966187f590fe25a8227428a8df275d rw,seclabel,discard,stripe=16,data=ordered
 31 21 0:23 / /DATA/foo_bla_bla rw,relatime - cifs //foo/BLA\040BLA\040BLA/ rw,sec=ntlm,cache=loose,unc=\\foo\BLA BLA BLA,username=my_login,domain=mydomain.com,uid=12345678,forceuid,gid=12345678,forcegid,addr=10.1.30.10,file_mode=0755,dir_mode=0755,nounix,rsize=61440,wsize=65536,actimeo=1`
 
-	ubuntuMountinfo = `15 20 0:14 / /sys rw,nosuid,nodev,noexec,relatime - sysfs sysfs rw
+    ubuntuMountinfo = `15 20 0:14 / /sys rw,nosuid,nodev,noexec,relatime - sysfs sysfs rw
 16 20 0:3 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw
 17 20 0:5 / /dev rw,relatime - devtmpfs udev rw,size=1015140k,nr_inodes=253785,mode=755
 18 17 0:11 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,gid=5,mode=620,ptmxmode=000
@@ -196,7 +196,7 @@ const (
 143 20 0:140 / /var/lib/docker/aufs/mnt/26b5b5d71d79a5b2bfcf8bc4b2280ee829f261eb886745dd90997ed410f7e8b8 rw,relatime - aufs none rw,si=caafa54c6ef5525
 144 20 0:356 / /var/lib/docker/aufs/mnt/e6ecde9e2c18cd3c75f424c67b6d89685cfee0fc67abf2cb6bdc0867eb998026 rw,relatime - aufs none rw,si=caafa548068e525`
 
-	gentooMountinfo = `15 1 8:6 / / rw,noatime,nodiratime - ext4 /dev/sda6 rw,data=ordered
+    gentooMountinfo = `15 1 8:6 / / rw,noatime,nodiratime - ext4 /dev/sda6 rw,data=ordered
 16 15 0:3 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw
 17 15 0:14 / /run rw,nosuid,nodev,relatime - tmpfs tmpfs rw,size=3292172k,mode=755
 18 15 0:5 / /dev rw,nosuid,relatime - devtmpfs udev rw,size=10240k,nr_inodes=4106451,mode=755
@@ -419,355 +419,355 @@ const (
 289 15 0:3634 / /var/lib/docker/aufs/mnt/aa128fe0e64fdede333aa48fd9de39530c91a9244a0f0649a3c411c61e372daa rw,relatime - aufs none rw,si=9b4a764012ada39c
 99 15 8:33 / /media/REMOVE\040ME rw,nosuid,nodev,relatime - fuseblk /dev/sdc1 rw,user_id=0,group_id=0,allow_other,blksize=4096`
 
-	mountInfoWithSpaces = `486 28 252:1 / /mnt/foo\040bar rw,relatime shared:243 - ext4 /dev/vda1 rw,data=ordered
+    mountInfoWithSpaces = `486 28 252:1 / /mnt/foo\040bar rw,relatime shared:243 - ext4 /dev/vda1 rw,data=ordered
 31 21 0:23 / /DATA/foo_bla_bla rw,relatime - cifs //foo/BLA\040BLA\040BLA/ rw,sec=ntlm,cache=loose,unc=\\foo\BLA BLA BLA,username=my_login,domain=mydomain.com,uid=12345678,forceuid,gid=12345678,forcegid,addr=10.1.30.10,file_mode=0755,dir_mode=0755,nounix,rsize=61440,wsize=65536,actimeo=1
 649 94 259:5 /tmp/newline\012tab\011space\040backslash\134quote1'quote2" /tmp/newline\012tab\011space\040backslash\134quote1'quote2" rw,relatime shared:47 - ext4 /dev/nvme0n1p5 rw,seclabel`
 )
 
 func TestParseMountInfo(t *testing.T) {
-	testCases := []struct {
-		name           string
-		info           string
-		expectedLength int
-		mi             *Info
-	}{
-		{
-			name:           "fedora",
-			info:           fedoraMountinfo,
-			expectedLength: 58,
-			mi: &Info{
-				ID:         15,
-				Parent:     35,
-				Major:      0,
-				Minor:      3,
-				Root:       "/",
-				Mountpoint: "/proc",
-				Options:    "rw,nosuid,nodev,noexec,relatime",
-				Optional:   "shared:5",
-				FSType:     "proc",
-				Source:     "proc",
-				VFSOptions: "rw",
-			},
-		},
-		{
-			name:           "gentoo",
-			info:           gentooMountinfo,
-			expectedLength: 222,
-			mi: &Info{
-				ID:         15,
-				Parent:     1,
-				Major:      8,
-				Minor:      6,
-				Root:       "/",
-				Mountpoint: "/",
-				Options:    "rw,noatime,nodiratime",
-				Optional:   "",
-				FSType:     "ext4",
-				Source:     "/dev/sda6",
-				VFSOptions: "rw,data=ordered",
-			},
-		},
-		{
-			name:           "ubuntu",
-			info:           ubuntuMountinfo,
-			expectedLength: 130,
-			mi: &Info{
-				ID:         15,
-				Parent:     20,
-				Major:      0,
-				Minor:      14,
-				Root:       "/",
-				Mountpoint: "/sys",
-				Options:    "rw,nosuid,nodev,noexec,relatime",
-				Optional:   "",
-				FSType:     "sysfs",
-				Source:     "sysfs",
-				VFSOptions: "rw",
-			},
-		},
-	}
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			r := bytes.NewBuffer([]byte(tc.info))
-			infos, err := GetMountsFromReader(r, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(infos) != tc.expectedLength {
-				t.Errorf("Expected %d entries, got %d", tc.expectedLength, len(infos))
-			}
-			if tc.mi != nil && *infos[0] != *tc.mi {
-				t.Fatalf("expected %#v, got %#v", tc.mi, infos[0])
-			}
-		})
-	}
+    testCases := []struct {
+        name           string
+        info           string
+        expectedLength int
+        mi             *Info
+    }{
+        {
+            name:           "fedora",
+            info:           fedoraMountinfo,
+            expectedLength: 58,
+            mi: &Info{
+                ID:         15,
+                Parent:     35,
+                Major:      0,
+                Minor:      3,
+                Root:       "/",
+                Mountpoint: "/proc",
+                Options:    "rw,nosuid,nodev,noexec,relatime",
+                Optional:   "shared:5",
+                FSType:     "proc",
+                Source:     "proc",
+                VFSOptions: "rw",
+            },
+        },
+        {
+            name:           "gentoo",
+            info:           gentooMountinfo,
+            expectedLength: 222,
+            mi: &Info{
+                ID:         15,
+                Parent:     1,
+                Major:      8,
+                Minor:      6,
+                Root:       "/",
+                Mountpoint: "/",
+                Options:    "rw,noatime,nodiratime",
+                Optional:   "",
+                FSType:     "ext4",
+                Source:     "/dev/sda6",
+                VFSOptions: "rw,data=ordered",
+            },
+        },
+        {
+            name:           "ubuntu",
+            info:           ubuntuMountinfo,
+            expectedLength: 130,
+            mi: &Info{
+                ID:         15,
+                Parent:     20,
+                Major:      0,
+                Minor:      14,
+                Root:       "/",
+                Mountpoint: "/sys",
+                Options:    "rw,nosuid,nodev,noexec,relatime",
+                Optional:   "",
+                FSType:     "sysfs",
+                Source:     "sysfs",
+                VFSOptions: "rw",
+            },
+        },
+    }
+    for _, tc := range testCases {
+        tc := tc
+        t.Run(tc.name, func(t *testing.T) {
+            r := bytes.NewBuffer([]byte(tc.info))
+            infos, err := GetMountsFromReader(r, nil)
+            if err != nil {
+                t.Fatal(err)
+            }
+            if len(infos) != tc.expectedLength {
+                t.Errorf("Expected %d entries, got %d", tc.expectedLength, len(infos))
+            }
+            if tc.mi != nil && *infos[0] != *tc.mi {
+                t.Fatalf("expected %#v, got %#v", tc.mi, infos[0])
+            }
+        })
+    }
 }
 
 func TestParseFedoraMountinfoFilterFields(t *testing.T) {
-	r := bytes.NewBuffer([]byte(fedoraMountinfo))
-	_, err := GetMountsFromReader(r, func(info *Info) (skip bool, stop bool) {
-		mi := Info{
-			ID:         15,
-			Parent:     35,
-			Major:      0,
-			Minor:      3,
-			Root:       "/",
-			Mountpoint: "/proc",
-			Options:    "rw,nosuid,nodev,noexec,relatime",
-			Optional:   "shared:5",
-			FSType:     "proc",
-			Source:     "proc",
-			VFSOptions: "rw",
-		}
-		if *info != mi {
-			t.Fatalf("expected %#v, got %#v", mi, *info)
-		}
-		// Only match the first entry as in TestParseFedoraMountinfoFields.
-		return false, true
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+    r := bytes.NewBuffer([]byte(fedoraMountinfo))
+    _, err := GetMountsFromReader(r, func(info *Info) (skip bool, stop bool) {
+        mi := Info{
+            ID:         15,
+            Parent:     35,
+            Major:      0,
+            Minor:      3,
+            Root:       "/",
+            Mountpoint: "/proc",
+            Options:    "rw,nosuid,nodev,noexec,relatime",
+            Optional:   "shared:5",
+            FSType:     "proc",
+            Source:     "proc",
+            VFSOptions: "rw",
+        }
+        if *info != mi {
+            t.Fatalf("expected %#v, got %#v", mi, *info)
+        }
+        // Only match the first entry as in TestParseFedoraMountinfoFields.
+        return false, true
+    })
+    if err != nil {
+        t.Fatal(err)
+    }
 }
 
 func TestParseMountinfoWithSpaces(t *testing.T) {
-	r := bytes.NewBuffer([]byte(mountInfoWithSpaces))
-	infos, err := GetMountsFromReader(r, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := []Info{
-		{
-			ID:         486,
-			Parent:     28,
-			Major:      252,
-			Minor:      1,
-			Root:       "/",
-			Mountpoint: "/mnt/foo bar",
-			Options:    "rw,relatime",
-			Optional:   "shared:243",
-			FSType:     "ext4",
-			Source:     "/dev/vda1",
-			VFSOptions: "rw,data=ordered",
-		},
-		{
-			ID:         31,
-			Parent:     21,
-			Major:      0,
-			Minor:      23,
-			Root:       "/",
-			Mountpoint: "/DATA/foo_bla_bla",
-			Options:    "rw,relatime",
-			Optional:   "",
-			FSType:     "cifs",
-			Source:     `//foo/BLA BLA BLA/`,
-			VFSOptions: `rw,sec=ntlm,cache=loose,unc=\\foo\BLA`,
-		},
-		{
-			ID:     649,
-			Parent: 94,
-			Major:  259,
-			Minor:  5,
-			Root: `/tmp/newline
-tab	space backslash\quote1'quote2"`,
-			Mountpoint: `/tmp/newline
-tab	space backslash\quote1'quote2"`,
-			Options:    "rw,relatime",
-			Optional:   "shared:47",
-			FSType:     "ext4",
-			Source:     `/dev/nvme0n1p5`,
-			VFSOptions: `rw,seclabel`,
-		},
-	}
+    r := bytes.NewBuffer([]byte(mountInfoWithSpaces))
+    infos, err := GetMountsFromReader(r, nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+    expected := []Info{
+        {
+            ID:         486,
+            Parent:     28,
+            Major:      252,
+            Minor:      1,
+            Root:       "/",
+            Mountpoint: "/mnt/foo bar",
+            Options:    "rw,relatime",
+            Optional:   "shared:243",
+            FSType:     "ext4",
+            Source:     "/dev/vda1",
+            VFSOptions: "rw,data=ordered",
+        },
+        {
+            ID:         31,
+            Parent:     21,
+            Major:      0,
+            Minor:      23,
+            Root:       "/",
+            Mountpoint: "/DATA/foo_bla_bla",
+            Options:    "rw,relatime",
+            Optional:   "",
+            FSType:     "cifs",
+            Source:     `//foo/BLA BLA BLA/`,
+            VFSOptions: `rw,sec=ntlm,cache=loose,unc=\\foo\BLA`,
+        },
+        {
+            ID:     649,
+            Parent: 94,
+            Major:  259,
+            Minor:  5,
+            Root: `/tmp/newline
+tab    space backslash\quote1'quote2"`,
+            Mountpoint: `/tmp/newline
+tab    space backslash\quote1'quote2"`,
+            Options:    "rw,relatime",
+            Optional:   "shared:47",
+            FSType:     "ext4",
+            Source:     `/dev/nvme0n1p5`,
+            VFSOptions: `rw,seclabel`,
+        },
+    }
 
-	if len(infos) != len(expected) {
-		t.Fatalf("expected %d entries, got %d", len(expected), len(infos))
-	}
-	for i, mi := range expected {
-		if *infos[i] != mi {
-			t.Fatalf("expected %#v, got %#v", mi, infos[i])
-		}
-	}
+    if len(infos) != len(expected) {
+        t.Fatalf("expected %d entries, got %d", len(expected), len(infos))
+    }
+    for i, mi := range expected {
+        if *infos[i] != mi {
+            t.Fatalf("expected %#v, got %#v", mi, infos[i])
+        }
+    }
 }
 
 func TestParseMountinfoFilters(t *testing.T) {
-	cases := []struct {
-		filter FilterFunc
-		expLen int
-	}{
-		{SingleEntryFilter("/sys/fs/cgroup"), 1},
-		{SingleEntryFilter("nonexistent"), 0},
-		// 18 entries with /sys prefix in fedoraMountinfo
-		{PrefixFilter("/sys"), 18},
-		{PrefixFilter("nonexistent"), 0},
-		// 4 entries: /sys/fs/cgroup/cpu,cpuacct /sys/fs/cgroup /sys /
-		{ParentsFilter("/sys/fs/cgroup/cpu,cpuacct"), 4},
-		{FSTypeFilter("pstore"), 1},
-		{FSTypeFilter("proc", "sysfs"), 2},
-	}
+    cases := []struct {
+        filter FilterFunc
+        expLen int
+    }{
+        {SingleEntryFilter("/sys/fs/cgroup"), 1},
+        {SingleEntryFilter("nonexistent"), 0},
+        // 18 entries with /sys prefix in fedoraMountinfo
+        {PrefixFilter("/sys"), 18},
+        {PrefixFilter("nonexistent"), 0},
+        // 4 entries: /sys/fs/cgroup/cpu,cpuacct /sys/fs/cgroup /sys /
+        {ParentsFilter("/sys/fs/cgroup/cpu,cpuacct"), 4},
+        {FSTypeFilter("pstore"), 1},
+        {FSTypeFilter("proc", "sysfs"), 2},
+    }
 
-	var r bytes.Reader
-	for _, tc := range cases {
-		r.Reset([]byte(fedoraMountinfo))
-		infos, err := GetMountsFromReader(&r, tc.filter)
-		if err != nil {
-			t.Error(err)
-			continue
-		}
-		if len(infos) != tc.expLen {
-			t.Errorf("unexpected len %d, expected %d", len(infos), tc.expLen)
-		}
-	}
+    var r bytes.Reader
+    for _, tc := range cases {
+        r.Reset([]byte(fedoraMountinfo))
+        infos, err := GetMountsFromReader(&r, tc.filter)
+        if err != nil {
+            t.Error(err)
+            continue
+        }
+        if len(infos) != tc.expLen {
+            t.Errorf("unexpected len %d, expected %d", len(infos), tc.expLen)
+        }
+    }
 }
 
 func BenchmarkParseMountinfo(b *testing.B) {
-	buf := []byte(fedoraMountinfo + "\n" + ubuntuMountinfo + "\n" + gentooMountinfo)
+    buf := []byte(fedoraMountinfo + "\n" + ubuntuMountinfo + "\n" + gentooMountinfo)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r := bytes.NewReader(buf)
-		_, err := GetMountsFromReader(r, PrefixFilter("/sys"))
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        r := bytes.NewReader(buf)
+        _, err := GetMountsFromReader(r, PrefixFilter("/sys"))
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
 }
 
 func TestParseMountinfoExtraCases(t *testing.T) {
-	testcases := []struct {
-		name  string
-		entry string
-		valid bool
-		exp   *Info
-	}{
-		{
-			name:  "perfectly normal",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none rw`,
-			valid: true,
-		},
-		{
-			name:  "not enough fields 1",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime aufs none rw`,
-			valid: false,
-		},
-		{
-			name:  "not enough fields 2",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none`,
-			valid: false,
-		},
-		{
-			name:  "no separator 1",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime shared:1 aufs none rw`,
-			valid: false,
-		},
-		{
-			name:  "not enough post-separator fields",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime some extra fields - aufs none`,
-			valid: false,
-		},
-		{
-			name:  "extra fields at the end", // which we currently discard
-			entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none rw,unc=buggy but we cope`,
-			valid: true,
-			exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none"},
-		},
-		{
-			name:  "one optional field",
-			entry: `251 15 0:3573 / /mnt/point rw,relatime shared:123 - aufs none rw`,
-			valid: true,
-			exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none", Optional: "shared:123"},
-		},
-		{
-			name:  "extra optional fields", // which we carefully gather
-			entry: `251 15 0:3573 / /mnt/point rw,relatime shared:123 extra:tag what:ever key:value - aufs none rw`,
-			valid: true,
-			exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none", Optional: "shared:123 extra:tag what:ever key:value"},
-		},
-		{
-			name:  "empty source field (kernel < 5.1 bug)",
-			entry: `279 23 0:108 / /tmp/bb rw,relatime - tmpfs  rw`,
-			valid: true,
-			exp:   &Info{Mountpoint: "/tmp/bb", FSType: "tmpfs", Source: "", VFSOptions: "rw"},
-		},
-	}
+    testcases := []struct {
+        name  string
+        entry string
+        valid bool
+        exp   *Info
+    }{
+        {
+            name:  "perfectly normal",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none rw`,
+            valid: true,
+        },
+        {
+            name:  "not enough fields 1",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime aufs none rw`,
+            valid: false,
+        },
+        {
+            name:  "not enough fields 2",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none`,
+            valid: false,
+        },
+        {
+            name:  "no separator 1",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime shared:1 aufs none rw`,
+            valid: false,
+        },
+        {
+            name:  "not enough post-separator fields",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime some extra fields - aufs none`,
+            valid: false,
+        },
+        {
+            name:  "extra fields at the end", // which we currently discard
+            entry: `251 15 0:3573 / /mnt/point rw,relatime - aufs none rw,unc=buggy but we cope`,
+            valid: true,
+            exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none"},
+        },
+        {
+            name:  "one optional field",
+            entry: `251 15 0:3573 / /mnt/point rw,relatime shared:123 - aufs none rw`,
+            valid: true,
+            exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none", Optional: "shared:123"},
+        },
+        {
+            name:  "extra optional fields", // which we carefully gather
+            entry: `251 15 0:3573 / /mnt/point rw,relatime shared:123 extra:tag what:ever key:value - aufs none rw`,
+            valid: true,
+            exp:   &Info{Mountpoint: "/mnt/point", FSType: "aufs", Source: "none", Optional: "shared:123 extra:tag what:ever key:value"},
+        },
+        {
+            name:  "empty source field (kernel < 5.1 bug)",
+            entry: `279 23 0:108 / /tmp/bb rw,relatime - tmpfs  rw`,
+            valid: true,
+            exp:   &Info{Mountpoint: "/tmp/bb", FSType: "tmpfs", Source: "", VFSOptions: "rw"},
+        },
+    }
 
-	for _, tc := range testcases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			r := bytes.NewBufferString(tc.entry)
-			info, err := GetMountsFromReader(r, nil)
-			if !tc.valid {
-				if err == nil {
-					t.Errorf("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Errorf("expected no error, got %v", err)
-				return
-			}
-			if len(info) != 1 {
-				t.Errorf("expected 1 result, got %d", len(info))
-			}
-			if tc.exp == nil {
-				return
-			}
-			i := info[0]
-			if tc.exp.Mountpoint != "" && tc.exp.Mountpoint != i.Mountpoint {
-				t.Errorf("expected mp %s, got %s", tc.exp.Mountpoint, i.Mountpoint)
-			}
-			if tc.exp.FSType != "" && tc.exp.FSType != i.FSType {
-				t.Errorf("expected fs %s, got %s", tc.exp.FSType, i.FSType)
-			}
-			if tc.exp.Source != "" && tc.exp.Source != i.Source {
-				t.Errorf("expected src %s, got %s", tc.exp.Source, i.Source)
-			}
-			if tc.exp.Optional != "" && tc.exp.Optional != i.Optional {
-				t.Errorf("expected optional %s, got %s", tc.exp.Optional, i.Optional)
-			}
-		})
-	}
+    for _, tc := range testcases {
+        tc := tc
+        t.Run(tc.name, func(t *testing.T) {
+            r := bytes.NewBufferString(tc.entry)
+            info, err := GetMountsFromReader(r, nil)
+            if !tc.valid {
+                if err == nil {
+                    t.Errorf("expected error, got nil")
+                }
+                return
+            }
+            if err != nil {
+                t.Errorf("expected no error, got %v", err)
+                return
+            }
+            if len(info) != 1 {
+                t.Errorf("expected 1 result, got %d", len(info))
+            }
+            if tc.exp == nil {
+                return
+            }
+            i := info[0]
+            if tc.exp.Mountpoint != "" && tc.exp.Mountpoint != i.Mountpoint {
+                t.Errorf("expected mp %s, got %s", tc.exp.Mountpoint, i.Mountpoint)
+            }
+            if tc.exp.FSType != "" && tc.exp.FSType != i.FSType {
+                t.Errorf("expected fs %s, got %s", tc.exp.FSType, i.FSType)
+            }
+            if tc.exp.Source != "" && tc.exp.Source != i.Source {
+                t.Errorf("expected src %s, got %s", tc.exp.Source, i.Source)
+            }
+            if tc.exp.Optional != "" && tc.exp.Optional != i.Optional {
+                t.Errorf("expected optional %s, got %s", tc.exp.Optional, i.Optional)
+            }
+        })
+    }
 }
 
 func TestUnescape(t *testing.T) {
-	testCases := []struct {
-		input, output string
-		isErr         bool
-	}{
-		{"", "", false},
-		{"/", "/", false},
-		{"/some/longer/path", "/some/longer/path", false},
-		{"/path\\040with\\040spaces", "/path with spaces", false},
-		{"/path/with\\134backslash", "/path/with\\backslash", false},
-		{"/tab\\011in/path", "/tab\tin/path", false},
-		{`/path/"with'quotes`, `/path/"with'quotes`, false},
-		{`/path/"with'quotes,\040space,\011tab`, `/path/"with'quotes, space,	tab`, false},
-		{`\12`, "", true},
-		{`\134`, `\`, false},
-		{`"'"'"'`, `"'"'"'`, false},
-		{`/\1345`, `/\5`, false},
-		{`/\12x`, "", true},
-		{`\0`, "", true},
-		{`\x`, "", true},
-		{"\\\\", "", true},
-	}
+    testCases := []struct {
+        input, output string
+        isErr         bool
+    }{
+        {"", "", false},
+        {"/", "/", false},
+        {"/some/longer/path", "/some/longer/path", false},
+        {"/path\\040with\\040spaces", "/path with spaces", false},
+        {"/path/with\\134backslash", "/path/with\\backslash", false},
+        {"/tab\\011in/path", "/tab\tin/path", false},
+        {`/path/"with'quotes`, `/path/"with'quotes`, false},
+        {`/path/"with'quotes,\040space,\011tab`, `/path/"with'quotes, space,    tab`, false},
+        {`\12`, "", true},
+        {`\134`, `\`, false},
+        {`"'"'"'`, `"'"'"'`, false},
+        {`/\1345`, `/\5`, false},
+        {`/\12x`, "", true},
+        {`\0`, "", true},
+        {`\x`, "", true},
+        {"\\\\", "", true},
+    }
 
-	for _, tc := range testCases {
-		res, err := unescape(tc.input)
-		if tc.isErr == true {
-			if err == nil {
-				t.Errorf("Input %q, want error, got nil", tc.input)
-			}
-			// no more checks
-			continue
-		}
-		if res != tc.output {
-			t.Errorf("Input %q, want %q, got %q", tc.input, tc.output, res)
-		}
-		if err != nil {
-			t.Errorf("Input %q, want nil, got error %v", tc.input, err)
-			continue
-		}
-	}
+    for _, tc := range testCases {
+        res, err := unescape(tc.input)
+        if tc.isErr == true {
+            if err == nil {
+                t.Errorf("Input %q, want error, got nil", tc.input)
+            }
+            // no more checks
+            continue
+        }
+        if res != tc.output {
+            t.Errorf("Input %q, want %q, got %q", tc.input, tc.output, res)
+        }
+        if err != nil {
+            t.Errorf("Input %q, want nil, got error %v", tc.input, err)
+            continue
+        }
+    }
 }

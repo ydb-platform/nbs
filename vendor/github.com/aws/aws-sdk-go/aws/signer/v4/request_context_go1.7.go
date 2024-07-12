@@ -4,11 +4,11 @@
 package v4
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws"
 )
 
 func requestContext(r *http.Request) aws.Context {
-	return r.Context()
+    return r.Context()
 }

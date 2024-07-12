@@ -1,0 +1,35 @@
+{
+    "Version": "v0.1.13",
+    "GoVersion": "1.15",
+    "Sum": "h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=",
+    "Packages": {
+        "github.com/mattn/go-colorable": {
+            "Imports": [
+                "bytes",
+                "github.com/mattn/go-isatty",
+                "io",
+                "math",
+                "os",
+                "strconv",
+                "strings",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "bytes",
+                "os",
+                "runtime",
+                "testing"
+            ]
+        },
+        "github.com/mattn/go-colorable/cmd/colorable": {
+            "Imports": [
+                "github.com/mattn/go-colorable",
+                "io",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

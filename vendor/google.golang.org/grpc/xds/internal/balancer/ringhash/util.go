@@ -23,18 +23,18 @@ import "context"
 type clusterKey struct{}
 
 func getRequestHash(ctx context.Context) uint64 {
-	requestHash, _ := ctx.Value(clusterKey{}).(uint64)
-	return requestHash
+    requestHash, _ := ctx.Value(clusterKey{}).(uint64)
+    return requestHash
 }
 
 // GetRequestHashForTesting returns the request hash in the context; to be used
 // for testing only.
 func GetRequestHashForTesting(ctx context.Context) uint64 {
-	return getRequestHash(ctx)
+    return getRequestHash(ctx)
 }
 
 // SetRequestHash adds the request hash to the context for use in Ring Hash Load
 // Balancing.
 func SetRequestHash(ctx context.Context, requestHash uint64) context.Context {
-	return context.WithValue(ctx, clusterKey{}, requestHash)
+    return context.WithValue(ctx, clusterKey{}, requestHash)
 }

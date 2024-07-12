@@ -1,0 +1,340 @@
+{
+    "Version": "v0.0.0-20210115222349-20d68f94ee1f",
+    "GoVersion": "1.13",
+    "Sum": "h1:16RtHeWGkJMc80Etb8RPCcKevXGldr57+LOyZt8zOlg=",
+    "Packages": {
+        "github.com/golang/gddo/database": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/trace",
+                "context",
+                "encoding/gob",
+                "errors",
+                "fmt",
+                "github.com/garyburd/redigo/redis",
+                "github.com/golang/gddo/doc",
+                "github.com/golang/gddo/gosrc",
+                "github.com/golang/snappy",
+                "golang.org/x/oauth2/google",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/remote_api",
+                "google.golang.org/appengine/search",
+                "log",
+                "math",
+                "net/url",
+                "os",
+                "path",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/garyburd/redigo/redis",
+                "github.com/golang/gddo/doc",
+                "github.com/google/go-cmp/cmp",
+                "google.golang.org/appengine/aetest",
+                "google.golang.org/appengine/search",
+                "math",
+                "sort",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/gddo/doc": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/golang/gddo/gosrc",
+                "go/ast",
+                "go/build",
+                "go/doc",
+                "go/format",
+                "go/parser",
+                "go/printer",
+                "go/scanner",
+                "go/token",
+                "math",
+                "net/http",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "go/ast",
+                "testing"
+            ]
+        },
+        "github.com/golang/gddo/gae-service-proxy": {
+            "Imports": [
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/remote_api"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/gddo/gddo-admin": {
+            "Imports": [
+                "context",
+                "flag",
+                "fmt",
+                "github.com/garyburd/redigo/redis",
+                "github.com/golang/gddo/database",
+                "github.com/golang/gddo/doc",
+                "github.com/golang/gddo/gosrc",
+                "io/ioutil",
+                "log",
+                "os",
+                "sort",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/gddo/gddo-server": {
+            "Imports": [
+                "bytes",
+                "cloud.google.com/go/compute/metadata",
+                "cloud.google.com/go/logging",
+                "cloud.google.com/go/pubsub",
+                "cloud.google.com/go/trace",
+                "context",
+                "crypto/md5",
+                "crypto/rand",
+                "encoding/base64",
+                "encoding/hex",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/golang/gddo/database",
+                "github.com/golang/gddo/doc",
+                "github.com/golang/gddo/gosrc",
+                "github.com/golang/gddo/httputil",
+                "github.com/golang/gddo/internal/health",
+                "github.com/golang/gddo/log",
+                "github.com/gregjones/httpcache",
+                "github.com/gregjones/httpcache/memcache",
+                "github.com/spf13/pflag",
+                "github.com/spf13/viper",
+                "go/build",
+                "go/doc",
+                "golang.org/x/mod/module",
+                "golang.org/x/net/context/ctxhttp",
+                "html/template",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime/debug",
+                "sort",
+                "strconv",
+                "strings",
+                "text/template",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "github.com/google/go-cmp/cmp",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/golang/gddo/gosrc": {
+            "Imports": [
+                "archive/tar",
+                "bytes",
+                "compress/gzip",
+                "context",
+                "crypto/md5",
+                "encoding/hex",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "fmt",
+                "go/build",
+                "io",
+                "io/ioutil",
+                "log",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "golang.org/x/tools/present",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "path",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/golang/gddo/httputil": {
+            "Imports": [
+                "bytes",
+                "crypto/sha1",
+                "errors",
+                "fmt",
+                "github.com/golang/gddo/httputil/header",
+                "io",
+                "io/ioutil",
+                "mime",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "path",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "crypto/sha1",
+                "encoding/hex",
+                "github.com/golang/gddo/httputil",
+                "github.com/google/go-cmp/cmp",
+                "io/ioutil",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/gddo/httputil/header": {
+            "Imports": [
+                "net/http",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "net/http",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/golang/gddo/internal/health": {
+            "Imports": [
+                "io",
+                "net/http"
+            ],
+            "TestImports": [
+                "errors",
+                "net/http",
+                "net/http/httptest",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/golang/gddo/lintapp": {
+            "Imports": [
+                "bytes",
+                "context",
+                "encoding/gob",
+                "fmt",
+                "github.com/golang/gddo/gosrc",
+                "github.com/golang/gddo/httputil",
+                "github.com/golang/lint",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/datastore",
+                "google.golang.org/appengine/log",
+                "google.golang.org/appengine/urlfetch",
+                "html/template",
+                "net/http",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/gddo/log": {
+            "Imports": [
+                "context",
+                "encoding/hex",
+                "github.com/inconshreveable/log15",
+                "math/rand",
+                "net/http",
+                "os",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/golang/gddo/talksapp": {
+            "Imports": [
+                "bytes",
+                "context",
+                "errors",
+                "fmt",
+                "github.com/golang/gddo/gosrc",
+                "github.com/golang/gddo/httputil",
+                "golang.org/x/tools/present",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/log",
+                "google.golang.org/appengine/memcache",
+                "google.golang.org/appengine/urlfetch",
+                "html/template",
+                "io",
+                "net/http",
+                "os",
+                "path",
+                "time"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/golang/gddo/gosrc",
+                "google.golang.org/appengine",
+                "google.golang.org/appengine/aetest",
+                "google.golang.org/appengine/memcache",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

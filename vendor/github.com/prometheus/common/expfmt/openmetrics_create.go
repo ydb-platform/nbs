@@ -14,17 +14,17 @@
 package expfmt
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"io"
-	"math"
-	"strconv"
-	"strings"
+    "bufio"
+    "bytes"
+    "fmt"
+    "io"
+    "math"
+    "strconv"
+    "strings"
 
-	"github.com/prometheus/common/model"
+    "github.com/prometheus/common/model"
 
-	dto "github.com/prometheus/client_model/go"
+    dto "github.com/prometheus/client_model/go"
 )
 
 // MetricFamilyToOpenMetrics converts a MetricFamily proto message into the
@@ -61,232 +61,232 @@ import (
 //   - The value of Counters is not checked. (OpenMetrics doesn't allow counters
 //     with a `NaN` value.)
 func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily) (written int, err error) {
-	name := in.GetName()
-	if name == "" {
-		return 0, fmt.Errorf("MetricFamily has no name: %s", in)
-	}
+    name := in.GetName()
+    if name == "" {
+        return 0, fmt.Errorf("MetricFamily has no name: %s", in)
+    }
 
-	// Try the interface upgrade. If it doesn't work, we'll use a
-	// bufio.Writer from the sync.Pool.
-	w, ok := out.(enhancedWriter)
-	if !ok {
-		b := bufPool.Get().(*bufio.Writer)
-		b.Reset(out)
-		w = b
-		defer func() {
-			bErr := b.Flush()
-			if err == nil {
-				err = bErr
-			}
-			bufPool.Put(b)
-		}()
-	}
+    // Try the interface upgrade. If it doesn't work, we'll use a
+    // bufio.Writer from the sync.Pool.
+    w, ok := out.(enhancedWriter)
+    if !ok {
+        b := bufPool.Get().(*bufio.Writer)
+        b.Reset(out)
+        w = b
+        defer func() {
+            bErr := b.Flush()
+            if err == nil {
+                err = bErr
+            }
+            bufPool.Put(b)
+        }()
+    }
 
-	var (
-		n          int
-		metricType = in.GetType()
-		shortName  = name
-	)
-	if metricType == dto.MetricType_COUNTER && strings.HasSuffix(shortName, "_total") {
-		shortName = name[:len(name)-6]
-	}
+    var (
+        n          int
+        metricType = in.GetType()
+        shortName  = name
+    )
+    if metricType == dto.MetricType_COUNTER && strings.HasSuffix(shortName, "_total") {
+        shortName = name[:len(name)-6]
+    }
 
-	// Comments, first HELP, then TYPE.
-	if in.Help != nil {
-		n, err = w.WriteString("# HELP ")
-		written += n
-		if err != nil {
-			return
-		}
-		n, err = w.WriteString(shortName)
-		written += n
-		if err != nil {
-			return
-		}
-		err = w.WriteByte(' ')
-		written++
-		if err != nil {
-			return
-		}
-		n, err = writeEscapedString(w, *in.Help, true)
-		written += n
-		if err != nil {
-			return
-		}
-		err = w.WriteByte('\n')
-		written++
-		if err != nil {
-			return
-		}
-	}
-	n, err = w.WriteString("# TYPE ")
-	written += n
-	if err != nil {
-		return
-	}
-	n, err = w.WriteString(shortName)
-	written += n
-	if err != nil {
-		return
-	}
-	switch metricType {
-	case dto.MetricType_COUNTER:
-		if strings.HasSuffix(name, "_total") {
-			n, err = w.WriteString(" counter\n")
-		} else {
-			n, err = w.WriteString(" unknown\n")
-		}
-	case dto.MetricType_GAUGE:
-		n, err = w.WriteString(" gauge\n")
-	case dto.MetricType_SUMMARY:
-		n, err = w.WriteString(" summary\n")
-	case dto.MetricType_UNTYPED:
-		n, err = w.WriteString(" unknown\n")
-	case dto.MetricType_HISTOGRAM:
-		n, err = w.WriteString(" histogram\n")
-	default:
-		return written, fmt.Errorf("unknown metric type %s", metricType.String())
-	}
-	written += n
-	if err != nil {
-		return
-	}
+    // Comments, first HELP, then TYPE.
+    if in.Help != nil {
+        n, err = w.WriteString("# HELP ")
+        written += n
+        if err != nil {
+            return
+        }
+        n, err = w.WriteString(shortName)
+        written += n
+        if err != nil {
+            return
+        }
+        err = w.WriteByte(' ')
+        written++
+        if err != nil {
+            return
+        }
+        n, err = writeEscapedString(w, *in.Help, true)
+        written += n
+        if err != nil {
+            return
+        }
+        err = w.WriteByte('\n')
+        written++
+        if err != nil {
+            return
+        }
+    }
+    n, err = w.WriteString("# TYPE ")
+    written += n
+    if err != nil {
+        return
+    }
+    n, err = w.WriteString(shortName)
+    written += n
+    if err != nil {
+        return
+    }
+    switch metricType {
+    case dto.MetricType_COUNTER:
+        if strings.HasSuffix(name, "_total") {
+            n, err = w.WriteString(" counter\n")
+        } else {
+            n, err = w.WriteString(" unknown\n")
+        }
+    case dto.MetricType_GAUGE:
+        n, err = w.WriteString(" gauge\n")
+    case dto.MetricType_SUMMARY:
+        n, err = w.WriteString(" summary\n")
+    case dto.MetricType_UNTYPED:
+        n, err = w.WriteString(" unknown\n")
+    case dto.MetricType_HISTOGRAM:
+        n, err = w.WriteString(" histogram\n")
+    default:
+        return written, fmt.Errorf("unknown metric type %s", metricType.String())
+    }
+    written += n
+    if err != nil {
+        return
+    }
 
-	// Finally the samples, one line for each.
-	for _, metric := range in.Metric {
-		switch metricType {
-		case dto.MetricType_COUNTER:
-			if metric.Counter == nil {
-				return written, fmt.Errorf(
-					"expected counter in metric %s %s", name, metric,
-				)
-			}
-			// Note that we have ensured above that either the name
-			// ends on `_total` or that the rendered type is
-			// `unknown`. Therefore, no `_total` must be added here.
-			n, err = writeOpenMetricsSample(
-				w, name, "", metric, "", 0,
-				metric.Counter.GetValue(), 0, false,
-				metric.Counter.Exemplar,
-			)
-		case dto.MetricType_GAUGE:
-			if metric.Gauge == nil {
-				return written, fmt.Errorf(
-					"expected gauge in metric %s %s", name, metric,
-				)
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "", metric, "", 0,
-				metric.Gauge.GetValue(), 0, false,
-				nil,
-			)
-		case dto.MetricType_UNTYPED:
-			if metric.Untyped == nil {
-				return written, fmt.Errorf(
-					"expected untyped in metric %s %s", name, metric,
-				)
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "", metric, "", 0,
-				metric.Untyped.GetValue(), 0, false,
-				nil,
-			)
-		case dto.MetricType_SUMMARY:
-			if metric.Summary == nil {
-				return written, fmt.Errorf(
-					"expected summary in metric %s %s", name, metric,
-				)
-			}
-			for _, q := range metric.Summary.Quantile {
-				n, err = writeOpenMetricsSample(
-					w, name, "", metric,
-					model.QuantileLabel, q.GetQuantile(),
-					q.GetValue(), 0, false,
-					nil,
-				)
-				written += n
-				if err != nil {
-					return
-				}
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "_sum", metric, "", 0,
-				metric.Summary.GetSampleSum(), 0, false,
-				nil,
-			)
-			written += n
-			if err != nil {
-				return
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "_count", metric, "", 0,
-				0, metric.Summary.GetSampleCount(), true,
-				nil,
-			)
-		case dto.MetricType_HISTOGRAM:
-			if metric.Histogram == nil {
-				return written, fmt.Errorf(
-					"expected histogram in metric %s %s", name, metric,
-				)
-			}
-			infSeen := false
-			for _, b := range metric.Histogram.Bucket {
-				n, err = writeOpenMetricsSample(
-					w, name, "_bucket", metric,
-					model.BucketLabel, b.GetUpperBound(),
-					0, b.GetCumulativeCount(), true,
-					b.Exemplar,
-				)
-				written += n
-				if err != nil {
-					return
-				}
-				if math.IsInf(b.GetUpperBound(), +1) {
-					infSeen = true
-				}
-			}
-			if !infSeen {
-				n, err = writeOpenMetricsSample(
-					w, name, "_bucket", metric,
-					model.BucketLabel, math.Inf(+1),
-					0, metric.Histogram.GetSampleCount(), true,
-					nil,
-				)
-				written += n
-				if err != nil {
-					return
-				}
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "_sum", metric, "", 0,
-				metric.Histogram.GetSampleSum(), 0, false,
-				nil,
-			)
-			written += n
-			if err != nil {
-				return
-			}
-			n, err = writeOpenMetricsSample(
-				w, name, "_count", metric, "", 0,
-				0, metric.Histogram.GetSampleCount(), true,
-				nil,
-			)
-		default:
-			return written, fmt.Errorf(
-				"unexpected type in metric %s %s", name, metric,
-			)
-		}
-		written += n
-		if err != nil {
-			return
-		}
-	}
-	return
+    // Finally the samples, one line for each.
+    for _, metric := range in.Metric {
+        switch metricType {
+        case dto.MetricType_COUNTER:
+            if metric.Counter == nil {
+                return written, fmt.Errorf(
+                    "expected counter in metric %s %s", name, metric,
+                )
+            }
+            // Note that we have ensured above that either the name
+            // ends on `_total` or that the rendered type is
+            // `unknown`. Therefore, no `_total` must be added here.
+            n, err = writeOpenMetricsSample(
+                w, name, "", metric, "", 0,
+                metric.Counter.GetValue(), 0, false,
+                metric.Counter.Exemplar,
+            )
+        case dto.MetricType_GAUGE:
+            if metric.Gauge == nil {
+                return written, fmt.Errorf(
+                    "expected gauge in metric %s %s", name, metric,
+                )
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "", metric, "", 0,
+                metric.Gauge.GetValue(), 0, false,
+                nil,
+            )
+        case dto.MetricType_UNTYPED:
+            if metric.Untyped == nil {
+                return written, fmt.Errorf(
+                    "expected untyped in metric %s %s", name, metric,
+                )
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "", metric, "", 0,
+                metric.Untyped.GetValue(), 0, false,
+                nil,
+            )
+        case dto.MetricType_SUMMARY:
+            if metric.Summary == nil {
+                return written, fmt.Errorf(
+                    "expected summary in metric %s %s", name, metric,
+                )
+            }
+            for _, q := range metric.Summary.Quantile {
+                n, err = writeOpenMetricsSample(
+                    w, name, "", metric,
+                    model.QuantileLabel, q.GetQuantile(),
+                    q.GetValue(), 0, false,
+                    nil,
+                )
+                written += n
+                if err != nil {
+                    return
+                }
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "_sum", metric, "", 0,
+                metric.Summary.GetSampleSum(), 0, false,
+                nil,
+            )
+            written += n
+            if err != nil {
+                return
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "_count", metric, "", 0,
+                0, metric.Summary.GetSampleCount(), true,
+                nil,
+            )
+        case dto.MetricType_HISTOGRAM:
+            if metric.Histogram == nil {
+                return written, fmt.Errorf(
+                    "expected histogram in metric %s %s", name, metric,
+                )
+            }
+            infSeen := false
+            for _, b := range metric.Histogram.Bucket {
+                n, err = writeOpenMetricsSample(
+                    w, name, "_bucket", metric,
+                    model.BucketLabel, b.GetUpperBound(),
+                    0, b.GetCumulativeCount(), true,
+                    b.Exemplar,
+                )
+                written += n
+                if err != nil {
+                    return
+                }
+                if math.IsInf(b.GetUpperBound(), +1) {
+                    infSeen = true
+                }
+            }
+            if !infSeen {
+                n, err = writeOpenMetricsSample(
+                    w, name, "_bucket", metric,
+                    model.BucketLabel, math.Inf(+1),
+                    0, metric.Histogram.GetSampleCount(), true,
+                    nil,
+                )
+                written += n
+                if err != nil {
+                    return
+                }
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "_sum", metric, "", 0,
+                metric.Histogram.GetSampleSum(), 0, false,
+                nil,
+            )
+            written += n
+            if err != nil {
+                return
+            }
+            n, err = writeOpenMetricsSample(
+                w, name, "_count", metric, "", 0,
+                0, metric.Histogram.GetSampleCount(), true,
+                nil,
+            )
+        default:
+            return written, fmt.Errorf(
+                "unexpected type in metric %s %s", name, metric,
+            )
+        }
+        written += n
+        if err != nil {
+            return
+        }
+    }
+    return
 }
 
 // FinalizeOpenMetrics writes the final `# EOF\n` line required by OpenMetrics.
 func FinalizeOpenMetrics(w io.Writer) (written int, err error) {
-	return w.Write([]byte("# EOF\n"))
+    return w.Write([]byte("# EOF\n"))
 }
 
 // writeOpenMetricsSample writes a single sample in OpenMetrics text format to
@@ -296,232 +296,232 @@ func FinalizeOpenMetrics(w io.Writer) (written int, err error) {
 // useIntValue), and optionally an exemplar (use nil if not required). The
 // function returns the number of bytes written and any error encountered.
 func writeOpenMetricsSample(
-	w enhancedWriter,
-	name, suffix string,
-	metric *dto.Metric,
-	additionalLabelName string, additionalLabelValue float64,
-	floatValue float64, intValue uint64, useIntValue bool,
-	exemplar *dto.Exemplar,
+    w enhancedWriter,
+    name, suffix string,
+    metric *dto.Metric,
+    additionalLabelName string, additionalLabelValue float64,
+    floatValue float64, intValue uint64, useIntValue bool,
+    exemplar *dto.Exemplar,
 ) (int, error) {
-	var written int
-	n, err := w.WriteString(name)
-	written += n
-	if err != nil {
-		return written, err
-	}
-	if suffix != "" {
-		n, err = w.WriteString(suffix)
-		written += n
-		if err != nil {
-			return written, err
-		}
-	}
-	n, err = writeOpenMetricsLabelPairs(
-		w, metric.Label, additionalLabelName, additionalLabelValue,
-	)
-	written += n
-	if err != nil {
-		return written, err
-	}
-	err = w.WriteByte(' ')
-	written++
-	if err != nil {
-		return written, err
-	}
-	if useIntValue {
-		n, err = writeUint(w, intValue)
-	} else {
-		n, err = writeOpenMetricsFloat(w, floatValue)
-	}
-	written += n
-	if err != nil {
-		return written, err
-	}
-	if metric.TimestampMs != nil {
-		err = w.WriteByte(' ')
-		written++
-		if err != nil {
-			return written, err
-		}
-		// TODO(beorn7): Format this directly without converting to a float first.
-		n, err = writeOpenMetricsFloat(w, float64(*metric.TimestampMs)/1000)
-		written += n
-		if err != nil {
-			return written, err
-		}
-	}
-	if exemplar != nil {
-		n, err = writeExemplar(w, exemplar)
-		written += n
-		if err != nil {
-			return written, err
-		}
-	}
-	err = w.WriteByte('\n')
-	written++
-	if err != nil {
-		return written, err
-	}
-	return written, nil
+    var written int
+    n, err := w.WriteString(name)
+    written += n
+    if err != nil {
+        return written, err
+    }
+    if suffix != "" {
+        n, err = w.WriteString(suffix)
+        written += n
+        if err != nil {
+            return written, err
+        }
+    }
+    n, err = writeOpenMetricsLabelPairs(
+        w, metric.Label, additionalLabelName, additionalLabelValue,
+    )
+    written += n
+    if err != nil {
+        return written, err
+    }
+    err = w.WriteByte(' ')
+    written++
+    if err != nil {
+        return written, err
+    }
+    if useIntValue {
+        n, err = writeUint(w, intValue)
+    } else {
+        n, err = writeOpenMetricsFloat(w, floatValue)
+    }
+    written += n
+    if err != nil {
+        return written, err
+    }
+    if metric.TimestampMs != nil {
+        err = w.WriteByte(' ')
+        written++
+        if err != nil {
+            return written, err
+        }
+        // TODO(beorn7): Format this directly without converting to a float first.
+        n, err = writeOpenMetricsFloat(w, float64(*metric.TimestampMs)/1000)
+        written += n
+        if err != nil {
+            return written, err
+        }
+    }
+    if exemplar != nil {
+        n, err = writeExemplar(w, exemplar)
+        written += n
+        if err != nil {
+            return written, err
+        }
+    }
+    err = w.WriteByte('\n')
+    written++
+    if err != nil {
+        return written, err
+    }
+    return written, nil
 }
 
 // writeOpenMetricsLabelPairs works like writeOpenMetrics but formats the float
 // in OpenMetrics style.
 func writeOpenMetricsLabelPairs(
-	w enhancedWriter,
-	in []*dto.LabelPair,
-	additionalLabelName string, additionalLabelValue float64,
+    w enhancedWriter,
+    in []*dto.LabelPair,
+    additionalLabelName string, additionalLabelValue float64,
 ) (int, error) {
-	if len(in) == 0 && additionalLabelName == "" {
-		return 0, nil
-	}
-	var (
-		written   int
-		separator byte = '{'
-	)
-	for _, lp := range in {
-		err := w.WriteByte(separator)
-		written++
-		if err != nil {
-			return written, err
-		}
-		n, err := w.WriteString(lp.GetName())
-		written += n
-		if err != nil {
-			return written, err
-		}
-		n, err = w.WriteString(`="`)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		n, err = writeEscapedString(w, lp.GetValue(), true)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		err = w.WriteByte('"')
-		written++
-		if err != nil {
-			return written, err
-		}
-		separator = ','
-	}
-	if additionalLabelName != "" {
-		err := w.WriteByte(separator)
-		written++
-		if err != nil {
-			return written, err
-		}
-		n, err := w.WriteString(additionalLabelName)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		n, err = w.WriteString(`="`)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		n, err = writeOpenMetricsFloat(w, additionalLabelValue)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		err = w.WriteByte('"')
-		written++
-		if err != nil {
-			return written, err
-		}
-	}
-	err := w.WriteByte('}')
-	written++
-	if err != nil {
-		return written, err
-	}
-	return written, nil
+    if len(in) == 0 && additionalLabelName == "" {
+        return 0, nil
+    }
+    var (
+        written   int
+        separator byte = '{'
+    )
+    for _, lp := range in {
+        err := w.WriteByte(separator)
+        written++
+        if err != nil {
+            return written, err
+        }
+        n, err := w.WriteString(lp.GetName())
+        written += n
+        if err != nil {
+            return written, err
+        }
+        n, err = w.WriteString(`="`)
+        written += n
+        if err != nil {
+            return written, err
+        }
+        n, err = writeEscapedString(w, lp.GetValue(), true)
+        written += n
+        if err != nil {
+            return written, err
+        }
+        err = w.WriteByte('"')
+        written++
+        if err != nil {
+            return written, err
+        }
+        separator = ','
+    }
+    if additionalLabelName != "" {
+        err := w.WriteByte(separator)
+        written++
+        if err != nil {
+            return written, err
+        }
+        n, err := w.WriteString(additionalLabelName)
+        written += n
+        if err != nil {
+            return written, err
+        }
+        n, err = w.WriteString(`="`)
+        written += n
+        if err != nil {
+            return written, err
+        }
+        n, err = writeOpenMetricsFloat(w, additionalLabelValue)
+        written += n
+        if err != nil {
+            return written, err
+        }
+        err = w.WriteByte('"')
+        written++
+        if err != nil {
+            return written, err
+        }
+    }
+    err := w.WriteByte('}')
+    written++
+    if err != nil {
+        return written, err
+    }
+    return written, nil
 }
 
 // writeExemplar writes the provided exemplar in OpenMetrics format to w. The
 // function returns the number of bytes written and any error encountered.
 func writeExemplar(w enhancedWriter, e *dto.Exemplar) (int, error) {
-	written := 0
-	n, err := w.WriteString(" # ")
-	written += n
-	if err != nil {
-		return written, err
-	}
-	n, err = writeOpenMetricsLabelPairs(w, e.Label, "", 0)
-	written += n
-	if err != nil {
-		return written, err
-	}
-	err = w.WriteByte(' ')
-	written++
-	if err != nil {
-		return written, err
-	}
-	n, err = writeOpenMetricsFloat(w, e.GetValue())
-	written += n
-	if err != nil {
-		return written, err
-	}
-	if e.Timestamp != nil {
-		err = w.WriteByte(' ')
-		written++
-		if err != nil {
-			return written, err
-		}
-		err = (*e).Timestamp.CheckValid()
-		if err != nil {
-			return written, err
-		}
-		ts := (*e).Timestamp.AsTime()
-		// TODO(beorn7): Format this directly from components of ts to
-		// avoid overflow/underflow and precision issues of the float
-		// conversion.
-		n, err = writeOpenMetricsFloat(w, float64(ts.UnixNano())/1e9)
-		written += n
-		if err != nil {
-			return written, err
-		}
-	}
-	return written, nil
+    written := 0
+    n, err := w.WriteString(" # ")
+    written += n
+    if err != nil {
+        return written, err
+    }
+    n, err = writeOpenMetricsLabelPairs(w, e.Label, "", 0)
+    written += n
+    if err != nil {
+        return written, err
+    }
+    err = w.WriteByte(' ')
+    written++
+    if err != nil {
+        return written, err
+    }
+    n, err = writeOpenMetricsFloat(w, e.GetValue())
+    written += n
+    if err != nil {
+        return written, err
+    }
+    if e.Timestamp != nil {
+        err = w.WriteByte(' ')
+        written++
+        if err != nil {
+            return written, err
+        }
+        err = (*e).Timestamp.CheckValid()
+        if err != nil {
+            return written, err
+        }
+        ts := (*e).Timestamp.AsTime()
+        // TODO(beorn7): Format this directly from components of ts to
+        // avoid overflow/underflow and precision issues of the float
+        // conversion.
+        n, err = writeOpenMetricsFloat(w, float64(ts.UnixNano())/1e9)
+        written += n
+        if err != nil {
+            return written, err
+        }
+    }
+    return written, nil
 }
 
 // writeOpenMetricsFloat works like writeFloat but appends ".0" if the resulting
 // number would otherwise contain neither a "." nor an "e".
 func writeOpenMetricsFloat(w enhancedWriter, f float64) (int, error) {
-	switch {
-	case f == 1:
-		return w.WriteString("1.0")
-	case f == 0:
-		return w.WriteString("0.0")
-	case f == -1:
-		return w.WriteString("-1.0")
-	case math.IsNaN(f):
-		return w.WriteString("NaN")
-	case math.IsInf(f, +1):
-		return w.WriteString("+Inf")
-	case math.IsInf(f, -1):
-		return w.WriteString("-Inf")
-	default:
-		bp := numBufPool.Get().(*[]byte)
-		*bp = strconv.AppendFloat((*bp)[:0], f, 'g', -1, 64)
-		if !bytes.ContainsAny(*bp, "e.") {
-			*bp = append(*bp, '.', '0')
-		}
-		written, err := w.Write(*bp)
-		numBufPool.Put(bp)
-		return written, err
-	}
+    switch {
+    case f == 1:
+        return w.WriteString("1.0")
+    case f == 0:
+        return w.WriteString("0.0")
+    case f == -1:
+        return w.WriteString("-1.0")
+    case math.IsNaN(f):
+        return w.WriteString("NaN")
+    case math.IsInf(f, +1):
+        return w.WriteString("+Inf")
+    case math.IsInf(f, -1):
+        return w.WriteString("-Inf")
+    default:
+        bp := numBufPool.Get().(*[]byte)
+        *bp = strconv.AppendFloat((*bp)[:0], f, 'g', -1, 64)
+        if !bytes.ContainsAny(*bp, "e.") {
+            *bp = append(*bp, '.', '0')
+        }
+        written, err := w.Write(*bp)
+        numBufPool.Put(bp)
+        return written, err
+    }
 }
 
 // writeUint is like writeInt just for uint64.
 func writeUint(w enhancedWriter, u uint64) (int, error) {
-	bp := numBufPool.Get().(*[]byte)
-	*bp = strconv.AppendUint((*bp)[:0], u, 10)
-	written, err := w.Write(*bp)
-	numBufPool.Put(bp)
-	return written, err
+    bp := numBufPool.Get().(*[]byte)
+    *bp = strconv.AppendUint((*bp)[:0], u, 10)
+    written, err := w.Write(*bp)
+    numBufPool.Put(bp)
+    return written, err
 }

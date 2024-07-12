@@ -26,8 +26,8 @@ package set
 // For sets containing items of a type that is reflexive for ==,
 // this is optimized to a single call to runtime.mapclear().
 func (s Set[T]) Clear() Set[T] {
-	for key := range s {
-		delete(s, key)
-	}
-	return s
+    for key := range s {
+        delete(s, key)
+    }
+    return s
 }

@@ -2,23 +2,23 @@
 package wait
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"math"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "math"
+    "time"
 )
 
 var (
-	ErrTimeoutExceeded      = errors.New("wait: timeout exceeded")
-	ErrAttemptsExceeded     = errors.New("wait: attempts exceeded")
-	ErrConditionUnsatisfied = errors.New("wait: condition unsatisfied")
-	ErrNoFunction           = errors.New("wait: no function specified")
+    ErrTimeoutExceeded      = errors.New("wait: timeout exceeded")
+    ErrAttemptsExceeded     = errors.New("wait: attempts exceeded")
+    ErrConditionUnsatisfied = errors.New("wait: condition unsatisfied")
+    ErrNoFunction           = errors.New("wait: no function specified")
 )
 
 const (
-	defaultTimeout = 3 * time.Second
-	defaultGap     = 250 * time.Millisecond
+    defaultTimeout = 3 * time.Second
+    defaultGap     = 250 * time.Millisecond
 )
 
 // A Constraint is something a test assertion can wait on before marking the
@@ -44,12 +44,12 @@ const (
 // The use of Gap controls the pace of attempts by setting the amount of time to
 // wait in between each attempt.
 type Constraint struct {
-	continual  bool // (initial || continual) success
-	now        time.Time
-	deadline   time.Time
-	gap        time.Duration
-	iterations int
-	r          runnable
+    continual  bool // (initial || continual) success
+    now        time.Time
+    deadline   time.Time
+    gap        time.Duration
+    iterations int
+    r          runnable
 }
 
 // InitialSuccess creates a new Constraint configured by opts that will wait for a
@@ -64,9 +64,9 @@ type Constraint struct {
 // One of ErrorFunc, BoolFunc, or TestFunc represents the function that will
 // be run under the constraint.
 func InitialSuccess(opts ...Option) *Constraint {
-	c := &Constraint{now: time.Now()}
-	c.setup(opts...)
-	return c
+    c := &Constraint{now: time.Now()}
+    c.setup(opts...)
+    return c
 }
 
 // ContinualSuccess creates a new Constraint configured by opts that will assert
@@ -81,9 +81,9 @@ func InitialSuccess(opts ...Option) *Constraint {
 // One of ErrorFunc, BoolFunc, or TestFunc represents the function that will
 // be run under the constraint.
 func ContinualSuccess(opts ...Option) *Constraint {
-	c := &Constraint{now: time.Now(), continual: true}
-	c.setup(opts...)
-	return c
+    c := &Constraint{now: time.Now(), continual: true}
+    c.setup(opts...)
+    return c
 }
 
 // Timeout sets a time bound on a Constraint.
@@ -92,10 +92,10 @@ func ContinualSuccess(opts ...Option) *Constraint {
 //
 // Default 3 seconds.
 func Timeout(duration time.Duration) Option {
-	return func(c *Constraint) {
-		c.deadline = time.Now().Add(duration)
-		c.iterations = math.MaxInt
-	}
+    return func(c *Constraint) {
+        c.deadline = time.Now().Add(duration)
+        c.iterations = math.MaxInt
+    }
 }
 
 // Attempts sets an iteration bound on a Constraint.
@@ -104,30 +104,30 @@ func Timeout(duration time.Duration) Option {
 //
 // By default a Timeout constraint is set and the Attempts bound is disabled.
 func Attempts(max int) Option {
-	return func(c *Constraint) {
-		c.iterations = max
-		c.deadline = time.Date(9999, 0, 0, 0, 0, 0, 0, time.UTC)
-	}
+    return func(c *Constraint) {
+        c.iterations = max
+        c.deadline = time.Date(9999, 0, 0, 0, 0, 0, 0, time.UTC)
+    }
 }
 
 // Gap sets the amount of time to wait between attempts.
 //
 // Default 250 milliseconds.
 func Gap(duration time.Duration) Option {
-	return func(c *Constraint) {
-		c.gap = duration
-	}
+    return func(c *Constraint) {
+        c.gap = duration
+    }
 }
 
 // BoolFunc executes f under the thresholds of a Constraint.
 func BoolFunc(f func() bool) Option {
-	return func(c *Constraint) {
-		if c.continual {
-			c.r = boolFuncContinual(f)
-		} else {
-			c.r = boolFuncInitial(f)
-		}
-	}
+    return func(c *Constraint) {
+        if c.continual {
+            c.r = boolFuncContinual(f)
+        } else {
+            c.r = boolFuncInitial(f)
+        }
+    }
 }
 
 // Option is used to configure a Constraint.
@@ -139,293 +139,293 @@ type Option func(*Constraint)
 type runnable func(*runner) *result
 
 type runner struct {
-	c        *Constraint
-	attempts int
+    c        *Constraint
+    attempts int
 }
 
 type result struct {
-	Err error
+    Err error
 }
 
 func boolFuncContinual(f func() bool) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			if !f() {
-				return &result{Err: ErrConditionUnsatisfied}
-			}
+        for {
+            // make an attempt
+            if !f() {
+                return &result{Err: ErrConditionUnsatisfied}
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// reached the desired attempts
-			if r.attempts >= r.c.iterations {
-				return &result{Err: nil}
-			}
+            // reached the desired attempts
+            if r.attempts >= r.c.iterations {
+                return &result{Err: nil}
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or time
-			select {
-			case <-ctx.Done():
-				return &result{Err: nil}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or time
+            select {
+            case <-ctx.Done():
+                return &result{Err: nil}
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 func boolFuncInitial(f func() bool) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			if f() {
-				return &result{Err: nil}
-			}
+        for {
+            // make an attempt
+            if f() {
+                return &result{Err: nil}
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// check iterations
-			if r.attempts > r.c.iterations {
-				return &result{Err: ErrAttemptsExceeded}
-			}
+            // check iterations
+            if r.attempts > r.c.iterations {
+                return &result{Err: ErrAttemptsExceeded}
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or timeout
-			select {
-			case <-ctx.Done():
-				return &result{Err: ErrTimeoutExceeded}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or timeout
+            select {
+            case <-ctx.Done():
+                return &result{Err: ErrTimeoutExceeded}
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 // ErrorFunc will retry f while it returns a non-nil error, or until a wait
 // constraint threshold is exceeded.
 func ErrorFunc(f func() error) Option {
-	return func(c *Constraint) {
-		if c.continual {
-			c.r = errFuncContinual(f)
-		} else {
-			c.r = errFuncInitial(f)
-		}
-	}
+    return func(c *Constraint) {
+        if c.continual {
+            c.r = errFuncContinual(f)
+        } else {
+            c.r = errFuncInitial(f)
+        }
+    }
 }
 
 func errFuncContinual(f func() error) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			if err := f(); err != nil {
-				return &result{Err: err}
-			}
+        for {
+            // make an attempt
+            if err := f(); err != nil {
+                return &result{Err: err}
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// reached the desired attempts
-			if r.attempts >= r.c.iterations {
-				return &result{Err: nil}
-			}
+            // reached the desired attempts
+            if r.attempts >= r.c.iterations {
+                return &result{Err: nil}
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or time
-			select {
-			case <-ctx.Done():
-				return &result{Err: nil}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or time
+            select {
+            case <-ctx.Done():
+                return &result{Err: nil}
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 func errFuncInitial(f func() error) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			err := f()
-			if err == nil {
-				return &result{Err: nil}
-			}
+        for {
+            // make an attempt
+            err := f()
+            if err == nil {
+                return &result{Err: nil}
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// check iterations
-			if r.attempts > r.c.iterations {
-				return &result{
-					Err: fmt.Errorf("%v: %w", ErrAttemptsExceeded, err),
-				}
-			}
+            // check iterations
+            if r.attempts > r.c.iterations {
+                return &result{
+                    Err: fmt.Errorf("%v: %w", ErrAttemptsExceeded, err),
+                }
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or timeout
-			select {
-			case <-ctx.Done():
-				return &result{
-					Err: fmt.Errorf("%v: %w", ErrTimeoutExceeded, err),
-				}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or timeout
+            select {
+            case <-ctx.Done():
+                return &result{
+                    Err: fmt.Errorf("%v: %w", ErrTimeoutExceeded, err),
+                }
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 // TestFunc will retry f while it returns false, or until a wait constraint
 // threshold is exceeded. If f never succeeds, the latest returned error is
 // wrapped into the result.
 func TestFunc(f func() (bool, error)) Option {
-	return func(c *Constraint) {
-		if c.continual {
-			c.r = testFuncContinual(f)
-		} else {
-			c.r = testFuncInitial(f)
-		}
-	}
+    return func(c *Constraint) {
+        if c.continual {
+            c.r = testFuncContinual(f)
+        } else {
+            c.r = testFuncInitial(f)
+        }
+    }
 }
 
 func testFuncContinual(f func() (bool, error)) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			ok, err := f()
-			if !ok {
-				return &result{Err: fmt.Errorf("%v: %w", ErrConditionUnsatisfied, err)}
-			}
+        for {
+            // make an attempt
+            ok, err := f()
+            if !ok {
+                return &result{Err: fmt.Errorf("%v: %w", ErrConditionUnsatisfied, err)}
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// reached the desired attempts
-			if r.attempts >= r.c.iterations {
-				return &result{Err: nil}
-			}
+            // reached the desired attempts
+            if r.attempts >= r.c.iterations {
+                return &result{Err: nil}
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or time
-			select {
-			case <-ctx.Done():
-				return &result{Err: nil}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or time
+            select {
+            case <-ctx.Done():
+                return &result{Err: nil}
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 func testFuncInitial(f func() (bool, error)) runnable {
-	bg := context.Background()
-	return func(r *runner) *result {
-		ctx, cancel := context.WithDeadline(bg, r.c.deadline)
-		defer cancel()
+    bg := context.Background()
+    return func(r *runner) *result {
+        ctx, cancel := context.WithDeadline(bg, r.c.deadline)
+        defer cancel()
 
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+        timer := time.NewTimer(0)
+        defer timer.Stop()
 
-		for {
-			// make an attempt
-			ok, err := f()
-			if ok {
-				return &result{Err: nil}
-			}
+        for {
+            // make an attempt
+            ok, err := f()
+            if ok {
+                return &result{Err: nil}
+            }
 
-			// set default error
-			if err == nil {
-				err = ErrConditionUnsatisfied
-			}
+            // set default error
+            if err == nil {
+                err = ErrConditionUnsatisfied
+            }
 
-			// used another attempt
-			r.attempts++
+            // used another attempt
+            r.attempts++
 
-			// check iterations
-			if r.attempts > r.c.iterations {
-				return &result{
-					Err: fmt.Errorf("%v: %w", ErrAttemptsExceeded, err),
-				}
-			}
+            // check iterations
+            if r.attempts > r.c.iterations {
+                return &result{
+                    Err: fmt.Errorf("%v: %w", ErrAttemptsExceeded, err),
+                }
+            }
 
-			// reset timer to gap interval
-			timer.Reset(r.c.gap)
+            // reset timer to gap interval
+            timer.Reset(r.c.gap)
 
-			// wait for gap or timeout
-			select {
-			case <-ctx.Done():
-				return &result{
-					Err: fmt.Errorf("%v: %w", ErrTimeoutExceeded, err),
-				}
-			case <-timer.C:
-				// continue
-			}
-		}
-	}
+            // wait for gap or timeout
+            select {
+            case <-ctx.Done():
+                return &result{
+                    Err: fmt.Errorf("%v: %w", ErrTimeoutExceeded, err),
+                }
+            case <-timer.C:
+                // continue
+            }
+        }
+    }
 }
 
 func (c *Constraint) setup(opts ...Option) {
-	for _, opt := range append([]Option{
-		Timeout(defaultTimeout),
-		Gap(defaultGap),
-	}, opts...) {
-		opt(c)
-	}
+    for _, opt := range append([]Option{
+        Timeout(defaultTimeout),
+        Gap(defaultGap),
+    }, opts...) {
+        opt(c)
+    }
 }
 
 // Run the Constraint and produce an error result.
 func (c *Constraint) Run() error {
-	if c.r == nil {
-		return ErrNoFunction
-	}
-	return c.r(&runner{
-		c:        c,
-		attempts: 0,
-	}).Err
+    if c.r == nil {
+        return ErrNoFunction
+    }
+    return c.r(&runner{
+        c:        c,
+        attempts: 0,
+    }).Err
 }

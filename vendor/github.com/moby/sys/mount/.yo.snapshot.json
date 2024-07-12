@@ -1,0 +1,27 @@
+{
+    "Version": "v0.3.3",
+    "GoVersion": "1.16",
+    "Sum": "h1:fX1SVkXFJ47XWDoeFW4Sq7PdQJnV2QIDZAqjNqgEjUs=",
+    "Packages": {
+        "github.com/moby/sys/mount": {
+            "Imports": [
+                "fmt",
+                "github.com/moby/sys/mountinfo",
+                "golang.org/x/sys/unix",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "errors",
+                "fmt",
+                "github.com/moby/sys/mountinfo",
+                "golang.org/x/sys/unix",
+                "os",
+                "path",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

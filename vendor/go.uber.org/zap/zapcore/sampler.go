@@ -21,63 +21,63 @@
 package zapcore
 
 import (
-	"sync/atomic"
-	"time"
+    "sync/atomic"
+    "time"
 )
 
 const (
-	_numLevels        = _maxLevel - _minLevel + 1
-	_countersPerLevel = 4096
+    _numLevels        = _maxLevel - _minLevel + 1
+    _countersPerLevel = 4096
 )
 
 type counter struct {
-	resetAt atomic.Int64
-	counter atomic.Uint64
+    resetAt atomic.Int64
+    counter atomic.Uint64
 }
 
 type counters [_numLevels][_countersPerLevel]counter
 
 func newCounters() *counters {
-	return &counters{}
+    return &counters{}
 }
 
 func (cs *counters) get(lvl Level, key string) *counter {
-	i := lvl - _minLevel
-	j := fnv32a(key) % _countersPerLevel
-	return &cs[i][j]
+    i := lvl - _minLevel
+    j := fnv32a(key) % _countersPerLevel
+    return &cs[i][j]
 }
 
 // fnv32a, adapted from "hash/fnv", but without a []byte(string) alloc
 func fnv32a(s string) uint32 {
-	const (
-		offset32 = 2166136261
-		prime32  = 16777619
-	)
-	hash := uint32(offset32)
-	for i := 0; i < len(s); i++ {
-		hash ^= uint32(s[i])
-		hash *= prime32
-	}
-	return hash
+    const (
+        offset32 = 2166136261
+        prime32  = 16777619
+    )
+    hash := uint32(offset32)
+    for i := 0; i < len(s); i++ {
+        hash ^= uint32(s[i])
+        hash *= prime32
+    }
+    return hash
 }
 
 func (c *counter) IncCheckReset(t time.Time, tick time.Duration) uint64 {
-	tn := t.UnixNano()
-	resetAfter := c.resetAt.Load()
-	if resetAfter > tn {
-		return c.counter.Add(1)
-	}
+    tn := t.UnixNano()
+    resetAfter := c.resetAt.Load()
+    if resetAfter > tn {
+        return c.counter.Add(1)
+    }
 
-	c.counter.Store(1)
+    c.counter.Store(1)
 
-	newResetAfter := tn + tick.Nanoseconds()
-	if !c.resetAt.CompareAndSwap(resetAfter, newResetAfter) {
-		// We raced with another goroutine trying to reset, and it also reset
-		// the counter to 1, so we need to reincrement the counter.
-		return c.counter.Add(1)
-	}
+    newResetAfter := tn + tick.Nanoseconds()
+    if !c.resetAt.CompareAndSwap(resetAfter, newResetAfter) {
+        // We raced with another goroutine trying to reset, and it also reset
+        // the counter to 1, so we need to reincrement the counter.
+        return c.counter.Add(1)
+    }
 
-	return 1
+    return 1
 }
 
 // SamplingDecision is a decision represented as a bit field made by sampler.
@@ -85,22 +85,22 @@ func (c *counter) IncCheckReset(t time.Time, tick time.Duration) uint64 {
 type SamplingDecision uint32
 
 const (
-	// LogDropped indicates that the Sampler dropped a log entry.
-	LogDropped SamplingDecision = 1 << iota
-	// LogSampled indicates that the Sampler sampled a log entry.
-	LogSampled
+    // LogDropped indicates that the Sampler dropped a log entry.
+    LogDropped SamplingDecision = 1 << iota
+    // LogSampled indicates that the Sampler sampled a log entry.
+    LogSampled
 )
 
 // optionFunc wraps a func so it satisfies the SamplerOption interface.
 type optionFunc func(*sampler)
 
 func (f optionFunc) apply(s *sampler) {
-	f(s)
+    f(s)
 }
 
 // SamplerOption configures a Sampler.
 type SamplerOption interface {
-	apply(*sampler)
+    apply(*sampler)
 }
 
 // nopSamplingHook is the default hook used by sampler.
@@ -112,16 +112,16 @@ func nopSamplingHook(Entry, SamplingDecision) {}
 // This hook may be used to get visibility into the performance of the sampler.
 // For example, use it to track metrics of dropped versus sampled logs.
 //
-//	var dropped atomic.Int64
-//	zapcore.SamplerHook(func(ent zapcore.Entry, dec zapcore.SamplingDecision) {
-//	  if dec&zapcore.LogDropped > 0 {
-//	    dropped.Inc()
-//	  }
-//	})
+//    var dropped atomic.Int64
+//    zapcore.SamplerHook(func(ent zapcore.Entry, dec zapcore.SamplingDecision) {
+//      if dec&zapcore.LogDropped > 0 {
+//        dropped.Inc()
+//      }
+//    })
 func SamplerHook(hook func(entry Entry, dec SamplingDecision)) SamplerOption {
-	return optionFunc(func(s *sampler) {
-		s.hook = hook
-	})
+    return optionFunc(func(s *sampler) {
+        s.hook = hook
+    })
 }
 
 // NewSamplerWithOptions creates a Core that samples incoming entries, which
@@ -134,7 +134,7 @@ func SamplerHook(hook func(entry Entry, dec SamplingDecision)) SamplerOption {
 //
 // For example,
 //
-//	core = NewSamplerWithOptions(core, time.Second, 10, 5)
+//    core = NewSamplerWithOptions(core, time.Second, 10, 5)
 //
 // This will log the first 10 log entries with the same level and message
 // in a one second interval as-is. Following that, it will allow through
@@ -150,33 +150,33 @@ func SamplerHook(hook func(entry Entry, dec SamplingDecision)) SamplerOption {
 // absolute precision; under load, each tick may be slightly over- or
 // under-sampled.
 func NewSamplerWithOptions(core Core, tick time.Duration, first, thereafter int, opts ...SamplerOption) Core {
-	s := &sampler{
-		Core:       core,
-		tick:       tick,
-		counts:     newCounters(),
-		first:      uint64(first),
-		thereafter: uint64(thereafter),
-		hook:       nopSamplingHook,
-	}
-	for _, opt := range opts {
-		opt.apply(s)
-	}
+    s := &sampler{
+        Core:       core,
+        tick:       tick,
+        counts:     newCounters(),
+        first:      uint64(first),
+        thereafter: uint64(thereafter),
+        hook:       nopSamplingHook,
+    }
+    for _, opt := range opts {
+        opt.apply(s)
+    }
 
-	return s
+    return s
 }
 
 type sampler struct {
-	Core
+    Core
 
-	counts            *counters
-	tick              time.Duration
-	first, thereafter uint64
-	hook              func(Entry, SamplingDecision)
+    counts            *counters
+    tick              time.Duration
+    first, thereafter uint64
+    hook              func(Entry, SamplingDecision)
 }
 
 var (
-	_ Core           = (*sampler)(nil)
-	_ leveledEnabler = (*sampler)(nil)
+    _ Core           = (*sampler)(nil)
+    _ leveledEnabler = (*sampler)(nil)
 )
 
 // NewSampler creates a Core that samples incoming entries, which
@@ -193,37 +193,37 @@ var (
 //
 // Deprecated: use NewSamplerWithOptions.
 func NewSampler(core Core, tick time.Duration, first, thereafter int) Core {
-	return NewSamplerWithOptions(core, tick, first, thereafter)
+    return NewSamplerWithOptions(core, tick, first, thereafter)
 }
 
 func (s *sampler) Level() Level {
-	return LevelOf(s.Core)
+    return LevelOf(s.Core)
 }
 
 func (s *sampler) With(fields []Field) Core {
-	return &sampler{
-		Core:       s.Core.With(fields),
-		tick:       s.tick,
-		counts:     s.counts,
-		first:      s.first,
-		thereafter: s.thereafter,
-		hook:       s.hook,
-	}
+    return &sampler{
+        Core:       s.Core.With(fields),
+        tick:       s.tick,
+        counts:     s.counts,
+        first:      s.first,
+        thereafter: s.thereafter,
+        hook:       s.hook,
+    }
 }
 
 func (s *sampler) Check(ent Entry, ce *CheckedEntry) *CheckedEntry {
-	if !s.Enabled(ent.Level) {
-		return ce
-	}
+    if !s.Enabled(ent.Level) {
+        return ce
+    }
 
-	if ent.Level >= _minLevel && ent.Level <= _maxLevel {
-		counter := s.counts.get(ent.Level, ent.Message)
-		n := counter.IncCheckReset(ent.Time, s.tick)
-		if n > s.first && (s.thereafter == 0 || (n-s.first)%s.thereafter != 0) {
-			s.hook(ent, LogDropped)
-			return ce
-		}
-		s.hook(ent, LogSampled)
-	}
-	return s.Core.Check(ent, ce)
+    if ent.Level >= _minLevel && ent.Level <= _maxLevel {
+        counter := s.counts.get(ent.Level, ent.Message)
+        n := counter.IncCheckReset(ent.Time, s.tick)
+        if n > s.first && (s.thereafter == 0 || (n-s.first)%s.thereafter != 0) {
+            s.hook(ent, LogDropped)
+            return ce
+        }
+        s.hook(ent, LogSampled)
+    }
+    return s.Core.Check(ent, ce)
 }

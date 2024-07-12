@@ -1,0 +1,40 @@
+{
+    "Version": "v0.39.0",
+    "GoVersion": "1.12",
+    "Sum": "h1:kXdXGOYeH2pKa3tdNGdrixT2tnXrJ4xLE9WypL4X7HE=",
+    "Packages": {
+        "github.com/DataDog/datadog-agent/pkg/obfuscate": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/DataDog/datadog-go/v5/statsd",
+                "github.com/dgraph-io/ristretto",
+                "go.uber.org/atomic",
+                "net/url",
+                "strconv",
+                "strings",
+                "time",
+                "unicode",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/json",
+                "encoding/xml",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/stretchr/testify/assert",
+                "github.com/stretchr/testify/require",
+                "go.uber.org/atomic",
+                "log",
+                "os",
+                "path/filepath",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

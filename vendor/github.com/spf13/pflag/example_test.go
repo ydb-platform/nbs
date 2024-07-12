@@ -5,32 +5,32 @@
 package pflag_test
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/spf13/pflag"
+    "github.com/spf13/pflag"
 )
 
 func ExampleShorthandLookup() {
-	name := "verbose"
-	short := name[:1]
+    name := "verbose"
+    short := name[:1]
 
-	pflag.BoolP(name, short, false, "verbose output")
+    pflag.BoolP(name, short, false, "verbose output")
 
-	// len(short) must be == 1
-	flag := pflag.ShorthandLookup(short)
+    // len(short) must be == 1
+    flag := pflag.ShorthandLookup(short)
 
-	fmt.Println(flag.Name)
+    fmt.Println(flag.Name)
 }
 
 func ExampleFlagSet_ShorthandLookup() {
-	name := "verbose"
-	short := name[:1]
+    name := "verbose"
+    short := name[:1]
 
-	fs := pflag.NewFlagSet("Example", pflag.ContinueOnError)
-	fs.BoolP(name, short, false, "verbose output")
+    fs := pflag.NewFlagSet("Example", pflag.ContinueOnError)
+    fs.BoolP(name, short, false, "verbose output")
 
-	// len(short) must be == 1
-	flag := fs.ShorthandLookup(short)
+    // len(short) must be == 1
+    flag := fs.ShorthandLookup(short)
 
-	fmt.Println(flag.Name)
+    fmt.Println(flag.Name)
 }

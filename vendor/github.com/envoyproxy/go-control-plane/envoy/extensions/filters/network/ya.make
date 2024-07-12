@@ -1,0 +1,22 @@
+SUBSCRIBER(g:go-contrib)
+
+RECURSE(
+    connection_limit
+    direct_response
+    dubbo_proxy
+    echo
+    ext_authz
+    http_connection_manager
+    local_ratelimit
+    mongo_proxy
+    ratelimit
+    rbac
+    redis_proxy
+    set_filter_state
+    sni_cluster
+    sni_dynamic_forward_proxy
+    tcp_proxy
+    thrift_proxy
+    wasm
+    zookeeper_proxy
+)

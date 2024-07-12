@@ -18,49 +18,49 @@
 package numcpus
 
 import (
-	"runtime"
+    "runtime"
 
-	"golang.org/x/sys/unix"
+    "golang.org/x/sys/unix"
 )
 
 func getConfigured() (int, error) {
-	n, err := unix.SysctlUint32("hw.ncpu")
-	return int(n), err
+    n, err := unix.SysctlUint32("hw.ncpu")
+    return int(n), err
 }
 
 func getKernelMax() (int, error) {
-	if runtime.GOOS == "freebsd" {
-		n, err := unix.SysctlUint32("kern.smp.maxcpus")
-		return int(n), err
-	}
-	return 0, ErrNotSupported
+    if runtime.GOOS == "freebsd" {
+        n, err := unix.SysctlUint32("kern.smp.maxcpus")
+        return int(n), err
+    }
+    return 0, ErrNotSupported
 }
 
 func getOffline() (int, error) {
-	return 0, ErrNotSupported
+    return 0, ErrNotSupported
 }
 
 func getOnline() (int, error) {
-	var n uint32
-	var err error
-	switch runtime.GOOS {
-	case "netbsd", "openbsd":
-		n, err = unix.SysctlUint32("hw.ncpuonline")
-		if err != nil {
-			n, err = unix.SysctlUint32("hw.ncpu")
-		}
-	default:
-		n, err = unix.SysctlUint32("hw.ncpu")
-	}
-	return int(n), err
+    var n uint32
+    var err error
+    switch runtime.GOOS {
+    case "netbsd", "openbsd":
+        n, err = unix.SysctlUint32("hw.ncpuonline")
+        if err != nil {
+            n, err = unix.SysctlUint32("hw.ncpu")
+        }
+    default:
+        n, err = unix.SysctlUint32("hw.ncpu")
+    }
+    return int(n), err
 }
 
 func getPossible() (int, error) {
-	n, err := unix.SysctlUint32("hw.ncpu")
-	return int(n), err
+    n, err := unix.SysctlUint32("hw.ncpu")
+    return int(n), err
 }
 
 func getPresent() (int, error) {
-	n, err := unix.SysctlUint32("hw.ncpu")
-	return int(n), err
+    n, err := unix.SysctlUint32("hw.ncpu")
+    return int(n), err
 }

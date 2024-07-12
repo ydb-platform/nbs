@@ -5,20 +5,20 @@
 package protojson_test
 
 import (
-	"testing"
+    "testing"
 
-	"google.golang.org/protobuf/encoding/protojson"
+    "google.golang.org/protobuf/encoding/protojson"
 
-	"google.golang.org/protobuf/types/known/durationpb"
+    "google.golang.org/protobuf/types/known/durationpb"
 )
 
 func BenchmarkUnmarshal_Duration(b *testing.B) {
-	input := []byte(`"-123456789.123456789s"`)
+    input := []byte(`"-123456789.123456789s"`)
 
-	for i := 0; i < b.N; i++ {
-		err := protojson.Unmarshal(input, &durationpb.Duration{})
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
+    for i := 0; i < b.N; i++ {
+        err := protojson.Unmarshal(input, &durationpb.Duration{})
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
 }

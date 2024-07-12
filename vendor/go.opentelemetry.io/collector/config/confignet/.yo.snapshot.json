@@ -1,0 +1,17 @@
+{
+    "Version": "v0.85.0",
+    "GoVersion": "1.20",
+    "Sum": "h1:oo+P10MC5wWvSfN5NyZFqVXQCvVNfAwf0SIRDcFRuJ0=",
+    "Packages": {
+        "go.opentelemetry.io/collector/config/confignet": {
+            "Imports": [
+                "net"
+            ],
+            "TestImports": [
+                "github.com/stretchr/testify/assert",
+                "net",
+                "testing"
+            ]
+        }
+    }
+}

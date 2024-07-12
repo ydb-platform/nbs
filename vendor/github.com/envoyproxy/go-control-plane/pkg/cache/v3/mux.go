@@ -15,10 +15,10 @@
 package cache
 
 import (
-	"context"
-	"errors"
+    "context"
+    "errors"
 
-	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
+    "github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 )
 
 // MuxCache multiplexes across several caches using a classification function.
@@ -28,35 +28,35 @@ import (
 // instead which will leave the stream open in case the stream is aggregated by
 // making sure there is always a matching cache.
 type MuxCache struct {
-	// Classification functions.
-	Classify      func(*Request) string
-	ClassifyDelta func(*DeltaRequest) string
-	// Muxed caches.
-	Caches map[string]Cache
+    // Classification functions.
+    Classify      func(*Request) string
+    ClassifyDelta func(*DeltaRequest) string
+    // Muxed caches.
+    Caches map[string]Cache
 }
 
 var _ Cache = &MuxCache{}
 
 func (mux *MuxCache) CreateWatch(request *Request, state stream.StreamState, value chan Response) func() {
-	key := mux.Classify(request)
-	cache, exists := mux.Caches[key]
-	if !exists {
-		value <- nil
-		return nil
-	}
-	return cache.CreateWatch(request, state, value)
+    key := mux.Classify(request)
+    cache, exists := mux.Caches[key]
+    if !exists {
+        value <- nil
+        return nil
+    }
+    return cache.CreateWatch(request, state, value)
 }
 
 func (mux *MuxCache) CreateDeltaWatch(request *DeltaRequest, state stream.StreamState, value chan DeltaResponse) func() {
-	key := mux.ClassifyDelta(request)
-	cache, exists := mux.Caches[key]
-	if !exists {
-		value <- nil
-		return nil
-	}
-	return cache.CreateDeltaWatch(request, state, value)
+    key := mux.ClassifyDelta(request)
+    cache, exists := mux.Caches[key]
+    if !exists {
+        value <- nil
+        return nil
+    }
+    return cache.CreateDeltaWatch(request, state, value)
 }
 
 func (mux *MuxCache) Fetch(context.Context, *Request) (Response, error) {
-	return nil, errors.New("not implemented")
+    return nil, errors.New("not implemented")
 }

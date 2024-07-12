@@ -22,8 +22,8 @@ type UntypedOpts Opts
 //
 // To create UntypedFunc instances, use NewUntypedFunc.
 type UntypedFunc interface {
-	Metric
-	Collector
+    Metric
+    Collector
 }
 
 // NewUntypedFunc creates a new UntypedFunc based on the provided
@@ -33,10 +33,10 @@ type UntypedFunc interface {
 // the case where an UntypedFunc is directly registered with Prometheus, the
 // provided function must be concurrency-safe.
 func NewUntypedFunc(opts UntypedOpts, function func() float64) UntypedFunc {
-	return newValueFunc(NewDesc(
-		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		opts.Help,
-		nil,
-		opts.ConstLabels,
-	), UntypedValue, function)
+    return newValueFunc(NewDesc(
+        BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+        opts.Help,
+        nil,
+        opts.ConstLabels,
+    ), UntypedValue, function)
 }

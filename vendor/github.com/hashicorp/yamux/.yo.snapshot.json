@@ -1,0 +1,42 @@
+{
+    "Version": "v0.1.2-0.20220728231903-574fd304fd65",
+    "GoVersion": "1.15",
+    "Sum": "h1:gCTPZcFU6p3rheaT966vpU9LPtfSxXgElYru5ToLryE=",
+    "Packages": {
+        "github.com/hashicorp/yamux": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "math",
+                "net",
+                "os",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "io",
+                "io/ioutil",
+                "log",
+                "net",
+                "reflect",
+                "runtime",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

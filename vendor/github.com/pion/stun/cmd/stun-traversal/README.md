@@ -1,0 +1,1 @@
+stun-traversal is a small NAT traversal proof of concept using package pion/stun. Peer exchange is done manually using stdin.

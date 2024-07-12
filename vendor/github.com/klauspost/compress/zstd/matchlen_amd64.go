@@ -10,7 +10,7 @@ package zstd
 //
 // It assumes that:
 //
-//	len(a) <= len(b) and len(a) > 0
+//    len(a) <= len(b) and len(a) > 0
 //
 //go:noescape
 func matchLen(a []byte, b []byte) int

@@ -1,0 +1,27 @@
+{
+    "Version": "v1.0.12",
+    "GoVersion": "1.13",
+    "Sum": "h1:M2zGm7EW6UQJvDeQxo4T51eKPurbeFbe8WtebGE2xrk=",
+    "Packages": {
+        "github.com/mattn/go-shellwords": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "os",
+                "os/exec",
+                "strings",
+                "unicode"
+            ],
+            "TestImports": [
+                "errors",
+                "go/build",
+                "os",
+                "os/exec",
+                "path",
+                "reflect",
+                "testing"
+            ]
+        }
+    }
+}

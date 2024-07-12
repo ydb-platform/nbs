@@ -17,78 +17,78 @@ limitations under the License.
 package klog_test
 
 import (
-	"context"
-	"fmt"
-	"runtime"
-	"testing"
+    "context"
+    "fmt"
+    "runtime"
+    "testing"
 
-	"github.com/go-logr/logr"
-	"k8s.io/klog/v2"
+    "github.com/go-logr/logr"
+    "k8s.io/klog/v2"
 )
 
 func ExampleSetLogger() {
-	defer klog.ClearLogger()
+    defer klog.ClearLogger()
 
-	// Logger is only used as backend, Background() returns klogr.
-	klog.SetLogger(logr.Discard())
-	fmt.Printf("logger after SetLogger: %T\n", klog.Background().GetSink())
+    // Logger is only used as backend, Background() returns klogr.
+    klog.SetLogger(logr.Discard())
+    fmt.Printf("logger after SetLogger: %T\n", klog.Background().GetSink())
 
-	// Logger is only used as backend, Background() returns klogr.
-	klog.SetLoggerWithOptions(logr.Discard(), klog.ContextualLogger(false))
-	fmt.Printf("logger after SetLoggerWithOptions with ContextualLogger(false): %T\n", klog.Background().GetSink())
+    // Logger is only used as backend, Background() returns klogr.
+    klog.SetLoggerWithOptions(logr.Discard(), klog.ContextualLogger(false))
+    fmt.Printf("logger after SetLoggerWithOptions with ContextualLogger(false): %T\n", klog.Background().GetSink())
 
-	// Logger is used as backend and directly.
-	klog.SetLoggerWithOptions(logr.Discard(), klog.ContextualLogger(true))
-	fmt.Printf("logger after SetLoggerWithOptions with ContextualLogger(true): %T\n", klog.Background().GetSink())
+    // Logger is used as backend and directly.
+    klog.SetLoggerWithOptions(logr.Discard(), klog.ContextualLogger(true))
+    fmt.Printf("logger after SetLoggerWithOptions with ContextualLogger(true): %T\n", klog.Background().GetSink())
 
-	// Output:
-	// logger after SetLogger: *klog.klogger
-	// logger after SetLoggerWithOptions with ContextualLogger(false): *klog.klogger
-	// logger after SetLoggerWithOptions with ContextualLogger(true): <nil>
+    // Output:
+    // logger after SetLogger: *klog.klogger
+    // logger after SetLoggerWithOptions with ContextualLogger(false): *klog.klogger
+    // logger after SetLoggerWithOptions with ContextualLogger(true): <nil>
 }
 
 func ExampleFlushLogger() {
-	defer klog.ClearLogger()
+    defer klog.ClearLogger()
 
-	// This simple logger doesn't need flushing, but others might.
-	klog.SetLoggerWithOptions(logr.Discard(), klog.FlushLogger(func() {
-		fmt.Print("flushing...")
-	}))
-	klog.Flush()
+    // This simple logger doesn't need flushing, but others might.
+    klog.SetLoggerWithOptions(logr.Discard(), klog.FlushLogger(func() {
+        fmt.Print("flushing...")
+    }))
+    klog.Flush()
 
-	// Output:
-	// flushing...
+    // Output:
+    // flushing...
 }
 
 func BenchmarkPassingLogger(b *testing.B) {
-	b.Run("with context", func(b *testing.B) {
-		ctx := klog.NewContext(context.Background(), klog.Background())
-		var finalCtx context.Context
-		for n := b.N; n > 0; n-- {
-			finalCtx = passCtx(ctx)
-		}
-		runtime.KeepAlive(finalCtx)
-	})
+    b.Run("with context", func(b *testing.B) {
+        ctx := klog.NewContext(context.Background(), klog.Background())
+        var finalCtx context.Context
+        for n := b.N; n > 0; n-- {
+            finalCtx = passCtx(ctx)
+        }
+        runtime.KeepAlive(finalCtx)
+    })
 
-	b.Run("without context", func(b *testing.B) {
-		logger := klog.Background()
-		var finalLogger klog.Logger
-		for n := b.N; n > 0; n-- {
-			finalLogger = passLogger(logger)
-		}
-		runtime.KeepAlive(finalLogger)
-	})
+    b.Run("without context", func(b *testing.B) {
+        logger := klog.Background()
+        var finalLogger klog.Logger
+        for n := b.N; n > 0; n-- {
+            finalLogger = passLogger(logger)
+        }
+        runtime.KeepAlive(finalLogger)
+    })
 }
 
 func BenchmarkExtractLogger(b *testing.B) {
-	b.Run("from context", func(b *testing.B) {
-		ctx := klog.NewContext(context.Background(), klog.Background())
-		var finalLogger klog.Logger
-		for n := b.N; n > 0; n-- {
-			finalLogger = extractCtx(ctx)
-		}
-		runtime.KeepAlive(finalLogger)
-	})
+    b.Run("from context", func(b *testing.B) {
+        ctx := klog.NewContext(context.Background(), klog.Background())
+        var finalLogger klog.Logger
+        for n := b.N; n > 0; n-- {
+            finalLogger = extractCtx(ctx)
+        }
+        runtime.KeepAlive(finalLogger)
+    })
 }
 
 //go:noinline

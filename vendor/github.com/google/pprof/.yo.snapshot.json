@@ -1,0 +1,374 @@
+{
+    "Version": "v0.0.0-20240227163752-401108e1b7e7",
+    "GoVersion": "1.19",
+    "Sum": "h1:y3N7Bm7Y9/CtpiVkw/ZWj6lSlDF3F74SfKwfTCer72Q=",
+    "Packages": {
+        "github.com/google/pprof": {
+            "Imports": [
+                "fmt",
+                "github.com/chzyer/readline",
+                "github.com/google/pprof/driver",
+                "os",
+                "strings",
+                "syscall"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/pprof/driver": {
+            "Imports": [
+                "github.com/google/pprof/internal/driver",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/profile",
+                "io",
+                "net/http",
+                "regexp",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/pprof/fuzz": {
+            "Imports": [
+                "github.com/google/pprof/profile"
+            ],
+            "TestImports": [
+                "github.com/google/pprof/profile",
+                "os",
+                "runtime",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/binutils": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "debug/elf",
+                "debug/macho",
+                "debug/pe",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/pprof/internal/elfexec",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/ianlancetaylor/demangle",
+                "io",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "debug/elf",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/google/pprof/internal/plugin",
+                "math",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/driver": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "embed",
+                "encoding/json",
+                "errors",
+                "flag",
+                "fmt",
+                "github.com/google/pprof/internal/binutils",
+                "github.com/google/pprof/internal/graph",
+                "github.com/google/pprof/internal/measurement",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/internal/report",
+                "github.com/google/pprof/internal/symbolizer",
+                "github.com/google/pprof/internal/transport",
+                "github.com/google/pprof/profile",
+                "github.com/google/pprof/third_party/svgpan",
+                "html/template",
+                "io",
+                "net",
+                "net/http",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/tls",
+                "crypto/x509",
+                "embed",
+                "encoding/pem",
+                "flag",
+                "fmt",
+                "github.com/chromedp/chromedp",
+                "github.com/google/pprof/internal/binutils",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/internal/proftest",
+                "github.com/google/pprof/internal/report",
+                "github.com/google/pprof/internal/symbolizer",
+                "github.com/google/pprof/internal/symbolz",
+                "github.com/google/pprof/internal/transport",
+                "github.com/google/pprof/profile",
+                "io",
+                "math/big",
+                "math/rand",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "net/http/pprof",
+                "net/url",
+                "os",
+                "os/exec",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/google/pprof/internal/elfexec": {
+            "Imports": [
+                "bufio",
+                "debug/elf",
+                "encoding/binary",
+                "fmt",
+                "io"
+            ],
+            "TestImports": [
+                "debug/elf",
+                "fmt",
+                "reflect",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/graph": {
+            "Imports": [
+                "fmt",
+                "github.com/google/pprof/internal/measurement",
+                "github.com/google/pprof/profile",
+                "io",
+                "math",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/google/pprof/internal/proftest",
+                "github.com/google/pprof/profile",
+                "os",
+                "path/filepath",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/measurement": {
+            "Imports": [
+                "fmt",
+                "github.com/google/pprof/profile",
+                "math",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "math",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/plugin": {
+            "Imports": [
+                "github.com/google/pprof/profile",
+                "io",
+                "net/http",
+                "regexp",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/pprof/internal/proftest": {
+            "Imports": [
+                "embed",
+                "encoding/json",
+                "flag",
+                "fmt",
+                "io",
+                "os",
+                "os/exec",
+                "regexp",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/pprof/internal/report": {
+            "Imports": [
+                "bufio",
+                "crypto/sha256",
+                "encoding/binary",
+                "fmt",
+                "github.com/google/pprof/internal/graph",
+                "github.com/google/pprof/internal/measurement",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/profile",
+                "html/template",
+                "io",
+                "os",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/pprof/internal/binutils",
+                "github.com/google/pprof/internal/graph",
+                "github.com/google/pprof/internal/proftest",
+                "github.com/google/pprof/profile",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "runtime",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/symbolizer": {
+            "Imports": [
+                "fmt",
+                "github.com/google/pprof/internal/binutils",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/internal/symbolz",
+                "github.com/google/pprof/profile",
+                "github.com/ianlancetaylor/demangle",
+                "io",
+                "net/http",
+                "net/url",
+                "path/filepath",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/internal/proftest",
+                "github.com/google/pprof/profile",
+                "regexp",
+                "sort",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/symbolz": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/profile",
+                "io",
+                "net/url",
+                "path",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/google/pprof/internal/plugin",
+                "github.com/google/pprof/internal/proftest",
+                "github.com/google/pprof/profile",
+                "math",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/internal/transport": {
+            "Imports": [
+                "crypto/tls",
+                "crypto/x509",
+                "fmt",
+                "github.com/google/pprof/internal/plugin",
+                "net/http",
+                "os",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "github.com/google/pprof/profile": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "compress/gzip",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "io",
+                "math",
+                "path/filepath",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "github.com/google/pprof/internal/proftest",
+                "io",
+                "os",
+                "path/filepath",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings",
+                "sync",
+                "testing"
+            ]
+        },
+        "github.com/google/pprof/third_party/svgpan": {
+            "Imports": [
+                "embed"
+            ],
+            "TestImports": null
+        }
+    }
+}

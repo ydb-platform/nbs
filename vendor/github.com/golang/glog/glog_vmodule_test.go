@@ -6,5 +6,5 @@ package glog
 //
 //go:noinline
 func runInAnotherModule(f func() bool) bool {
-	return f()
+    return f()
 }

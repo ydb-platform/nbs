@@ -1,0 +1,79 @@
+{
+    "Version": "v0.0.1",
+    "GoVersion": "1.19",
+    "Sum": "h1:Zj6fR5wnpOHnJUmLyWozjMeDaVuE+cstMPj41/eKmSQ=",
+    "Packages": {
+        "github.com/hashicorp/terraform-svchost": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/net/idna",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-svchost/auth": {
+            "Imports": [
+                "bytes",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/terraform-svchost",
+                "github.com/zclconf/go-cty/cty",
+                "github.com/zclconf/go-cty/cty/json",
+                "net/http",
+                "os/exec",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "github.com/hashicorp/terraform-svchost",
+                "github.com/zclconf/go-cty/cty",
+                "net/http",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-svchost/disco": {
+            "Imports": [
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/go-cleanhttp",
+                "github.com/hashicorp/go-version",
+                "github.com/hashicorp/terraform-svchost",
+                "github.com/hashicorp/terraform-svchost/auth",
+                "golang.org/x/oauth2",
+                "io",
+                "io/ioutil",
+                "log",
+                "mime",
+                "net/http",
+                "net/url",
+                "os",
+                "strconv",
+                "strings",
+                "time"
+            ],
+            "TestImports": [
+                "crypto/tls",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-svchost",
+                "github.com/hashicorp/terraform-svchost/auth",
+                "net/http",
+                "net/http/httptest",
+                "net/url",
+                "os",
+                "path",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

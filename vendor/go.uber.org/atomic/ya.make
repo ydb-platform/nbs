@@ -1,5 +1,7 @@
 GO_LIBRARY()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(MIT)
 
 SRCS(
@@ -56,8 +58,12 @@ GO_XTEST_SRCS(example_test.go)
 
 END()
 
-RECURSE(internal)
+RECURSE(
+    internal
+)
 
 IF (NOT OPENSOURCE)
-    RECURSE(gotest)
+    RECURSE(
+        gotest
+    )
 ENDIF()

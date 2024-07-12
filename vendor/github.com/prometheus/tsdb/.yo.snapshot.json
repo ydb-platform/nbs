@@ -1,0 +1,337 @@
+{
+    "Version": "v0.10.0",
+    "GoVersion": "",
+    "Sum": "h1:If5rVCMTp6W2SiRAQFlbpJNgVlgMEd+U2GZckwK38ic=",
+    "Packages": {
+        "github.com/prometheus/tsdb": {
+            "Imports": [
+                "bufio",
+                "context",
+                "encoding/binary",
+                "encoding/json",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "github.com/go-kit/kit/log/level",
+                "github.com/oklog/ulid",
+                "github.com/pkg/errors",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/tsdb/chunkenc",
+                "github.com/prometheus/tsdb/chunks",
+                "github.com/prometheus/tsdb/encoding",
+                "github.com/prometheus/tsdb/errors",
+                "github.com/prometheus/tsdb/fileutil",
+                "github.com/prometheus/tsdb/goversion",
+                "github.com/prometheus/tsdb/index",
+                "github.com/prometheus/tsdb/labels",
+                "github.com/prometheus/tsdb/wal",
+                "golang.org/x/sync/errgroup",
+                "hash",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "math",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "time",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "github.com/oklog/ulid",
+                "github.com/pkg/errors",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/client_golang/prometheus/testutil",
+                "github.com/prometheus/tsdb/chunkenc",
+                "github.com/prometheus/tsdb/chunks",
+                "github.com/prometheus/tsdb/encoding",
+                "github.com/prometheus/tsdb/fileutil",
+                "github.com/prometheus/tsdb/index",
+                "github.com/prometheus/tsdb/labels",
+                "github.com/prometheus/tsdb/testutil",
+                "github.com/prometheus/tsdb/tsdbutil",
+                "github.com/prometheus/tsdb/wal",
+                "io",
+                "io/ioutil",
+                "math",
+                "math/rand",
+                "os",
+                "path",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "sync/atomic",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/prometheus/tsdb/chunkenc": {
+            "Imports": [
+                "encoding/binary",
+                "fmt",
+                "github.com/pkg/errors",
+                "io",
+                "math",
+                "math/bits",
+                "sync"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/prometheus/tsdb/testutil",
+                "io",
+                "math/rand",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/chunks": {
+            "Imports": [
+                "bufio",
+                "encoding/binary",
+                "fmt",
+                "github.com/pkg/errors",
+                "github.com/prometheus/tsdb/chunkenc",
+                "github.com/prometheus/tsdb/errors",
+                "github.com/prometheus/tsdb/fileutil",
+                "hash",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "strconv"
+            ],
+            "TestImports": [
+                "github.com/prometheus/tsdb/testutil",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/cmd/tsdb": {
+            "Imports": [
+                "bufio",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "github.com/pkg/errors",
+                "github.com/prometheus/tsdb",
+                "github.com/prometheus/tsdb/chunks",
+                "github.com/prometheus/tsdb/errors",
+                "github.com/prometheus/tsdb/labels",
+                "gopkg.in/alecthomas/kingpin.v2",
+                "io",
+                "io/ioutil",
+                "math",
+                "os",
+                "path/filepath",
+                "runtime",
+                "runtime/pprof",
+                "sort",
+                "strconv",
+                "strings",
+                "sync",
+                "text/tabwriter",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/tsdb/encoding": {
+            "Imports": [
+                "encoding/binary",
+                "github.com/pkg/errors",
+                "hash",
+                "hash/crc32",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/tsdb/errors": {
+            "Imports": [
+                "bytes",
+                "fmt"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/tsdb/fileutil": {
+            "Imports": [
+                "github.com/pkg/errors",
+                "golang.org/x/sys/unix",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "sort",
+                "strings",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": [
+                "github.com/prometheus/tsdb/testutil",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/goversion": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/prometheus/tsdb/goversion",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/index": {
+            "Imports": [
+                "bufio",
+                "container/heap",
+                "encoding/binary",
+                "github.com/pkg/errors",
+                "github.com/prometheus/tsdb/chunks",
+                "github.com/prometheus/tsdb/encoding",
+                "github.com/prometheus/tsdb/errors",
+                "github.com/prometheus/tsdb/fileutil",
+                "github.com/prometheus/tsdb/labels",
+                "hash",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "math",
+                "os",
+                "path/filepath",
+                "runtime",
+                "sort",
+                "strings",
+                "sync"
+            ],
+            "TestImports": [
+                "encoding/binary",
+                "fmt",
+                "github.com/pkg/errors",
+                "github.com/prometheus/tsdb/chunkenc",
+                "github.com/prometheus/tsdb/chunks",
+                "github.com/prometheus/tsdb/encoding",
+                "github.com/prometheus/tsdb/labels",
+                "github.com/prometheus/tsdb/testutil",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/labels": {
+            "Imports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/cespare/xxhash",
+                "github.com/pkg/errors",
+                "os",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "fmt",
+                "github.com/prometheus/tsdb/testutil",
+                "math/rand",
+                "path/filepath",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/test": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "crypto/rand",
+                "fmt",
+                "github.com/cespare/xxhash",
+                "github.com/dgryski/go-sip13",
+                "github.com/prometheus/tsdb/labels",
+                "hash/crc32",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/testutil": {
+            "Imports": [
+                "crypto/sha256",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "io",
+                "io/ioutil",
+                "os",
+                "path/filepath",
+                "reflect",
+                "runtime",
+                "strconv",
+                "testing"
+            ],
+            "TestImports": null
+        },
+        "github.com/prometheus/tsdb/tsdbutil": {
+            "Imports": [
+                "github.com/prometheus/tsdb/chunkenc",
+                "github.com/prometheus/tsdb/chunks",
+                "math"
+            ],
+            "TestImports": [
+                "github.com/prometheus/tsdb/testutil",
+                "math/rand",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/prometheus/tsdb/wal": {
+            "Imports": [
+                "bufio",
+                "encoding/binary",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "github.com/go-kit/kit/log/level",
+                "github.com/golang/snappy",
+                "github.com/pkg/errors",
+                "github.com/prometheus/client_golang/prometheus",
+                "github.com/prometheus/tsdb/fileutil",
+                "hash/crc32",
+                "io",
+                "os",
+                "path/filepath",
+                "sort",
+                "strconv",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "encoding/binary",
+                "fmt",
+                "github.com/go-kit/kit/log",
+                "github.com/prometheus/client_golang/prometheus/testutil",
+                "github.com/prometheus/tsdb/errors",
+                "github.com/prometheus/tsdb/testutil",
+                "hash/crc32",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

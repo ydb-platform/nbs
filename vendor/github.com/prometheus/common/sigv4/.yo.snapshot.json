@@ -1,0 +1,39 @@
+{
+    "Version": "v0.1.0",
+    "GoVersion": "1.15",
+    "Sum": "h1:qoVebwtwwEhS85Czm2dSROY5fTo2PAPEVdDeppTwGX4=",
+    "Packages": {
+        "github.com/prometheus/common/sigv4": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "github.com/aws/aws-sdk-go/aws",
+                "github.com/aws/aws-sdk-go/aws/credentials",
+                "github.com/aws/aws-sdk-go/aws/credentials/stscreds",
+                "github.com/aws/aws-sdk-go/aws/session",
+                "github.com/aws/aws-sdk-go/aws/signer/v4",
+                "github.com/prometheus/common/config",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "net/textproto",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "github.com/aws/aws-sdk-go/aws",
+                "github.com/aws/aws-sdk-go/aws/credentials",
+                "github.com/aws/aws-sdk-go/aws/session",
+                "github.com/aws/aws-sdk-go/aws/signer/v4",
+                "github.com/prometheus/client_golang/prometheus/promhttp",
+                "github.com/stretchr/testify/require",
+                "gopkg.in/yaml.v2",
+                "io/ioutil",
+                "net/http",
+                "os",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

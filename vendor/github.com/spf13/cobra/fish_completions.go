@@ -15,25 +15,25 @@
 package cobra
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
-	"strings"
+    "bytes"
+    "fmt"
+    "io"
+    "os"
+    "strings"
 )
 
 func genFishComp(buf io.StringWriter, name string, includeDesc bool) {
-	// Variables should not contain a '-' or ':' character
-	nameForVar := name
-	nameForVar = strings.ReplaceAll(nameForVar, "-", "_")
-	nameForVar = strings.ReplaceAll(nameForVar, ":", "_")
+    // Variables should not contain a '-' or ':' character
+    nameForVar := name
+    nameForVar = strings.ReplaceAll(nameForVar, "-", "_")
+    nameForVar = strings.ReplaceAll(nameForVar, ":", "_")
 
-	compCmd := ShellCompRequestCmd
-	if !includeDesc {
-		compCmd = ShellCompNoDescRequestCmd
-	}
-	WriteStringAndCheck(buf, fmt.Sprintf("# fish completion for %-36s -*- shell-script -*-\n", name))
-	WriteStringAndCheck(buf, fmt.Sprintf(`
+    compCmd := ShellCompRequestCmd
+    if !includeDesc {
+        compCmd = ShellCompNoDescRequestCmd
+    }
+    WriteStringAndCheck(buf, fmt.Sprintf("# fish completion for %-36s -*- shell-script -*-\n", name))
+    WriteStringAndCheck(buf, fmt.Sprintf(`
 function __%[1]s_debug
     set -l file "$BASH_COMP_DEBUG_FILE"
     if test -n "$file"
@@ -268,25 +268,25 @@ complete -c %[2]s -n 'not __%[1]s_requires_order_preservation && __%[1]s_prepare
 # otherwise we use the -k flag
 complete -k -c %[2]s -n '__%[1]s_requires_order_preservation && __%[1]s_prepare_completions' -f -a '$__%[1]s_comp_results'
 `, nameForVar, name, compCmd,
-		ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
-		ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder, activeHelpEnvVar(name)))
+        ShellCompDirectiveError, ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp,
+        ShellCompDirectiveFilterFileExt, ShellCompDirectiveFilterDirs, ShellCompDirectiveKeepOrder, activeHelpEnvVar(name)))
 }
 
 // GenFishCompletion generates fish completion file and writes to the passed writer.
 func (c *Command) GenFishCompletion(w io.Writer, includeDesc bool) error {
-	buf := new(bytes.Buffer)
-	genFishComp(buf, c.Name(), includeDesc)
-	_, err := buf.WriteTo(w)
-	return err
+    buf := new(bytes.Buffer)
+    genFishComp(buf, c.Name(), includeDesc)
+    _, err := buf.WriteTo(w)
+    return err
 }
 
 // GenFishCompletionFile generates fish completion file.
 func (c *Command) GenFishCompletionFile(filename string, includeDesc bool) error {
-	outFile, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
+    outFile, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer outFile.Close()
 
-	return c.GenFishCompletion(outFile, includeDesc)
+    return c.GenFishCompletion(outFile, includeDesc)
 }

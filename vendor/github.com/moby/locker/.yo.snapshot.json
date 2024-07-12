@@ -1,0 +1,21 @@
+{
+    "Version": "v1.0.1",
+    "GoVersion": "1.13",
+    "Sum": "h1:fOXqR41zeveg4fFODix+1Ch4mj/gT0NE1XJbp/epuBg=",
+    "Packages": {
+        "github.com/moby/locker": {
+            "Imports": [
+                "errors",
+                "sync",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "math/rand",
+                "strconv",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

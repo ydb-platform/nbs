@@ -1,0 +1,1270 @@
+{
+    "Version": "v1.3.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:WtP1CIaWAfbzME17xoUXvJcyh5Ewu9attdhbfWNnYLs=",
+    "Packages": {
+        "github.com/hashicorp/terraform-plugin-framework/attr": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/attr/xattr": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/datasource": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/datasource/schema": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/diag": {
+            "Imports": [
+                "github.com/hashicorp/terraform-plugin-framework/path"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fromproto5": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromproto5",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fromproto6": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromproto6",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fromtftypes": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromtftypes",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fwschema": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/totftypes",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema": {
+            "Imports": [
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/attr/xattr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromtftypes",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/internal/totftypes",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/fwserver": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "sort",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/google/go-cmp/cmp/cmpopts",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/planmodifiers",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testprovider",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testvalidator",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/logging": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklogtest",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/privatestate": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-log/tflog",
+                "reflect",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/proto5server": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromproto5",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/toproto5",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testprovider",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklogtest",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/proto6server": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fromproto6",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/toproto6",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "sync"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/logging",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testprovider",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklogtest",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/reflect": {
+            "Imports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/attr/xattr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math",
+                "math/big",
+                "reflect",
+                "regexp",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "errors",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math",
+                "math/big",
+                "reflect",
+                "strconv",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/planmodifiers": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/testplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/testprovider": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/resource"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/testvalidator": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/testing/types": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/attr/xattr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/toproto5": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/totftypes",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "sort"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/toproto5",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/toproto6": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/totftypes",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "sort"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/datasource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/toproto6",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/internal/totftypes": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/internal/totftypes",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/path": {
+            "Imports": [
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/provider": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/datasource",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/provider/metaschema": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider/metaschema",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/provider/schema": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/provider/schema",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/providerserver": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwserver",
+                "github.com/hashicorp/terraform-plugin-framework/internal/proto5server",
+                "github.com/hashicorp/terraform-plugin-framework/internal/proto6server",
+                "github.com/hashicorp/terraform-plugin-framework/provider",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5/tf5server",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testprovider",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov5",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-go/tfprotov6"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema/fwxschema",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault",
+                "github.com/hashicorp/terraform-plugin-framework/schema/validator",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "math/big"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/numberplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/privatestate",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+            ],
+            "TestImports": [
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/schema": {
+            "Imports": null,
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/schema/validator": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/tfsdk": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschemadata",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/fwschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/testschema",
+                "github.com/hashicorp/terraform-plugin-framework/internal/testing/types",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-framework/tfsdk",
+                "github.com/hashicorp/terraform-plugin-framework/types",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math/big",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-framework/types": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/types/basetypes",
+                "math/big"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-framework/types/basetypes": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/attr/xattr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/internal/reflect",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math",
+                "math/big",
+                "sort",
+                "strings"
+            ],
+            "TestImports": [
+                "context",
+                "fmt",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-framework/attr",
+                "github.com/hashicorp/terraform-plugin-framework/diag",
+                "github.com/hashicorp/terraform-plugin-framework/path",
+                "github.com/hashicorp/terraform-plugin-go/tftypes",
+                "math",
+                "math/big",
+                "strconv",
+                "testing"
+            ]
+        }
+    }
+}

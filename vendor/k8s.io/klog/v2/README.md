@@ -15,7 +15,7 @@ This makes us unable to solve many use cases without a fork. The factors that co
  * `glog` [presents a lot "gotchas"](https://github.com/kubernetes/kubernetes/issues/61006) and introduces challenges in containerized environments, all of which aren't well documented.
  * `glog` doesn't provide an easy way to test logs, which detracts from the stability of software using it
  * A long term goal is to implement a logging interface that allows us to add context, change output format, etc.
- 
+
 Historical context is available here:
 
  * https://github.com/kubernetes/kubernetes/issues/61006
@@ -79,7 +79,7 @@ Leveled execution logs for Go.
 
 This is an efficient pure Go implementation of leveled logs in the
 manner of the open source C++ package
-	https://github.com/google/glog
+    https://github.com/google/glog
 
 By binding methods to booleans it is possible to use the log package
 without paying the expense of evaluating the arguments to the log.
@@ -88,26 +88,26 @@ control over logging at the file level.
 
 The comment from glog.go introduces the ideas:
 
-	Package glog implements logging analogous to the Google-internal
-	C++ INFO/ERROR/V setup.  It provides functions Info, Warning,
-	Error, Fatal, plus formatting variants such as Infof. It
-	also provides V-style logging controlled by the -v and
-	-vmodule=file=2 flags.
+    Package glog implements logging analogous to the Google-internal
+    C++ INFO/ERROR/V setup.  It provides functions Info, Warning,
+    Error, Fatal, plus formatting variants such as Infof. It
+    also provides V-style logging controlled by the -v and
+    -vmodule=file=2 flags.
 
-	Basic examples:
+    Basic examples:
 
-		glog.Info("Prepare to repel boarders")
+        glog.Info("Prepare to repel boarders")
 
-		glog.Fatalf("Initialization failed: %s", err)
+        glog.Fatalf("Initialization failed: %s", err)
 
-	See the documentation of the V function for an explanation
-	of these examples:
+    See the documentation of the V function for an explanation
+    of these examples:
 
-		if glog.V(2) {
-			glog.Info("Starting transaction...")
-		}
+        if glog.V(2) {
+            glog.Info("Starting transaction...")
+        }
 
-		glog.V(2).Infoln("Processed", nItems, "elements")
+        glog.V(2).Infoln("Processed", nItems, "elements")
 
 
 The repository contains an open source version of the log package

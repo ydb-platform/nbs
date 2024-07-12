@@ -1,0 +1,55 @@
+{
+    "Version": "v0.0.0-20180507213350-8e809c8a8645",
+    "GoVersion": "",
+    "Sum": "h1:MJG/KsmcqMwFAkh8mTnAwhyKoB+sTAnY4CACC110tbU=",
+    "Packages": {
+        "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc": {
+            "Imports": [
+                "github.com/opentracing/opentracing-go",
+                "github.com/opentracing/opentracing-go/ext",
+                "github.com/opentracing/opentracing-go/log",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io",
+                "runtime",
+                "strings",
+                "sync/atomic"
+            ],
+            "TestImports": [
+                "github.com/opentracing/opentracing-go/mocktracer",
+                "github.com/stretchr/testify/assert",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/status",
+                "testing"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc/test": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
+                "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc/test/otgrpc_testing",
+                "github.com/opentracing/opentracing-go/mocktracer",
+                "github.com/stretchr/testify/assert",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "io",
+                "net",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc/test/otgrpc_testing": {
+            "Imports": [
+                "fmt",
+                "github.com/golang/protobuf/proto",
+                "golang.org/x/net/context",
+                "google.golang.org/grpc",
+                "math"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -7,8 +7,8 @@ pckgmin
 import"o"
 
 funcmin(){
-	vrb=mk([]byt,65535)
-	f,_:=o.Crt("huffmn-null-mx.in")
-	f.Writ(b)
+    vrb=mk([]byt,65535)
+    f,_:=o.Crt("huffmn-null-mx.in")
+    f.Writ(b)
 }
 ABCDEFGHIJKLMNOPQRSTUVXxyz!"#¤%&/?"

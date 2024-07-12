@@ -1,11 +1,11 @@
 package runtime
 
 import (
-	"errors"
-	"mime"
-	"net/http"
+    "errors"
+    "mime"
+    "net/http"
 
-	"google.golang.org/grpc/grpclog"
+    "google.golang.org/grpc/grpclog"
 )
 
 // MIMEWildcard is the fallback MIME type used for requests which do not match
@@ -13,10 +13,10 @@ import (
 const MIMEWildcard = "*"
 
 var (
-	acceptHeader      = http.CanonicalHeaderKey("Accept")
-	contentTypeHeader = http.CanonicalHeaderKey("Content-Type")
+    acceptHeader      = http.CanonicalHeaderKey("Accept")
+    contentTypeHeader = http.CanonicalHeaderKey("Content-Type")
 
-	defaultMarshaler = &JSONPb{OrigName: true}
+    defaultMarshaler = &JSONPb{OrigName: true}
 )
 
 // MarshalerForRequest returns the inbound/outbound marshalers for this request.
@@ -26,50 +26,50 @@ var (
 // exactly match in the registry.
 // Otherwise, it follows the above logic for "*"/InboundMarshaler/OutboundMarshaler.
 func MarshalerForRequest(mux *ServeMux, r *http.Request) (inbound Marshaler, outbound Marshaler) {
-	for _, acceptVal := range r.Header[acceptHeader] {
-		if m, ok := mux.marshalers.mimeMap[acceptVal]; ok {
-			outbound = m
-			break
-		}
-	}
+    for _, acceptVal := range r.Header[acceptHeader] {
+        if m, ok := mux.marshalers.mimeMap[acceptVal]; ok {
+            outbound = m
+            break
+        }
+    }
 
-	for _, contentTypeVal := range r.Header[contentTypeHeader] {
-		contentType, _, err := mime.ParseMediaType(contentTypeVal)
-		if err != nil {
-			grpclog.Infof("Failed to parse Content-Type %s: %v", contentTypeVal, err)
-			continue
-		}
-		if m, ok := mux.marshalers.mimeMap[contentType]; ok {
-			inbound = m
-			break
-		}
-	}
+    for _, contentTypeVal := range r.Header[contentTypeHeader] {
+        contentType, _, err := mime.ParseMediaType(contentTypeVal)
+        if err != nil {
+            grpclog.Infof("Failed to parse Content-Type %s: %v", contentTypeVal, err)
+            continue
+        }
+        if m, ok := mux.marshalers.mimeMap[contentType]; ok {
+            inbound = m
+            break
+        }
+    }
 
-	if inbound == nil {
-		inbound = mux.marshalers.mimeMap[MIMEWildcard]
-	}
-	if outbound == nil {
-		outbound = inbound
-	}
+    if inbound == nil {
+        inbound = mux.marshalers.mimeMap[MIMEWildcard]
+    }
+    if outbound == nil {
+        outbound = inbound
+    }
 
-	return inbound, outbound
+    return inbound, outbound
 }
 
 // marshalerRegistry is a mapping from MIME types to Marshalers.
 type marshalerRegistry struct {
-	mimeMap map[string]Marshaler
+    mimeMap map[string]Marshaler
 }
 
 // add adds a marshaler for a case-sensitive MIME type string ("*" to match any
 // MIME type).
 func (m marshalerRegistry) add(mime string, marshaler Marshaler) error {
-	if len(mime) == 0 {
-		return errors.New("empty MIME type")
-	}
+    if len(mime) == 0 {
+        return errors.New("empty MIME type")
+    }
 
-	m.mimeMap[mime] = marshaler
+    m.mimeMap[mime] = marshaler
 
-	return nil
+    return nil
 }
 
 // makeMarshalerMIMERegistry returns a new registry of marshalers.
@@ -81,19 +81,19 @@ func (m marshalerRegistry) add(mime string, marshaler Marshaler) error {
 // "*" can be used to match any Content-Type.
 // This can be attached to a ServerMux with the marshaler option.
 func makeMarshalerMIMERegistry() marshalerRegistry {
-	return marshalerRegistry{
-		mimeMap: map[string]Marshaler{
-			MIMEWildcard: defaultMarshaler,
-		},
-	}
+    return marshalerRegistry{
+        mimeMap: map[string]Marshaler{
+            MIMEWildcard: defaultMarshaler,
+        },
+    }
 }
 
 // WithMarshalerOption returns a ServeMuxOption which associates inbound and outbound
 // Marshalers to a MIME type in mux.
 func WithMarshalerOption(mime string, marshaler Marshaler) ServeMuxOption {
-	return func(mux *ServeMux) {
-		if err := mux.marshalers.add(mime, marshaler); err != nil {
-			panic(err)
-		}
-	}
+    return func(mux *ServeMux) {
+        if err := mux.marshalers.add(mime, marshaler); err != nil {
+            panic(err)
+        }
+    }
 }

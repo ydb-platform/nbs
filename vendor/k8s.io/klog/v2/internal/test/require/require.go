@@ -19,8 +19,8 @@ package require
 import "testing"
 
 func NoError(tb testing.TB, err error) {
-	if err != nil {
-		tb.Helper()
-		tb.Fatalf("Unexpected error: %v", err)
-	}
+    if err != nil {
+        tb.Helper()
+        tb.Fatalf("Unexpected error: %v", err)
+    }
 }

@@ -1,0 +1,404 @@
+{
+    "Version": "v0.0.0-20220722155223-a9213eeb770e",
+    "GoVersion": "1.18",
+    "Sum": "h1:pkl1Ko5DrhA4ezwKwdnmO7H1sKmMy9qLuYKRjS7SlmE=",
+    "Packages": {
+        "golang.org/x/exp/shiny/driver": {
+            "Imports": [
+                "golang.org/x/exp/shiny/driver/gldriver",
+                "golang.org/x/exp/shiny/driver/windriver",
+                "golang.org/x/exp/shiny/driver/x11driver",
+                "golang.org/x/exp/shiny/screen"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/gldriver": {
+            "Imports": [
+                "C",
+                "encoding/binary",
+                "errors",
+                "fmt",
+                "golang.org/x/exp/shiny/driver/internal/drawer",
+                "golang.org/x/exp/shiny/driver/internal/errscreen",
+                "golang.org/x/exp/shiny/driver/internal/event",
+                "golang.org/x/exp/shiny/driver/internal/lifecycler",
+                "golang.org/x/exp/shiny/driver/internal/win32",
+                "golang.org/x/exp/shiny/driver/internal/x11key",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/mobile/event/key",
+                "golang.org/x/mobile/event/lifecycle",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "golang.org/x/mobile/geom",
+                "golang.org/x/mobile/gl",
+                "image",
+                "image/color",
+                "image/draw",
+                "math",
+                "runtime",
+                "sync",
+                "syscall",
+                "time",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/drawer": {
+            "Imports": [
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/image/math/f64",
+                "image",
+                "image/draw"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/errscreen": {
+            "Imports": [
+                "golang.org/x/exp/shiny/screen",
+                "image"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/event": {
+            "Imports": [
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/lifecycler": {
+            "Imports": [
+                "golang.org/x/mobile/event/lifecycle",
+                "sync"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/swizzle": {
+            "Imports": null,
+            "TestImports": [
+                "bytes",
+                "math/rand",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/driver/internal/win32": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/mobile/event/key",
+                "golang.org/x/mobile/event/lifecycle",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "golang.org/x/mobile/geom",
+                "golang.org/x/sys/windows",
+                "runtime",
+                "sync",
+                "syscall",
+                "unicode/utf16",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/internal/x11key": {
+            "Imports": [
+                "golang.org/x/mobile/event/key",
+                "unicode"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/mtldriver": {
+            "Imports": [
+                "dmitri.shuralyov.com/gpu/mtl",
+                "github.com/go-gl/glfw/v3.3/glfw",
+                "golang.org/x/exp/shiny/driver/internal/drawer",
+                "golang.org/x/exp/shiny/driver/internal/errscreen",
+                "golang.org/x/exp/shiny/driver/internal/event",
+                "golang.org/x/exp/shiny/driver/internal/lifecycler",
+                "golang.org/x/exp/shiny/driver/mtldriver/internal/appkit",
+                "golang.org/x/exp/shiny/driver/mtldriver/internal/coreanim",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/image/draw",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/mobile/event/key",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "image",
+                "image/color",
+                "log",
+                "runtime",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/windriver": {
+            "Imports": [
+                "errors",
+                "fmt",
+                "golang.org/x/exp/shiny/driver/internal/drawer",
+                "golang.org/x/exp/shiny/driver/internal/errscreen",
+                "golang.org/x/exp/shiny/driver/internal/event",
+                "golang.org/x/exp/shiny/driver/internal/swizzle",
+                "golang.org/x/exp/shiny/driver/internal/win32",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/mobile/event/key",
+                "golang.org/x/mobile/event/lifecycle",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "golang.org/x/sys/windows",
+                "image",
+                "image/color",
+                "image/draw",
+                "math",
+                "runtime",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/driver/x11driver": {
+            "Imports": [
+                "fmt",
+                "github.com/jezek/xgb",
+                "github.com/jezek/xgb/render",
+                "github.com/jezek/xgb/shm",
+                "github.com/jezek/xgb/xproto",
+                "golang.org/x/exp/shiny/driver/internal/drawer",
+                "golang.org/x/exp/shiny/driver/internal/errscreen",
+                "golang.org/x/exp/shiny/driver/internal/event",
+                "golang.org/x/exp/shiny/driver/internal/lifecycler",
+                "golang.org/x/exp/shiny/driver/internal/swizzle",
+                "golang.org/x/exp/shiny/driver/internal/x11key",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/mobile/event/key",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "golang.org/x/mobile/geom",
+                "image",
+                "image/color",
+                "image/draw",
+                "log",
+                "math",
+                "runtime",
+                "sync",
+                "syscall",
+                "unsafe"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/gesture": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/mobile/event/mouse",
+                "time"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/iconvg": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "golang.org/x/exp/shiny/iconvg/internal/gradient",
+                "golang.org/x/image/math/f32",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/image/vector",
+                "image",
+                "image/color",
+                "image/draw",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "flag",
+                "fmt",
+                "golang.org/x/exp/shiny/iconvg",
+                "golang.org/x/image/math/f32",
+                "image",
+                "image/color",
+                "image/draw",
+                "image/png",
+                "io/ioutil",
+                "log",
+                "math",
+                "os",
+                "path/filepath",
+                "runtime",
+                "strconv",
+                "strings",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/iconvg/internal/gradient": {
+            "Imports": [
+                "golang.org/x/image/math/f64",
+                "image",
+                "image/color",
+                "math"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/imageutil": {
+            "Imports": [
+                "image"
+            ],
+            "TestImports": [
+                "image",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/materialdesign/colornames": {
+            "Imports": [
+                "image/color"
+            ],
+            "TestImports": [
+                "image/color",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/materialdesign/icons": {
+            "Imports": null,
+            "TestImports": [
+                "golang.org/x/exp/shiny/iconvg",
+                "image",
+                "image/draw",
+                "image/png",
+                "os",
+                "path/filepath",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/screen": {
+            "Imports": [
+                "golang.org/x/image/math/f64",
+                "image",
+                "image/color",
+                "image/draw",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/text": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "golang.org/x/image/font",
+                "golang.org/x/image/math/fixed",
+                "io",
+                "strings",
+                "unicode/utf8"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/exp/shiny/text",
+                "golang.org/x/image/font",
+                "golang.org/x/image/math/fixed",
+                "image",
+                "io",
+                "io/ioutil",
+                "math/rand",
+                "os",
+                "reflect",
+                "sort",
+                "strings",
+                "testing",
+                "unicode/utf8"
+            ]
+        },
+        "golang.org/x/exp/shiny/unit": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/image/math/fixed"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/widget": {
+            "Imports": [
+                "golang.org/x/exp/shiny/gesture",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/exp/shiny/text",
+                "golang.org/x/exp/shiny/unit",
+                "golang.org/x/exp/shiny/widget/node",
+                "golang.org/x/exp/shiny/widget/theme",
+                "golang.org/x/image/font",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/image/math/fixed",
+                "golang.org/x/mobile/event/lifecycle",
+                "golang.org/x/mobile/event/mouse",
+                "golang.org/x/mobile/event/paint",
+                "golang.org/x/mobile/event/size",
+                "image",
+                "image/draw"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/widget/flex": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/shiny/widget/node",
+                "golang.org/x/exp/shiny/widget/theme",
+                "image",
+                "math"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "golang.org/x/exp/shiny/unit",
+                "golang.org/x/exp/shiny/widget",
+                "golang.org/x/exp/shiny/widget/node",
+                "golang.org/x/exp/shiny/widget/theme",
+                "image",
+                "image/color",
+                "testing"
+            ]
+        },
+        "golang.org/x/exp/shiny/widget/glwidget": {
+            "Imports": [
+                "fmt",
+                "golang.org/x/exp/shiny/driver/gldriver",
+                "golang.org/x/exp/shiny/widget/node",
+                "golang.org/x/mobile/gl",
+                "image",
+                "image/draw"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/widget/node": {
+            "Imports": [
+                "golang.org/x/exp/shiny/gesture",
+                "golang.org/x/exp/shiny/screen",
+                "golang.org/x/exp/shiny/widget/theme",
+                "golang.org/x/image/math/f64",
+                "golang.org/x/mobile/event/lifecycle",
+                "golang.org/x/mobile/event/mouse",
+                "image"
+            ],
+            "TestImports": null
+        },
+        "golang.org/x/exp/shiny/widget/theme": {
+            "Imports": [
+                "golang.org/x/exp/shiny/unit",
+                "golang.org/x/image/font",
+                "golang.org/x/image/font/inconsolata",
+                "golang.org/x/image/math/fixed",
+                "image",
+                "image/color"
+            ],
+            "TestImports": [
+                "golang.org/x/exp/shiny/unit",
+                "golang.org/x/image/math/fixed",
+                "testing"
+            ]
+        }
+    }
+}

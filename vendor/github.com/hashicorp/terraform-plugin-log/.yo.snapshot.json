@@ -1,0 +1,139 @@
+{
+    "Version": "v0.9.0",
+    "GoVersion": "1.19",
+    "Sum": "h1:i7hOA+vdAItN1/7UrfBqBwvYPQ9TFvymaRGZED3FCV0=",
+    "Packages": {
+        "github.com/hashicorp/terraform-plugin-log/internal/fieldutils": {
+            "Imports": null,
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-log/internal/fieldutils",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/internal/hclogutils": {
+            "Imports": [
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/fieldutils"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/terraform-plugin-log/internal/hclogutils",
+                "sort",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/internal/loggertest": {
+            "Imports": [
+                "context",
+                "encoding/json",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "io"
+            ],
+            "TestImports": null
+        },
+        "github.com/hashicorp/terraform-plugin-log/internal/logging": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/fieldutils",
+                "github.com/hashicorp/terraform-plugin-log/internal/hclogutils",
+                "io",
+                "os",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "os",
+                "regexp",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/tflog": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/hclogutils",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "os",
+                "regexp",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/loggertest",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "github.com/hashicorp/terraform-plugin-log/tflog",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "os",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/tflogtest": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-log/internal/loggertest",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-log/tflog"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/tfsdklog": {
+            "Imports": [
+                "context",
+                "fmt",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/hclogutils",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "github.com/mitchellh/go-testing-interface",
+                "io",
+                "os",
+                "regexp",
+                "strings",
+                "sync",
+                "syscall"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "github.com/google/go-cmp/cmp",
+                "github.com/hashicorp/go-hclog",
+                "github.com/hashicorp/terraform-plugin-log/internal/loggertest",
+                "github.com/hashicorp/terraform-plugin-log/internal/logging",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog",
+                "os",
+                "regexp",
+                "strings",
+                "testing"
+            ]
+        },
+        "github.com/hashicorp/terraform-plugin-log/tfsdklogtest": {
+            "Imports": [
+                "context",
+                "github.com/hashicorp/terraform-plugin-log/internal/loggertest",
+                "io"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "fmt",
+                "github.com/hashicorp/terraform-plugin-log/tfsdklog"
+            ]
+        }
+    }
+}

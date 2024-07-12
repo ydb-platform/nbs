@@ -1,0 +1,7 @@
+[[constraint]]
+  name = "github.com/godbus/dbus"
+  version = "5.0"
+
+[prune]
+  go-tests = true
+  unused-packages = true

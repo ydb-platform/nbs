@@ -36,10 +36,10 @@
 // Follow the detailed instructions on how to configure Workload Identity Federation
 // in various platforms:
 //
-//	Amazon Web Services (AWS): https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds#aws
-//	Microsoft Azure: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds#azure
-//	OIDC identity provider: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers#oidc
-//	SAML 2.0 identity provider: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers#saml
+//    Amazon Web Services (AWS): https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds#aws
+//    Microsoft Azure: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds#azure
+//    OIDC identity provider: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers#oidc
+//    SAML 2.0 identity provider: https://cloud.google.com/iam/docs/workload-identity-federation-with-other-providers#saml
 //
 // For OIDC and SAML providers, the library can retrieve tokens in three ways:
 // from a local file location (file-sourced credentials), from a server
@@ -79,10 +79,10 @@
 // Follow the detailed instructions on how to configure Workload Identity Federation
 // in various platforms:
 //
-//	Azure AD: https://cloud.google.com/iam/docs/workforce-sign-in-azure-ad
-//	Okta: https://cloud.google.com/iam/docs/workforce-sign-in-okta
-//	OIDC identity provider: https://cloud.google.com/iam/docs/configuring-workforce-identity-federation#oidc
-//	SAML 2.0 identity provider: https://cloud.google.com/iam/docs/configuring-workforce-identity-federation#saml
+//    Azure AD: https://cloud.google.com/iam/docs/workforce-sign-in-azure-ad
+//    Okta: https://cloud.google.com/iam/docs/workforce-sign-in-okta
+//    OIDC identity provider: https://cloud.google.com/iam/docs/configuring-workforce-identity-federation#oidc
+//    SAML 2.0 identity provider: https://cloud.google.com/iam/docs/configuring-workforce-identity-federation#saml
 //
 // For workforce identity federation, the library can retrieve tokens in three ways:
 // from a local file location (file-sourced credentials), from a server
@@ -100,6 +100,8 @@
 // For more information on how these work (and how to implement
 // executable-sourced credentials), please check out:
 // https://cloud.google.com/iam/docs/workforce-obtaining-short-lived-credentials#generate_a_configuration_file_for_non-interactive_sign-in
+//
+// # Security considerations
 //
 // Note that this library does not perform any validation on the token_url, token_info_url,
 // or service_account_impersonation_url fields of the credential configuration.

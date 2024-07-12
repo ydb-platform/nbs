@@ -27,49 +27,49 @@ import "google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 // Tests can the channels provided by this tyep to get access to updates and
 // errors sent by the xDS client.
 type TestResourceWatcher struct {
-	// UpdateCh is the channel on which xDS client updates are delivered.
-	UpdateCh chan *xdsresource.ResourceData
-	// ErrorCh is the channel on which errors from the xDS client are delivered.
-	ErrorCh chan error
-	// ResourceDoesNotExistCh is the channel used to indicate calls to OnResourceDoesNotExist
-	ResourceDoesNotExistCh chan struct{}
+    // UpdateCh is the channel on which xDS client updates are delivered.
+    UpdateCh chan *xdsresource.ResourceData
+    // ErrorCh is the channel on which errors from the xDS client are delivered.
+    ErrorCh chan error
+    // ResourceDoesNotExistCh is the channel used to indicate calls to OnResourceDoesNotExist
+    ResourceDoesNotExistCh chan struct{}
 }
 
 // OnUpdate is invoked by the xDS client to report the latest update on the resource
 // being watched.
 func (w *TestResourceWatcher) OnUpdate(data xdsresource.ResourceData) {
-	select {
-	case <-w.UpdateCh:
-	default:
-	}
-	w.UpdateCh <- &data
+    select {
+    case <-w.UpdateCh:
+    default:
+    }
+    w.UpdateCh <- &data
 }
 
 // OnError is invoked by the xDS client to report the latest error.
 func (w *TestResourceWatcher) OnError(err error) {
-	select {
-	case <-w.ErrorCh:
-	default:
-	}
-	w.ErrorCh <- err
+    select {
+    case <-w.ErrorCh:
+    default:
+    }
+    w.ErrorCh <- err
 }
 
 // OnResourceDoesNotExist is used by the xDS client to report that the resource
 // being watched no longer exists.
 func (w *TestResourceWatcher) OnResourceDoesNotExist() {
-	select {
-	case <-w.ResourceDoesNotExistCh:
-	default:
-	}
-	w.ResourceDoesNotExistCh <- struct{}{}
+    select {
+    case <-w.ResourceDoesNotExistCh:
+    default:
+    }
+    w.ResourceDoesNotExistCh <- struct{}{}
 }
 
 // NewTestResourceWatcher returns a TestResourceWatcher to watch for resources
 // via the xDS client.
 func NewTestResourceWatcher() *TestResourceWatcher {
-	return &TestResourceWatcher{
-		UpdateCh:               make(chan *xdsresource.ResourceData, 1),
-		ErrorCh:                make(chan error, 1),
-		ResourceDoesNotExistCh: make(chan struct{}, 1),
-	}
+    return &TestResourceWatcher{
+        UpdateCh:               make(chan *xdsresource.ResourceData, 1),
+        ErrorCh:                make(chan error, 1),
+        ResourceDoesNotExistCh: make(chan struct{}, 1),
+    }
 }

@@ -1,0 +1,33 @@
+{
+    "Version": "v1.0.1",
+    "GoVersion": "1.13",
+    "Sum": "h1:Lh/jXZmvZxb0BBeSY5VKEfidcbcbenKjZFzM/q0fSeU=",
+    "Packages": {
+        "github.com/google/renameio": {
+            "Imports": [
+                "io/ioutil",
+                "os",
+                "path/filepath"
+            ],
+            "TestImports": [
+                "bytes",
+                "fmt",
+                "github.com/google/renameio",
+                "io/ioutil",
+                "log",
+                "os",
+                "path/filepath",
+                "syscall",
+                "testing"
+            ]
+        },
+        "github.com/google/renameio/maybe": {
+            "Imports": [
+                "github.com/google/renameio",
+                "io/ioutil",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

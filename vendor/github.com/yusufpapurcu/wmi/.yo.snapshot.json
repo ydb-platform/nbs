@@ -1,0 +1,37 @@
+{
+    "Version": "v1.2.4",
+    "GoVersion": "1.16",
+    "Sum": "h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=",
+    "Packages": {
+        "github.com/yusufpapurcu/wmi": {
+            "Imports": [
+                "bytes",
+                "errors",
+                "fmt",
+                "github.com/go-ole/go-ole",
+                "github.com/go-ole/go-ole/oleutil",
+                "log",
+                "os",
+                "reflect",
+                "runtime",
+                "strconv",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "github.com/go-ole/go-ole",
+                "github.com/go-ole/go-ole/oleutil",
+                "os",
+                "reflect",
+                "runtime",
+                "runtime/debug",
+                "sync",
+                "testing",
+                "time"
+            ]
+        }
+    }
+}

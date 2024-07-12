@@ -1,11 +1,11 @@
 package request
 
 import (
-	"reflect"
-	"sync/atomic"
+    "reflect"
+    "sync/atomic"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awsutil"
+    "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/awsutil"
 )
 
 // A Pagination provides paginating of SDK API operations which are paginatable.
@@ -29,24 +29,24 @@ import (
 // See service client API operation Pages methods for examples how the SDK will
 // use the Pagination type.
 type Pagination struct {
-	// Function to return a Request value for each pagination request.
-	// Any configuration or handlers that need to be applied to the request
-	// prior to getting the next page should be done here before the request
-	// returned.
-	//
-	// NewRequest should always be built from the same API operations. It is
-	// undefined if different API operations are returned on subsequent calls.
-	NewRequest func() (*Request, error)
-	// EndPageOnSameToken, when enabled, will allow the paginator to stop on
-	// token that are the same as its previous tokens.
-	EndPageOnSameToken bool
+    // Function to return a Request value for each pagination request.
+    // Any configuration or handlers that need to be applied to the request
+    // prior to getting the next page should be done here before the request
+    // returned.
+    //
+    // NewRequest should always be built from the same API operations. It is
+    // undefined if different API operations are returned on subsequent calls.
+    NewRequest func() (*Request, error)
+    // EndPageOnSameToken, when enabled, will allow the paginator to stop on
+    // token that are the same as its previous tokens.
+    EndPageOnSameToken bool
 
-	started    bool
-	prevTokens []interface{}
-	nextTokens []interface{}
+    started    bool
+    prevTokens []interface{}
+    nextTokens []interface{}
 
-	err     error
-	curPage interface{}
+    err     error
+    curPage interface{}
 }
 
 // HasNextPage will return true if Pagination is able to determine that the API
@@ -55,27 +55,27 @@ type Pagination struct {
 //
 // Will always return true if Next has not been called yet.
 func (p *Pagination) HasNextPage() bool {
-	if !p.started {
-		return true
-	}
+    if !p.started {
+        return true
+    }
 
-	hasNextPage := len(p.nextTokens) != 0
-	if p.EndPageOnSameToken {
-		return hasNextPage && !awsutil.DeepEqual(p.nextTokens, p.prevTokens)
-	}
-	return hasNextPage
+    hasNextPage := len(p.nextTokens) != 0
+    if p.EndPageOnSameToken {
+        return hasNextPage && !awsutil.DeepEqual(p.nextTokens, p.prevTokens)
+    }
+    return hasNextPage
 }
 
 // Err returns the error Pagination encountered when retrieving the next page.
 func (p *Pagination) Err() error {
-	return p.err
+    return p.err
 }
 
 // Page returns the current page. Page should only be called after a successful
 // call to Next. It is undefined what Page will return if Page is called after
 // Next returns false.
 func (p *Pagination) Page() interface{} {
-	return p.curPage
+    return p.curPage
 }
 
 // Next will attempt to retrieve the next page for the API operation. When a page
@@ -87,34 +87,34 @@ func (p *Pagination) Page() interface{} {
 //
 // Use the Err method to determine if an error occurred if Page returns false.
 func (p *Pagination) Next() bool {
-	if !p.HasNextPage() {
-		return false
-	}
+    if !p.HasNextPage() {
+        return false
+    }
 
-	req, err := p.NewRequest()
-	if err != nil {
-		p.err = err
-		return false
-	}
+    req, err := p.NewRequest()
+    if err != nil {
+        p.err = err
+        return false
+    }
 
-	if p.started {
-		for i, intok := range req.Operation.InputTokens {
-			awsutil.SetValueAtPath(req.Params, intok, p.nextTokens[i])
-		}
-	}
-	p.started = true
+    if p.started {
+        for i, intok := range req.Operation.InputTokens {
+            awsutil.SetValueAtPath(req.Params, intok, p.nextTokens[i])
+        }
+    }
+    p.started = true
 
-	err = req.Send()
-	if err != nil {
-		p.err = err
-		return false
-	}
+    err = req.Send()
+    if err != nil {
+        p.err = err
+        return false
+    }
 
-	p.prevTokens = p.nextTokens
-	p.nextTokens = req.nextPageTokens()
-	p.curPage = req.Data
+    p.prevTokens = p.nextTokens
+    p.nextTokens = req.nextPageTokens()
+    p.curPage = req.Data
 
-	return true
+    return true
 }
 
 // A Paginator is the configuration data that defines how an API operation
@@ -125,92 +125,92 @@ func (p *Pagination) Next() bool {
 // is only used to store the token metadata the SDK should use for performing
 // pagination.
 type Paginator struct {
-	InputTokens     []string
-	OutputTokens    []string
-	LimitToken      string
-	TruncationToken string
+    InputTokens     []string
+    OutputTokens    []string
+    LimitToken      string
+    TruncationToken string
 }
 
 // nextPageTokens returns the tokens to use when asking for the next page of data.
 func (r *Request) nextPageTokens() []interface{} {
-	if r.Operation.Paginator == nil {
-		return nil
-	}
-	if r.Operation.TruncationToken != "" {
-		tr, _ := awsutil.ValuesAtPath(r.Data, r.Operation.TruncationToken)
-		if len(tr) == 0 {
-			return nil
-		}
+    if r.Operation.Paginator == nil {
+        return nil
+    }
+    if r.Operation.TruncationToken != "" {
+        tr, _ := awsutil.ValuesAtPath(r.Data, r.Operation.TruncationToken)
+        if len(tr) == 0 {
+            return nil
+        }
 
-		switch v := tr[0].(type) {
-		case *bool:
-			if !aws.BoolValue(v) {
-				return nil
-			}
-		case bool:
-			if !v {
-				return nil
-			}
-		}
-	}
+        switch v := tr[0].(type) {
+        case *bool:
+            if !aws.BoolValue(v) {
+                return nil
+            }
+        case bool:
+            if !v {
+                return nil
+            }
+        }
+    }
 
-	tokens := []interface{}{}
-	tokenAdded := false
-	for _, outToken := range r.Operation.OutputTokens {
-		vs, _ := awsutil.ValuesAtPath(r.Data, outToken)
-		if len(vs) == 0 {
-			tokens = append(tokens, nil)
-			continue
-		}
-		v := vs[0]
+    tokens := []interface{}{}
+    tokenAdded := false
+    for _, outToken := range r.Operation.OutputTokens {
+        vs, _ := awsutil.ValuesAtPath(r.Data, outToken)
+        if len(vs) == 0 {
+            tokens = append(tokens, nil)
+            continue
+        }
+        v := vs[0]
 
-		switch tv := v.(type) {
-		case *string:
-			if len(aws.StringValue(tv)) == 0 {
-				tokens = append(tokens, nil)
-				continue
-			}
-		case string:
-			if len(tv) == 0 {
-				tokens = append(tokens, nil)
-				continue
-			}
-		}
+        switch tv := v.(type) {
+        case *string:
+            if len(aws.StringValue(tv)) == 0 {
+                tokens = append(tokens, nil)
+                continue
+            }
+        case string:
+            if len(tv) == 0 {
+                tokens = append(tokens, nil)
+                continue
+            }
+        }
 
-		tokenAdded = true
-		tokens = append(tokens, v)
-	}
-	if !tokenAdded {
-		return nil
-	}
+        tokenAdded = true
+        tokens = append(tokens, v)
+    }
+    if !tokenAdded {
+        return nil
+    }
 
-	return tokens
+    return tokens
 }
 
 // Ensure a deprecated item is only logged once instead of each time its used.
 func logDeprecatedf(logger aws.Logger, flag *int32, msg string) {
-	if logger == nil {
-		return
-	}
-	if atomic.CompareAndSwapInt32(flag, 0, 1) {
-		logger.Log(msg)
-	}
+    if logger == nil {
+        return
+    }
+    if atomic.CompareAndSwapInt32(flag, 0, 1) {
+        logger.Log(msg)
+    }
 }
 
 var (
-	logDeprecatedHasNextPage int32
-	logDeprecatedNextPage    int32
-	logDeprecatedEachPage    int32
+    logDeprecatedHasNextPage int32
+    logDeprecatedNextPage    int32
+    logDeprecatedEachPage    int32
 )
 
 // HasNextPage returns true if this request has more pages of data available.
 //
 // Deprecated Use Pagination type for configurable pagination of API operations
 func (r *Request) HasNextPage() bool {
-	logDeprecatedf(r.Config.Logger, &logDeprecatedHasNextPage,
-		"Request.HasNextPage deprecated. Use Pagination type for configurable pagination of API operations")
+    logDeprecatedf(r.Config.Logger, &logDeprecatedHasNextPage,
+        "Request.HasNextPage deprecated. Use Pagination type for configurable pagination of API operations")
 
-	return len(r.nextPageTokens()) > 0
+    return len(r.nextPageTokens()) > 0
 }
 
 // NextPage returns a new Request that can be executed to return the next
@@ -218,20 +218,20 @@ func (r *Request) HasNextPage() bool {
 //
 // Deprecated Use Pagination type for configurable pagination of API operations
 func (r *Request) NextPage() *Request {
-	logDeprecatedf(r.Config.Logger, &logDeprecatedNextPage,
-		"Request.NextPage deprecated. Use Pagination type for configurable pagination of API operations")
+    logDeprecatedf(r.Config.Logger, &logDeprecatedNextPage,
+        "Request.NextPage deprecated. Use Pagination type for configurable pagination of API operations")
 
-	tokens := r.nextPageTokens()
-	if len(tokens) == 0 {
-		return nil
-	}
+    tokens := r.nextPageTokens()
+    if len(tokens) == 0 {
+        return nil
+    }
 
-	data := reflect.New(reflect.TypeOf(r.Data).Elem()).Interface()
-	nr := New(r.Config, r.ClientInfo, r.Handlers, r.Retryer, r.Operation, awsutil.CopyOf(r.Params), data)
-	for i, intok := range nr.Operation.InputTokens {
-		awsutil.SetValueAtPath(nr.Params, intok, tokens[i])
-	}
-	return nr
+    data := reflect.New(reflect.TypeOf(r.Data).Elem()).Interface()
+    nr := New(r.Config, r.ClientInfo, r.Handlers, r.Retryer, r.Operation, awsutil.CopyOf(r.Params), data)
+    for i, intok := range nr.Operation.InputTokens {
+        awsutil.SetValueAtPath(nr.Params, intok, tokens[i])
+    }
+    return nr
 }
 
 // EachPage iterates over each page of a paginated request object. The fn
@@ -250,17 +250,17 @@ func (r *Request) NextPage() *Request {
 //
 // Deprecated Use Pagination type for configurable pagination of API operations
 func (r *Request) EachPage(fn func(data interface{}, isLastPage bool) (shouldContinue bool)) error {
-	logDeprecatedf(r.Config.Logger, &logDeprecatedEachPage,
-		"Request.EachPage deprecated. Use Pagination type for configurable pagination of API operations")
+    logDeprecatedf(r.Config.Logger, &logDeprecatedEachPage,
+        "Request.EachPage deprecated. Use Pagination type for configurable pagination of API operations")
 
-	for page := r; page != nil; page = page.NextPage() {
-		if err := page.Send(); err != nil {
-			return err
-		}
-		if getNextPage := fn(page.Data, !page.HasNextPage()); !getNextPage {
-			return page.Error
-		}
-	}
+    for page := r; page != nil; page = page.NextPage() {
+        if err := page.Send(); err != nil {
+            return err
+        }
+        if getNextPage := fn(page.Data, !page.HasNextPage()); !getNextPage {
+            return page.Error
+        }
+    }
 
-	return nil
+    return nil
 }

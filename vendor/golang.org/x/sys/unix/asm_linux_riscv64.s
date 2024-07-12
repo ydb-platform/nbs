@@ -13,35 +13,35 @@
 // these functions.
 
 TEXT ·Syscall(SB),NOSPLIT,$0-56
-	JMP	syscall·Syscall(SB)
+    JMP    syscall·Syscall(SB)
 
 TEXT ·Syscall6(SB),NOSPLIT,$0-80
-	JMP	syscall·Syscall6(SB)
+    JMP    syscall·Syscall6(SB)
 
 TEXT ·SyscallNoError(SB),NOSPLIT,$0-48
-	CALL	runtime·entersyscall(SB)
-	MOV	a1+8(FP), A0
-	MOV	a2+16(FP), A1
-	MOV	a3+24(FP), A2
-	MOV	trap+0(FP), A7	// syscall entry
-	ECALL
-	MOV	A0, r1+32(FP)	// r1
-	MOV	A1, r2+40(FP)	// r2
-	CALL	runtime·exitsyscall(SB)
-	RET
+    CALL    runtime·entersyscall(SB)
+    MOV    a1+8(FP), A0
+    MOV    a2+16(FP), A1
+    MOV    a3+24(FP), A2
+    MOV    trap+0(FP), A7    // syscall entry
+    ECALL
+    MOV    A0, r1+32(FP)    // r1
+    MOV    A1, r2+40(FP)    // r2
+    CALL    runtime·exitsyscall(SB)
+    RET
 
 TEXT ·RawSyscall(SB),NOSPLIT,$0-56
-	JMP	syscall·RawSyscall(SB)
+    JMP    syscall·RawSyscall(SB)
 
 TEXT ·RawSyscall6(SB),NOSPLIT,$0-80
-	JMP	syscall·RawSyscall6(SB)
+    JMP    syscall·RawSyscall6(SB)
 
 TEXT ·RawSyscallNoError(SB),NOSPLIT,$0-48
-	MOV	a1+8(FP), A0
-	MOV	a2+16(FP), A1
-	MOV	a3+24(FP), A2
-	MOV	trap+0(FP), A7	// syscall entry
-	ECALL
-	MOV	A0, r1+32(FP)
-	MOV	A1, r2+40(FP)
-	RET
+    MOV    a1+8(FP), A0
+    MOV    a2+16(FP), A1
+    MOV    a3+24(FP), A2
+    MOV    trap+0(FP), A7    // syscall entry
+    ECALL
+    MOV    A0, r1+32(FP)
+    MOV    A1, r2+40(FP)
+    RET

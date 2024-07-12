@@ -1,0 +1,62 @@
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    - linters:
+        - gosec
+      text: "G204"
+    - linters:
+        - revive
+      text: "var-naming"
+    - linters:
+        - revive
+      text: "exported"
+    - linters:
+        - revive
+      text: "empty-block"
+    - linters:
+        - revive
+      text: "unused-parameter"
+linters:
+  enable:
+    - asciicheck
+    - contextcheck
+    - durationcheck
+    - errorlint
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - gomodguard
+    - gosec
+    - gosimple
+    - importas
+    - megacheck
+    - misspell
+    - nakedret
+    - nolintlint
+    - predeclared
+    - revive
+    - typecheck
+    - unparam
+  disable:
+    - deadcode
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - structcheck
+    - unused
+    - varcheck
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/shirou)
+  gomodguard:
+    blocked:
+      modules:
+        - io/ioutil:
+            recommandations:
+              - io
+              - os

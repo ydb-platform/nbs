@@ -15,10 +15,10 @@
 package pbutil
 
 import (
-	"encoding/binary"
-	"io"
+    "encoding/binary"
+    "io"
 
-	"github.com/golang/protobuf/proto"
+    "github.com/golang/protobuf/proto"
 )
 
 // WriteDelimited encodes and dumps a message to the provided writer prefixed
@@ -28,19 +28,19 @@ import (
 // number of bytes written and any applicable error.  This is roughly
 // equivalent to the companion Java API's MessageLite#writeDelimitedTo.
 func WriteDelimited(w io.Writer, m proto.Message) (n int, err error) {
-	buffer, err := proto.Marshal(m)
-	if err != nil {
-		return 0, err
-	}
+    buffer, err := proto.Marshal(m)
+    if err != nil {
+        return 0, err
+    }
 
-	var buf [binary.MaxVarintLen32]byte
-	encodedLength := binary.PutUvarint(buf[:], uint64(len(buffer)))
+    var buf [binary.MaxVarintLen32]byte
+    encodedLength := binary.PutUvarint(buf[:], uint64(len(buffer)))
 
-	sync, err := w.Write(buf[:encodedLength])
-	if err != nil {
-		return sync, err
-	}
+    sync, err := w.Write(buf[:encodedLength])
+    if err != nil {
+        return sync, err
+    }
 
-	n, err = w.Write(buffer)
-	return n + sync, err
+    n, err = w.Write(buffer)
+    return n + sync, err
 }

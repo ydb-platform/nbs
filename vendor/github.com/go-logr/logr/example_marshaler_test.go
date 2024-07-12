@@ -17,39 +17,39 @@ limitations under the License.
 package logr_test
 
 import (
-	"github.com/go-logr/logr"
+    "github.com/go-logr/logr"
 )
 
 // ObjectRef references a Kubernetes object
 type ObjectRef struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace,omitempty"`
+    Name      string `json:"name"`
+    Namespace string `json:"namespace,omitempty"`
 }
 
 func (ref ObjectRef) String() string {
-	if ref.Namespace != "" {
-		return ref.Namespace + "/" + ref.Name
-	}
-	return ref.Name
+    if ref.Namespace != "" {
+        return ref.Namespace + "/" + ref.Name
+    }
+    return ref.Name
 }
 
 func (ref ObjectRef) MarshalLog() any {
-	// We implement fmt.Stringer for non-structured logging, but we want the
-	// raw struct when using structured logs.  Some logr implementations call
-	// String if it is present, so we want to convert this struct to something
-	// that doesn't have that method.
-	type forLog ObjectRef // methods do not survive type definitions
-	return forLog(ref)
+    // We implement fmt.Stringer for non-structured logging, but we want the
+    // raw struct when using structured logs.  Some logr implementations call
+    // String if it is present, so we want to convert this struct to something
+    // that doesn't have that method.
+    type forLog ObjectRef // methods do not survive type definitions
+    return forLog(ref)
 }
 
 var _ logr.Marshaler = ObjectRef{}
 
 func ExampleMarshaler() {
-	l := NewStdoutLogger()
-	pod := ObjectRef{Namespace: "kube-system", Name: "some-pod"}
-	l.Info("as string", "pod", pod.String())
-	l.Info("as struct", "pod", pod)
-	// Output:
-	// "level"=0 "msg"="as string" "pod"="kube-system/some-pod"
-	// "level"=0 "msg"="as struct" "pod"={"name"="some-pod" "namespace"="kube-system"}
+    l := NewStdoutLogger()
+    pod := ObjectRef{Namespace: "kube-system", Name: "some-pod"}
+    l.Info("as string", "pod", pod.String())
+    l.Info("as struct", "pod", pod)
+    // Output:
+    // "level"=0 "msg"="as string" "pod"="kube-system/some-pod"
+    // "level"=0 "msg"="as struct" "pod"={"name"="some-pod" "namespace"="kube-system"}
 }

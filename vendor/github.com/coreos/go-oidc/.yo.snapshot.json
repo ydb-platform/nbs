@@ -1,0 +1,84 @@
+{
+    "Version": "v2.2.1+incompatible",
+    "GoVersion": "",
+    "Sum": "h1:mh48q/BqXqgjVHpy2ZY7WnWAbenxRjsz9N1i1YxjHAk=",
+    "Packages": {
+        "github.com/coreos/go-oidc": {
+            "Imports": [
+                "bytes",
+                "context",
+                "crypto/sha256",
+                "crypto/sha512",
+                "encoding/base64",
+                "encoding/json",
+                "errors",
+                "fmt",
+                "github.com/pquerna/cachecontrol",
+                "golang.org/x/oauth2",
+                "gopkg.in/square/go-jose.v2",
+                "hash",
+                "io/ioutil",
+                "mime",
+                "net/http",
+                "strings",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "context",
+                "crypto/ecdsa",
+                "crypto/elliptic",
+                "crypto/rand",
+                "crypto/rsa",
+                "encoding/json",
+                "fmt",
+                "gopkg.in/square/go-jose.v2",
+                "io",
+                "net/http",
+                "net/http/httptest",
+                "reflect",
+                "strconv",
+                "strings",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/coreos/go-oidc/example/idtoken": {
+            "Imports": [
+                "encoding/json",
+                "github.com/coreos/go-oidc",
+                "golang.org/x/net/context",
+                "golang.org/x/oauth2",
+                "log",
+                "net/http",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-oidc/example/nonce": {
+            "Imports": [
+                "encoding/json",
+                "github.com/coreos/go-oidc",
+                "golang.org/x/net/context",
+                "golang.org/x/oauth2",
+                "log",
+                "net/http",
+                "os"
+            ],
+            "TestImports": null
+        },
+        "github.com/coreos/go-oidc/example/userinfo": {
+            "Imports": [
+                "encoding/json",
+                "github.com/coreos/go-oidc",
+                "golang.org/x/net/context",
+                "golang.org/x/oauth2",
+                "log",
+                "net/http",
+                "os"
+            ],
+            "TestImports": null
+        }
+    }
+}

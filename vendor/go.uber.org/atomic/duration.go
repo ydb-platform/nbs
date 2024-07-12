@@ -23,67 +23,67 @@
 package atomic
 
 import (
-	"encoding/json"
-	"time"
+    "encoding/json"
+    "time"
 )
 
 // Duration is an atomic type-safe wrapper for time.Duration values.
 type Duration struct {
-	_ nocmp // disallow non-atomic comparison
+    _ nocmp // disallow non-atomic comparison
 
-	v Int64
+    v Int64
 }
 
 var _zeroDuration time.Duration
 
 // NewDuration creates a new Duration.
 func NewDuration(val time.Duration) *Duration {
-	x := &Duration{}
-	if val != _zeroDuration {
-		x.Store(val)
-	}
-	return x
+    x := &Duration{}
+    if val != _zeroDuration {
+        x.Store(val)
+    }
+    return x
 }
 
 // Load atomically loads the wrapped time.Duration.
 func (x *Duration) Load() time.Duration {
-	return time.Duration(x.v.Load())
+    return time.Duration(x.v.Load())
 }
 
 // Store atomically stores the passed time.Duration.
 func (x *Duration) Store(val time.Duration) {
-	x.v.Store(int64(val))
+    x.v.Store(int64(val))
 }
 
 // CAS is an atomic compare-and-swap for time.Duration values.
 //
 // Deprecated: Use CompareAndSwap.
 func (x *Duration) CAS(old, new time.Duration) (swapped bool) {
-	return x.CompareAndSwap(old, new)
+    return x.CompareAndSwap(old, new)
 }
 
 // CompareAndSwap is an atomic compare-and-swap for time.Duration values.
 func (x *Duration) CompareAndSwap(old, new time.Duration) (swapped bool) {
-	return x.v.CompareAndSwap(int64(old), int64(new))
+    return x.v.CompareAndSwap(int64(old), int64(new))
 }
 
 // Swap atomically stores the given time.Duration and returns the old
 // value.
 func (x *Duration) Swap(val time.Duration) (old time.Duration) {
-	return time.Duration(x.v.Swap(int64(val)))
+    return time.Duration(x.v.Swap(int64(val)))
 }
 
 // MarshalJSON encodes the wrapped time.Duration into JSON.
 func (x *Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.Load())
+    return json.Marshal(x.Load())
 }
 
 // UnmarshalJSON decodes a time.Duration from JSON.
 func (x *Duration) UnmarshalJSON(b []byte) error {
-	var v time.Duration
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-	x.Store(v)
-	return nil
+    var v time.Duration
+    if err := json.Unmarshal(b, &v); err != nil {
+        return err
+    }
+    x.Store(v)
+    return nil
 }

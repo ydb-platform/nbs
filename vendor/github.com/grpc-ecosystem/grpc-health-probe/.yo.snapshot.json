@@ -1,0 +1,33 @@
+{
+    "Version": "v0.4.14",
+    "GoVersion": "1.18",
+    "Sum": "h1:Ez3B2jh4ghH965qZ6kfzwIvfqvRuwBoO90XhL++Ku5Q=",
+    "Packages": {
+        "github.com/grpc-ecosystem/grpc-health-probe": {
+            "Imports": [
+                "context",
+                "crypto/tls",
+                "crypto/x509",
+                "flag",
+                "fmt",
+                "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig",
+                "github.com/spiffe/go-spiffe/v2/workloadapi",
+                "google.golang.org/grpc",
+                "google.golang.org/grpc/codes",
+                "google.golang.org/grpc/credentials",
+                "google.golang.org/grpc/credentials/alts",
+                "google.golang.org/grpc/health/grpc_health_v1",
+                "google.golang.org/grpc/metadata",
+                "google.golang.org/grpc/status",
+                "io/ioutil",
+                "log",
+                "os",
+                "os/signal",
+                "strings",
+                "time",
+                "unicode"
+            ],
+            "TestImports": null
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "Version": "v1.6.0",
+    "GoVersion": "",
+    "Sum": "h1:feTTfFNnjP967rlCxM/I9g701jU+RN74YKx2mOkIeek=",
+    "Packages": {
+        "github.com/hashicorp/go-version": {
+            "Imports": [
+                "bytes",
+                "fmt",
+                "reflect",
+                "regexp",
+                "sort",
+                "strconv",
+                "strings"
+            ],
+            "TestImports": [
+                "encoding/json",
+                "fmt",
+                "reflect",
+                "sort",
+                "testing"
+            ]
+        }
+    }
+}

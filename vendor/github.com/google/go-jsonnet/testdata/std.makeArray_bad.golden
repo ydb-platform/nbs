@@ -1,0 +1,8 @@
+RUNTIME ERROR: Unexpected type string, expected number
+-------------------------------------------------
+    testdata/std.makeArray_bad:1:1-36    $
+
+std.makeArray("xxx", function(i) i)
+
+-------------------------------------------------
+    During evaluation

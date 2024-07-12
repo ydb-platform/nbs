@@ -1,0 +1,75 @@
+{
+    "Version": "v0.2.0",
+    "GoVersion": "1.13",
+    "Sum": "h1:cjW1zVyyoiM0T7b6UoySUFqzXMoqRckQtXwGPiBhOM8=",
+    "Packages": {
+        "github.com/moby/spdystream": {
+            "Imports": [
+                "container/heap",
+                "errors",
+                "fmt",
+                "github.com/moby/spdystream/spdy",
+                "io",
+                "log",
+                "net",
+                "net/http",
+                "os",
+                "sync",
+                "time"
+            ],
+            "TestImports": [
+                "bufio",
+                "bytes",
+                "fmt",
+                "github.com/moby/spdystream/spdy",
+                "io",
+                "io/ioutil",
+                "net",
+                "net/http",
+                "net/http/httptest",
+                "sync",
+                "testing",
+                "time"
+            ]
+        },
+        "github.com/moby/spdystream/spdy": {
+            "Imports": [
+                "bytes",
+                "compress/zlib",
+                "encoding/binary",
+                "io",
+                "net/http",
+                "strings"
+            ],
+            "TestImports": [
+                "bytes",
+                "compress/zlib",
+                "encoding/base64",
+                "io",
+                "io/ioutil",
+                "net/http",
+                "reflect",
+                "testing"
+            ]
+        },
+        "github.com/moby/spdystream/ws": {
+            "Imports": [
+                "fmt",
+                "github.com/gorilla/websocket",
+                "io",
+                "time"
+            ],
+            "TestImports": [
+                "bytes",
+                "github.com/gorilla/websocket",
+                "github.com/moby/spdystream",
+                "io",
+                "log",
+                "net/http",
+                "net/http/httptest",
+                "strings",
+                "testing"
+            ]
+        }
+    }
+}

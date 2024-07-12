@@ -20,47 +20,47 @@ limitations under the License.
 package logr
 
 import (
-	"context"
-	"log/slog"
-	"os"
-	"testing"
+    "context"
+    "log/slog"
+    "os"
+    "testing"
 )
 
 func TestContextWithSlog(t *testing.T) {
-	ctx := context.Background()
+    ctx := context.Background()
 
-	if out := FromContextAsSlogLogger(ctx); out != nil {
-		t.Errorf("expected no logger, got %#v", out)
-	}
+    if out := FromContextAsSlogLogger(ctx); out != nil {
+        t.Errorf("expected no logger, got %#v", out)
+    }
 
-	// Write as slog...
-	slogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	sctx := NewContextWithSlogLogger(ctx, slogger)
+    // Write as slog...
+    slogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+    sctx := NewContextWithSlogLogger(ctx, slogger)
 
-	// ...read as logr
-	if out, err := FromContext(sctx); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	} else if _, ok := out.sink.(*slogSink); !ok {
-		t.Errorf("expected output to be type *logr.slogSink, got %T", out.sink)
-	}
+    // ...read as logr
+    if out, err := FromContext(sctx); err != nil {
+        t.Errorf("unexpected error: %v", err)
+    } else if _, ok := out.sink.(*slogSink); !ok {
+        t.Errorf("expected output to be type *logr.slogSink, got %T", out.sink)
+    }
 
-	// ...read as slog
-	if out := FromContextAsSlogLogger(sctx); out == nil {
-		t.Errorf("expected a *slog.JSONHandler, got nil")
-	} else if _, ok := out.Handler().(*slog.JSONHandler); !ok {
-		t.Errorf("expected output to be type *slog.JSONHandler, got %T", out.Handler())
-	}
+    // ...read as slog
+    if out := FromContextAsSlogLogger(sctx); out == nil {
+        t.Errorf("expected a *slog.JSONHandler, got nil")
+    } else if _, ok := out.Handler().(*slog.JSONHandler); !ok {
+        t.Errorf("expected output to be type *slog.JSONHandler, got %T", out.Handler())
+    }
 
-	// Write as logr...
-	logger := Discard()
-	lctx := NewContext(ctx, logger)
+    // Write as logr...
+    logger := Discard()
+    lctx := NewContext(ctx, logger)
 
-	// ...read as slog
-	if out := FromContextAsSlogLogger(lctx); out == nil {
-		t.Errorf("expected a *log.slogHandler, got nil")
-	} else if _, ok := out.Handler().(*slogHandler); !ok {
-		t.Errorf("expected output to be type *logr.slogHandler, got %T", out.Handler())
-	}
+    // ...read as slog
+    if out := FromContextAsSlogLogger(lctx); out == nil {
+        t.Errorf("expected a *log.slogHandler, got nil")
+    } else if _, ok := out.Handler().(*slogHandler); !ok {
+        t.Errorf("expected output to be type *logr.slogHandler, got %T", out.Handler())
+    }
 
-	// ...read as logr is covered in the non-slog test
+    // ...read as logr is covered in the non-slog test
 }

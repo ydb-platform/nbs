@@ -1,0 +1,134 @@
+GO_LIBRARY()
+
+SUBSCRIBER(g:go-contrib)
+
+LICENSE(BSD-3-Clause)
+
+SRCS(
+    arp.go
+    asf.go
+    asf_presencepong.go
+    base.go
+    bfd.go
+    cdp.go
+    ctp.go
+    dhcpv4.go
+    dhcpv6.go
+    dhcpv6_options.go
+    dns.go
+    doc.go
+    dot11.go
+    dot1q.go
+    eap.go
+    eapol.go
+    endpoints.go
+    enums.go
+    enums_generated.go
+    erspan2.go
+    etherip.go
+    ethernet.go
+    fddi.go
+    fuzz_layer.go
+    geneve.go
+    gre.go
+    gtp.go
+    iana_ports.go
+    icmp4.go
+    icmp6.go
+    icmp6msg.go
+    igmp.go
+    ip4.go
+    ip6.go
+    ipsec.go
+    layertypes.go
+    lcm.go
+    linux_sll.go
+    llc.go
+    lldp.go
+    loopback.go
+    mldv1.go
+    mldv2.go
+    modbustcp.go
+    mpls.go
+    ndp.go
+    ntp.go
+    ospf.go
+    pflog.go
+    ports.go
+    ppp.go
+    pppoe.go
+    prism.go
+    radiotap.go
+    radius.go
+    rmcp.go
+    rudp.go
+    sctp.go
+    sflow.go
+    sip.go
+    stp.go
+    tcp.go
+    tcpip.go
+    tls.go
+    tls_alert.go
+    tls_appdata.go
+    tls_cipherspec.go
+    tls_handshake.go
+    udp.go
+    udplite.go
+    usb.go
+    vrrp.go
+    vxlan.go
+)
+
+GO_TEST_SRCS(
+    asf_presencepong_test.go
+    asf_test.go
+    base_test.go
+    bfd_test.go
+    decode_test.go
+    dhcp_test.go
+    dhcpv6_test.go
+    dns_test.go
+    dot11_test.go
+    dot1q_test.go
+    eapol_test.go
+    endpoints_test.go
+    erspan2_test.go
+    geneve_test.go
+    gre_test.go
+    gtp_test.go
+    icmp6NDflags_test.go
+    icmp6_test.go
+    icmp6hopbyhop_test.go
+    icmp6msg_test.go
+    igmp_test.go
+    ip4_test.go
+    ip6_test.go
+    ipsec_test.go
+    lcm_test.go
+    lldp_test.go
+    mldv1_test.go
+    mldv2_test.go
+    mpls_test.go
+    ntp_test.go
+    ospf_test.go
+    prism_test.go
+    radiotap_test.go
+    radius_test.go
+    rmcp_test.go
+    sflow_test.go
+    sip_test.go
+    tcp_test.go
+    tcpip_test.go
+    tls_test.go
+    udp_test.go
+    usb_test.go
+    vrrp_test.go
+    vxlan_test.go
+)
+
+END()
+
+RECURSE(
+    gotest
+)

@@ -1,5 +1,7 @@
 GO_PROGRAM()
 
+SUBSCRIBER(g:go-contrib)
+
 LICENSE(BSD-3-Clause)
 
 IF (OS_WINDOWS)
