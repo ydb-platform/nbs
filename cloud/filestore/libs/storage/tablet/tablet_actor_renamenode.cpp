@@ -336,6 +336,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
+            // TODO: fill OpLogEntry
+
             args.FollowerIdForUnlink = args.NewChildRef->FollowerId;
             args.FollowerNameForUnlink = args.NewChildRef->FollowerName;
         }
@@ -392,8 +394,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
-
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
@@ -443,6 +443,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         }
         NotifySessionEvent(ctx, sessionEvent);
     }
+
+    RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
     CompleteResponse<TEvService::TRenameNodeMethod>(
