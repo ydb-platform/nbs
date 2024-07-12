@@ -543,13 +543,22 @@ struct TEvIndexTabletPrivate
 
     struct TNodeUnlinkedInFollower
     {
-        TRequestInfoPtr RequestInfo;
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         TUnlinkNodeInFollowerResult Result;
 
         TNodeUnlinkedInFollower(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 TUnlinkNodeInFollowerResult result)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , Result(std::move(result))
         {
         }

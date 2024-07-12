@@ -366,9 +366,9 @@ private:
     void RegisterUnlinkNodeInFollowerActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TString followerId,
-        TString followerName,
         NProto::TUnlinkNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
         TUnlinkNodeInFollowerResult result);
 
 private:
