@@ -213,7 +213,6 @@ void TMirrorPartitionActor::ReadBlocks(
         record.GetStartIndex(),
         record.GetBlocksCount());
 
-
     if (ResyncRangeStarted && GetScrubbingRange().Overlaps(blockRange)) {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(
