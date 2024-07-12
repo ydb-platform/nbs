@@ -2222,6 +2222,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPools)
     {
+        // 1 .Create devices from two different pools with pool kind
+        // DEVICE_POOL_KIND_LOCAL. Devices are created in the suspended state.
+        // 2. Set observer for EvCleanupDevicesRequest which check that
+        // all devices from one message belong to the same pool.
+        // 3. Call ResumeDevice for all devices. Internally ResumeDevice
+        // triggers SecureErase.
+
         auto agent1 = CreateAgentConfig(
             "agent-1",
             {Device("dev-1", "uuid-1", "rack-1", 10_GB) |
