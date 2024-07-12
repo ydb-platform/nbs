@@ -338,7 +338,6 @@ class Nbs(LocalNbs):
 
             for name, expected in kwargs.items():
                 val = get_sensor_by_name(sensors, 'disk_registry', name)
-                logging.info('looking for {}, current val = {}, waitong for = {}'.format(name, val, expected))
                 if val != expected:
                     break
                 satisfied.add(name)

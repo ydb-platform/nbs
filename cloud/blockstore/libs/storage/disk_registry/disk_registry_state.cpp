@@ -4694,17 +4694,10 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     // an idle agent. DR waits for it to become online and blocks host
     // deployment.
     if (StorageConfig->GetCleanupDRConfigOnCMSActions() &&
-        newState == NProto::EAgentState::AGENT_STATE_UNAVAILABLE &&
+        newState == NProto::AGENT_STATE_UNAVAILABLE &&
         agent->GetDevices().empty())
     {
-        bool success = RemoveAgent(db, agent->GetNodeId());
-        if (!success) {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder() << "Couldn't remove the agent "
-                                 << agent->GetAgentId().Quote());
-        }
-
+        RemoveAgent(db, *agent);
         return {};
     }
 
@@ -5060,17 +5053,19 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
-        auto error = TryToRemoveAgentDevices(db, agent->GetAgentId());
-        if (!HasError(error)) {
-            return result;
-        }
+        if (StorageConfig->GetCleanupDRConfigOnCMSActions()) {
+            auto error = TryToRemoveAgentDevices(db, agent->GetAgentId());
+            if (!HasError(error)) {
+                return result;
+            }
 
-        // Do not return the error from "TryToRemoveAgentDevices()" since it's
-        // internal and shouldn't block node removal.
-        STORAGE_WARN(
-            "Could not remove device from agent %s: %s",
-            agent->GetAgentId().Quote().c_str(),
-            FormatError(error).c_str());
+            // Do not return the error from "TryToRemoveAgentDevices()" since
+            // it's internal and shouldn't block node removal.
+            STORAGE_WARN(
+                "Could not remove device from agent %s: %s",
+                agent->GetAgentId().Quote().c_str(),
+                FormatError(error).c_str());
+        }
 
         SuspendLocalDevices(db, *agent);
     }
