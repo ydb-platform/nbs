@@ -1159,10 +1159,26 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                 }
 
                 TABLER() {
-                    TABLED() { out << "Encryption mode"; }
+                    TABLED() { out << "Encryption"; }
                     TABLED() {
-                        out << NProto::EEncryptionMode_Name(
-                            (NProto::EEncryptionMode)volumeConfig.GetEncryptionDesc().GetMode());
+                        DIV()
+                        {
+                            out << NProto::EEncryptionMode_Name(
+                                (NProto::EEncryptionMode)volumeConfig
+                                    .GetEncryptionDesc()
+                                    .GetMode());
+                        }
+                        DIV()
+                        {
+                            const auto& keyHash =
+                                volumeConfig.GetEncryptionDesc().GetKeyHash();
+                            if (keyHash.empty()) {
+                                out << "Binding to the encryption key has not "
+                                       "yet occurred.";
+                            } else {
+                                out << "Encryption key hash: " << keyHash;
+                            }
+                        }
                     }
                 }
 
