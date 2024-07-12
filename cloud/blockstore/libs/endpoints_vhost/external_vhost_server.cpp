@@ -1,4 +1,6 @@
 #include "external_vhost_server.h"
+
+#include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/common/device_path.h>
@@ -6,7 +8,6 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/vhost-server/options.h>
-
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -15,6 +16,7 @@
 #include <library/cpp/coroutine/engine/events.h>
 #include <library/cpp/coroutine/engine/impl.h>
 #include <library/cpp/coroutine/engine/sockpool.h>
+#include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -23,13 +25,12 @@
 #include <util/generic/hash.h>
 #include <util/generic/scope.h>
 #include <util/generic/strbuf.h>
+#include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
-
-#include <chrono>
 
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -44,6 +45,16 @@ using namespace std::chrono_literals;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// When the process starts, there may be a delay until it can process the
+// signals. Therefore, it is possible that the child process will miss our first
+// SIGUSR1 signal. When requesting the first block of statistics, it is
+// necessary to make a reasonable number of repetitions.
+constexpr ui64 ReadFirstStatRetryCount = 10;
+
+// It doesn't make sense to make the delay less than
+// COMPLETION_STATS_WAIT_DURATION.
+constexpr auto StatReadDuration = TDuration::Seconds(1);
 
 enum class EEndpointType
 {
@@ -66,6 +77,80 @@ const char* GetEndpointTypeName(EEndpointType state)
     return "UNDEFINED";
 }
 
+TString ReadFromFile(const TString& fileName)
+{
+    try {
+        return TFileInput(fileName).ReadAll();
+    } catch (...) {
+        return {};
+    }
+}
+
+TString ParseDiskIdFromCmdLine(const TString& cmdLine)
+{
+    // Prepare argv from string with zero-separated params.
+    // Flags AllowUnknownCharOptions_ and AllowUnknownCharOptions_ force parser
+    // to ignore all of the following parameters if it encounters an unknown
+    // parameter. Therefore, we discard all the parameters that are in front of
+    // the --disk-id.
+    std::vector<const char*> argv;
+    size_t diskIdOffset = cmdLine.find("--disk-id");
+    if (diskIdOffset == TString::npos || diskIdOffset == 0) {
+        return {};
+    }
+
+    argv.push_back("dummy");
+    argv.push_back(&cmdLine[diskIdOffset]);
+    for (size_t i = diskIdOffset + 1; i < cmdLine.size(); ++i) {
+        if (cmdLine[i] != 0 && cmdLine[i - 1] == 0) {
+            argv.push_back(&cmdLine[i]);
+            break;
+        }
+    }
+    argv.push_back(nullptr);
+
+    // Parse command line to get disk-id.
+    TString diskId;
+    NLastGetopt::TOpts opts;
+    opts.AddLongOption("disk-id").StoreResult(&diskId);
+
+    opts.AllowUnknownCharOptions_ = true;
+    opts.AllowUnknownLongOptions_ = true;
+
+    NLastGetopt::TOptsParseResult parsedOpts(&opts, argv.size(), argv.data());
+    return diskId;
+}
+
+TString FindDiskIdForRunningProcess(int pid)
+{
+    TFsPath proc("/proc");
+    TString processCmd = ReadFromFile(proc / ToString(pid) / "cmdline");
+    if (!processCmd) {
+        return {};
+    }
+    try {
+        return ParseDiskIdFromCmdLine(processCmd);
+    } catch (...) {
+        return {};
+    }
+}
+
+bool PrefetchBinaryToCache(const TString& binaryPath)
+{
+    try {
+        TFile binary(
+            binaryPath,
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
+                EOpenModeFlag::Seq);
+
+        binary.PrefetchCache(0, 0, true);
+        return true;
+    } catch (...) {
+        // Just ignore
+        return false;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TChild
@@ -75,12 +160,14 @@ struct TChild
     TFileHandle StdErr;
 
 public:
-    TChild() = default;
+    explicit TChild(pid_t pid)
+        : Pid{pid}
+    {}
 
     TChild(pid_t pid, TFileHandle stdOut, TFileHandle stdErr)
-        : Pid {pid}
-        , StdOut {std::move(stdOut)}
-        , StdErr {std::move(stdErr)}
+        : Pid{pid}
+        , StdOut{std::move(stdOut)}
+        , StdErr{std::move(stdErr)}
     {}
 
     TChild(const TChild&) = delete;
@@ -105,14 +192,44 @@ public:
         StdErr.Swap(rhs.StdErr);
     }
 
-    int Kill(int sig) noexcept
+    int SendSignal(int sig) const noexcept
     {
         return ::kill(Pid, sig);
     }
 
-    void Terminate() noexcept
+    void Terminate() const noexcept
     {
-        Kill(SIGTERM);
+        SendSignal(SIGTERM);
+    }
+
+    void Kill() const noexcept
+    {
+        SendSignal(SIGKILL);
+    }
+
+    NProto::TError Wait() const
+    {
+        int status = 0;
+
+        if (::waitpid(Pid, &status, 0) == -1) {
+            int err = errno;
+            return MakeError(
+                MAKE_SYSTEM_ERROR(err),
+                TStringBuilder() << "waitpid: " << ::strerror(err));
+        }
+
+        if (WIFSIGNALED(status)) {
+            const char* message =
+                WCOREDUMP(status) ? "core dump" : "terminated by a signal";
+
+            return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
+        }
+
+        if (WIFEXITED(status) && WEXITSTATUS(status)) {
+            return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
+        }
+
+        return {};
     }
 };
 
@@ -164,6 +281,7 @@ TChild SpawnChild(
     }
 
     if (childPid) {
+        // Parent process.
         return TChild {childPid, std::move(stdOut.R), std::move(stdErr.R)};
     }
 
@@ -171,6 +289,10 @@ TChild SpawnChild(
 
     stdOut.LinkTo(STDOUT_FILENO);
     stdErr.LinkTo(STDERR_FILENO);
+
+    // Last chance to figure out what's going on.
+    // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w", stdout);
+    // freopen((TString("/tmp/err.") + ToString(::getpid())).c_str(), "w", stderr);
 
     // Following "const_cast"s are safe:
     // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
@@ -189,34 +311,6 @@ TChild SpawnChild(
     int err = errno;
     char buf[64] {};
     Y_ABORT("Process was not created: %s", ::strerror_r(err, buf, sizeof(buf)));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TError WaitPid(pid_t pid)
-{
-    int status = 0;
-
-    if (::waitpid(pid, &status, 0) == -1) {
-        int err = errno;
-        return MakeError(
-            MAKE_SYSTEM_ERROR(err),
-            TStringBuilder() << "waitpid: " << ::strerror(err));
-    }
-
-    if (WIFSIGNALED(status)) {
-        const char* message = WCOREDUMP(status)
-            ? "core dump"
-            : "terminated by a signal";
-
-        return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
-    }
-
-    if (WIFEXITED(status) && WEXITSTATUS(status)) {
-        return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
-    }
-
-    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -249,7 +343,7 @@ public:
         , Process {std::move(process)}
     {}
 
-    ~TEndpointProcess()
+    ~TEndpointProcess() override
     {
         if (!ShouldStop) {
             Process.Terminate();
@@ -265,51 +359,82 @@ public:
     void Stop()
     {
         ShouldStop = true;
-        Process.Kill(SIGINT);
+        Process.SendSignal(SIGINT);
     }
 
     NProto::TError Wait()
     {
-        return WaitPid(Process.Pid);
+        return Process.Wait();
     }
 
 private:
     void ReadStats(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder {this};
+        TIntrusivePtr<TEndpointProcess> holder{this};
+        // Since it is not guaranteed that the vhost-server will receive first
+        // signal to generate statistics, we need to read the response with a
+        // timeout.
+        TContIOWithTimeout io{Process.StdOut, c, StatReadDuration * 2};
 
-        try {
-            ReadStatsImpl(c);
-        } catch (...) {
-            const auto logPriority = ShouldStop
-                ? TLOG_INFO
-                : TLOG_ERR;
+        bool firstRead = true;
+        for (ui64 i = 0; !ShouldStop; ++i) {
+            const auto startReadStatAt = TInstant::Now();
 
-            STORAGE_LOG(logPriority, "[" << ClientId << "] Read stats error: "
-                << CurrentExceptionMessage());
+            try {
+                ReadStatsImpl(io);
+                firstRead = false;
+            } catch (...) {
+                const bool shouldContinue = HandleReadStatsError(firstRead, i);
+                if (!shouldContinue) {
+                    break;
+                }
+            }
+
+            auto elapsedTime = TInstant::Now() - startReadStatAt;
+            if (elapsedTime < StatReadDuration) {
+                c->SleepT(StatReadDuration - elapsedTime);
+            }
         }
     }
 
-    void ReadStatsImpl(TCont* c)
+    bool HandleReadStatsError(bool firstRead, ui64 i)
     {
-        TContIO io {Process.StdOut, c};
-
-        for (;;) {
-            c->SleepT(1s);
-
-            if (ShouldStop) {
-                break;
-            }
-
-            Process.Kill(SIGUSR1);
-
-            NJson::TJsonValue stats;
-            NJson::ReadJsonTree(io.ReadLine(), &stats, true);
-
-            STORAGE_DEBUG("[" << ClientId << "] " << stats);
-
-            Stats.Update(stats);
+        if (ShouldStop) {
+            STORAGE_INFO(
+                "[" << ClientId
+                    << "] Read stats error: " << CurrentExceptionMessage());
+            return false;
         }
+
+        if (firstRead) {
+            if (i < ReadFirstStatRetryCount) {
+                STORAGE_WARN(
+                    "[" << ClientId << "] Retrying read first stat #" << i + 1
+                        << ". Error: " << CurrentExceptionMessage());
+                return true;
+            }
+            STORAGE_ERROR(
+                "[" << ClientId << "] Stop retrying read first stat. Error: "
+                    << CurrentExceptionMessage());
+            return false;
+        }
+
+        STORAGE_ERROR(
+            "[" << ClientId << "] Stop read stat. On #" << i
+                << ". Error: " << CurrentExceptionMessage());
+        return false;
+    }
+
+    void ReadStatsImpl(TContIOWithTimeout& io)
+    {
+        Process.SendSignal(SIGUSR1);
+
+        NJson::TJsonValue stats;
+        NJson::ReadJsonTree(io.ReadLine(), &stats, true);
+
+        STORAGE_DEBUG("[" << ClientId << "] " << stats);
+
+        Stats.Update(stats);
     }
 
     void ReadStdErr(TCont* c)
@@ -442,9 +567,21 @@ public:
         , Stats {std::move(stats)}
     {}
 
-    ~TEndpoint()
+    ~TEndpoint() override
     {
         Y_DEBUG_ABORT_UNLESS(ShouldStop);
+    }
+
+    void PrepareToStart() override
+    {
+        const auto startAt = TInstant::Now();
+        const bool succ = PrefetchBinaryToCache(BinaryPath);
+        const auto logPriority = succ ? TLOG_INFO : TLOG_ERR;
+
+        STORAGE_LOG(
+            logPriority,
+            "Prefetch binary " << (succ ? "success" : "failed") << ". It took "
+                               << (TInstant::Now() - startAt).ToString());
     }
 
     void Start() override
@@ -564,10 +701,12 @@ private:
     const ui32 SocketAccessMode;
     const IEndpointListenerPtr FallbackListener;
     const TExternalEndpointFactory EndpointFactory;
+    const TDuration VhostServerTimeoutAfterParentExit;
 
     TLog Log;
 
     THashMap<TString, IExternalEndpointPtr> Endpoints;
+    TMap<i32, TString> OldEndpoints;
 
 public:
     TExternalVhostEndpointListener(
@@ -576,6 +715,7 @@ public:
             TExecutorPtr executor,
             TString localAgentId,
             ui32 socketAccessMode,
+            TDuration vhostServerTimeoutAfterParentExit,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
@@ -585,8 +725,11 @@ public:
         , SocketAccessMode {socketAccessMode}
         , FallbackListener {std::move(fallbackListener)}
         , EndpointFactory {std::move(endpointFactory)}
+        , VhostServerTimeoutAfterParentExit{vhostServerTimeoutAfterParentExit}
         , Log {Logging->CreateLog("BLOCKSTORE_SERVER")}
-    {}
+    {
+        FindRunningEndpoints();
+    }
 
     TFuture<NProto::TError> StartEndpoint(
         const NProto::TStartEndpointRequest& request,
@@ -845,9 +988,12 @@ private:
             : request.GetInstanceId();
 
         TVector<TString> args {
+            "--disk-id", request.GetDiskId(),
             "--serial", deviceName,
             "--socket-path", socketPath,
-            "-q", ToString(request.GetVhostQueuesCount())
+            "-q", ToString(request.GetVhostQueuesCount()),
+            "--wait-after-parent-exit",
+            ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
         };
 
         // TODO: get rid of "if" (was needed for backward compatibility)
@@ -859,9 +1005,6 @@ private:
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
             args.emplace_back(clientId);
-
-            args.emplace_back("--disk-id");
-            args.emplace_back(request.GetDiskId());
 
             args.emplace_back("--device-backend");
             args.emplace_back(GetDeviceBackend(epType));
@@ -903,6 +1046,8 @@ private:
             std::move(cgroups)
         );
 
+        ep->PrepareToStart();
+        ShutdownOldEndpoint(request.GetDiskId());
         ep->Start();
 
         Endpoints[socketPath] = std::move(ep);
@@ -946,6 +1091,62 @@ private:
 
         return true;
     }
+
+    void FindRunningEndpoints() {
+        TFsPath proc("/proc");
+        TVector<TFsPath> allProcesses;
+        proc.List(allProcesses);
+        for (const auto& process: allProcesses) {
+            if (!process.IsDirectory()) {
+                continue;
+            }
+
+            i32 pid = 0;
+            if (!TryFromString<i32>(process.Basename(), pid)) {
+                continue;
+            }
+
+            auto processMark = ReadFromFile(process / "comm");
+            if (!processMark.StartsWith("vhost-")) {
+                continue;
+            }
+
+            const auto diskId = FindDiskIdForRunningProcess(pid);
+            if (diskId) {
+                OldEndpoints[pid] = diskId;
+                STORAGE_INFO(
+                    "Find running external-vhost-server PID:"
+                    << pid << " for disk-id: " << diskId.Quote());
+            }
+        }
+    }
+
+    void ShutdownOldEndpoint(const TString& diskId)
+    {
+        for (auto it = OldEndpoints.begin(); it != OldEndpoints.end();) {
+            i32 pid = it->first;
+            const auto& oldDiskId = it->second;
+
+            if (oldDiskId != diskId) {
+                ++it;
+                continue;
+            }
+
+            // There is a time interval between the search for old processes
+            // and their termination. We are checking here that another
+            // process has not been started under the same pid.
+            if (oldDiskId == FindDiskIdForRunningProcess(pid)) {
+                TChild child(pid);
+
+                STORAGE_WARN(
+                    "Send TERMINATE to external-vhost-server with PID:"
+                    << pid << " for disk-id: " << diskId.Quote());
+                child.Kill();
+                child.Wait();
+            }
+            it = OldEndpoints.erase(it);
+        }
+    }
 };
 
 }   // namespace
@@ -959,6 +1160,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString binaryPath,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener)
 {
     auto defaultFactory = [=] (
@@ -988,6 +1190,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(executor),
         std::move(localAgentId),
         socketAccessMode,
+        vhostServerTimeoutAfterParentExit,
         std::move(fallbackListener),
         std::move(defaultFactory));
 }
@@ -998,6 +1201,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
@@ -1007,6 +1211,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(executor),
         std::move(localAgentId),
         socketAccessMode,
+        vhostServerTimeoutAfterParentExit,
         std::move(fallbackListener),
         std::move(factory));
 }
