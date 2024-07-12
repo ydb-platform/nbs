@@ -575,6 +575,7 @@ public:
     TDuration GetServiceSelfPingInterval() const;
 
     bool GetDataScrubbingEnabled() const;
+    bool GetResyncRangeAfterScrubbing() const;
     TDuration GetScrubbingInterval() const;
     TDuration GetScrubbingChecksumMismatchTimeout() const;
     ui64 GetScrubbingBandwidth() const;

@@ -213,6 +213,18 @@ void TMirrorPartitionActor::ReadBlocks(
         record.GetStartIndex(),
         record.GetBlocksCount());
 
+
+    if (ResyncRangeStarted && GetScrubbingRange().Overlaps(blockRange)) {
+        auto response = std::make_unique<typename TMethod::TResponse>(
+            MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Request " << TMethod::Name
+                    << " intersects with currently resyncing range"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     TActorId replicaActorId;
     const auto error = State.NextReadReplica(blockRange, &replicaActorId);
     if (HasError(error)) {
