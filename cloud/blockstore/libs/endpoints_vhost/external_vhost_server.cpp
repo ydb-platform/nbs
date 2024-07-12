@@ -94,19 +94,18 @@ TString ParseDiskIdFromCmdLine(const TString& cmdLine)
     // parameter. Therefore, we discard all the parameters that are in front of
     // the --disk-id.
     std::vector<const char*> argv;
-    bool diskIdSeen = false;
-    for (size_t i = 0; i < cmdLine.size(); ++i) {
-        if (TStringBuf{&cmdLine[i]} == "--disk-id") {
-            diskIdSeen = true;
-        }
-        const bool prevCharIsZero = i == 0 || (cmdLine[i - 1] == 0);
-        const bool shouldTakeParam = (i == 0) || diskIdSeen;
-        if (cmdLine[i] != 0 && prevCharIsZero && shouldTakeParam) {
-            argv.push_back(&cmdLine[i]);
-        }
-    }
-    if (argv.empty()) {
+    size_t diskIdOffset = cmdLine.find("--disk-id");
+    if (diskIdOffset == TString::npos || diskIdOffset == 0) {
         return {};
+    }
+
+    argv.push_back("dummy");
+    argv.push_back(&cmdLine[diskIdOffset]);
+    for (size_t i = diskIdOffset + 1; i < cmdLine.size(); ++i) {
+        if (cmdLine[i] != 0 && cmdLine[i - 1] == 0) {
+            argv.push_back(&cmdLine[i]);
+            break;
+        }
     }
     argv.push_back(nullptr);
 
