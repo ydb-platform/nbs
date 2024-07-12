@@ -236,11 +236,13 @@ public:
         const THeaders& headers,
         const ui64 parent,
         const TString& name,
-        bool unlinkDirectory = false)
+        bool unlinkDirectory = false,
+        const ui64 requestId = 0)
     {
         auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         headers.Fill(request->Record);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         request->Record.SetNodeId(parent);
         request->Record.SetName(name);
         request->Record.SetUnlinkDirectory(unlinkDirectory);

@@ -281,6 +281,7 @@ struct TTxIndexTablet
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
+        TVector<NProto::TOpLogEntry> OpLog;
 
         NProto::TError Error;
 
@@ -302,6 +303,7 @@ struct TTxIndexTablet
             TruncateQueue.clear();
             StorageConfig.Clear();
             SessionHistory.clear();
+            OpLog.clear();
         }
     };
 

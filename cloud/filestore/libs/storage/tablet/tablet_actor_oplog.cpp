@@ -9,6 +9,32 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::ReplayOpLog(
+    const NActors::TActorContext& ctx,
+    const TVector<NProto::TOpLogEntry>& opLog)
+{
+    for (const auto& op: opLog) {
+        if (op.HasCreateNodeRequest()) {
+            // TODO
+        } else if (op.HasUnlinkNodeRequest()) {
+            RegisterUnlinkNodeInFollowerActor(
+                ctx,
+                nullptr, // requestInfo
+                op.GetUnlinkNodeRequest(),
+                0, // requestId
+                op.GetEntryId(),
+                {} // result
+            );
+        } else {
+            TABLET_VERIFY_C(
+                0,
+                "Unexpected OpLog entry: " << op.DebugString().Quote());
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::PrepareTx_DeleteOpLogEntry(
     const TActorContext& ctx,
     TTransactionContext& tx,

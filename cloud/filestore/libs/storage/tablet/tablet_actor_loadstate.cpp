@@ -109,7 +109,8 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadCheckpoints(args.Checkpoints),
         db.ReadTruncateQueue(args.TruncateQueue),
         db.ReadStorageConfig(args.StorageConfig),
-        db.ReadSessionHistoryEntries(args.SessionHistory)
+        db.ReadSessionHistoryEntries(args.SessionHistory),
+        db.ReadOpLog(args.OpLog)
     };
 
     bool ready = std::accumulate(
@@ -300,6 +301,10 @@ void TIndexTabletActor::CompleteTx_LoadState(
     RegisterFileStore(ctx);
     RegisterStatCounters();
     ResetThrottlingPolicy();
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Scheduling OpLog ops");
+    ReplayOpLog(ctx, args.OpLog);
 
     CompleteStateLoad();
 
