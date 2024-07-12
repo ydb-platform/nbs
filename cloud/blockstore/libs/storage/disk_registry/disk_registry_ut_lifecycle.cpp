@@ -2313,6 +2313,164 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ResumeDevice("agent-2", "dev-6", /*dryRun=*/false);
         WaitForSecureErase(*runtime, 6);
     }
+
+    Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPoolsIndependently)
+    {
+        const auto rotPool = WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL);
+
+        TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("path", "uuid-1", "rack-1", 10_GB) | rotPool,
+                 Device("path", "uuid-2", "rack-1", 10_GB) | rotPool,
+                 Device("path", "uuid-3", "rack-1", 10_GB) | rotPool}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("path", "uuid-4", "rack-1", 10_GB),
+                 Device("path", "uuid-5", "rack-1", 10_GB),
+                 Device("path", "uuid-6", "rack-1", 10_GB)})};
+
+        THashMap<TString, TString> deviceUuidToPoolName = {
+            {"uuid-1", "rot"},
+            {"uuid-2", "rot"},
+            {"uuid-3", "rot"},
+            {"uuid-4", ""},
+            {"uuid-5", ""},
+            {"uuid-6", ""},
+        };
+
+        auto runtime =
+            TTestRuntimeBuilder()
+                .With(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfig();
+
+                        config
+                            .SetMaxDevicesToErasePerDeviceNameForDefaultPoolKind(
+                                1);
+                        config
+                            .SetMaxDevicesToErasePerDeviceNameForGlobalPoolKind(
+                                1);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
+
+                auto* rot = config.AddDevicePoolConfigs();
+                rot->SetName("rot");
+                rot->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                rot->SetAllocationUnit(10_GB);
+
+                return config;
+            }());
+
+        TVector<TAutoPtr<IEventHandle>> secureEraseRequests;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvSecureEraseDeviceRequest: {
+                        secureEraseRequests.emplace_back(std::move(event));
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest, 2}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(2, secureEraseRequests.size());
+
+        auto getPoolName = [&](const auto& event)
+        {
+            const auto& msg = *event->template Get<
+                TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+
+            return deviceUuidToPoolName[msg.Record.GetDeviceUUID()];
+        };
+
+        SortBy(secureEraseRequests, getPoolName);
+
+        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("rot", getPoolName(secureEraseRequests[1]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(2, secureEraseRequests.size());
+
+        auto sendResponse = [&](auto event)
+        {
+            runtime->Send(new IEventHandle(
+                event->Sender,
+                event->Recipient,
+                new TEvDiskAgent::TEvSecureEraseDeviceResponse(),
+                0,   // flags
+                event->Cookie));
+        };
+
+        // send response for ''
+        sendResponse(std::move(secureEraseRequests[0]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        // we have new request for ''
+        UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[2]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
+
+        // send response for the second ''
+        sendResponse(std::move(secureEraseRequests[2]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        // we have new request for ''
+        UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[3]));
+
+        // send response for the last ''
+        sendResponse(std::move(secureEraseRequests[3]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+
+        // there are no new requests - all '' are clean
+        UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
+
+        // send response for 'rot'
+        sendResponse(std::move(secureEraseRequests[1]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        // we have new request for 'rot'
+        UNIT_ASSERT_VALUES_EQUAL(5, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL("rot", getPoolName(secureEraseRequests[4]));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
