@@ -100,6 +100,7 @@ constexpr TDuration Seconds(int s)
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
+    xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

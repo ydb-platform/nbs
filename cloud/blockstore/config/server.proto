@@ -197,6 +197,10 @@ message TServerConfig
 
     // auth token for node registration via ydb discovery api.
     optional string NodeRegistrationToken = 117;
+
+    // How many seconds will the external vhost server continue to work after
+    // the parent process die.
+    optional uint32 VhostServerTimeoutAfterParentExit = 118;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

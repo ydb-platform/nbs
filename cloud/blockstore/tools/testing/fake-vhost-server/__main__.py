@@ -23,6 +23,11 @@ def _prepare_logging(verbose):
         format="[%(levelname)s] [%(asctime)s] %(message)s")
 
 
+def __set_comm(proc_name):
+    with open('/proc/self/comm', 'w') as f:
+        f.write(proc_name)
+
+
 class _DeviceChunk:
 
     def __init__(self, s: str):
@@ -94,6 +99,8 @@ def _create_handler(args, app: _App):
 
 
 def _run_server(args):
+    __set_comm("vhost-" + args.disk_id)
+
     app = _App()
 
     server = HTTPServer(('localhost', args.port), _create_handler(args, app))
@@ -236,6 +243,12 @@ def main():
         type=int,
         metavar="INT",
         default=4*1024**2 + 4096)
+
+    parser.add_argument(
+        "--wait-after-parent-exit",
+        help="How many seconds keep alive after the parent process is exited",
+        type=int,
+        metavar="INT")
 
     args = parser.parse_args()
 
