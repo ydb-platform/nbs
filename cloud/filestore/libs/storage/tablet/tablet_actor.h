@@ -366,10 +366,14 @@ private:
     void RegisterUnlinkNodeInFollowerActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TString followerId,
-        TString followerName,
         NProto::TUnlinkNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
         TUnlinkNodeInFollowerResult result);
+
+    void ReplayOpLog(
+        const NActors::TActorContext& ctx,
+        const TVector<NProto::TOpLogEntry>& opLog);
 
 private:
     template <typename TMethod>

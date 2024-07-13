@@ -119,6 +119,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(FilterAliveNodes,                   __VA_ARGS__)                       \
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
+                                                                               \
+    xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
 // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -279,6 +281,7 @@ struct TTxIndexTablet
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
+        TVector<NProto::TOpLogEntry> OpLog;
 
         NProto::TError Error;
 
@@ -300,6 +303,7 @@ struct TTxIndexTablet
             TruncateQueue.clear();
             StorageConfig.Clear();
             SessionHistory.clear();
+            OpLog.clear();
         }
     };
 
@@ -659,6 +663,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> ChildNode;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TUnlinkNodeResponse Response;
 
         TUnlinkNode(
@@ -677,6 +683,7 @@ struct TTxIndexTablet
             ParentNode.Clear();
             ChildNode.Clear();
             ChildRef.Clear();
+            OpLogEntry.Clear();
             Response.Clear();
         }
     };
@@ -703,6 +710,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
         TMaybe<IIndexTabletDatabase::TNode> NewChildNode;
         TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
+
+        NProto::TOpLogEntry OpLogEntry;
 
         NProto::TRenameNodeResponse Response;
 
@@ -732,6 +741,8 @@ struct TTxIndexTablet
             NewParentNode.Clear();
             NewChildNode.Clear();
             NewChildRef.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
 
@@ -1760,6 +1771,26 @@ struct TTxIndexTablet
         {
             StorageConfigFromDB.Clear();
             ResultStorageConfig.Clear();
+        }
+    };
+
+    //
+    // DeleteOpLogEntry
+    //
+
+    struct TDeleteOpLogEntry
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+        const ui64 EntryId;
+
+        explicit TDeleteOpLogEntry(ui64 entryId)
+            : EntryId(entryId)
+        {}
+
+        void Clear()
+        {
         }
     };
 };

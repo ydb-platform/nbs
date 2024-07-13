@@ -3749,7 +3749,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // listing should show only subdir with file2 in it
 
-        listNodesResponse =service.ListNodes(
+        listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
@@ -3874,6 +3874,239 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             768_KB / 4_KB,
             fileStoreStats.GetUsedBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldRetryUnlinkingInFollower)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        TAutoPtr<IEventHandle> followerUnlinkResponse;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvUnlinkNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        auto response = std::make_unique<
+                            TEvService::TEvUnlinkNodeResponse>(
+                            MakeError(E_REJECTED, "error"));
+
+                        followerUnlinkResponse = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        const ui64 requestId = 111;
+        service.SendUnlinkNodeRequest(
+            headers,
+            RootNodeId,
+            "file1",
+            false, // unlinkDirectory
+            requestId);
+
+        ui32 iterations = 0;
+        while (!followerUnlinkResponse && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(followerUnlinkResponse);
+        intercept = false;
+        env.GetRuntime().Send(followerUnlinkResponse.Release());
+
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        // checking DupCache logic - just in case
+        service.SendUnlinkNodeRequest(
+            headers,
+            RootNodeId,
+            "file1",
+            false, // unlinkDirectory
+            requestId);
+
+        unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponFollowerRestart)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        ui64 tabletId = -1;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == fsId) {
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        bool intercept = true;
+        bool intercepted = false;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvUnlinkNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        intercepted = true;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+
+        ui32 iterations = 0;
+        while (!intercepted && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(intercepted);
+        intercept = false;
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        auto listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        // remaking session since CreateSessionActor doesn't do it by itself
+        // because EvWakeup never arrives because Scheduling doesn't work by
+        // default and RegistrationObservers get reset after RebootTablet
+        headers = service.InitSession(fsId, "client");
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 }
 

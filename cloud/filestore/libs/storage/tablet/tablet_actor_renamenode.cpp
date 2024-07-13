@@ -336,6 +336,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
+            // TODO: fill OpLogEntry
+
             args.FollowerIdForUnlink = args.NewChildRef->FollowerId;
             args.FollowerNameForUnlink = args.NewChildRef->FollowerName;
         }
@@ -392,8 +394,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
-
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
@@ -401,8 +401,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     }
 
     if (!HasError(args.Error)) {
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
-
         if (args.FollowerIdForUnlink) {
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in follower upon RenameNode: %s, %s",
@@ -412,17 +410,22 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
             NProto::TUnlinkNodeRequest request;
             request.MutableHeaders()->CopyFrom(args.Request.GetHeaders());
+            request.SetFileSystemId(args.FollowerIdForUnlink);
+            request.SetNodeId(RootNodeId);
+            request.SetName(args.FollowerNameForUnlink);
 
             RegisterUnlinkNodeInFollowerActor(
                 ctx,
                 args.RequestInfo,
-                std::move(args.FollowerIdForUnlink),
-                std::move(args.FollowerNameForUnlink),
                 std::move(request),
+                args.RequestId,
+                args.OpLogEntry.GetEntryId(),
                 std::move(args.Response));
 
             return;
         }
+
+        CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
         NProto::TSessionEvent sessionEvent;
@@ -440,6 +443,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         }
         NotifySessionEvent(ctx, sessionEvent);
     }
+
+    RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
     CompleteResponse<TEvService::TRenameNodeMethod>(

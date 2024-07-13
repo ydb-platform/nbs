@@ -901,6 +901,8 @@ STFUNC(TIndexTabletActor::StateBroken)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::RebootTabletOnCommitOverflow(
     const TActorContext& ctx,
     const TString& request)
@@ -913,6 +915,7 @@ void TIndexTabletActor::RebootTabletOnCommitOverflow(
     ReportTabletCommitIdOverflow();
     Suicide(ctx);
 }
+
 void TIndexTabletActor::RegisterFileStore(const NActors::TActorContext& ctx)
 {
     if (!GetFileSystemId()) {
