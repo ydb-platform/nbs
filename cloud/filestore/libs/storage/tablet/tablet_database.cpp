@@ -824,7 +824,7 @@ bool TIndexTabletDatabase::ReadSessions(TVector<NProto::TSession>& sessions)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SessionHistory
+// SessionHandles
 
 void TIndexTabletDatabase::WriteSessionHandle(
     const NProto::TSessionHandle& handle)
@@ -1691,7 +1691,7 @@ void TIndexTabletDatabase::WriteTabletStorageInfo(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SessionHandles
+// SessionHistory
 
 void TIndexTabletDatabase::WriteSessionHistoryEntry(
     const NProto::TSessionHistoryEntry& entry)
@@ -1726,6 +1726,49 @@ bool TIndexTabletDatabase::ReadSessionHistoryEntries(
 
     while (it.IsValid()) {
         entries.emplace_back(it.template GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OpLog
+
+void TIndexTabletDatabase::WriteOpLogEntry(const NProto::TOpLogEntry& entry)
+{
+    using TTable = TIndexTabletSchema::OpLog;
+
+    Table<TTable>()
+        .Key(entry.GetEntryId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
+}
+
+void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId) {
+    using TTable = TIndexTabletSchema::OpLog;
+
+    Table<TTable>()
+        .Key(entryId)
+        .Delete();
+}
+
+
+bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
+{
+    using TTable = TIndexTabletSchema::OpLog;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        opLog.emplace_back(it.template GetValue<TTable::Proto>());
 
         if (!it.Next()) {
             return false;   // not ready

@@ -35,20 +35,20 @@ class TUnlinkNodeInFollowerActor final
 private:
     const TString LogTag;
     TRequestInfoPtr RequestInfo;
-    const TString FollowerId;
-    const TString FollowerName;
     const TActorId ParentId;
-    NProto::TUnlinkNodeRequest Request;
+    const NProto::TUnlinkNodeRequest Request;
+    const ui64 RequestId;
+    const ui64 OpLogEntryId;
     TUnlinkNodeInFollowerResult Result;
 
 public:
     TUnlinkNodeInFollowerActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
-        TString followerId,
-        TString followerName,
         const TActorId& parentId,
         NProto::TUnlinkNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
         TUnlinkNodeInFollowerResult result);
 
     void Bootstrap(const TActorContext& ctx);
@@ -74,17 +74,17 @@ private:
 TUnlinkNodeInFollowerActor::TUnlinkNodeInFollowerActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
-        TString followerId,
-        TString followerName,
         const TActorId& parentId,
         NProto::TUnlinkNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
         TUnlinkNodeInFollowerResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
-    , FollowerId(std::move(followerId))
-    , FollowerName(std::move(followerName))
     , ParentId(parentId)
     , Request(std::move(request))
+    , RequestId(requestId)
+    , OpLogEntryId(opLogEntryId)
     , Result(std::move(result))
 {}
 
@@ -97,18 +97,15 @@ void TUnlinkNodeInFollowerActor::Bootstrap(const TActorContext& ctx)
 void TUnlinkNodeInFollowerActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
-    request->Record = std::move(Request);
-    request->Record.SetFileSystemId(FollowerId);
-    request->Record.SetNodeId(RootNodeId);
-    request->Record.SetName(FollowerName);
+    request->Record = Request;
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
         "%s Sending UnlinkNodeRequest to follower %s, %s",
         LogTag.c_str(),
-        FollowerId.c_str(),
-        FollowerName.c_str());
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
 
     ctx.Send(
         MakeIndexTabletProxyServiceId(),
@@ -121,27 +118,57 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
 {
     auto* msg = ev->Get();
 
+    if (msg->GetError().GetCode() == E_FS_NOENT) {
+        // NOENT can arrive after a successful operation is retried, it's ok
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Follower node unlinking for %s, %s returned ENOENT %s",
+            LogTag.c_str(),
+            Request.GetFileSystemId().c_str(),
+            Request.GetName().c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        msg->Record.ClearError();
+    }
+
     if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Follower node unlinking failed for %s, %s with error %s"
+                ", retrying",
+                LogTag.c_str(),
+                Request.GetFileSystemId().c_str(),
+                Request.GetName().c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+
+            SendRequest(ctx);
+            return;
+        }
+
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node unlinking failed for %s, %s with error %s",
+            "%s Follower node unlinking failed for %s, %s with error %s"
+            ", will not retry",
             LogTag.c_str(),
-            FollowerId.c_str(),
-            FollowerName.c_str(),
+            Request.GetFileSystemId().c_str(),
+            Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
         "%s Follower node unlinked for %s, %s",
         LogTag.c_str(),
-        FollowerId.c_str(),
-        FollowerName.c_str());
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
 
     ReplyAndDie(ctx, {});
 }
@@ -159,8 +186,6 @@ void TUnlinkNodeInFollowerActor::ReplyAndDie(
     NProto::TError error)
 {
     if (HasError(error)) {
-        // TODO(#1350): properly retry node unlinking via the leader fs
-        // don't forget to properly handle ENOENT after a retry
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&Result)) {
@@ -175,6 +200,9 @@ void TUnlinkNodeInFollowerActor::ReplyAndDie(
     using TResponse = TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower;
     ctx.Send(ParentId, std::make_unique<TResponse>(
         std::move(RequestInfo),
+        Request.GetHeaders().GetSessionId(),
+        RequestId,
+        OpLogEntryId,
         std::move(Result)));
 
     Die(ctx);
@@ -339,6 +367,17 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             args.ChildRef->FollowerName,
             args.ChildRef->MinCommitId,
             args.CommitId);
+
+        // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
+        // use CommitId here in order not to generate some other unique ui64
+        args.OpLogEntry.SetEntryId(args.CommitId);
+        auto* followerRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+        followerRequest->CopyFrom(args.Request);
+        followerRequest->SetFileSystemId(args.ChildRef->FollowerId);
+        followerRequest->SetNodeId(RootNodeId);
+        followerRequest->SetName(args.ChildRef->FollowerName);
+
+        db.WriteOpLogEntry(args.OpLogEntry);
     } else {
         UnlinkNode(
             db,
@@ -371,8 +410,6 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
-
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),
@@ -386,10 +423,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     if (!HasError(args.Error)) {
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
-
         if (args.ChildRef->FollowerId) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in follower upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
                 args.ChildRef->FollowerId.c_str(),
@@ -398,13 +433,15 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             RegisterUnlinkNodeInFollowerActor(
                 ctx,
                 args.RequestInfo,
-                std::move(args.ChildRef->FollowerId),
-                std::move(args.ChildRef->FollowerName),
-                args.Request,
+                args.OpLogEntry.GetUnlinkNodeRequest(),
+                args.RequestId,
+                args.OpLogEntry.GetEntryId(),
                 std::move(args.Response));
 
             return;
         }
+
+        CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
         NProto::TSessionEvent sessionEvent;
@@ -416,6 +453,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         }
         NotifySessionEvent(ctx, sessionEvent);
     }
+
+    RemoveTransaction(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
@@ -436,33 +475,41 @@ void TIndexTabletActor::HandleNodeUnlinkedInFollower(
     auto* msg = ev->Get();
     auto& res = msg->Result;
 
-    if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
-        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>();
-        response->Record = std::move(*x);
+    if (msg->RequestInfo) {
+        RemoveTransaction(*msg->RequestInfo);
+        CommitDupCacheEntry(msg->SessionId, msg->RequestId);
 
-        CompleteResponse<TEvService::TRenameNodeMethod>(
-            response->Record,
-            msg->RequestInfo->CallContext,
-            ctx);
+        if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
+            auto response =
+                std::make_unique<TEvService::TEvRenameNodeResponse>();
+            response->Record = std::move(*x);
 
-        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
-    } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
-        auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        response->Record = std::move(*x);
+            CompleteResponse<TEvService::TRenameNodeMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
 
-        CompleteResponse<TEvService::TUnlinkNodeMethod>(
-            response->Record,
-            msg->RequestInfo->CallContext,
-            ctx);
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
+            auto response =
+                std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+            response->Record = std::move(*x);
 
-        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
-    } else {
-        TABLET_VERIFY_C(
-            0,
-            TStringBuilder() << "bad variant index: " << res.index());
+            CompleteResponse<TEvService::TUnlinkNodeMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        } else {
+            TABLET_VERIFY_C(
+                0,
+                TStringBuilder() << "bad variant index: " << res.index());
+        }
     }
 
     WorkerActors.erase(ev->Sender);
+    ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -470,18 +517,18 @@ void TIndexTabletActor::HandleNodeUnlinkedInFollower(
 void TIndexTabletActor::RegisterUnlinkNodeInFollowerActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
-    TString followerId,
-    TString followerName,
     NProto::TUnlinkNodeRequest request,
+    ui64 requestId,
+    ui64 opLogEntryId,
     TUnlinkNodeInFollowerResult result)
 {
     auto actor = std::make_unique<TUnlinkNodeInFollowerActor>(
         LogTag,
         std::move(requestInfo),
-        std::move(followerId),
-        std::move(followerName),
         ctx.SelfID,
         std::move(request),
+        requestId,
+        opLogEntryId,
         std::move(result));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
