@@ -37,6 +37,7 @@ private:
 
     TConfigInitializerVhostPtr Configs;
     IFileStoreEndpointsPtr FileStoreEndpoints;
+    TMap<TString, IFileStoreServicePtr> LocalFileStores;
     IEndpointListenerPtr EndpointListener;
     IEndpointStoragePtr EndpointStorage;
     IEndpointManagerPtr EndpointManager;
@@ -62,6 +63,7 @@ private:
     void InitConfig();
     void InitEndpoints();
     void InitNullEndpoints();
+    void InitLocalFileStores(int fileStoresCount, int fsCount);
     void RestoreKeyringEndpoints();
 };
 

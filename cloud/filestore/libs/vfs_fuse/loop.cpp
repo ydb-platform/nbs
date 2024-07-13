@@ -1067,18 +1067,18 @@ private:
         // Extended node attributes
         //
 
-        ops.setxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, const char* value, size_t size, int flags) {
-            CALL(SetXAttr, EFileStoreRequest::SetNodeXAttr, 0, req, ino, name, TString{value, size}, flags);
-        };
-        ops.getxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, size_t size) {
-            CALL(GetXAttr, EFileStoreRequest::GetNodeXAttr, 0, req, ino, name, size);
-        };
-        ops.listxattr = [] (fuse_req_t req, fuse_ino_t ino, size_t size) {
-            CALL(ListXAttr, EFileStoreRequest::ListNodeXAttr, 0, req, ino, size);
-        };
-        ops.removexattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name) {
-            CALL(RemoveXAttr, EFileStoreRequest::RemoveNodeXAttr, 0, req, ino, name);
-        };
+        // ops.setxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, const char* value, size_t size, int flags) {
+        //     CALL(SetXAttr, EFileStoreRequest::SetNodeXAttr, 0, req, ino, name, TString{value, size}, flags);
+        // };
+        // ops.getxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, size_t size) {
+        //     CALL(GetXAttr, EFileStoreRequest::GetNodeXAttr, 0, req, ino, name, size);
+        // };
+        // ops.listxattr = [] (fuse_req_t req, fuse_ino_t ino, size_t size) {
+        //     CALL(ListXAttr, EFileStoreRequest::ListNodeXAttr, 0, req, ino, size);
+        // };
+        // ops.removexattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name) {
+        //     CALL(RemoveXAttr, EFileStoreRequest::RemoveNodeXAttr, 0, req, ino, name);
+        // };
 
         //
         // Directory listing

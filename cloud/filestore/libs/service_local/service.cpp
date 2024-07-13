@@ -136,7 +136,9 @@ public:
         , TaskQueue(std::move(taskQueue))
         , Root(Config->GetRootPath())
     {
-        Root.CheckExists();
+        if (!Root.Exists()) {
+            Root.MkDir(Config->GetDefaultPermissions());
+        }
         Log = Logging->CreateLog("NFS_SERVICE");
     }
 
@@ -315,6 +317,10 @@ void TLocalFileStore::Start()
             auto path = Concat(Root, "." + child.GetName());
             if (!path.Exists()) {
                 STORAGE_WARN("skipped suspicious " << id.Quote());
+                continue;
+            }
+
+            if (FileSystems.contains(id)) {
                 continue;
             }
 

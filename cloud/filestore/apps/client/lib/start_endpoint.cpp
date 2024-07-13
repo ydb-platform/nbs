@@ -16,6 +16,7 @@ private:
     bool MountReadOnly = false;
     ui64 MountSeqNo = 0;
     bool Persistent = false;
+    TString ServiceEndpoint;
 
 public:
     TStartEndpointCommand()
@@ -46,6 +47,12 @@ public:
         Opts.AddLongOption("persistent")
             .NoArgument()
             .SetFlag(&Persistent);
+
+        Opts.AddLongOption("service-endpoint")
+            .Optional()
+            .RequiredArgument("STR")
+            .StoreResult(&ServiceEndpoint);
+
     }
 
     bool Execute() override
@@ -61,6 +68,7 @@ public:
         config->SetReadOnly(MountReadOnly);
         config->SetMountSeqNumber(MountSeqNo);
         config->SetPersistent(Persistent);
+        config->SetServiceEndpoint(ServiceEndpoint);
 
         auto response = WaitFor(
             Client->StartEndpoint(

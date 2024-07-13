@@ -25,6 +25,8 @@
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
+#include <cloud/filestore/libs/service_local/config.h>
+#include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
@@ -127,6 +129,19 @@ public:
             std::move(fileStore));
     }
 
+    bool AddEndpoint(const TString& name, IFileStoreServicePtr fileStore)
+    {
+        NProto::TClientConfig protoConfig;
+        protoConfig.SetRetryTimeout(86400000);
+
+        auto clientConfig = std::make_shared<NClient::TClientConfig>(protoConfig);
+
+        return AddEndpoint(
+            name,
+            std::move(clientConfig),
+            std::move(fileStore));
+    }
+
     bool Empty() const
     {
         return Endpoints.empty();
@@ -207,6 +222,8 @@ void TBootstrapVhost::InitComponents()
                 Configs->VhostServiceConfig->GetEndpointStorageType());
     }
 
+    InitLocalFileStores(1, 1);
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Local:
         case NDaemon::EServiceKind::Kikimr:
@@ -236,6 +253,7 @@ void TBootstrapVhost::InitComponents()
 void TBootstrapVhost::InitConfig()
 {
     Configs->InitAppConfig();
+    Configs->Options->Service = NDaemon::EServiceKind::Local;
 }
 
 void TBootstrapVhost::InitEndpoints()
@@ -259,6 +277,10 @@ void TBootstrapVhost::InitEndpoints()
         } else {
             STORAGE_ERROR("duplicated client config: '" << endpoint.GetName() << "'");
         }
+    }
+
+    for (const auto& [name, fileStore]: LocalFileStores) {
+        endpoints->AddEndpoint(name, fileStore);
     }
 
     if (endpoints->Empty()) {
@@ -290,6 +312,59 @@ void TBootstrapVhost::InitEndpoints()
 void TBootstrapVhost::InitNullEndpoints()
 {
     EndpointManager = CreateNullEndpointManager();
+}
+
+void TBootstrapVhost::InitLocalFileStores(int fileStoresCount, int fsCount)
+{
+    for (auto fileStoreIndex = 0; fileStoreIndex < fileStoresCount;
+         fileStoreIndex++)
+    {
+        auto fileStoreName = "lfs" + ToString(fileStoreIndex);
+
+        NProto::TLocalServiceConfig protoConfig;
+        protoConfig.SetRootPath("/lustre_store/" + fileStoreName);
+
+        auto serviceConfig =
+            std::make_shared<TLocalFileStoreConfig>(protoConfig);
+
+        auto threadPool = CreateThreadPool(fileStoreName, 2);
+        threadPool->Start();
+
+        STORAGE_INFO("create, store: %s", fileStoreName.c_str());
+
+        auto service = CreateLocalFileStore(
+            std::move(serviceConfig),
+            Timer,
+            Scheduler,
+            Logging,
+            std::move(threadPool));
+
+        for (auto fsIndex = 0; fsIndex < fsCount; fsIndex++) {
+            auto fsName = "fs" + ToString(fsIndex);
+
+            auto createReq =
+                std::make_shared<NProto::TCreateFileStoreRequest>();
+            createReq->SetFileSystemId(fsName);
+            createReq->SetProjectId("test");
+            createReq->SetFolderId("test");
+            createReq->SetCloudId("test");
+            createReq->SetBlockSize(4096);
+            createReq->SetBlocksCount((10 << 30) / 4096);
+
+            auto ctx = MakeIntrusive<TCallContext>();
+            auto createRsp = service->CreateFileStore(std::move(ctx), createReq)
+                                 .GetValue(TDuration::Seconds(5));
+            Y_ENSURE_EX(
+                !HasError(createRsp),
+                TServiceError(createRsp.GetError()));
+            STORAGE_INFO(
+                "create, store: %s, fs: %s",
+                fileStoreName.c_str(),
+                fsName.c_str());
+        }
+
+        LocalFileStores[fileStoreName] = std::move(service);
+    }
 }
 
 void TBootstrapVhost::InitLWTrace()
