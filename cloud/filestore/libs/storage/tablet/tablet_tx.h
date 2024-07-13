@@ -121,6 +121,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
+    xxx(CommitNodeCreationInFollower,       __VA_ARGS__)                       \
 // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -616,6 +617,8 @@ struct TTxIndexTablet
         ui64 ChildNodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> ChildNode;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TCreateNodeResponse Response;
 
         TCreateNode(
@@ -642,6 +645,8 @@ struct TTxIndexTablet
             ParentNode.Clear();
             ChildNodeId = InvalidNodeId;
             ChildNode.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
         }
@@ -1787,6 +1792,36 @@ struct TTxIndexTablet
 
         explicit TDeleteOpLogEntry(ui64 entryId)
             : EntryId(entryId)
+        {}
+
+        void Clear()
+        {
+        }
+    };
+
+    //
+    // CommitNodeCreationInFollower
+    //
+
+    struct TCommitNodeCreationInFollower
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        NProto::TCreateNodeResponse Response;
+        const ui64 EntryId;
+
+        explicit TCommitNodeCreationInFollower(
+                TString sessionId,
+                ui64 requestId,
+                NProto::TCreateNodeResponse response,
+                ui64 entryId)
+            : SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , Response(std::move(response))
+            , EntryId(entryId)
         {}
 
         void Clear()

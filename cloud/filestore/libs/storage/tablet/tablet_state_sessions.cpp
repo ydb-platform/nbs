@@ -760,6 +760,31 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_IMPLEMENT_DUPCACHE)
 
 #undef FILESTORE_IMPLEMENT_DUPCACHE
 
+void TIndexTabletState::PatchDupCacheEntry(
+    TIndexTabletDatabase& db,
+    const TString& sessionId,
+    ui64 requestId,
+    NProto::TCreateNodeResponse response)
+{
+    if (!requestId) {
+        return;
+    }
+
+    auto* session = FindSession(sessionId);
+    if (!session) {
+        return;
+    }
+
+    auto* entry = session->AccessDupEntry(requestId);
+    if (!entry) {
+        return;
+    }
+
+    *entry->MutableCreateNode()->MutableNode() =
+        std::move(*response.MutableNode());
+    db.WriteSessionDupCacheEntry(*entry);
+}
+
 void TIndexTabletState::CommitDupCacheEntry(
     const TString& sessionId,
     ui64 requestId)
