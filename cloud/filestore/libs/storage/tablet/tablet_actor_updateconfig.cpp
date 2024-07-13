@@ -156,6 +156,11 @@ void TIndexTabletActor::HandleUpdateConfig(
         return;
     }
 
+    // Setting the fields that schemeshard is not aware of.
+    *newConfig.MutableFollowerFileSystemIds() =
+        oldConfig.GetFollowerFileSystemIds();
+    newConfig.SetShardNo(oldConfig.GetShardNo());
+
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,
