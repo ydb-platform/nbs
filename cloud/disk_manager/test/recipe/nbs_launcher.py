@@ -20,18 +20,21 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 class NbsLauncher:
 
-    def __init__(self,
-                 ydb_port,
-                 domains_txt,
-                 dynamic_storage_pools,
-                 root_certs_file,
-                 cert_file,
-                 cert_key_file,
-                 ydb_binary_path,
-                 nbs_binary_path,
-                 ydb_client,
-                 compute_port=0,
-                 kms_port=0):
+    def __init__(
+        self,
+        ydb_port,
+        domains_txt,
+        dynamic_storage_pools,
+        root_certs_file,
+        cert_file,
+        cert_key_file,
+        ydb_binary_path,
+        nbs_binary_path,
+        ydb_client,
+        compute_port=0,
+        kms_port=0,
+        destruction_allowed_only_for_disks_with_id_prefixes=[]
+    ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
         self.__ydb_binary_path = ydb_binary_path
@@ -66,6 +69,8 @@ class NbsLauncher:
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
+        if destruction_allowed_only_for_disks_with_id_prefixes:
+            storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 
         self.__storage_config_patch = storage_config_patch
 

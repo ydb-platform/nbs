@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -363,7 +362,7 @@ func CreateImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := "temporary_disk_for_image_" + imageID
+	diskID := t.Name() + "_temporary_disk_for_image_" + imageID
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -471,11 +470,6 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func isValidUUID(s string) bool {
-	_, err := uuid.Parse(s)
-	return err == nil
-}
-
 func CheckConsistency(t *testing.T, ctx context.Context) {
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
 
@@ -487,7 +481,7 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 
 		for _, diskID := range diskIDs {
 			// TODO: should remove dependency on disk id here.
-			if strings.Contains(diskID, "proxy_") {
+			if strings.Contains(diskID, "proxy") {
 				ok = false
 
 				logging.Info(
@@ -498,9 +492,7 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 				continue
 			}
 
-			if isValidUUID(diskID) {
-				// UUID v4 ids are used for base disks.
-				// TODO: should use prefix 'base' for base disk ids (NBS-3860).
+			if strings.HasPrefix(diskID, "base") {
 				continue
 			}
 

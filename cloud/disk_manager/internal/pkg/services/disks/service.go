@@ -3,6 +3,7 @@ package disks
 import (
 	"context"
 	"math"
+	"strings"
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -163,6 +164,15 @@ func (s *service) prepareCreateDiskParams(
 		return nil, errors.NewInvalidArgumentError(
 			"invalid disk id: %v",
 			req.DiskId,
+		)
+	}
+
+	diskIdPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
+	if len(diskIdPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIdPrefix) {
+		return nil, errors.NewInvalidArgumentError(
+			"can't create disk with id %q, because only disks with id prefix %q are allowed to be created",
+			req.DiskId.DiskId,
+			diskIdPrefix,
 		)
 	}
 
@@ -379,6 +389,15 @@ func (s *service) DeleteDisk(
 		return "", errors.NewInvalidArgumentError(
 			"disk id is empty, req=%v",
 			req,
+		)
+	}
+
+	diskIdPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
+	if len(diskIdPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIdPrefix) {
+		return "", errors.NewInvalidArgumentError(
+			"can't delete disk with id %q, because only disks with id prefix %q are allowed to be deleted",
+			req.DiskId.DiskId,
+			diskIdPrefix,
 		)
 	}
 
