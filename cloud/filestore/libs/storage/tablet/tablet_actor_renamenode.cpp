@@ -336,10 +336,18 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
-            // TODO: fill OpLogEntry
+            // OpLogEntryId doesn't have to be a CommitId - it's just convenient
+            // to use CommitId here in order not to generate some other unique
+            // ui64
+            args.OpLogEntry.SetEntryId(args.CommitId);
+            auto* followerRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+            followerRequest->MutableHeaders()->CopyFrom(
+                args.Request.GetHeaders());
+            followerRequest->SetFileSystemId(args.NewChildRef->FollowerId);
+            followerRequest->SetNodeId(RootNodeId);
+            followerRequest->SetName(args.NewChildRef->FollowerName);
 
-            args.FollowerIdForUnlink = args.NewChildRef->FollowerId;
-            args.FollowerNameForUnlink = args.NewChildRef->FollowerName;
+            db.WriteOpLogEntry(args.OpLogEntry);
         }
     }
 
@@ -401,23 +409,18 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     }
 
     if (!HasError(args.Error)) {
-        if (args.FollowerIdForUnlink) {
+        auto& op = args.OpLogEntry;
+        if (op.HasUnlinkNodeRequest()) {
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in follower upon RenameNode: %s, %s",
                 LogTag.c_str(),
-                args.FollowerIdForUnlink.c_str(),
-                args.FollowerNameForUnlink.c_str());
-
-            NProto::TUnlinkNodeRequest request;
-            request.MutableHeaders()->CopyFrom(args.Request.GetHeaders());
-            request.SetFileSystemId(args.FollowerIdForUnlink);
-            request.SetNodeId(RootNodeId);
-            request.SetName(args.FollowerNameForUnlink);
+                op.GetUnlinkNodeRequest().GetFileSystemId().c_str(),
+                op.GetUnlinkNodeRequest().GetName().c_str());
 
             RegisterUnlinkNodeInFollowerActor(
                 ctx,
                 args.RequestInfo,
-                std::move(request),
+                std::move(*op.MutableUnlinkNodeRequest()),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 std::move(args.Response));
