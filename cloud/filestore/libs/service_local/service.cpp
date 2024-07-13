@@ -100,7 +100,31 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
     };                                                                         \
 // FILESTORE_DECLARE_METHOD
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+FILESTORE_DECLARE_METHOD(Ping)
+FILESTORE_DECLARE_METHOD(PingSession)
+FILESTORE_SERVICE_METHODS(FILESTORE_DECLARE_METHOD)
+FILESTORE_DATA_METHODS_SYNC(FILESTORE_DECLARE_METHOD)
+
+#undef FILESTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+                                                                               \
+        static TFuture<TResponse> ExecuteAsync(                                \
+            TLocalFileSystem& fs,                                              \
+            const TRequest& request)                                           \
+        {                                                                      \
+            return fs.name##Async(request);                                    \
+        }                                                                      \
+    };                                                                         \
+// FILESTORE_DECLARE_METHOD
+
+FILESTORE_DATA_METHODS_ASYNC(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
@@ -157,7 +181,28 @@ public:
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
-FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
+FILESTORE_IMPLEMENT_METHOD(Ping)
+FILESTORE_IMPLEMENT_METHOD(PingSession)
+FILESTORE_SERVICE_METHODS(FILESTORE_IMPLEMENT_METHOD)
+FILESTORE_DATA_METHODS_SYNC(FILESTORE_IMPLEMENT_METHOD)
+
+
+#undef FILESTORE_IMPLEMENT_METHOD
+
+
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        Y_UNUSED(callContext);                                                 \
+        return TaskQueue->Execute([this, request = std::move(request)] {       \
+            return ExecuteAsync<T##name##Method>(*request);                    \
+        });                                                                    \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD
+
+FILESTORE_DATA_METHODS_ASYNC(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -192,6 +237,33 @@ private:
             return TErrorResponse(e.GetCode(), TString(e.GetMessage()));
         } catch (...) {
             return TErrorResponse(E_FAIL, CurrentExceptionMessage());
+        }
+    }
+
+    template <typename T>
+    TFuture<typename T::TResponse> ExecuteAsync(const typename T::TRequest& request)
+    {
+        const auto& id = GetFileSystemId(request);
+        if (!id) {
+            return MakeFuture<typename T::TResponse>(
+                TErrorResponse(E_ARGUMENT, "invalid file system identifier"));
+        }
+
+        auto fs = FindFileSystem(id);
+        if (!fs) {
+            return MakeFuture<typename T::TResponse>(TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder() << "invalid file system: " << id.Quote()));
+        }
+
+        try {
+            return T::ExecuteAsync(*fs, request);
+        } catch (const TServiceError& e) {
+            return MakeFuture<typename T::TResponse>(
+                TErrorResponse(e.GetCode(), TString(e.GetMessage())));
+        } catch (...) {
+            return MakeFuture<typename T::TResponse>(
+                TErrorResponse(E_FAIL, CurrentExceptionMessage()));
         }
     }
 

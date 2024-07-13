@@ -120,4 +120,18 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
     return {};
 }
 
+TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
+    const NProto::TReadDataRequest& request)
+{
+    Y_UNUSED(request);
+    return {};
+}
+
+TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
+    const NProto::TWriteDataRequest& request)
+{
+    Y_UNUSED(request);
+    return {};
+}
+
 }   // namespace NCloud::NFileStore

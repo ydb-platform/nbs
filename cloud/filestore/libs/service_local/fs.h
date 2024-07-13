@@ -26,6 +26,8 @@
 
 namespace NCloud::NFileStore {
 
+using namespace NThreading;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalFileSystem final
@@ -69,6 +71,12 @@ public:
     FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+    TFuture<NProto::TReadDataResponse> ReadDataAsync(
+        const NProto::TReadDataRequest& request);
+
+    TFuture<NProto::TWriteDataResponse> WriteDataAsync(
+        const NProto::TWriteDataRequest& request);
 
     NProto::TFileStore GetConfig() const
     {

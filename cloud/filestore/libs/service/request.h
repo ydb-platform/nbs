@@ -38,7 +38,7 @@ namespace NCloud::NFileStore {
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
 // FILESTORE_SERVICE_METHODS
 
-#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
+#define FILESTORE_DATA_METHODS_SYNC(xxx, ...)                                  \
     xxx(StatFileStore,                      __VA_ARGS__)                       \
                                                                                \
     xxx(SubscribeSession,                   __VA_ARGS__)                       \
@@ -67,9 +67,17 @@ namespace NCloud::NFileStore {
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
+    xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_DATA_METHODS_SYNC
+
+#define FILESTORE_DATA_METHODS_ASYNC(xxx, ...)                                 \
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
-    xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_DATA_METHODS_ASYNC
+
+#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
+    FILESTORE_DATA_METHODS_SYNC(xxx,        __VA_ARGS__)                       \
+    FILESTORE_DATA_METHODS_ASYNC(xxx,       __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS
 
 #define FILESTORE_DATA_SERVICE(xxx, ...)                                       \
