@@ -52,6 +52,7 @@ def parse_args(args):
         "--disk-manager-binary-path",
         type=str,
         default="cloud/disk_manager/cmd/disk-manager/disk-manager")
+    parser.add_argument("--creation-and-deletion-allowed-only-for-disks-with-id-prefix", type=str, default="")
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -101,6 +102,15 @@ def start(argv):
         kms.start()
         kms_port = kms.port
 
+    base_disk_id_prefix = "base-"
+    proxy_overlay_disk_id_prefix = "proxy-"
+
+    destruction_allowed_only_for_disks_with_id_prefixes = []
+    if args.creation_and_deletion_allowed_only_for_disks_with_id_prefix:
+        destruction_allowed_only_for_disks_with_id_prefixes = [args.creation_and_deletion_allowed_only_for_disks_with_id_prefix]
+        destruction_allowed_only_for_disks_with_id_prefixes.append(base_disk_id_prefix)
+        destruction_allowed_only_for_disks_with_id_prefixes.append(proxy_overlay_disk_id_prefix)
+
     nbs = NbsLauncher(
         ydb.port,
         ydb.domains_txt,
@@ -112,7 +122,8 @@ def start(argv):
         nbs_binary_path=nbs_binary_path,
         ydb_client=ydb.client,
         compute_port=compute_port,
-        kms_port=kms_port)
+        kms_port=kms_port,
+        destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
@@ -131,7 +142,8 @@ def start(argv):
             nbs_binary_path=nbs_binary_path,
             ydb_client=ydb2.client,
             compute_port=compute_port,
-            kms_port=kms_port)
+            kms_port=kms_port,
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
         nbs2.start()
 
         ydb3 = YDBLauncher(ydb_binary_path=ydb_binary_path)
@@ -148,7 +160,8 @@ def start(argv):
             nbs_binary_path=nbs_binary_path,
             ydb_client=ydb3.client,
             compute_port=compute_port,
-            kms_port=kms_port)
+            kms_port=kms_port,
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
         nbs3.start()
     else:
         nbs2 = nbs
@@ -207,6 +220,8 @@ def start(argv):
             cert_key_file=cert_key_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            base_disk_id_prefix=base_disk_id_prefix,
+            creation_and_deletion_allowed_only_for_disks_with_id_prefix=args.creation_and_deletion_allowed_only_for_disks_with_id_prefix,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -230,6 +245,7 @@ def start(argv):
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

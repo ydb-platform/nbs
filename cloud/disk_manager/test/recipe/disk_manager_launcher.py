@@ -113,6 +113,7 @@ DisksConfig: <
     ClearDeletedDisksTaskScheduleInterval: "2s"
     EndedMigrationExpirationTimeout: "30s"
     EnableOverlayDiskRegistryBasedDisks: true
+    CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
@@ -132,6 +133,7 @@ PoolsConfig: <
     ConvertToDefaultSizedBaseDiskThreshold: 30
     OptimizeBaseDisksTaskScheduleInterval: "10s"
     MinOptimizedPoolAge: "1s"
+    BaseDiskIdPrefix: "{base_disk_id_prefix}"
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
@@ -287,6 +289,7 @@ DataplaneConfig: <
     SnapshotCollectionTimeout: "1s"
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
+    ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 >
 """
 
@@ -353,6 +356,9 @@ class DiskManagerLauncher:
         s3_credentials_file=None,
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
+        base_disk_id_prefix="",
+        proxy_overlay_disk_id_prefix="",
+        creation_and_deletion_allowed_only_for_disks_with_id_prefix=""
     ):
         self.__idx = idx
 
@@ -393,7 +399,8 @@ class DiskManagerLauncher:
                     metadata_url=metadata_url,
                     ydb_port=ydb_port,
                     s3_port=s3_port,
-                    s3_credentials_file=s3_credentials_file
+                    s3_credentials_file=s3_credentials_file,
+                    proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
                 ))
         else:
             with open(config_file, "w") as f:
@@ -411,7 +418,9 @@ class DiskManagerLauncher:
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
                     access_service_port=access_service_port,
-                    ydb_port=ydb_port
+                    ydb_port=ydb_port,
+                    base_disk_id_prefix=base_disk_id_prefix,
+                    creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                 )
                 f.write(self.__server_config)
 
