@@ -3839,6 +3839,117 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             getNodeAttrResponse->GetErrorReason().c_str());
     }
 
+    Y_UNIT_TEST(ShouldLinkExternalNodes)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        const auto nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        auto node = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
+                        ->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(1, node.GetLinks());
+
+        auto linkNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "file2", nodeId1));
+        UNIT_ASSERT(linkNodeResponse);
+        UNIT_ASSERT_C(
+            SUCCEEDED(linkNodeResponse->GetStatus()),
+            linkNodeResponse->GetErrorReason().c_str());
+
+        // validate that the links field is incremented
+        auto links = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
+                         ->Record.GetNode().GetLinks();
+        UNIT_ASSERT_VALUES_EQUAL(2, links);
+
+        // get node attr should also work with the link
+        links = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
+                    ->Record.GetNode().GetLinks();
+        UNIT_ASSERT_VALUES_EQUAL(2, links);
+
+        // validate that reading from hardlinked file works
+        auto data = GenerateValidateData(256_KB);
+        ui64 handle = service
+            .CreateHandle(headers, fsId, RootNodeId, "file1", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+        service.WriteData(headers, fsId, nodeId1, handle, 0, data);
+
+        ui64 handle2 = service
+            .CreateHandle(headers, fsId, RootNodeId, "file2", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        auto data2 = service.ReadData(
+            headers,
+            fsId,
+            linkNodeResponse->Record.GetNode().GetId(),
+            handle2,
+            0,
+            data.Size())->Record.GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(data, data2);
+
+        // Removal of both the file and a hardlink should remove file from both
+        // the follower and a leader
+
+        service.DestroyHandle(headers, fsId, nodeId1, handle);
+        service.DestroyHandle(headers, fsId, linkNodeResponse->Record.GetNode().GetId(), handle2);
+
+        service.UnlinkNode(headers, RootNodeId, "file1");
+        service.UnlinkNode(headers, RootNodeId, "file2");
+
+        // Now listing of the root should show no files
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        // GetNodeAttr should fail as well
+
+        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file1");
+        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file2");
+
+        // Creating hardlinks to non-existing files should fail. It is
+        // reasonable to assume that nodeId + 100 is not a valid node id.
+        linkNodeResponse = service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "file3", nodeId1 + 100));
+    }
+
     Y_UNIT_TEST(ShouldForceDestroyWithAllowFileStoreForceDestroyFlag)
     {
         NProto::TStorageConfig storageConfig;

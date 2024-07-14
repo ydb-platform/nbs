@@ -368,27 +368,32 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     if (args.TargetNodeId != InvalidNodeId) {
         // hard link: validate link target
-        args.ChildNodeId = args.TargetNodeId;
-        if (!ReadNode(db, args.ChildNodeId, args.CommitId, args.ChildNode)) {
+        //
+        // Note: for the cases where the FollowerId is set, the target node
+        // already exists and its link count is updated, no need to validate it
+        if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
             return false;   // not ready
         }
 
-        if (!args.ChildNode){
-            // should exist
-            args.Error = ErrorInvalidTarget(args.ChildNodeId);
-            return true;
-        }
+        if (args.FollowerId.Empty()) {
+            args.ChildNodeId = args.TargetNodeId;
+            if (!args.ChildNode) {
+                // should exist
+                args.Error = ErrorInvalidTarget(args.ChildNodeId);
+                return true;
+            }
 
-        if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
-            // should not be a directory
-            args.Error = ErrorIsDirectory(args.ChildNodeId);
-            return true;
-        }
+            if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
+                // should not be a directory
+                args.Error = ErrorIsDirectory(args.ChildNodeId);
+                return true;
+            }
 
-        if (args.ChildNode->Attrs.GetLinks() + 1 > MaxLink) {
-            // should not have too many links
-            args.Error = ErrorMaxLink(args.ChildNodeId);
-            return true;
+            if (args.ChildNode->Attrs.GetLinks() + 1 > MaxLink) {
+                // should not have too many links
+                args.Error = ErrorMaxLink(args.ChildNodeId);
+                return true;
+            }
         }
 
         // TODO: AccessCheck
@@ -419,7 +424,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         return RebootTabletOnCommitOverflow(ctx, "CreateNode");
     }
 
-    if (!args.ChildNode) {
+    if (args.TargetNodeId == InvalidNodeId) {
         if (args.FollowerId.Empty()) {
             args.ChildNodeId = CreateNode(
                 db,
@@ -450,16 +455,22 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         }
     } else {
         // hard link
-        auto attrs = CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
-        UpdateNode(
-            db,
-            args.ChildNodeId,
-            args.ChildNode->MinCommitId,
-            args.CommitId,
-            attrs,
-            args.ChildNode->Attrs);
 
-        args.ChildNode->Attrs = std::move(attrs);
+        // If the follower is set, no need to update the child node since it is
+        // an external node
+        if (args.FollowerId.Empty()) {
+            auto attrs =
+                CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
+            UpdateNode(
+                db,
+                args.ChildNodeId,
+                args.ChildNode->MinCommitId,
+                args.CommitId,
+                attrs,
+                args.ChildNode->Attrs);
+
+            args.ChildNode->Attrs = std::move(attrs);
+        }
     }
 
     // update parents cmtime
@@ -548,7 +559,11 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
 
-        if (!args.ChildNode) {
+        if (!args.ChildNode &&
+            // A ChildNode can also be empty for a hard link to an external
+            // node, and this is a valid case
+            !(args.FollowerId && args.TargetNodeId != InvalidNodeId))
+        {
             auto message = ReportChildNodeIsNull(TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
             *args.Response.MutableError() =
