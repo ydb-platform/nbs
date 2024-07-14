@@ -21,6 +21,7 @@ private:
     NServer::IServerPtr Server;
     IFileStoreServicePtr Service;
     ITaskQueuePtr ThreadPool;
+    IFileIOServicePtr FileIOService;
 
 public:
     TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories);

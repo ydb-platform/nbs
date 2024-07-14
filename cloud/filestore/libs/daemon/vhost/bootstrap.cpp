@@ -31,6 +31,7 @@
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
+#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -316,6 +317,8 @@ void TBootstrapVhost::InitNullEndpoints()
 
 void TBootstrapVhost::InitLocalFileStores(int fileStoresCount, int fsCount)
 {
+    FileIOService = CreateAIOService();
+
     for (auto fileStoreIndex = 0; fileStoreIndex < fileStoresCount;
          fileStoreIndex++)
     {
@@ -337,7 +340,8 @@ void TBootstrapVhost::InitLocalFileStores(int fileStoresCount, int fsCount)
             Timer,
             Scheduler,
             Logging,
-            std::move(threadPool));
+            std::move(threadPool),
+            FileIOService);
 
         for (auto fsIndex = 0; fsIndex < fsCount; fsIndex++) {
             auto fsName = "fs" + ToString(fsIndex);

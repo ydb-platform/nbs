@@ -140,6 +140,7 @@ private:
     const ILoggingServicePtr Logging;
     const ITaskQueuePtr TaskQueue;
     const TFsPath Root;
+    const IFileIOServicePtr FileIOService;
 
     TRWMutex Lock;
     THashMap<TString, TLocalFileSystemPtr> FileSystems;
@@ -152,13 +153,15 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
-            ITaskQueuePtr taskQueue)
+            ITaskQueuePtr taskQueue,
+            IFileIOServicePtr fileIOService)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , TaskQueue(std::move(taskQueue))
         , Root(Config->GetRootPath())
+        , FileIOService(std::move(fileIOService))
     {
         if (!Root.Exists()) {
             Root.MkDir(Config->GetDefaultPermissions());
@@ -535,7 +538,8 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
         root,
         Timer,
         Scheduler,
-        Logging);
+        Logging,
+        FileIOService);
 
     auto [it, inserted] = FileSystems.emplace(id, fs);
     Y_ABORT_UNLESS(inserted);
@@ -564,14 +568,16 @@ IFileStoreServicePtr CreateLocalFileStore(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
-    ITaskQueuePtr taskQueue)
+    ITaskQueuePtr taskQueue,
+    IFileIOServicePtr fileIOService)
 {
     return std::make_shared<TLocalFileStore>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
-        std::move(taskQueue));
+        std::move(taskQueue),
+        std::move(fileIOService));
 }
 
 }   // namespace NCloud::NFileStore

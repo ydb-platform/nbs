@@ -40,6 +40,7 @@ private:
     const TFsPath Root;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const IFileIOServicePtr FileIOService;
 
     NProto::TFileStore Store;
     TLog Log;
@@ -61,7 +62,8 @@ public:
         TFsPath root,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging);
+        ILoggingServicePtr logging,
+        IFileIOServicePtr fileIOService);
 
 #define FILESTORE_DECLARE_METHOD(name, ...)                                    \
     NProto::T##name##Response name(                                            \

@@ -41,6 +41,7 @@ private:
     IEndpointListenerPtr EndpointListener;
     IEndpointStoragePtr EndpointStorage;
     IEndpointManagerPtr EndpointManager;
+    IFileIOServicePtr FileIOService;
 
     NServer::IServerPtr Server;
 

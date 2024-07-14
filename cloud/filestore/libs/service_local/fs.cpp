@@ -10,11 +10,13 @@ TLocalFileSystem::TLocalFileSystem(
         TFsPath root,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging)
+        ILoggingServicePtr logging,
+        IFileIOServicePtr fileIOService)
     : Config(std::move(config))
     , Root(std::move(root))
     , Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
+    , FileIOService(std::move(fileIOService))
     , Store(std::move(store))
 {
     Log = logging->CreateLog(Store.GetFileSystemId());

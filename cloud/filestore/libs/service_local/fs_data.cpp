@@ -2,9 +2,85 @@
 
 #include "lowlevel.h"
 
+#include <cloud/storage/core/libs/common/file_io_service.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+// This wrapper will Release (and not Close) TFileHandle on scope exit
+
+class TFileHandleRef
+    : TNonCopyable
+{
+private:
+    TFileHandle Handle;
+
+public:
+    explicit TFileHandleRef(const TFile& file)
+        : Handle(file.GetHandle())
+    {}
+
+    ~TFileHandleRef() noexcept
+    {
+        Handle.Release();
+    }
+
+    operator TFileHandle& () noexcept
+    {
+        return Handle;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+static void CompleteReadDataAsyncRequest(
+    TFileIOCompletion* completion,
+    const NProto::TError& error,
+    ui32 bytes);
+
+struct TReadDataAsyncRequest
+    : TFileIOCompletion
+{
+    TFileHandleRef Handle;
+    ui64 Offset;
+    ui64 Length;
+    TString Buffer;
+    TPromise<NProto::TReadDataResponse> Response;
+
+    TReadDataAsyncRequest(
+        const TFile& file,
+        ui64 offset,
+        ui64 length,
+        TPromise<NProto::TReadDataResponse> response)
+        : TFileIOCompletion {.Func = &CompleteReadDataAsyncRequest}
+        , Handle(file)
+        , Offset(offset)
+        , Length(length)
+        , Buffer(TString::Uninitialized(length))
+        , Response(response)
+    {}
+};
+
+static void CompleteReadDataAsyncRequest(
+    TFileIOCompletion* completion,
+    const NProto::TError& error,
+    ui32 bytes)
+{
+    std::unique_ptr<TReadDataAsyncRequest> request {static_cast<TReadDataAsyncRequest*>(completion)};
+
+    NProto::TReadDataResponse response;
+    *response.MutableError() = error;
+    request->Buffer.resize(bytes);
+    response.SetBuffer(std::move(request->Buffer));
+    request->Response.SetValue(std::move(response));
+}
+
+
+}    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -123,8 +199,31 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
 TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     const NProto::TReadDataRequest& request)
 {
-    Y_UNUSED(request);
-    return {};
+    STORAGE_TRACE("ReadDataAsync " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto file = session->LookupHandle(request.GetHandle());
+    if (!file.IsOpen()) {
+        return MakeFuture<NProto::TReadDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
+    }
+
+    auto response = NewPromise<NProto::TReadDataResponse>();
+    auto readReq = std::make_unique<TReadDataAsyncRequest>(
+        file,
+        request.GetOffset(),
+        request.GetLength(),
+        response);
+
+    FileIOService->AsyncRead(
+        readReq->Handle,
+        readReq->Offset,
+        {const_cast<char*>(readReq->Buffer.data()), readReq->Length},
+        readReq.get());
+
+    Y_UNUSED(readReq.release());   // ownership transferred
+
+    return response;
 }
 
 TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(

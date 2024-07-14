@@ -19,6 +19,7 @@
 #include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -152,12 +153,16 @@ void TBootstrapServer::InitLocalService()
         Configs->AppConfig.GetLocalServiceConfig());
 
     ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
+
+    FileIOService = CreateAIOService();
+
     Service = CreateLocalFileStore(
         std::move(serviceConfig),
         Timer,
         Scheduler,
         Logging,
-        ThreadPool);
+        ThreadPool,
+        FileIOService);
 }
 
 void TBootstrapServer::InitNullService()
