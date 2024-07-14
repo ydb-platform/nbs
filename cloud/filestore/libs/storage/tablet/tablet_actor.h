@@ -363,6 +363,14 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    void RegisterCreateNodeInFollowerActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProto::TCreateNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
+        NProto::TCreateNodeResponse response);
+
     void RegisterUnlinkNodeInFollowerActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,

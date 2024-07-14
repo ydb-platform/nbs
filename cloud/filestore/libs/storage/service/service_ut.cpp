@@ -4520,7 +4520,147 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             listNodesResponse.GetNodes(0).GetId());
 
-        // checking DupCache logic - just in case
+        // checking DupCache logic
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"),
+            requestId);
+
+        createResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createResponse->GetError().GetCode(),
+            createResponse->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createResponse->Record.GetNode().GetId());
+    }
+
+    Y_UNIT_TEST(ShouldRetryNodeCreationInFollowerUponLeaderRestart)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        ui64 tabletId = -1;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == fsId) {
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        bool intercept = true;
+        bool intercepted = false;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvCreateNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        intercepted = true;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        const ui64 requestId = 111;
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"),
+            requestId);
+
+        ui32 iterations = 0;
+        while (!intercepted && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(intercepted);
+        intercept = false;
+
+        // TODO listNodes in leader?
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        auto listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+
+        auto createResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            createResponse->GetError().GetCode(),
+            createResponse->GetError().GetMessage());
+
+        // remaking session since CreateSessionActor doesn't do it by itself
+        // because EvWakeup never arrives because Scheduling doesn't work by
+        // default and RegistrationObservers get reset after RebootTablet
+        // restoreClientSession = true
+        headers = service.InitSession(fsId, "client", {}, true);
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        const ui64 nodeId1 = (1LU << 56U) + 2;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(0).GetId());
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+
+        // checking DupCache logic
         service.SendCreateNodeRequest(
             headers,
             TCreateNodeArgs::File(RootNodeId, "file1"),
