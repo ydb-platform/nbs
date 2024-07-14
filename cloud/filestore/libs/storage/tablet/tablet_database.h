@@ -470,6 +470,14 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TCompactionRangeInfo>& compactionMap,
         ui32 firstRangeId,
         ui32 rangeCount);
+
+    //
+    // OpLog
+    //
+
+    void WriteOpLogEntry(const NProto::TOpLogEntry& entry);
+    void DeleteOpLogEntry(ui64 entryId);
+    bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

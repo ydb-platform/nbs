@@ -219,11 +219,13 @@ public:
 
     auto CreateCreateNodeRequest(
         const THeaders& headers,
-        const TCreateNodeArgs& args)
+        const TCreateNodeArgs& args,
+        const ui64 requestId = 0)
     {
         auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         headers.Fill(request->Record);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         args.Fill(request->Record);
         return request;
     }
@@ -232,11 +234,13 @@ public:
         const THeaders& headers,
         const ui64 parent,
         const TString& name,
-        bool unlinkDirectory = false)
+        bool unlinkDirectory = false,
+        const ui64 requestId = 0)
     {
         auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         headers.Fill(request->Record);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         request->Record.SetNodeId(parent);
         request->Record.SetName(name);
         request->Record.SetUnlinkDirectory(unlinkDirectory);
@@ -459,6 +463,16 @@ public:
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
         request->Record.SetName(attrName);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvStatFileStoreRequest> CreateStatFileStoreRequest(
+        const THeaders& headers,
+        const TString& fileSystemId)
+    {
+        auto request = std::make_unique<TEvService::TEvStatFileStoreRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
         return request;
     }
 

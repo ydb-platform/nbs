@@ -112,6 +112,9 @@ message TCreateNodeRequest
     message TLink
     {
         uint64 TargetNode = 1;
+        // when creating hardlinks, one can enforce the FollowerNodeName and
+        // avoid using the generated one
+        string FollowerNodeName = 2;
     }
 
     message TSymLink

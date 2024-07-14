@@ -185,3 +185,19 @@ message TTruncateEntry
     uint64 Offset = 2;
     uint64 Length = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TOpLogEntry
+{
+    uint64 EntryId = 1;
+
+    // for DupCache patch & commit
+    string SessionId = 2;
+    uint64 RequestId = 3;
+
+    oneof Request {
+        TCreateNodeRequest CreateNodeRequest = 101;
+        TUnlinkNodeRequest UnlinkNodeRequest = 102;
+    }
+}

@@ -288,7 +288,7 @@ private:
             TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is dead"));
+                MakeError(E_REJECTED, "tablet is shutting down"));
 
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
@@ -321,7 +321,7 @@ private:
             TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "request cancelled"));
+                MakeError(E_REJECTED, "tablet is shutting down"));
 
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
@@ -363,13 +363,25 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    void RegisterCreateNodeInFollowerActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProto::TCreateNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
+        NProto::TCreateNodeResponse response);
+
     void RegisterUnlinkNodeInFollowerActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TString followerId,
-        TString followerName,
         NProto::TUnlinkNodeRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
         TUnlinkNodeInFollowerResult result);
+
+    void ReplayOpLog(
+        const NActors::TActorContext& ctx,
+        const TVector<NProto::TOpLogEntry>& opLog);
 
 private:
     template <typename TMethod>

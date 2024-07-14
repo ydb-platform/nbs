@@ -119,6 +119,9 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(FilterAliveNodes,                   __VA_ARGS__)                       \
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
+                                                                               \
+    xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
+    xxx(CommitNodeCreationInFollower,       __VA_ARGS__)                       \
 // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -279,6 +282,7 @@ struct TTxIndexTablet
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
+        TVector<NProto::TOpLogEntry> OpLog;
 
         NProto::TError Error;
 
@@ -300,6 +304,7 @@ struct TTxIndexTablet
             TruncateQueue.clear();
             StorageConfig.Clear();
             SessionHistory.clear();
+            OpLog.clear();
         }
     };
 
@@ -612,26 +617,32 @@ struct TTxIndexTablet
         ui64 ChildNodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> ChildNode;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TCreateNodeResponse Response;
 
         TCreateNode(
                 TRequestInfoPtr requestInfo,
-                const NProto::TCreateNodeRequest request,
+                NProto::TCreateNodeRequest request,
                 ui64 parentNodeId,
                 ui64 targetNodeId,
-                const NProto::TNode& attrs)
+                NProto::TNode attrs)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
-            , Attrs(attrs)
+            , Attrs(std::move(attrs))
             , FollowerId(request.GetFollowerFileSystemId())
-            , FollowerName(CreateGuidAsString())
+            // For multishard filestore, selection of the follower node name for
+            // hard links is done by the client, not the leader. Thus, the
+            // client is able to provide the follower node name explicitly:
+            , FollowerName(
+                  request.HasLink() && request.GetLink().GetFollowerNodeName()
+                      ? request.GetLink().GetFollowerNodeName()
+                      : CreateGuidAsString())
+            , Request(std::move(request))
         {
-            if (FollowerId) {
-                Request = request;
-            }
         }
 
         void Clear()
@@ -640,6 +651,8 @@ struct TTxIndexTablet
             ParentNode.Clear();
             ChildNodeId = InvalidNodeId;
             ChildNode.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
         }
@@ -661,16 +674,18 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> ChildNode;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TUnlinkNodeResponse Response;
 
         TUnlinkNode(
                 TRequestInfoPtr requestInfo,
-                const NProto::TUnlinkNodeRequest& request)
+                NProto::TUnlinkNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
-            , Request(request)
-            , ParentNodeId(request.GetNodeId())
-            , Name(request.GetName())
+            , Request(std::move(request))
+            , ParentNodeId(Request.GetNodeId())
+            , Name(Request.GetName())
         {}
 
         void Clear()
@@ -679,6 +694,7 @@ struct TTxIndexTablet
             ParentNode.Clear();
             ChildNode.Clear();
             ChildRef.Clear();
+            OpLogEntry.Clear();
             Response.Clear();
         }
     };
@@ -695,7 +711,7 @@ struct TTxIndexTablet
         const ui64 NewParentNodeId;
         const TString NewName;
         const ui32 Flags;
-        const NProto::THeaders Headers;
+        const NProto::TRenameNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -706,6 +722,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> NewChildNode;
         TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TRenameNodeResponse Response;
 
         TString FollowerIdForUnlink;
@@ -713,7 +731,7 @@ struct TTxIndexTablet
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
-                NProto::TRenameNodeRequest& request)
+                NProto::TRenameNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
@@ -721,7 +739,7 @@ struct TTxIndexTablet
             , NewParentNodeId(request.GetNewParentId())
             , NewName(std::move(*request.MutableNewName()))
             , Flags(request.GetFlags())
-            , Headers(std::move(*request.MutableHeaders()))
+            , Request(std::move(request))
         {}
 
         void Clear()
@@ -734,6 +752,8 @@ struct TTxIndexTablet
             NewParentNode.Clear();
             NewChildNode.Clear();
             NewChildRef.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
 
@@ -1061,7 +1081,7 @@ struct TTxIndexTablet
         const ui32 Uid;
         const ui32 Gid;
         const TString RequestFollowerId;
-        NProto::THeaders Headers;
+        NProto::TCreateHandleRequest Request;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
@@ -1072,11 +1092,13 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TCreateHandleResponse Response;
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
-                const NProto::TCreateHandleRequest& request)
+                NProto::TCreateHandleRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
@@ -1086,10 +1108,8 @@ struct TTxIndexTablet
             , Uid(request.GetUid())
             , Gid(request.GetGid())
             , RequestFollowerId(request.GetFollowerFileSystemId())
+            , Request(std::move(request))
         {
-            if (RequestFollowerId) {
-                Headers = request.GetHeaders();
-            }
         }
 
         void Clear()
@@ -1102,6 +1122,8 @@ struct TTxIndexTablet
             IsNewFollowerNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
         }
@@ -1764,6 +1786,56 @@ struct TTxIndexTablet
         {
             StorageConfigFromDB.Clear();
             ResultStorageConfig.Clear();
+        }
+    };
+
+    //
+    // DeleteOpLogEntry
+    //
+
+    struct TDeleteOpLogEntry
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+        const ui64 EntryId;
+
+        explicit TDeleteOpLogEntry(ui64 entryId)
+            : EntryId(entryId)
+        {}
+
+        void Clear()
+        {
+        }
+    };
+
+    //
+    // CommitNodeCreationInFollower
+    //
+
+    struct TCommitNodeCreationInFollower
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        NProto::TCreateNodeResponse Response;
+        const ui64 EntryId;
+
+        explicit TCommitNodeCreationInFollower(
+                TString sessionId,
+                ui64 requestId,
+                NProto::TCreateNodeResponse response,
+                ui64 entryId)
+            : SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , Response(std::move(response))
+            , EntryId(entryId)
+        {}
+
+        void Clear()
+        {
         }
     };
 };

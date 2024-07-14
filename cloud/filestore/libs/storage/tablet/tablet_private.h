@@ -507,13 +507,22 @@ struct TEvIndexTabletPrivate
 
     struct TNodeCreatedInFollower
     {
-        TRequestInfoPtr RequestInfo;
+        const TRequestInfoPtr RequestInfo;
+        TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         NProto::TCreateNodeResponse CreateNodeResponse;
 
         TNodeCreatedInFollower(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 NProto::TCreateNodeResponse createNodeResponse)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , CreateNodeResponse(std::move(createNodeResponse))
         {
         }
@@ -526,12 +535,21 @@ struct TEvIndexTabletPrivate
     struct TNodeCreatedInFollowerUponCreateHandle
     {
         TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         NProto::TCreateHandleResponse CreateHandleResponse;
 
         TNodeCreatedInFollowerUponCreateHandle(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 NProto::TCreateHandleResponse createHandleResponse)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , CreateHandleResponse(std::move(createHandleResponse))
         {
         }
@@ -543,13 +561,22 @@ struct TEvIndexTabletPrivate
 
     struct TNodeUnlinkedInFollower
     {
-        TRequestInfoPtr RequestInfo;
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         TUnlinkNodeInFollowerResult Result;
 
         TNodeUnlinkedInFollower(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 TUnlinkNodeInFollowerResult result)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , Result(std::move(result))
         {
         }
