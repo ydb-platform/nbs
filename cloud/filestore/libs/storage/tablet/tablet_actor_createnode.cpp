@@ -451,7 +451,6 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             followerRequest->ClearFollowerFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
-
         }
     } else {
         // hard link
@@ -531,17 +530,13 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             args.FollowerId.c_str(),
             args.FollowerName.c_str());
 
-        auto actor = std::make_unique<TCreateNodeInFollowerActor>(
-            LogTag,
+        RegisterCreateNodeInFollowerActor(
+            ctx,
             args.RequestInfo,
-            ctx.SelfID,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
             args.RequestId,
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
-
-        auto actorId = NCloud::Register(ctx, std::move(actor));
-        WorkerActors.insert(actorId);
 
         return;
     }
@@ -601,13 +596,17 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
     auto response = std::make_unique<TEvService::TEvCreateNodeResponse>();
     response->Record = msg->CreateNodeResponse;
 
-    CompleteResponse<TEvService::TCreateNodeMethod>(
-        response->Record,
-        msg->RequestInfo->CallContext,
-        ctx);
+    if (msg->RequestInfo) {
+        RemoveTransaction(*msg->RequestInfo);
 
-    // replying before DupCacheEntry is committed to reduce response latency
-    NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        CompleteResponse<TEvService::TCreateNodeMethod>(
+            response->Record,
+            msg->RequestInfo->CallContext,
+            ctx);
+
+        // replying before DupCacheEntry is committed to reduce response latency
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+    }
 
     WorkerActors.erase(ev->Sender);
     ExecuteTx<TCommitNodeCreationInFollower>(
@@ -660,6 +659,29 @@ void TIndexTabletActor::CompleteTx_CommitNodeCreationInFollower(
         args.EntryId,
         args.SessionId.c_str(),
         args.RequestId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RegisterCreateNodeInFollowerActor(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    NProto::TCreateNodeRequest request,
+    ui64 requestId,
+    ui64 opLogEntryId,
+    NProto::TCreateNodeResponse response)
+{
+    auto actor = std::make_unique<TCreateNodeInFollowerActor>(
+        LogTag,
+        std::move(requestInfo),
+        ctx.SelfID,
+        std::move(request),
+        requestId,
+        opLogEntryId,
+        std::move(response));
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

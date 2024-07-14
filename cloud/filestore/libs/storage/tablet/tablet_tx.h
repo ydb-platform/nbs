@@ -1092,6 +1092,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
 
+        NProto::TOpLogEntry OpLogEntry;
+
         NProto::TCreateHandleResponse Response;
 
         TCreateHandle(
@@ -1120,6 +1122,8 @@ struct TTxIndexTablet
             IsNewFollowerNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
+
+            OpLogEntry.Clear();
 
             Response.Clear();
         }

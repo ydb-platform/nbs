@@ -535,12 +535,21 @@ struct TEvIndexTabletPrivate
     struct TNodeCreatedInFollowerUponCreateHandle
     {
         TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         NProto::TCreateHandleResponse CreateHandleResponse;
 
         TNodeCreatedInFollowerUponCreateHandle(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 NProto::TCreateHandleResponse createHandleResponse)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , CreateHandleResponse(std::move(createHandleResponse))
         {
         }
