@@ -288,7 +288,7 @@ NProto::TWriteDataResponse TLocalFileSystem::WriteData(
 
     const auto& buffer = request.GetBuffer();
     handle.Pwrite(buffer.data(), buffer.size(), request.GetOffset());
-    handle.Flush(); // TODO
+    // handle.Flush(); // TODO
 
     return {};
 }

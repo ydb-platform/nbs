@@ -104,6 +104,7 @@ FILESTORE_DECLARE_METHOD(Ping)
 FILESTORE_DECLARE_METHOD(PingSession)
 FILESTORE_SERVICE_METHODS(FILESTORE_DECLARE_METHOD)
 FILESTORE_DATA_METHODS_SYNC(FILESTORE_DECLARE_METHOD)
+FILESTORE_DATA_METHODS_ASYNC(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
@@ -124,7 +125,7 @@ FILESTORE_DATA_METHODS_SYNC(FILESTORE_DECLARE_METHOD)
     };                                                                         \
 // FILESTORE_DECLARE_METHOD
 
-FILESTORE_DATA_METHODS_ASYNC(FILESTORE_DECLARE_METHOD)
+// FILESTORE_DATA_METHODS_ASYNC(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
@@ -188,6 +189,7 @@ FILESTORE_IMPLEMENT_METHOD(Ping)
 FILESTORE_IMPLEMENT_METHOD(PingSession)
 FILESTORE_SERVICE_METHODS(FILESTORE_IMPLEMENT_METHOD)
 FILESTORE_DATA_METHODS_SYNC(FILESTORE_IMPLEMENT_METHOD)
+FILESTORE_DATA_METHODS_ASYNC(FILESTORE_IMPLEMENT_METHOD)
 
 
 #undef FILESTORE_IMPLEMENT_METHOD
@@ -205,7 +207,7 @@ FILESTORE_DATA_METHODS_SYNC(FILESTORE_IMPLEMENT_METHOD)
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
-FILESTORE_DATA_METHODS_ASYNC(FILESTORE_IMPLEMENT_METHOD)
+// FILESTORE_DATA_METHODS_ASYNC(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -243,32 +245,32 @@ private:
         }
     }
 
-    template <typename T>
-    TFuture<typename T::TResponse> ExecuteAsync(const typename T::TRequest& request)
-    {
-        const auto& id = GetFileSystemId(request);
-        if (!id) {
-            return MakeFuture<typename T::TResponse>(
-                TErrorResponse(E_ARGUMENT, "invalid file system identifier"));
-        }
+    // template <typename T>
+    // TFuture<typename T::TResponse> ExecuteAsync(const typename T::TRequest& request)
+    // {
+    //     const auto& id = GetFileSystemId(request);
+    //     if (!id) {
+    //         return MakeFuture<typename T::TResponse>(
+    //             TErrorResponse(E_ARGUMENT, "invalid file system identifier"));
+    //     }
 
-        auto fs = FindFileSystem(id);
-        if (!fs) {
-            return MakeFuture<typename T::TResponse>(TErrorResponse(
-                E_ARGUMENT,
-                TStringBuilder() << "invalid file system: " << id.Quote()));
-        }
+    //     auto fs = FindFileSystem(id);
+    //     if (!fs) {
+    //         return MakeFuture<typename T::TResponse>(TErrorResponse(
+    //             E_ARGUMENT,
+    //             TStringBuilder() << "invalid file system: " << id.Quote()));
+    //     }
 
-        try {
-            return T::ExecuteAsync(*fs, request);
-        } catch (const TServiceError& e) {
-            return MakeFuture<typename T::TResponse>(
-                TErrorResponse(e.GetCode(), TString(e.GetMessage())));
-        } catch (...) {
-            return MakeFuture<typename T::TResponse>(
-                TErrorResponse(E_FAIL, CurrentExceptionMessage()));
-        }
-    }
+    //     try {
+    //         return T::ExecuteAsync(*fs, request);
+    //     } catch (const TServiceError& e) {
+    //         return MakeFuture<typename T::TResponse>(
+    //             TErrorResponse(e.GetCode(), TString(e.GetMessage())));
+    //     } catch (...) {
+    //         return MakeFuture<typename T::TResponse>(
+    //             TErrorResponse(E_FAIL, CurrentExceptionMessage()));
+    //     }
+    // }
 
     template <>
     NProto::TPingResponse Execute<TPingMethod>(
