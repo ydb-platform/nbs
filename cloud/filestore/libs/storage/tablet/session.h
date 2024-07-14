@@ -173,6 +173,20 @@ public:
         return nullptr;
     }
 
+    TDupCacheEntry* AccessDupEntry(ui64 requestId)
+    {
+        if (!requestId) {
+            return nullptr;
+        }
+
+        auto it = DupCache.find(requestId);
+        if (it != DupCache.end()) {
+            return it->second;
+        }
+
+        return nullptr;
+    }
+
     void AddDupCacheEntry(NProto::TDupCacheEntry proto, bool commited)
     {
         Y_ABORT_UNLESS(proto.GetRequestId());
