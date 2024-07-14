@@ -4912,10 +4912,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             createHandleResponse->Record.GetNodeAttr().GetId());
     }
-
-    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponLeaderRestart
-    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponCreateHandle
-    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponCreateHandleUponLeaderRestart
 }
 
 }   // namespace NCloud::NFileStore::NStorage
