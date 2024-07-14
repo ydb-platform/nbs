@@ -634,7 +634,13 @@ struct TTxIndexTablet
             , Name(request.GetName())
             , Attrs(std::move(attrs))
             , FollowerId(request.GetFollowerFileSystemId())
-            , FollowerName(CreateGuidAsString())
+            // For multishard filestore, selection of the follower node name for
+            // hard links is done by the client, not the leader. Thus, the
+            // client is able to provide the follower node name explicitly:
+            , FollowerName(
+                  request.HasLink() && request.GetLink().GetFollowerNodeName()
+                      ? request.GetLink().GetFollowerNodeName()
+                      : CreateGuidAsString())
             , Request(std::move(request))
         {
         }
