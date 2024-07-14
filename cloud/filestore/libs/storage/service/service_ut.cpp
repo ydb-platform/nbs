@@ -4146,7 +4146,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             unlinkResponse->GetError().GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponFollowerRestart)
+    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponLeaderRestart)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -4265,7 +4265,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 
-    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponFollowerRestartForRenameNode)
+    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponLeaderRestartForRenameNode)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -4400,6 +4400,112 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
+
+    Y_UNIT_TEST(ShouldRetryNodeCreationInFollower)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        TAutoPtr<IEventHandle> followerCreateResponse;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvCreateNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        auto response = std::make_unique<
+                            TEvService::TEvCreateNodeResponse>(
+                            MakeError(E_REJECTED, "error"));
+
+                        followerCreateResponse = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        const ui64 requestId = 111;
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"),
+            requestId);
+
+        ui32 iterations = 0;
+        while (!followerCreateResponse && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(followerCreateResponse);
+        intercept = false;
+        env.GetRuntime().Send(followerCreateResponse.Release());
+
+        auto createResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createResponse->GetError().GetCode(),
+            createResponse->GetError().GetMessage());
+
+        const auto nodeId1 = createResponse->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(0).GetId());
+
+        // checking DupCache logic - just in case
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"),
+            requestId);
+
+        createResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createResponse->GetError().GetCode(),
+            createResponse->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createResponse->Record.GetNode().GetId());
+    }
+
+    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponLeaderRestart
+    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponCreateHandle
+    // TODO(#1350): ShouldRetryNodeCreationInFollowerUponCreateHandleUponLeaderRestart
 }
 
 }   // namespace NCloud::NFileStore::NStorage
