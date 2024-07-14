@@ -331,7 +331,7 @@ void TBootstrapVhost::InitLocalFileStores(int fileStoresCount, int fsCount)
         auto serviceConfig =
             std::make_shared<TLocalFileStoreConfig>(protoConfig);
 
-        auto threadPool = CreateThreadPool(fileStoreName, 2);
+        auto threadPool = CreateThreadPool(fileStoreName + "-", 4);
         threadPool->Start();
 
         STORAGE_INFO("create, store: %s", fileStoreName.c_str());

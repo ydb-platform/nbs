@@ -316,7 +316,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
 TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     const NProto::TReadDataRequest& request)
 {
-    STORAGE_INFO("ReadDataAsync " << DumpMessage(request));
+    STORAGE_TRACE("ReadDataAsync " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto file = session->LookupHandle(request.GetHandle());
@@ -346,7 +346,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
 TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     const NProto::TWriteDataRequest& request)
 {
-    STORAGE_INFO("WriteDataAsync " << DumpMessage(request));
+    STORAGE_TRACE("WriteDataAsync " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto file = session->LookupHandle(request.GetHandle());

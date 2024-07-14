@@ -8,6 +8,6 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SetCurrentThreadName(const TString& name, ui32 maxCharsFromProcessName = 8);
+void SetCurrentThreadName(const TString& name, ui32 maxCharsFromProcessName = 4);
 
 }   // namespace NCloud
