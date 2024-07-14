@@ -3861,6 +3861,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto headers = service.InitSession(fsId, "client");
 
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
         const auto nodeId1 =
             service
                 .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
@@ -3870,7 +3873,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto node = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
                         ->Record.GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(node.GetLinks(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, node.GetLinks());
 
         auto linkNodeResponse = service.CreateNode(
             headers,
@@ -3900,7 +3903,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui64 handle2 = service
             .CreateHandle(headers, fsId, RootNodeId, "file2", TCreateHandleArgs::RDWR)
             ->Record.GetHandle();
-        Y_UNUSED(handle2);
+
         auto data2 = service.ReadData(
             headers,
             fsId,
@@ -3909,6 +3912,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             0,
             data.Size())->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data, data2);
+
+        // Removal of both the file and a hardlink should remove file from both
+        // the follower and a leader
+
+        service.DestroyHandle(headers, fsId, nodeId1, handle);
+        service.DestroyHandle(headers, fsId, linkNodeResponse->Record.GetNode().GetId(), handle2);
+
+        service.UnlinkNode(headers, RootNodeId, "file1");
+        service.UnlinkNode(headers, RootNodeId, "file2");
+
+        // Now listing of the root should show no files
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        // GetNodeAttr should fail as well
+
+        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file1");
+        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file2");
 
         // Creating hardlinks to non-existing files should fail. It is
         // reasonable to assume that nodeId + 100 is not a valid node id.

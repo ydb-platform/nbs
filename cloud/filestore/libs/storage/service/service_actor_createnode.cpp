@@ -81,11 +81,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TLinkActor::TLinkActor(
-    TRequestInfoPtr requestInfo,
-    NProto::TCreateNodeRequest createNodeRequest,
-    TString followerId,
-    TString logTag,
-    IProfileLogPtr profileLog)
+        TRequestInfoPtr requestInfo,
+        NProto::TCreateNodeRequest createNodeRequest,
+        TString followerId,
+        TString logTag,
+        IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , CreateNodeRequest(std::move(createNodeRequest))
     , FollowerId(std::move(followerId))
@@ -308,7 +308,7 @@ void TStorageServiceActor::HandleCreateNode(
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
         if (followerId && StorageConfig->GetMultiTabletForwardingEnabled()) {
-            // If the target node is located on a  shard, start a worker actor
+            // If the target node is located on a shard, start a worker actor
             // to separately increment the link count in the follower and insert
             // the node in the leader.
 

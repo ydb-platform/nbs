@@ -560,6 +560,8 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         }
 
         if (!args.ChildNode &&
+            // A ChildNode can also be empty for a hard link to an external
+            // node, and this is a valid case
             !(args.FollowerId && args.TargetNodeId != InvalidNodeId))
         {
             auto message = ReportChildNodeIsNull(TStringBuilder()
