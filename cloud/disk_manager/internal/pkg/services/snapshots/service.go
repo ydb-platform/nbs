@@ -51,14 +51,9 @@ func (s *service) CreateSnapshot(
 			},
 			DstSnapshotId:       req.SnapshotId,
 			FolderId:            req.FolderId,
-			OperationCloudId:    req.OperationCloudId,
-			OperationFolderId:   req.OperationFolderId,
-			UseDataplaneTasks:   true, // TODO: remove it.
 			UseS3:               useS3,
 			UseProxyOverlayDisk: s.config.GetUseProxyOverlayDisk(),
 		},
-		req.OperationCloudId,
-		req.OperationFolderId,
 	)
 }
 
@@ -79,12 +74,8 @@ func (s *service) DeleteSnapshot(
 		"snapshots.DeleteSnapshot",
 		"",
 		&protos.DeleteSnapshotRequest{
-			SnapshotId:        req.SnapshotId,
-			OperationCloudId:  req.OperationCloudId,
-			OperationFolderId: req.OperationFolderId,
+			SnapshotId: req.SnapshotId,
 		},
-		req.OperationCloudId,
-		req.OperationFolderId,
 	)
 }
 

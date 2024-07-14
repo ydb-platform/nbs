@@ -342,8 +342,6 @@ func TestStorageYDBGetTask(t *testing.T) {
 		State:          []byte{1, 2, 3},
 		Dependencies:   NewStringSet(),
 		ZoneID:         "zone",
-		CloudID:        "cloud",
-		FolderID:       "folder",
 	})
 	require.NoError(t, err)
 
@@ -361,8 +359,6 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
-	require.EqualValues(t, "cloud", taskState.CloudID)
-	require.EqualValues(t, "folder", taskState.FolderID)
 	metricsRegistry.AssertAllExpectations(t)
 }
 

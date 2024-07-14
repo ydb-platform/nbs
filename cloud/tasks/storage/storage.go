@@ -209,8 +209,6 @@ type TaskState struct {
 	LastHost            string
 	LastRunner          string
 	ZoneID              string
-	CloudID             string
-	FolderID            string
 	EstimatedTime       time.Time
 	PanicCount          uint64
 	Events              []int64

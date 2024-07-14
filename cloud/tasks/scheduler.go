@@ -32,8 +32,6 @@ type Scheduler interface {
 		taskType string,
 		description string,
 		request proto.Message,
-		cloudID string,
-		folderID string,
 	) (string, error)
 
 	// Requires "idempotency-key" header in ctx metadata.
@@ -45,8 +43,6 @@ type Scheduler interface {
 		description string,
 		zoneID string,
 		request proto.Message,
-		cloudID string,
-		folderID string,
 	) (string, error)
 
 	ScheduleRegularTasks(

@@ -9,13 +9,12 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message CreateImageFromSnapshotRequest {
+    reserved 4, 5, 7;
+
     string SrcSnapshotId = 1;
     string DstImageId = 2;
     string FolderId = 3;
-    string OperationCloudId = 4;
-    string OperationFolderId = 5;
     repeated types.DiskPool DiskPools = 6;
-    bool UseDataplaneTasksForLegacySnapshots = 7;
     bool UseS3 = 8;
 }
 

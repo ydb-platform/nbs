@@ -123,8 +123,6 @@ func TestCollectSnapshotsTaskCollectSeveralSnapshots(t *testing.T) {
 		"dataplane.DeleteSnapshotData",
 		"",
 		mock.Anything,
-		"",
-		"",
 	).Return("task1", nil).Times(1)
 	scheduler.On(
 		"ScheduleTask",
@@ -132,8 +130,6 @@ func TestCollectSnapshotsTaskCollectSeveralSnapshots(t *testing.T) {
 		"dataplane.DeleteSnapshotData",
 		"",
 		mock.Anything,
-		"",
-		"",
 	).Return("task2", nil).Times(1)
 	scheduler.On(
 		"WaitAnyTasks",
@@ -161,8 +157,6 @@ func TestCollectSnapshotsTaskCollectSeveralSnapshots(t *testing.T) {
 		"dataplane.DeleteSnapshotData",
 		"",
 		mock.Anything,
-		"",
-		"",
 	).Return("task3", nil).Times(1)
 	scheduler.On(
 		"WaitAnyTasks",
@@ -194,8 +188,6 @@ func TestCollectSnapshotsTaskCollectSeveralSnapshots(t *testing.T) {
 		"dataplane.DeleteSnapshotData",
 		"",
 		mock.Anything,
-		"",
-		"",
 	).Return("task2", nil).Times(1)
 	scheduler.On(
 		"ScheduleTask",
@@ -203,8 +195,6 @@ func TestCollectSnapshotsTaskCollectSeveralSnapshots(t *testing.T) {
 		"dataplane.DeleteSnapshotData",
 		"",
 		mock.Anything,
-		"",
-		"",
 	).Return("task4", nil).Times(1)
 	scheduler.On(
 		"WaitAnyTasks",

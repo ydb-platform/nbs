@@ -323,8 +323,6 @@ func (s *service) CreateDisk(
 			"disks.CreateEmptyDisk",
 			"",
 			params,
-			params.CloudId,
-			params.FolderId,
 		)
 	case *disk_manager.CreateDiskRequest_SrcImageId:
 		allowed, err := s.isOverlayDiskAllowed(ctx, req, src.SrcImageId, params)
@@ -341,8 +339,6 @@ func (s *service) CreateDisk(
 					SrcImageId: src.SrcImageId,
 					Params:     params,
 				},
-				params.CloudId,
-				params.FolderId,
 			)
 		}
 
@@ -351,14 +347,9 @@ func (s *service) CreateDisk(
 			"disks.CreateDiskFromImage",
 			"",
 			&protos.CreateDiskFromImageRequest{
-				SrcImageId:                          src.SrcImageId,
-				Params:                              params,
-				OperationCloudId:                    req.OperationCloudId,
-				OperationFolderId:                   req.OperationFolderId,
-				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
+				SrcImageId: src.SrcImageId,
+				Params:     params,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	case *disk_manager.CreateDiskRequest_SrcSnapshotId:
 		return s.taskScheduler.ScheduleTask(
@@ -366,14 +357,9 @@ func (s *service) CreateDisk(
 			"disks.CreateDiskFromSnapshot",
 			"",
 			&protos.CreateDiskFromSnapshotRequest{
-				SrcSnapshotId:                       src.SrcSnapshotId,
-				Params:                              params,
-				OperationCloudId:                    req.OperationCloudId,
-				OperationFolderId:                   req.OperationFolderId,
-				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
+				SrcSnapshotId: src.SrcSnapshotId,
+				Params:        params,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	default:
 		return "", errors.NewInvalidArgumentError("unknown src %s", src)
@@ -412,8 +398,6 @@ func (s *service) DeleteDisk(
 			},
 			Sync: req.Sync,
 		},
-		"",
-		"",
 	)
 }
 
@@ -447,8 +431,6 @@ func (s *service) ResizeDisk(
 			},
 			Size: uint64(req.Size),
 		},
-		"",
-		"",
 	)
 }
 
@@ -476,8 +458,6 @@ func (s *service) AlterDisk(
 			CloudId:  req.CloudId,
 			FolderId: req.FolderId,
 		},
-		req.CloudId,
-		req.FolderId,
 	)
 }
 
@@ -506,8 +486,6 @@ func (s *service) AssignDisk(
 			Host:       req.Host,
 			Token:      req.Token,
 		},
-		"",
-		"",
 	)
 }
 
@@ -533,8 +511,6 @@ func (s *service) UnassignDisk(
 				DiskId: req.DiskId.DiskId,
 			},
 		},
-		"",
-		"",
 	)
 }
 
@@ -684,8 +660,6 @@ func (s *service) MigrateDisk(
 			DstPlacementGroupId:        req.DstPlacementGroupId,
 			DstPlacementPartitionIndex: req.DstPlacementPartitionIndex,
 		},
-		"",
-		"",
 	)
 }
 

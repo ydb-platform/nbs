@@ -348,8 +348,6 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
 			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
 		},
-		"",
-		"",
 	)
 	if err != nil {
 		return err

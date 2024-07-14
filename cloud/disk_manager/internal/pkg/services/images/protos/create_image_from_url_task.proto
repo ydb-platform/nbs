@@ -9,18 +9,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message CreateImageFromURLRequest {
-    reserved 2;
+    reserved 2, 6, 7, 8, 9, 11;
 
     string SrcURL = 1;
     string DstImageId = 3;
     string FolderId = 4;
     repeated types.DiskPool DiskPools = 5;
-    string OperationCloudId = 6;
-    string OperationFolderId = 7;
-    bool UseDataplaneTasks = 8;
-    bool UseDataplaneTasksSupportedFormatsOnly = 9;
     bool UseS3 = 10;
-    bool UseDataplaneTasksForVMDK = 11;
 }
 
 message CreateImageFromURLTaskState {

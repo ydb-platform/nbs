@@ -481,7 +481,7 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 
 		for _, diskID := range diskIDs {
 			// TODO: should remove dependency on disk id here.
-			if strings.Contains(diskID, "proxy") {
+			if strings.HasPrefix(diskID, "proxy") {
 				ok = false
 
 				logging.Info(

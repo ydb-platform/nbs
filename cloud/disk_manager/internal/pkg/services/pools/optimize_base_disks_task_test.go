@@ -85,8 +85,6 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 			Capacity:     100,
 			UseImageSize: true,
 		},
-		"",
-		"",
 	).Return("task2", nil)
 
 	scheduler.On(
@@ -100,8 +98,6 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 			Capacity:     100,
 			UseImageSize: false,
 		},
-		"",
-		"",
 	).Return("task4", nil)
 
 	scheduler.On("WaitTask", mock.Anything, execCtx, "task2").Return(nil, nil)
@@ -118,8 +114,6 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 			ZoneId:           "zone2",
 			UseBaseDiskAsSrc: true,
 		},
-		"",
-		"",
 	).Return("task2_1", nil)
 
 	scheduler.On(
@@ -132,8 +126,6 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 			ZoneId:           "zone4",
 			UseBaseDiskAsSrc: true,
 		},
-		"",
-		"",
 	).Return("task4_1", nil)
 
 	scheduler.On("WaitTask", mock.Anything, execCtx, "task2_1").Return(nil, nil)

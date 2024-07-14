@@ -208,8 +208,6 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 		LastHost:            state.LastHost,
 		LastRunner:          state.LastRunner,
 		ZoneID:              state.ZoneID,
-		CloudID:             state.CloudID,
-		FolderID:            state.FolderID,
 		EstimatedTime:       state.EstimatedTime,
 		PanicCount:          state.PanicCount,
 	}

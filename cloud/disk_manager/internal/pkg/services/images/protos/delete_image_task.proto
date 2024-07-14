@@ -7,9 +7,9 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message DeleteImageRequest {
+    reserved 2, 3;
+
     string ImageId = 1;
-    string OperationCloudId = 2;
-    string OperationFolderId = 3;
 }
 
 message DeleteImageTaskState {}

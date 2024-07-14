@@ -50,8 +50,6 @@ func (t *deleteImageTask) deleteImage(
 		t.storage,
 		t.poolService,
 		t.request.ImageId,
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 }
 

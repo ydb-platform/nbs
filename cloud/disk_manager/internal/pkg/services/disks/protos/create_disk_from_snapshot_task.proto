@@ -10,11 +10,10 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message CreateDiskFromSnapshotRequest {
+    reserved 3, 4, 5;
+
     string SrcSnapshotId = 1;
     CreateDiskParams Params = 2;
-    string OperationCloudId = 3;
-    string OperationFolderId = 4;
-    bool UseDataplaneTasksForLegacySnapshots = 5 [deprecated = true];
 }
 
 message CreateDiskFromSnapshotTaskState {

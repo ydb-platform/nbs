@@ -101,8 +101,6 @@ func (t *collectSnapshotsTask) Run(
 				&protos.DeleteSnapshotDataRequest{
 					SnapshotId: snapshot.SnapshotId,
 				},
-				"",
-				"",
 			)
 			if err != nil {
 				return err

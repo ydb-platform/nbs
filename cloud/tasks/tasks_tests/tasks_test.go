@@ -256,7 +256,7 @@ func scheduleDoublerTask(
 
 	return scheduler.ScheduleTask(ctx, "doubler", "Doubler task", &wrappers.UInt64Value{
 		Value: request,
-	}, "", "")
+	})
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -308,7 +308,7 @@ func scheduleLongTask(
 	scheduler tasks.Scheduler,
 ) (string, error) {
 
-	return scheduler.ScheduleTask(ctx, "long", "Long task", &empty.Empty{}, "", "")
+	return scheduler.ScheduleTask(ctx, "long", "Long task", &empty.Empty{})
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -386,8 +386,6 @@ func scheduleUnstableTask(
 		&wrappers.UInt64Value{
 			Value: failuresUntilSuccess,
 		},
-		"",
-		"",
 	)
 }
 
@@ -440,8 +438,6 @@ func scheduleFailureTask(
 		"failure",
 		"Failure task",
 		&empty.Empty{},
-		"",
-		"",
 	)
 }
 
@@ -525,7 +521,7 @@ func scheduleSixTimesTask(
 
 	return scheduler.ScheduleTask(ctx, "sixTimes", "SixTimes task", &wrappers.UInt64Value{
 		Value: request,
-	}, "", "")
+	})
 }
 
 ////////////////////////////////////////////////////////////////////////////////
