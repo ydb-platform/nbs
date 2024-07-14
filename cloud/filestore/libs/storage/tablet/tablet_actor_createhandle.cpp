@@ -541,8 +541,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         followerRequest->SetName(args.FollowerName);
         followerRequest->ClearFollowerFileSystemId();
 
-        // TODO
-        // db.WriteOpLogEntry(args.OpLogEntry);
+        db.WriteOpLogEntry(args.OpLogEntry);
     }
 
     AddDupCacheEntry(
