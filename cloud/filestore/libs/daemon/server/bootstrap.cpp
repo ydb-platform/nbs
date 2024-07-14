@@ -20,6 +20,7 @@
 #include <cloud/filestore/libs/storage/core/probes.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -57,6 +58,7 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
+    FILESTORE_LOG_START_COMPONENT(FileIOService);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
@@ -70,6 +72,7 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
+    FILESTORE_LOG_STOP_COMPONENT(FileIOService);
 }
 
 TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)

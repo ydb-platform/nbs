@@ -6,4 +6,8 @@ SRCS(
     service_ut.cpp
 )
 
+PEERDIR(
+    cloud/storage/core/libs/aio
+)
+
 END()
