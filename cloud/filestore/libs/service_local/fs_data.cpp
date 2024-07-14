@@ -42,27 +42,59 @@ static void CompleteReadDataAsyncRequest(
     const NProto::TError& error,
     ui32 bytes);
 
-struct TReadDataAsyncRequest
-    : TFileIOCompletion
+class TReadDataAsyncRequest
+    : public TFileIOCompletion
 {
+private:
     TFileHandleRef Handle;
     ui64 Offset;
     ui64 Length;
-    TString Buffer;
-    TPromise<NProto::TReadDataResponse> Response;
+    TString ReadData;
+    TPromise<NProto::TReadDataResponse> Promise;
 
+public:
     TReadDataAsyncRequest(
         const TFile& file,
         ui64 offset,
         ui64 length,
-        TPromise<NProto::TReadDataResponse> response)
-        : TFileIOCompletion {.Func = &CompleteReadDataAsyncRequest}
+        TPromise<NProto::TReadDataResponse> promise)
+        : TFileIOCompletion{.Func = &CompleteReadDataAsyncRequest}
         , Handle(file)
         , Offset(offset)
         , Length(length)
-        , Buffer(TString::Uninitialized(length))
-        , Response(response)
+        , ReadData(TString::Uninitialized(length))
+        , Promise(promise)
     {}
+
+    TFileHandleRef& GetHandle()
+    {
+        return Handle;
+    }
+
+    TArrayRef<char> GetBufferRef()
+    {
+        return {const_cast<char*>(ReadData.data()), Length};
+    }
+
+    TString& GetBuffer()
+    {
+        return ReadData;
+    }
+
+    ui64 GetOffset()
+    {
+        return Offset;
+    }
+
+    ui64 GetLength()
+    {
+        return Length;
+    }
+
+    TPromise<NProto::TReadDataResponse>& GetPromise()
+    {
+        return Promise;
+    }
 };
 
 static void CompleteReadDataAsyncRequest(
@@ -72,13 +104,98 @@ static void CompleteReadDataAsyncRequest(
 {
     std::unique_ptr<TReadDataAsyncRequest> request {static_cast<TReadDataAsyncRequest*>(completion)};
 
+    auto& promise = request->GetPromise();
+
     NProto::TReadDataResponse response;
-    *response.MutableError() = error;
-    request->Buffer.resize(bytes);
-    response.SetBuffer(std::move(request->Buffer));
-    request->Response.SetValue(std::move(response));
+
+    if (HasError(error)) {
+        *response.MutableError() = error;
+        promise.SetValue(std::move(response));
+        return;
+    }
+
+    auto& buffer = request->GetBuffer();
+    buffer.resize(bytes);
+    response.SetBuffer(std::move(buffer));
+    promise.SetValue(std::move(response));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+static void CompleteWriteDataAsyncRequest(
+    TFileIOCompletion* completion,
+    const NProto::TError& error,
+    ui32 bytes);
+
+class TWriteDataAsyncRequest
+    : public TFileIOCompletion
+{
+private:
+    TFileHandleRef Handle;
+    ui64 Offset;
+    TString WriteData;
+    TPromise<NProto::TWriteDataResponse> Promise;
+
+public:
+    TWriteDataAsyncRequest(
+        const TFile& file,
+        ui64 offset,
+        TString buffer,
+        TPromise<NProto::TWriteDataResponse> promise)
+        : TFileIOCompletion{.Func = &CompleteWriteDataAsyncRequest}
+        , Handle(file)
+        , Offset(offset)
+        , WriteData(std::move(buffer))
+        , Promise(promise)
+    {}
+
+    TFileHandleRef& GetHandle()
+    {
+        return Handle;
+    }
+
+    TArrayRef<char> GetBufferRef()
+    {
+        return {const_cast<char*>(WriteData.data()), WriteData.size()};
+    }
+
+    TString& GetBuffer()
+    {
+        return WriteData;
+    }
+
+    ui64 GetOffset()
+    {
+        return Offset;
+    }
+
+    TPromise<NProto::TWriteDataResponse>& GetPromise()
+    {
+        return Promise;
+    }
+};
+
+static void CompleteWriteDataAsyncRequest(
+    TFileIOCompletion* completion,
+    const NProto::TError& error,
+    ui32 bytes)
+{
+    Y_UNUSED(bytes);
+
+    std::unique_ptr<TWriteDataAsyncRequest> request {static_cast<TWriteDataAsyncRequest*>(completion)};
+
+    auto& promise = request->GetPromise();
+
+    NProto::TWriteDataResponse response;
+
+    if (HasError(error)) {
+        *response.MutableError() = error;
+        promise.SetValue(std::move(response));
+        return;
+    }
+
+    promise.SetValue(std::move(response));
+}
 
 }    // namespace
 
@@ -199,7 +316,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
 TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     const NProto::TReadDataRequest& request)
 {
-    STORAGE_TRACE("ReadDataAsync " << DumpMessage(request));
+    STORAGE_INFO("ReadDataAsync " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto file = session->LookupHandle(request.GetHandle());
@@ -216,9 +333,9 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
         response);
 
     FileIOService->AsyncRead(
-        readReq->Handle,
-        readReq->Offset,
-        {const_cast<char*>(readReq->Buffer.data()), readReq->Length},
+        readReq->GetHandle(),
+        readReq->GetOffset(),
+        readReq->GetBufferRef(),
         readReq.get());
 
     Y_UNUSED(readReq.release());   // ownership transferred
@@ -229,8 +346,31 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
 TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     const NProto::TWriteDataRequest& request)
 {
-    Y_UNUSED(request);
-    return {};
+    STORAGE_INFO("WriteDataAsync " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto file = session->LookupHandle(request.GetHandle());
+    if (!file.IsOpen()) {
+        return MakeFuture<NProto::TWriteDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
+    }
+
+    auto response = NewPromise<NProto::TWriteDataResponse>();
+    auto writeReq = std::make_unique<TWriteDataAsyncRequest>(
+        file,
+        request.GetOffset(),
+        request.GetBuffer(),
+        response);
+
+    FileIOService->AsyncWrite(
+        writeReq->GetHandle(),
+        writeReq->GetOffset(),
+        writeReq->GetBufferRef(),
+        writeReq.get());
+
+    Y_UNUSED(writeReq.release());   // ownership transferred
+
+    return response;
 }
 
 }   // namespace NCloud::NFileStore
