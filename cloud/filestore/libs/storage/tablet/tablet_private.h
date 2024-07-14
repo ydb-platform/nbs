@@ -507,13 +507,22 @@ struct TEvIndexTabletPrivate
 
     struct TNodeCreatedInFollower
     {
-        TRequestInfoPtr RequestInfo;
+        const TRequestInfoPtr RequestInfo;
+        TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
         NProto::TCreateNodeResponse CreateNodeResponse;
 
         TNodeCreatedInFollower(
                 TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
                 NProto::TCreateNodeResponse createNodeResponse)
             : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
             , CreateNodeResponse(std::move(createNodeResponse))
         {
         }

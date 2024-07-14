@@ -219,11 +219,13 @@ public:
 
     auto CreateCreateNodeRequest(
         const THeaders& headers,
-        const TCreateNodeArgs& args)
+        const TCreateNodeArgs& args,
+        const ui64 requestId = 0)
     {
         auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         headers.Fill(request->Record);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         args.Fill(request->Record);
         return request;
     }
