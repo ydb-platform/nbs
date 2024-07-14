@@ -3883,6 +3883,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             SUCCEEDED(linkNodeResponse->GetStatus()),
             linkNodeResponse->GetErrorReason().c_str());
 
+        // attributes of the linked node should be updated
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            linkNodeResponse->Record.GetNode().GetLinks());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            linkNodeResponse->Record.GetNode().GetCTime());
+
         // validate that the links field is incremented
         auto links = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
                          ->Record.GetNode().GetLinks();

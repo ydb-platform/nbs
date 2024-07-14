@@ -36,6 +36,7 @@ private:
 
     // Response data
     bool FollowerResponded = false;
+    NProto::TCreateNodeResponse FollowerResponse;
 
     // Stats for reporting
     IProfileLogPtr ProfileLog;
@@ -156,6 +157,7 @@ void TLinkActor::HandleFollowerResponse(
     CreateNodeRequest.MutableLink()->SetTargetNode(
         msg->Record.GetNode().GetId());
     CreateNodeRequest.MutableLink()->SetFollowerNodeName(FollowerNodeName);
+    FollowerResponse = std::move(msg->Record);
 
     request->Record = std::move(CreateNodeRequest);
 
@@ -199,6 +201,10 @@ void TLinkActor::HandleLeaderResponse(
         "[%s] NodeRef created in leader for %lu",
         LogTag.c_str(),
         msg->Record.GetNode().GetId());
+
+    // TODO(#1350): some attributes from the follower response could be invalid
+    // by the time the leader response is received
+    msg->Record.MutableNode()->Swap(FollowerResponse.MutableNode());
 
     ReplyAndDie(ctx, std::move(msg->Record));
 }
