@@ -451,7 +451,6 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             followerRequest->ClearFollowerFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
-
         }
     } else {
         // hard link
@@ -598,6 +597,8 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
     response->Record = msg->CreateNodeResponse;
 
     if (msg->RequestInfo) {
+        RemoveTransaction(*msg->RequestInfo);
+
         CompleteResponse<TEvService::TCreateNodeMethod>(
             response->Record,
             msg->RequestInfo->CallContext,
