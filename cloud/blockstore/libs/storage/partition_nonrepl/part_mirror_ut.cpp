@@ -134,6 +134,7 @@ struct TTestEnv
         storageConfig.SetDataScrubbingEnabled(true);
         // set bandwidth to reach maximum bandwidth for scrubbing - 50 MiB/s
         storageConfig.SetScrubbingBandwidth(20000000);
+        storageConfig.SetResyncRangeAfterScrubbing(true);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -1249,7 +1250,21 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.AdvanceCurrentTime(UpdateCountersInterval);
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
-        UNIT_ASSERT_VALUES_EQUAL(5, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
+
+        // check that all ranges was resynced and there is no more mismatches
+        iterations = 0;
+        while (fullCyclesCount < 4 && iterations++ < 100) {
+            if (prevScrubbingProgress != 0 &&
+                counters.Simple.ScrubbingProgress.Value == 0)
+            {
+                ++fullCyclesCount;
+            }
+            prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
+            runtime.AdvanceCurrentTime(UpdateCountersInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)
@@ -1515,6 +1530,113 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfRangeResyncingAfterChecksumMismatch)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TAutoPtr<IEventHandle> delayedRangeResynced;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeResynced)
+            {
+                delayedRangeResynced = event.Release();
+                return true;
+            }
+            return false;
+        });
+
+        ui32 rangeCount = 0;
+        runtime.SetScheduledEventFilter(
+            [&] (auto& runtime, auto& event, auto&& delay, auto&& deadline)
+        {
+            Y_UNUSED(runtime);
+            Y_UNUSED(delay);
+            Y_UNUSED(deadline);
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+            {
+                ++rangeCount;
+            }
+
+            return false;
+        });
+
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+
+        TTestEnv env(runtime);
+
+        const auto range1 = TBlockRange64::WithLength(3100, 100);
+        const auto range2 = TBlockRange64::WithLength(3150, 2);
+        env.WriteMirror(range1, 'A');
+        env.WriteReplica(2, range1, 'B');
+
+        // wait for scrubbing 3rd range
+        ui32 iterations = 0;
+        while (rangeCount < 3 && iterations++ < 100) {
+            runtime.DispatchEvents({}, env.ScrubbingInterval);
+        }
+
+        // wait for resync 3rd range
+        iterations = 0;
+        while (!delayedRangeResynced && iterations++ < 100) {
+            runtime.AdvanceCurrentTime(env.Config->GetScrubbingChecksumMismatchTimeout());
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        // check that read/write to 3rd range will be rejected
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            TString data(DefaultBlockSize, 'B');
+            client.SendWriteBlocksLocalRequest(range2, data);
+            auto response = client.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            TVector<TString> blocks;
+            client.SendReadBlocksLocalRequest(
+                range2,
+                TGuardedSgList(ResizeBlocks(
+                    blocks,
+                    range2.Size(),
+                    TString(DefaultBlockSize, '\0')
+                )));
+            auto response = client.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // check that after resync requests to range complete successfully
+        runtime.Send(delayedRangeResynced.Release());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        {
+            client.WriteBlocks(range2, 'C');
+            auto response = client.ReadBlocks(range2);
+            const auto& blocks = response->Record.GetBlocks();
+            for (ui32 i = 0; i < blocks.BuffersSize(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'C'),
+                    blocks.GetBuffers(i));
+            }
+        }
     }
 }
 
