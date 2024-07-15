@@ -142,4 +142,9 @@ private:
     bool GetRdmaClientEnabled() const;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetCertFileFromConfig(const TServerAppConfig& serverConfig);
+TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig);
+
 }   // namespace NCloud::NBlockStore::NServer

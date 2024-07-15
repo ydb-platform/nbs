@@ -88,24 +88,6 @@ NRdma::TClientConfigPtr CreateRdmaClientConfig(
     return std::make_shared<NRdma::TClientConfig>(config->GetClient());
 }
 
-TString GetCertFileFromConfig(const TServerAppConfig& serverConfig)
-{
-    const auto& certs = serverConfig.GetCerts();
-    if (certs.empty()) {
-        return serverConfig.GetCertFile();
-    }
-    return certs.front().CertFile;
-}
-
-TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig)
-{
-    const auto& certs = serverConfig.GetCerts();
-    if (certs.empty()) {
-        return serverConfig.GetCertPrivateKeyFile();
-    }
-    return certs.front().CertPrivateKeyFile;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
