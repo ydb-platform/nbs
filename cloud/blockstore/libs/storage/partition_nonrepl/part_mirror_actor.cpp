@@ -204,6 +204,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
                 DescribeRange(GetScrubbingRange()).c_str(),
                 checksums[i]);
         }
+        ++ChecksumMismatches;
         ReportMirroredDiskChecksumMismatch();
 
         if (Config->GetResyncRangeAfterScrubbing()) {
