@@ -22,6 +22,8 @@ private:
     ui32 NodeIdx;
     NActors::TActorId Sender;
 
+    static constexpr i32 DefaultPid = 123;
+
 public:
     TServiceClient(NKikimr::TTestActorRuntime& runtime, ui32 nodeIdx)
         : Runtime(runtime)
@@ -477,6 +479,79 @@ public:
         auto request = std::make_unique<TEvService::TEvStatFileStoreRequest>();
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvAcquireLockRequest> CreateAcquireLockRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 handle,
+        ui64 owner,
+        ui64 offset,
+        ui64 len,
+        i32 pid = DefaultPid,
+        NProto::ELockType type = NProto::E_EXCLUSIVE,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
+    {
+        auto request = std::make_unique<TEvService::TEvAcquireLockRequest>();
+        headers.Fill(request->Record);
+        auto& record = request->Record;
+        record.SetFileSystemId(fileSystemId);
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockType(type);
+        record.SetLockOrigin(origin);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvReleaseLockRequest> CreateReleaseLockRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 handle,
+        ui64 owner,
+        ui64 offset,
+        ui64 len,
+        i32 pid = DefaultPid,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
+    {
+        auto request = std::make_unique<TEvService::TEvReleaseLockRequest>();
+        headers.Fill(request->Record);
+        auto& record = request->Record;
+        record.SetFileSystemId(fileSystemId);
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockOrigin(origin);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvTestLockRequest> CreateTestLockRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 handle,
+        ui64 owner,
+        ui64 offset,
+        ui64 len,
+        i32 pid = DefaultPid,
+        NProto::ELockType type = NProto::E_EXCLUSIVE,
+        NProto::ELockOrigin origin = NProto::E_FCNTL)
+    {
+        auto request = std::make_unique<TEvService::TEvTestLockRequest>();
+        headers.Fill(request->Record);
+        auto& record = request->Record;
+        record.SetFileSystemId(fileSystemId);
+        record.SetHandle(handle);
+        record.SetOwner(owner);
+        record.SetOffset(offset);
+        record.SetLength(len);
+        record.SetPid(pid);
+        record.SetLockType(type);
+        record.SetLockOrigin(origin);
         return request;
     }
 

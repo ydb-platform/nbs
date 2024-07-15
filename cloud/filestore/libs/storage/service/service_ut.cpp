@@ -3839,6 +3839,93 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             getNodeAttrResponse->GetErrorReason().c_str());
     }
 
+    Y_UNIT_TEST(ShouldPerformLocksForExternalNodes)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fsId, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        service.AcquireLock(headers, fsId, handle, 1, 0, 4_KB);
+
+        auto response =
+            service.AssertAcquireLockFailed(headers, fsId, handle, 2, 0, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+
+        service.ReleaseLock(headers, fsId, handle, 2, 0, 4_KB);
+        service.AcquireLock(headers, fsId, handle, 1, 0, 0);
+
+        response =
+            service.AssertAcquireLockFailed(headers, fsId, handle, 2, 0, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+
+        service.ReleaseLock(headers, fsId, handle, 1, 0, 0);
+
+        // ShouldTrackSharedLocks
+
+        service.AcquireLock(
+            headers,
+            fsId,
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        service.AcquireLock(
+            headers,
+            fsId,
+            handle,
+            2,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+
+        response =
+            service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
+
+        response = service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+
+        service.AcquireLock(headers, fsId, handle, 3, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+
+        service.DestroyHandle(headers, fsId, nodeId, handle);
+
+        handle = service
+            .CreateHandle(headers, fsId, nodeId, "", TCreateHandleArgs::WRNLY)
+            ->Record.GetHandle();
+
+        service.AssertTestLockFailed(headers, fsId, handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+    }
+
     Y_UNIT_TEST(ShouldLinkExternalNodes)
     {
         NProto::TStorageConfig config;
