@@ -79,7 +79,7 @@ class BaseTestBinaryExecutor:
                 '--suffix',
                 (
                     f'{self._entity_suffix}-'
-                    f'{self.make_disk_parameters_string(disk_type, int(disk_size), int(disk_blocksize))}'.lower()
+                    f'{make_disk_parameters_string(disk_type, int(disk_size), int(disk_blocksize))}'.lower()
                 ),
             ]
         )
