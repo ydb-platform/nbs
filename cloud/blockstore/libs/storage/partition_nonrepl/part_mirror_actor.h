@@ -76,6 +76,7 @@ private:
     bool WriteIntersectsWithScrubbing = false;
     ui64 ScrubbingThroughput = 0;
     TInstant ScrubbingRangeStarted;
+    bool ResyncRangeStarted = false;
 
 public:
     TMirrorPartitionActor(
@@ -106,6 +107,7 @@ private:
     void StartScrubbingRange(
         const NActors::TActorContext& ctx,
         ui64 scrubbingRangeId);
+    void StartResyncRange(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -137,6 +139,10 @@ private:
 
     void HandleChecksumUndelivery(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRangeResynced(
+        const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
