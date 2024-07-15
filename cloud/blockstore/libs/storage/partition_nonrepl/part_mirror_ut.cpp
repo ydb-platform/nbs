@@ -1583,11 +1583,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range1, 'A');
         env.WriteReplica(2, range1, 'B');
 
-        while (rangeCount < 3) {
+        ui32 iterations = 0;
+        while (rangeCount < 3 && iterations++ < 100) {
             runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
-        while (!delayedRangeResynced) {
+        iterations = 0;
+        while (!delayedRangeResynced && iterations++ < 100) {
             runtime.AdvanceCurrentTime(env.Config->GetScrubbingChecksumMismatchTimeout());
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
@@ -1619,7 +1621,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 response->GetErrorReason());
         }
 
-        // check that after resync requests to range complets successfully
+        // check that after resync requests to range complete successfully
         runtime.Send(delayedRangeResynced.Release());
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         {
