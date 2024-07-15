@@ -396,7 +396,7 @@ private:
 
     std::atomic<EEndpointState> State = EEndpointState::Disconnected;
     std::atomic<ui32> Status = S_OK;
-    std::atomic<bool> StopFlag = false;
+    std::atomic_flag StopFlag = ATOMIC_FLAG_INIT;
 
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
@@ -1066,21 +1066,19 @@ void TClientEndpoint::RecvResponseCompleted(
 
 TFuture<void> TClientEndpoint::Stop() noexcept
 {
-    if (StopFlag.exchange(true)) {
+    if (StopFlag.test_and_set()) {
         return StopResult.GetFuture();
     }
 
     RDMA_DEBUG("stop endpoint");
 
-    StopFlag = true;
     SetError();
-
     return StopResult.GetFuture();
 }
 
 bool TClientEndpoint::ShouldStop() const
 {
-    return StopFlag;
+    return StopFlag.test();
 }
 
 void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
@@ -1104,7 +1102,7 @@ void TClientEndpoint::FlushQueues() noexcept
     STORAGE_INFO("flush queues");
 
     try {
-        struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
+        ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
         Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
         FlushStartCycles = GetCycleCount();
 
