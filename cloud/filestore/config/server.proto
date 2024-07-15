@@ -55,6 +55,9 @@ message TServerConfig
 
     // auth token for node registration via ydb discovery api.
     optional string NodeRegistrationToken = 19;
+
+    // Node type.
+    optional string NodeType = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

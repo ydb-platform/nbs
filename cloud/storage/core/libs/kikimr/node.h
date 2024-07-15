@@ -20,7 +20,6 @@ struct TRegisterDynamicNodeOptions
 {
     TString Domain;
     TString SchemeShardDir;
-    TString NodeType;
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;

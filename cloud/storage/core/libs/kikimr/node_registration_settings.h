@@ -18,6 +18,8 @@ struct TNodeRegistrationSettings
     TString PathToGrpcPrivateKeyFile;
 
     TString NodeRegistrationToken;
+
+    TString NodeType;
 };
 
 }   // namespace NCloud::NStorage

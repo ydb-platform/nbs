@@ -337,11 +337,6 @@ void TBootstrapVhost::Drain()
     }
 }
 
-NServer::TServerConfigPtr TBootstrapVhost::GetServerConfig()
-{
-    return Configs->ServerConfig;
-}
-
 void TBootstrapVhost::RestoreKeyringEndpoints()
 {
     auto idsOrError = EndpointStorage->GetEndpointIds();

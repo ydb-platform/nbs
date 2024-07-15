@@ -96,7 +96,6 @@ protected:
     virtual void StartComponents() = 0;
     virtual void Drain() = 0;
     virtual void StopComponents() = 0;
-    virtual NServer::TServerConfigPtr GetServerConfig() = 0;
 
     void RegisterServer(NServer::IServerPtr server);
 
@@ -108,8 +107,6 @@ private:
     void InitCommonConfigs();
     void InitActorSystem();
     void InitDiagnostics();
-    NCloud::NStorage::TNodeRegistrationSettings
-        GetNodeRegistrationParams(NServer::TServerConfigPtr config);
 };
 
 } // namespace NCloud::NFileStore::NDaemon

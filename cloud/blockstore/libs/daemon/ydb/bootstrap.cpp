@@ -245,12 +245,12 @@ void TBootstrapYdb::InitKikimrService()
         .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
             *Configs->ServerConfig),
         .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
+        .NodeType = Configs->ServerConfig->GetNodeType(),
     };
 
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
-        .NodeType = Configs->ServerConfig->GetNodeType(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,

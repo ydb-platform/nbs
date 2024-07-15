@@ -119,7 +119,7 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
         nodeId,
         hostName,
         options.SchemeShardDir,
-        options.NodeType,
+        options.Settings.NodeType,
         options.Domain);
 
     if (!configResult.IsSuccess()) {

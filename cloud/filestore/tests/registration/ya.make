@@ -5,8 +5,8 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 TEST_SRCS(test.py)
 
 PEERDIR(
-    cloud/blockstore/config
-    cloud/blockstore/tests/python/lib
+    cloud/filestore/config
+    cloud/filestore/tests/python/lib
 
     library/python/testing/yatest_common
 
@@ -16,14 +16,14 @@ PEERDIR(
 )
 
 DEPENDS(
-    cloud/blockstore/apps/client
-    cloud/blockstore/apps/server
+    cloud/filestore/apps/client
+    cloud/filestore/apps/server
     contrib/ydb/apps/ydbd
 )
 
 DATA(
-    arcadia/cloud/blockstore/tests/certs/server.crt
-    arcadia/cloud/blockstore/tests/certs/server.key
+    arcadia/cloud/filestore/tests/certs/server.crt
+    arcadia/cloud/filrstore/tests/certs/server.key
 )
 
 END()

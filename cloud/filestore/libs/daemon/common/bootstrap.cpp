@@ -90,26 +90,6 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
         std::move(cgroupStatsFetcherMonitoringSettings));
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetCertFileFromConfig(const TServerConfigPtr& serverConfig)
-{
-    const auto& certs = serverConfig->GetCerts();
-    if (certs.empty()) {
-        return {};
-    }
-    return certs.front().CertFile;
-}
-
-TString GetCertPrivateKeyFileFromConfig(const TServerConfigPtr& serverConfig)
-{
-    const auto& certs = serverConfig->GetCerts();
-    if (certs.empty()) {
-        return {};
-    }
-    return certs.front().CertPrivateKeyFile;
-}
-
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -302,7 +282,8 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.Settings = GetNodeRegistrationParams(GetServerConfig());
+    registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+    registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
@@ -428,6 +409,7 @@ void TBootstrapCommon::InitLWTrace(
     STORAGE_INFO("LWTrace initialized");
 }
 
+/*
 TNodeRegistrationSettings
     TBootstrapCommon::GetNodeRegistrationParams(TServerConfigPtr config)
 {
@@ -441,5 +423,6 @@ TNodeRegistrationSettings
     settings.NodeRegistrationToken = config->GetNodeRegistrationToken();
     return settings;
 }
+*/
 
 } // namespace NCloud::NFileStore::NDaemon

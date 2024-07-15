@@ -2,6 +2,7 @@
 #include "options.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
@@ -54,6 +55,58 @@ void TConfigInitializerCommon::InitFeaturesConfig()
 
     FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
         std::move(featuresConfig));
+}
+
+void TConfigInitializerCommon::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    using TSelf = TConfigInitializerCommon;
+    using TApplyFn = void (TSelf::*)(const TString&);
+
+    const THashMap<TString, TApplyFn> map {
+        { "DiagnosticsConfig",    &TSelf::ApplyDiagnosticsConfig       },
+        { "FeaturesConfig",       &TSelf::ApplyFeaturesConfig          },
+        { "StorageConfig",        &TSelf::ApplyStorageConfig           },
+    };
+
+    for (auto& item : config.GetNamedConfigs()) {
+        TStringBuf name = item.GetName();
+        if (!name.SkipPrefix("Cloud.NFS.")) {
+            continue;
+        }
+
+        auto it = map.find(name);
+        if (it != map.end()) {
+            std::invoke(it->second, this, item.GetConfig());
+        }
+    }
+}
+
+void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
+{
+    NProto::TDiagnosticsConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(
+        std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
+{
+    NProto::TStorageConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+        std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
+{
+    NCloud::NProto::TFeaturesConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
+        std::move(config));
 }
 
 }   // namespace NCloud::NFileStore::NDaemon
