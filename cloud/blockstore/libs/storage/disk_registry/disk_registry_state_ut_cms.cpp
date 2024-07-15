@@ -445,6 +445,436 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             UNIT_ASSERT_VALUES_EQUAL(0, agents[1].UnknownDevicesSize());
         });
     }
+
+    Y_UNIT_TEST(ShouldCleanupDRConfig)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{
+            AgentConfig(1, "agent-1", {}),
+            AgentConfig(
+                2,
+                "agent-2",
+                {
+                    Device("NVMENBS01", "uuid-2.1", "rack-2"),
+                    Device("NVMENBS02", "uuid-2.2", "rack-2"),
+                    Device("NVMENBS03", "uuid-2.3", "rack-2"),
+                    Device("NVMENBS04", "uuid-2.4", "rack-2"),
+                }),
+            AgentConfig(
+                3,
+                "agent-3",
+                {
+                    Device(
+                        "NVMENBS01",
+                        "uuid-3.1",
+                        "rack-3",
+                        DefaultBlockSize,
+                        DefaultDeviceSize,
+                        {},
+                        NProto::DEVICE_STATE_ERROR),
+                })};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithStorageConfig(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetCleanupDRConfigOnCMSActions(true);
+                        return config;
+                    }())
+                .WithConfig(agents)
+                .Build();
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                for (const auto& agentConfig: agents) {
+                    UNIT_ASSERT_SUCCESS(
+                        RegisterAgent(state, db, agentConfig, Now()));
+                    for (const auto& device: agentConfig.GetDevices()) {
+                        state.MarkDeviceAsClean(
+                            Now(),
+                            db,
+                            device.GetDeviceUUID());
+                    }
+                }
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDevices().size());
+
+        // Allocate a disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result;
+                auto error = state.AllocateDisk(
+                    TInstant::Zero(),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "nrd0",
+                        .BlockSize = 4_KB,
+                        .BlocksCount =
+                            2 * DefaultDeviceSize / DefaultLogicalBlockSize,
+                    },
+                    &result);
+                UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                for (const auto& device: result.Devices) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        agents[1].GetAgentId(),
+                        device.GetAgentId());
+                }
+            });
+
+        // Remove the agent.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                    db,
+                    agents[0].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(3, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    db,
+                    agents[0].GetAgentId(),
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    Now(),
+                    "lost",
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+            });
+
+        // Remove the second agent.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+
+                // Failed because we still have dependent disks.
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[1].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+                UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "nrd0"));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "nrd0"));
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+
+                UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                    db,
+                    agents[1].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+
+                // Devices are now gone.
+                const auto* secondAgent =
+                    state.FindAgent(agents[1].GetAgentId());
+                UNIT_ASSERT(secondAgent);
+                UNIT_ASSERT(secondAgent->GetDevices().empty());
+
+                // Make sure that known devices were transfered to unknown.
+                UNIT_ASSERT(!secondAgent->GetUnknownDevices().empty());
+                TVector<TString> unknownDevices(
+                    secondAgent->GetUnknownDevices().size());
+                Transform(
+                    secondAgent->GetUnknownDevices().begin(),
+                    secondAgent->GetUnknownDevices().end(),
+                    unknownDevices.begin(),
+                    [](const auto& device) { return device.GetDeviceUUID(); });
+                TVector<TString> previouslyKnownDevices(
+                    agents[1].GetDevices().size());
+                Transform(
+                    agents[1].GetDevices().begin(),
+                    agents[1].GetDevices().end(),
+                    previouslyKnownDevices.begin(),
+                    [](const auto& device) { return device.GetDeviceUUID(); });
+                Sort(unknownDevices);
+                Sort(previouslyKnownDevices);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    previouslyKnownDevices,
+                    unknownDevices);
+
+                UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    db,
+                    agents[1].GetAgentId(),
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    Now(),
+                    "lost",
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+            });
+
+        // Remove the third agent.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                    db,
+                    agents[2].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    db,
+                    agents[2].GetAgentId(),
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    Now(),
+                    "lost",
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetAgents().size());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldKeepAgentsWithBrokenDisksInConfig)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{
+            AgentConfig(
+                1,
+                "agent-1",
+                {
+                    Device("NVMENBS01", "uuid-1.1", "rack-1"),
+                    Device("NVMENBS02", "uuid-1.2", "rack-1"),
+                    Device("NVMENBS03", "uuid-1.3", "rack-1"),
+                    Device("NVMENBS04", "uuid-1.4", "rack-1"),
+                }),
+            AgentConfig(
+                2,
+                "agent-2",
+                {
+                    Device("NVMENBS01", "uuid-2.1", "rack-2"),
+                    Device("NVMENBS02", "uuid-2.2", "rack-2"),
+                    Device("NVMENBS03", "uuid-2.3", "rack-2"),
+                    Device("NVMENBS04", "uuid-2.4", "rack-2"),
+                })};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithStorageConfig(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetCleanupDRConfigOnCMSActions(true);
+                        return config;
+                    }())
+                .WithConfig(agents)
+                .Build();
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                for (const auto& agentConfig: agents) {
+                    UNIT_ASSERT_SUCCESS(
+                        RegisterAgent(state, db, agentConfig, Now()));
+                    for (const auto& device: agentConfig.GetDevices()) {
+                        state.MarkDeviceAsClean(
+                            Now(),
+                            db,
+                            device.GetDeviceUUID());
+                    }
+                }
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        // Allocate a disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result;
+                auto error = state.AllocateDisk(
+                    TInstant::Zero(),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "nrd0",
+                        .BlockSize = 4_KB,
+                        .BlocksCount =
+                            4 * DefaultDeviceSize / DefaultLogicalBlockSize,
+                        .AgentIds = {agents[0].GetAgentId()}},
+                    &result);
+                UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
+                UNIT_ASSERT_VALUES_EQUAL(4, result.Devices.size());
+                for (const auto& device: result.Devices) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        agents[0].GetAgentId(),
+                        device.GetAgentId());
+                }
+            });
+
+        // Break the disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TString affectedDisk;
+                auto error = state.UpdateDeviceState(
+                    db,
+                    agents[0].GetDevices()[0].GetDeviceUUID(),
+                    NProto::DEVICE_STATE_ERROR,
+                    Now(),
+                    "IO errors",
+                    affectedDisk);
+                UNIT_ASSERT_VALUES_EQUAL("nrd0", affectedDisk);
+            });
+
+        // Try ro remove the agent. It won't be deleted since it has a broken
+        // dependent disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+
+                // Failed because we still have dependent disks.
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[0].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+                UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            });
+
+        // Migrate the disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto migrations = state.BuildMigrationList();
+                UNIT_ASSERT_VALUES_EQUAL(3, migrations.size());
+                for (const auto& migration: migrations) {
+                    UNIT_ASSERT_VALUES_UNEQUAL(
+                        agents[0].GetDevices()[0].GetDeviceUUID(),
+                        migration.SourceDeviceId);
+                    UNIT_ASSERT_VALUES_EQUAL("nrd0", migration.DiskId);
+                    auto [device, error] = state.StartDeviceMigration(
+                        Now(),
+                        db,
+                        migration.DiskId,
+                        migration.SourceDeviceId);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                    bool diskStateUpdated = false;
+                    error = state.FinishDeviceMigration(
+                        db,
+                        migration.DiskId,
+                        migration.SourceDeviceId,
+                        device.GetDeviceUUID(),
+                        Now(),
+                        &diskStateUpdated);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                }
+
+                auto notification = state.GetDisksToReallocate().find("nrd0");
+                UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
+                state.DeleteDiskToReallocate(db, "nrd0", notification->second);
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+
+                UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                    db,
+                    agents[0].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    db,
+                    agents[0].GetAgentId(),
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    Now(),
+                    "lost",
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+
+                const auto* agentConfig =
+                    state.FindAgent(agents[0].GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    agents[0].GetDevices().size(),
+                    agentConfig->GetDevices().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    agentConfig->GetUnknownDevices().size());
+            });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

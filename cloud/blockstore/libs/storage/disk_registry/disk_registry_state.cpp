@@ -4635,6 +4635,17 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
         return error;
     }
 
+    // Unavailable hosts are a problem when infra tries to request ADD_HOST on
+    // an idle agent. DR waits for it to become online and blocks host
+    // deployment.
+    if (StorageConfig->GetCleanupDRConfigOnCMSActions() &&
+        newState == NProto::AGENT_STATE_UNAVAILABLE &&
+        agent->GetDevices().empty())
+    {
+        RemoveAgent(db, *agent);
+        return {};
+    }
+
     const auto cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
     const auto oldState = agent->GetState();
     const auto cmsDeadline = cmsTs + GetInfraTimeout(*StorageConfig, oldState);
@@ -4987,6 +4998,20 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
+        if (StorageConfig->GetCleanupDRConfigOnCMSActions()) {
+            auto error = TryToRemoveAgentDevices(db, agent->GetAgentId());
+            if (!HasError(error)) {
+                return result;
+            }
+
+            // Do not return the error from "TryToRemoveAgentDevices()" since
+            // it's internal and shouldn't block node removal.
+            STORAGE_WARN(
+                "Could not remove device from agent %s: %s",
+                agent->GetAgentId().Quote().c_str(),
+                FormatError(error).c_str());
+        }
+
         SuspendLocalDevices(db, *agent);
     }
 
@@ -5167,6 +5192,38 @@ bool TDiskRegistryState::TryUpdateDiskState(
         timestamp);
 
     return true;
+}
+
+NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
+    TDiskRegistryDatabase& db,
+    const TAgentId& agentId)
+{
+    if (!StorageConfig->GetCleanupDRConfigOnCMSActions()) {
+        return MakeError(
+            E_INVALID_STATE,
+            "CleanupDRConfigOnCMSActions is disabled.");
+    }
+
+    auto newConfig = GetConfig();
+    auto* agents = newConfig.MutableKnownAgents();
+    const auto agentIt = FindIf(
+        *agents,
+        [&](const auto& x) { return x.GetAgentId() == agentId; });
+    if (agentIt == agents->end()) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Couldn't find agent " << agentId.Quote()
+                             << " in the DR config.");
+    }
+
+    agents->erase(agentIt);
+    TVector<TString> affectedDisks;
+    auto error = UpdateConfig(
+        db,
+        std::move(newConfig),
+        false,   // ignoreVersion
+        affectedDisks);
+    return error;
 }
 
 void TDiskRegistryState::DeleteDiskStateUpdate(

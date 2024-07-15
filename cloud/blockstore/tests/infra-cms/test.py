@@ -36,6 +36,16 @@ class CMS:
     def __init__(self, nbs_client):
         self.__nbs_client = nbs_client
 
+    def add_agent(self, host):
+        logging.info('[CMS] Try to add agent "{}"'.format(host))
+
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.ADD_HOST
+        action.Host = host
+        r = self.__nbs_client.cms_action(request)
+        return r
+
     def remove_agent(self, host):
         logging.info('[CMS] Try to remove agent "{}"'.format(host))
 
@@ -63,7 +73,7 @@ class TestCmsRemoveAgentNoUserDisks:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices):
+    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
         response = cms.remove_agent("localhost")
 
         assert response.ActionResults[0].Timeout == 0
@@ -77,15 +87,30 @@ class TestCmsRemoveAgentNoUserDisks:
         assert response.ActionResults[0].Timeout == 0
 
         disk_agent.stop()
-        nbs.wait_for_stats(AgentsInUnavailableState=1)
-
-        time.sleep(storage.NonReplicatedAgentMaxTimeout / 1000)
+        if cleanup_dr_state:
+            # The agent will be deleted after timeout.
+            nbs.wait_for_stats(AgentsInWarningState=0)
+            assert nbs.get_stats("AgentsInUnavailableState") == 0
+            assert nbs.get_stats("AgentsInOnlineState") == 0
+        else:
+            nbs.wait_for_stats(AgentsInUnavailableState=1)
 
         disk_agent.start()
         wait_for_nbs_server(disk_agent.nbs_port)
-        nbs.wait_for_stats(AgentsInWarningState=1)
+        if cleanup_dr_state:
+            # The agent is online but all devices are unknown.
+            nbs.wait_for_stats(AgentsInOnlineState=1)
+            assert nbs.get_stats("UnknownDevices") == 4
 
-        nbs.change_agent_state("localhost", 0)
+            # Add agent and its devices.
+            response = cms.add_agent("localhost")
+            assert response.ActionResults[0].Timeout == 0
+            nbs.wait_for_stats(UnknownDevices=0)
+        else:
+            nbs.wait_for_stats(AgentsInWarningState=1)
+            assert nbs.get_stats("UnknownDevices") == 0
+            nbs.change_agent_state("localhost", 0)
+
         nbs.create_volume("vol0")
         nbs.read_blocks("vol0", start_index=0, block_count=32)
 
@@ -97,7 +122,7 @@ class TestCmsRemoveAgent:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices):
+    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
         nbs.create_volume("vol0")
 
         response = cms.remove_agent("localhost")
@@ -119,13 +144,30 @@ class TestCmsRemoveAgent:
         assert response.ActionResults[0].Timeout == 0
 
         disk_agent.stop()
-        nbs.wait_for_stats(AgentsInUnavailableState=1)
+        if cleanup_dr_state:
+            # The agent will be deleted after timeout.
+            nbs.wait_for_stats(AgentsInWarningState=0)
+            assert nbs.get_stats("AgentsInUnavailableState") == 0
+            assert nbs.get_stats("AgentsInOnlineState") == 0
+        else:
+            nbs.wait_for_stats(AgentsInUnavailableState=1)
 
         disk_agent.start()
         wait_for_nbs_server(disk_agent.nbs_port)
-        nbs.wait_for_stats(AgentsInWarningState=1)
+        if cleanup_dr_state:
+            # The agent is online but all devices are unknown.
+            nbs.wait_for_stats(AgentsInOnlineState=1)
+            assert nbs.get_stats("UnknownDevices") == 4
 
-        nbs.change_agent_state("localhost", 0)
+            # Add agent and its devices.
+            response = cms.add_agent("localhost")
+            assert response.ActionResults[0].Result.Code == 0
+            assert response.ActionResults[0].Timeout == 0
+            nbs.wait_for_stats(UnknownDevices=0)
+        else:
+            nbs.wait_for_stats(AgentsInWarningState=1)
+            assert nbs.get_stats("UnknownDevices") == 0
+            nbs.change_agent_state("localhost", 0)
 
         nbs.create_volume("vol1")
         nbs.read_blocks("vol1", start_index=0, block_count=32)
@@ -138,7 +180,7 @@ class TestCmsRemoveDevice:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices):
+    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
         nbs.create_volume("vol0")
 
         device = devices[0]
@@ -176,7 +218,7 @@ class TestCmsRemoveDeviceNoUserDisks:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices):
+    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
         device = devices[0]
 
         response = cms.remove_device("localhost", device.path)
@@ -304,8 +346,11 @@ class Nbs(LocalNbs):
                 break
             time.sleep(1)
 
+    def get_stats(self, name):
+        sensors = get_nbs_counters(self.mon_port)['sensors']
+        return get_sensor_by_name(sensors, 'disk_registry', name)
 
-def __run_test(test_case):
+def __run_test(test_case, cleanup_dr_state):
     kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -356,6 +401,7 @@ def __run_test(test_case):
     storage.NonReplicatedAgentMaxTimeout = 3000
     storage.NonReplicatedDiskRecyclingPeriod = 5000
     storage.DisableLocalService = False
+    storage.CleanupDRConfigOnCMSActions = cleanup_dr_state
 
     nbs = Nbs(
         kikimr_port,
@@ -399,7 +445,8 @@ def __run_test(test_case):
     wait_for_secure_erase(nbs.mon_port)
 
     try:
-        ret = test_case.run(storage, nbs, disk_agent, CMS(nbs_client), devices)
+        ret = test_case.run(storage, nbs, disk_agent, CMS(
+            nbs_client), devices, cleanup_dr_state)
     finally:
         nbs.stop()
         disk_agent.stop()
@@ -413,5 +460,6 @@ def __run_test(test_case):
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_cms(test_case):
-    assert __run_test(test_case) is True
+@pytest.mark.parametrize("cleanup_dr_state", [True, False], ids=["docleanupdrstate", "dontcleanupdrstate"])
+def test_cms(test_case, cleanup_dr_state):
+    assert __run_test(test_case, cleanup_dr_state) is True
