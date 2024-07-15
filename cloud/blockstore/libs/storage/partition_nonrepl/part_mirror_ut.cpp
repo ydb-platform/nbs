@@ -1532,7 +1532,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
     }
 
-    Y_UNIT_TEST(ShouldRejectRequestsIfRangeResyncingAnfterChecksumMismatch)
+    Y_UNIT_TEST(ShouldRejectRequestsIfRangeResyncingAfterChecksumMismatch)
     {
         using namespace NMonitoring;
 
@@ -1583,17 +1583,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range1, 'A');
         env.WriteReplica(2, range1, 'B');
 
+        // wait for scrubbing 3rd range
         ui32 iterations = 0;
         while (rangeCount < 3 && iterations++ < 100) {
             runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
+        // wait for resync 3rd range
         iterations = 0;
         while (!delayedRangeResynced && iterations++ < 100) {
             runtime.AdvanceCurrentTime(env.Config->GetScrubbingChecksumMismatchTimeout());
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
+        // check that read/write to 3rd range will be rejected
         TPartitionClient client(runtime, env.ActorId);
         {
             TString data(DefaultBlockSize, 'B');
@@ -1631,8 +1634,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             for (ui32 i = 0; i < blocks.BuffersSize(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TString(DefaultBlockSize, 'C'),
-                    blocks.GetBuffers(i)
-                );
+                    blocks.GetBuffers(i));
             }
         }
     }

@@ -236,7 +236,8 @@ void TMirrorPartitionActor::StartResyncRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange())) {
+        if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange()))
+        {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
@@ -251,8 +252,7 @@ void TMirrorPartitionActor::StartResyncRange(
         GetScrubbingRange(),
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator
-    );
+        BlockDigestGenerator);
 }
 
 void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
