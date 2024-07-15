@@ -305,7 +305,7 @@ void TBootstrap::InitKikimrService()
         .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
             *Configs->ServerConfig),
         .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
-        .NodeType = Configs->ServerConfig->GetNodeType(),
+        .NodeType = Configs->Options->NodeType,
     };
 
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
