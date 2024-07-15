@@ -13,6 +13,8 @@ SERVER_PORT=${SERVER_PORT:-9021}
 VHOST_PORT=${VHOST_PORT:-9022}
 
 FS=${FS:-"nfs"}
+SHARD_COUNT=${SHARD_COUNT:-0}
+BLOCK_SIZE=${BLOCK_SIZE:-4096}
 MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
 
@@ -119,8 +121,37 @@ if [[ "$1" == "create" ]]; then
         --cloud             "cloud"         \
         --folder            "folder"        \
         --blocks-count      1000000         \
-        --block-size        8192            \
+        --block-size        "$BLOCK_SIZE"   \
         nfs
+
+    if [[ "$SHARD_COUNT" -gt 0 ]]; then
+        echo "creating $SHARD_COUNT shards"
+        followers=""
+        for shard in $(seq 1 $SHARD_COUNT); do
+            echo "creating shard $shard"
+
+            $BIN_DIR/filestore-client create        \
+                --server-port       $SERVER_PORT    \
+                --filesystem        "${FS}_${shard}"\
+                --cloud             "cloud"         \
+                --folder            "folder"        \
+                --blocks-count      1000000         \
+                --block-size        "$BLOCK_SIZE"   \
+                nfs
+
+            $BIN_DIR/filestore-client executeaction     \
+                --server-port       $SERVER_PORT        \
+                --action            configureasfollower \
+                --input-json        "{\"FileSystemId\": \"${FS}_${shard}\", \"ShardNo\": $shard}"
+
+            followers="$followers, \"${FS}_${shard}\""
+        done
+        echo "configuring leader"
+        $BIN_DIR/filestore-client executeaction     \
+            --server-port       $SERVER_PORT        \
+            --action            configurefollowers  \
+            --input-json        "{\"FileSystemId\": \"$FS\", \"FollowerFileSystemIds\": [${followers#, }]}"
+    fi
 
     shift
 fi

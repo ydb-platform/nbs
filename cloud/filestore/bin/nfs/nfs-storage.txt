@@ -1,2 +1,2 @@
 SchemeShardDir: "/Root/NFS"
-
+MultiTabletForwardingEnabled: true
