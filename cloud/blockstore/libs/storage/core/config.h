@@ -453,6 +453,7 @@ public:
     ui32 GetMaxLocalVolumes() const;
 
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
+    bool GetCleanupDRConfigOnCMSActions() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
 

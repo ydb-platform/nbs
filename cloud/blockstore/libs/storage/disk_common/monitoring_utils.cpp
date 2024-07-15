@@ -6,21 +6,34 @@ namespace NCloud::NBlockStore::NStorage {
 
 IOutputStream& DumpAgentState(
     IOutputStream& out,
-    NProto::EAgentState state)
+    NProto::EAgentState state,
+    bool connected)
 {
     switch (state) {
         case NProto::AGENT_STATE_ONLINE:
-            return out << "<font color=green>online</font>";
+            out << "<font color=green>online</font>";
+            break;
         case NProto::AGENT_STATE_WARNING:
-            return out << "<font color=brown>warning</font>";
+            out << "<font color=brown>warning</font>";
+            break;
         case NProto::AGENT_STATE_UNAVAILABLE:
-            return out << "<font color=red>unavailable</font>";
+            out << "<font color=red>unavailable</font>";
+            break;
         default:
-            return out
-                << "(Unknown EAgentState value "
-                << static_cast<int>(state)
+            out << "(Unknown EAgentState value " << static_cast<int>(state)
                 << ")";
+            break;
     }
+
+    if (state != NProto::AGENT_STATE_UNAVAILABLE) {
+        if (!connected) {
+            out << " <font color=gray>disconnected</font>";
+        }
+    } else if (connected) {
+        out << " <font color=gray>connected</font>";
+    }
+
+    return out;
 }
 
 IOutputStream& DumpDiskState(

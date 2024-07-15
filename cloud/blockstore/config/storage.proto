@@ -1000,4 +1000,8 @@ message TStorageServiceConfig
 
     // Allow destruction only for those disks whose id matches one of the given prefixes.
     repeated string DestructionAllowedOnlyForDisksWithIdPrefixes = 374;
+
+    // CMS actions such as "REMOVE_HOST" and "REMOVE_DEVICE" will attempt to
+    // remove devices and the host from DR memory (including persistent storage).
+    optional bool CleanupDRConfigOnCMSActions = 375;
 }
