@@ -3,6 +3,7 @@
 #include "encryptor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -644,6 +645,9 @@ NProto::TError TEncryptionClient::Encrypt(
         }
 
         if (IsAllZeroes(dst[i])) {
+            ReportEncryptorGeneratedZeroBlock(TStringBuilder()
+                << "block #" << startIndex + i);
+
             return MakeError(E_FAIL, "Encryptor has generated a zero block!");
         }
     }
