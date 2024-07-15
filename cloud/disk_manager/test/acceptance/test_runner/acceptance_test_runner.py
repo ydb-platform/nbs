@@ -30,7 +30,7 @@ class AcceptanceTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(AcceptanceTestCleaner, self).__init__(ycp, args)
         _instance_name_pattern = re.compile(
-            rf'^acceptance-test-{args.test_type}-'
+            rf'^acc-{args.test_type}-'
             rf'{args.test_suite}-[0-9]+$',
         )
         self._patterns = {
@@ -67,7 +67,7 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
             disk_policy = YcpNewDiskPolicy(
                 self._create_ycp(self._args.cluster),
                 zone_id=self._args.zone_id,
-                name=f'acceptance-test-{self._args.test_type}-'
+                name=f'acc-{self._args.test_type}-'
                      f'{self._args.test_suite}-{self._timestamp}',
                 size=test_case.disk_size,
                 blocksize=test_case.disk_blocksize,
@@ -139,7 +139,7 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
-            f'acceptance-test-{self._args.test_type}-{self._args.test_suite}-'
+            f'acc-{self._args.test_type}-{self._args.test_suite}-'
             f'{self._timestamp}',
             'acceptance',
         )

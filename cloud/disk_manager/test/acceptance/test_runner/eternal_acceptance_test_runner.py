@@ -32,7 +32,7 @@ class EternalTestCleaner(BaseResourceCleaner):
         super(EternalTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
         disk_name_pattern = re.compile(
-            fr'^acceptance-test-{test_type}-'
+            fr'^acc-{test_type}-'
             fr'{self._disk_parameters_string}-[0-9]+$',
         )
         self._entity_ttls = self._entity_ttls | {
@@ -75,7 +75,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
-            f'acceptance-test-{self._args.test_type}-{self._timestamp}',
+            f'acc-{self._args.test_type}-{self._timestamp}',
             'eternal',
         )
 
@@ -105,7 +105,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                            instance.ip)
 
             disk_name_prefix = (
-                f'acceptance-test-{self._args.test_type}-'
+                f'acc-{self._args.test_type}-'
                 f'{self._make_disk_parameters_string()}').lower()
             disk = self._find_or_create_eternal_disk(disk_name_prefix)
 

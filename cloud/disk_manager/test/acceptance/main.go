@@ -49,7 +49,7 @@ func createSnapshotFromDisk(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-snapshot", suffix)
+	name := createUniqueName("acc-snapshot", suffix)
 
 	logging.Info(
 		ctx,
@@ -118,7 +118,7 @@ func createImageFromSnapshot(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-image", suffix)
+	name := createUniqueName("acc-image", suffix)
 
 	logging.Info(
 		ctx,
@@ -152,7 +152,7 @@ func createImageFromImage(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-image", suffix)
+	name := createUniqueName("acc-image", suffix)
 
 	logging.Info(
 		ctx,
@@ -184,7 +184,7 @@ func createImageFromDisk(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-image", suffix)
+	name := createUniqueName("acc-image", suffix)
 
 	logging.Info(ctx, "Creating image with name %v from disk %v", name, diskID)
 
@@ -211,7 +211,7 @@ func createImageFromURL(
 	url string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-image", suffix)
+	name := createUniqueName("acc-image", suffix)
 
 	logging.Info(ctx, "Creating image with name %v from url %v", name, url)
 
@@ -240,7 +240,7 @@ func createDiskFromSnapshot(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-disk", suffix)
+	name := createUniqueName("acc-disk", suffix)
 
 	logging.Info(
 		ctx,
@@ -279,7 +279,7 @@ func createDiskFromImage(
 	suffix string,
 ) (string, error) {
 
-	name := createUniqueName("acceptance-test-disk", suffix)
+	name := createUniqueName("acc-disk", suffix)
 
 	logging.Info(
 		ctx,
@@ -801,7 +801,7 @@ func main() {
 		&suffix,
 		"suffix",
 		"",
-		"add unique suffix to entity name (ex. acceptance-test-disk-<suffix>-<timestamp>)")
+		"add unique suffix to entity name (ex. acc-disk-<suffix>-<timestamp>)")
 	rootCmd.Flags().StringVar(
 		&outputDiskIDs,
 		"output-disk-ids",

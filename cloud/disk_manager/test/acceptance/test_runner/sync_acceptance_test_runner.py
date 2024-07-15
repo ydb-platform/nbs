@@ -23,7 +23,7 @@ class SyncTestCleaner(BaseResourceCleaner):
         super(SyncTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
         disk_name_string = (
-            fr'^acceptance-test-{test_type}-'
+            fr'^acc-{test_type}-'
             fr'{self._disk_parameters_string}-[0-9]+'
         )
         disk_name_pattern = re.compile(fr'{disk_name_string}$')
@@ -37,7 +37,7 @@ class SyncTestCleaner(BaseResourceCleaner):
         self._patterns = {
             **self._patterns,
             'disk': [disk_name_pattern, secondary_disk_name_pattern],
-            'snapshot': [re.compile(r'^sync-acceptance-test-snapshot-.*$')]
+            'snapshot': [re.compile(r'^sync-acc-snapshot-.*$')]
         }
 
 
@@ -67,7 +67,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
-            f'acceptance-test-{self._args.test_type}-{self._timestamp}',
+            f'acc-{self._args.test_type}-{self._timestamp}',
             'sync',
         )
         with self.instance_policy_obtained(self._report_compute_failure) as instance:
@@ -81,7 +81,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 self._get_test_suite(),
             ):
                 disk_name_prefix = (
-                    f'acceptance-test-{self._args.test_type}-'
+                    f'acc-{self._args.test_type}-'
                     f'{self._make_disk_parameters_string()}').lower()
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
@@ -144,7 +144,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
         _logger.info('Creating snapshot')
 
         suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-        snapshot_name = f"sync-acceptance-test-snapshot-{suffix}"
+        snapshot_name = f"sync-acc-snapshot-{suffix}"
         self._ycp.create_snapshot(disk.id, snapshot_name)
 
         _logger.info('Created snapshot')
