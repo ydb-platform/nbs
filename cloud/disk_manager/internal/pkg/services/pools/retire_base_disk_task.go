@@ -78,8 +78,6 @@ func (t *retireBaseDiskTask) Run(
 				TargetBaseDiskId: info.TargetBaseDiskID,
 				SlotGeneration:   info.SlotGeneration,
 			},
-			"",
-			"",
 		)
 		if err != nil {
 			return err

@@ -57,8 +57,6 @@ func (t *scheduleBaseDisksTask) Run(
 				BaseDiskSize:                        baseDisks[i].Size,
 				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
 			},
-			"",
-			"",
 		)
 		if err != nil {
 			return err

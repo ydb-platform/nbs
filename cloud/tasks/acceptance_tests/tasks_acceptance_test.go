@@ -144,8 +144,6 @@ func (c *client) scheduleChain(
 			&protos.ChainTaskRequest{
 				Depth: uint32(depth),
 			},
-			"",
-			"",
 		)
 		return err
 	})
@@ -275,8 +273,6 @@ func TestTasksAcceptanceHandlePanic(t *testing.T) {
 			"PanicTask",
 			"",
 			&empty.Empty{},
-			"",
-			"",
 		)
 		return err
 	})

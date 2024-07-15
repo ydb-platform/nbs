@@ -32,14 +32,7 @@ func (s *service) AcquireBaseDisk(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.AcquireBaseDisk",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.AcquireBaseDisk", "", req)
 }
 
 func (s *service) ReleaseBaseDisk(
@@ -56,14 +49,7 @@ func (s *service) ReleaseBaseDisk(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.ReleaseBaseDisk",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.ReleaseBaseDisk", "", req)
 }
 
 func (s *service) RebaseOverlayDisk(
@@ -81,14 +67,7 @@ func (s *service) RebaseOverlayDisk(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.RebaseOverlayDisk",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.RebaseOverlayDisk", "", req)
 }
 
 func (s *service) ConfigurePool(
@@ -105,14 +84,7 @@ func (s *service) ConfigurePool(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.ConfigurePool",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.ConfigurePool", "", req)
 }
 
 func (s *service) DeletePool(
@@ -127,14 +99,7 @@ func (s *service) DeletePool(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.DeletePool",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.DeletePool", "", req)
 }
 
 func (s *service) ImageDeleting(
@@ -149,14 +114,7 @@ func (s *service) ImageDeleting(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.ImageDeleting",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.ImageDeleting", "", req)
 }
 
 func (s *service) IsPoolConfigured(
@@ -180,14 +138,7 @@ func (s *service) RetireBaseDisk(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.RetireBaseDisk",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.RetireBaseDisk", "", req)
 }
 
 func (s *service) RetireBaseDisks(
@@ -202,14 +153,7 @@ func (s *service) RetireBaseDisks(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
-		ctx,
-		"pools.RetireBaseDisks",
-		"",
-		req,
-		"",
-		"",
-	)
+	return s.taskScheduler.ScheduleTask(ctx, "pools.RetireBaseDisks", "", req)
 }
 
 func (s *service) OptimizeBaseDisks(ctx context.Context) (string, error) {
@@ -218,8 +162,6 @@ func (s *service) OptimizeBaseDisks(ctx context.Context) (string, error) {
 		"pools.OptimizeBaseDisks",
 		"",
 		&empty.Empty{},
-		"",
-		"",
 	)
 }
 

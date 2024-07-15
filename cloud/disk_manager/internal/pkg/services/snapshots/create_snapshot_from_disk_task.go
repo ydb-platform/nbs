@@ -157,8 +157,6 @@ func (t *createSnapshotFromDiskTask) run(
 			UseS3:                   t.request.UseS3,
 			UseProxyOverlayDisk:     t.request.UseProxyOverlayDisk,
 		},
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 	if err != nil {
 		return nil, err
@@ -330,8 +328,6 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		&dataplane_protos.DeleteSnapshotRequest{
 			SnapshotId: t.request.DstSnapshotId,
 		},
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 	if err != nil {
 		return err

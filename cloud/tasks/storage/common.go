@@ -164,8 +164,6 @@ func (s *TaskState) structValue() persistence.Value {
 		persistence.StructFieldValue("last_host", persistence.UTF8Value(s.LastHost)),
 		persistence.StructFieldValue("last_runner", persistence.UTF8Value(s.LastRunner)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.ZoneID)),
-		persistence.StructFieldValue("cloud_id", persistence.UTF8Value(s.CloudID)),
-		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.FolderID)),
 		persistence.StructFieldValue("estimated_time", persistence.TimestampValue(s.EstimatedTime)),
 		persistence.StructFieldValue("dependants", persistence.BytesValue(common.MarshalStrings(s.dependants.List()))),
 		persistence.StructFieldValue("panic_count", persistence.Uint64Value(s.PanicCount)),
@@ -200,8 +198,6 @@ func taskStateStructTypeString() string {
 		last_host: Utf8,
 		last_runner: Utf8,
 		zone_id: Utf8,
-		cloud_id: Utf8,
-		folder_id: Utf8,
 		estimated_time: Timestamp,
 		dependants: String,
 		panic_count: Uint64>`
@@ -234,8 +230,8 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("last_host", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("last_runner", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("cloud_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("cloud_id", persistence.Optional(persistence.TypeUTF8)),  // deprecated
+		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)), // deprecated
 		persistence.WithColumn("estimated_time", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("dependants", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
@@ -354,8 +350,6 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("last_host", &state.LastHost),
 		persistence.OptionalWithDefault("last_runner", &state.LastRunner),
 		persistence.OptionalWithDefault("zone_id", &state.ZoneID),
-		persistence.OptionalWithDefault("cloud_id", &state.CloudID),
-		persistence.OptionalWithDefault("folder_id", &state.FolderID),
 		persistence.OptionalWithDefault("estimated_time", &state.EstimatedTime),
 		persistence.OptionalWithDefault("dependants", &dependants),
 		persistence.OptionalWithDefault("panic_count", &state.PanicCount),

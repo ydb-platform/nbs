@@ -93,8 +93,6 @@ func (t *createImageFromSnapshotTask) Run(
 				SrcSnapshotId: t.request.SrcSnapshotId,
 				DstSnapshotId: t.request.DstImageId,
 			},
-			t.request.OperationCloudId,
-			t.request.OperationFolderId,
 		)
 		if err != nil {
 			return err
@@ -133,8 +131,6 @@ func (t *createImageFromSnapshotTask) Run(
 				DstSnapshotId: t.request.DstImageId,
 				UseS3:         t.request.UseS3,
 			},
-			t.request.OperationCloudId,
-			t.request.OperationFolderId,
 		)
 		if err != nil {
 			return err
@@ -198,8 +194,6 @@ func (t *createImageFromSnapshotTask) Cancel(
 		t.storage,
 		t.poolService,
 		t.request.DstImageId,
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 }
 

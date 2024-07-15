@@ -23,8 +23,6 @@ func deleteImage(
 	storage resources.Storage,
 	poolService pools.Service,
 	imageID string,
-	operationCloudID string,
-	operationFolderID string,
 ) error {
 
 	selfTaskID := execCtx.GetTaskID()
@@ -73,8 +71,6 @@ func deleteImage(
 		&dataplane_protos.DeleteSnapshotRequest{
 			SnapshotId: imageID,
 		},
-		operationCloudID,
-		operationFolderID,
 	)
 	if err != nil {
 		return err

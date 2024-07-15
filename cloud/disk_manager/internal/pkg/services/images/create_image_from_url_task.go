@@ -94,8 +94,6 @@ func (t *createImageFromURLTask) Run(
 			DstSnapshotId: t.request.DstImageId,
 			UseS3:         t.request.UseS3,
 		},
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 	if err != nil {
 		return err
@@ -160,8 +158,6 @@ func (t *createImageFromURLTask) Cancel(
 		t.storage,
 		t.poolService,
 		t.request.DstImageId,
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 }
 

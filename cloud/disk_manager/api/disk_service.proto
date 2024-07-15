@@ -64,7 +64,7 @@ service DiskService {
 }
 
 message CreateDiskRequest {
-    reserved 15, 16;
+    reserved 13, 14, 15, 16;
 
     oneof src {
         google.protobuf.Empty src_empty = 1;
@@ -83,8 +83,6 @@ message CreateDiskRequest {
     string placement_group_id = 11;
     // Prevents from creating layered (overlay) disk.
     bool force_not_layered = 12;
-    string operation_cloud_id = 13;
-    string operation_folder_id = 14;
     string storage_pool_name = 17;
     repeated string agent_ids = 18;
     EncryptionDesc encryption_desc = 19;

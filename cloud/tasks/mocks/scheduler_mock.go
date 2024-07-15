@@ -21,18 +21,9 @@ func (s *SchedulerMock) ScheduleTask(
 	taskType string,
 	description string,
 	request proto.Message,
-	cloudID string,
-	folderID string,
 ) (string, error) {
 
-	args := s.Called(
-		ctx,
-		taskType,
-		description,
-		request,
-		cloudID,
-		folderID,
-	)
+	args := s.Called(ctx, taskType, description, request)
 	return args.String(0), args.Error(1)
 }
 
@@ -42,19 +33,9 @@ func (s *SchedulerMock) ScheduleZonalTask(
 	description string,
 	zoneID string,
 	request proto.Message,
-	cloudID string,
-	folderID string,
 ) (string, error) {
 
-	args := s.Called(
-		ctx,
-		taskType,
-		description,
-		zoneID,
-		request,
-		cloudID,
-		folderID,
-	)
+	args := s.Called(ctx, taskType, description, zoneID, request)
 	return args.String(0), args.Error(1)
 }
 

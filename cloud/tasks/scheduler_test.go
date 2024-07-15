@@ -148,8 +148,6 @@ func TestSchedulerScheduleTask(t *testing.T) {
 		ok = assert.Equal(t, "", state.ErrorMessage) && ok
 		ok = assert.Equal(t, marshalledRequest, state.Request) && ok
 		ok = assert.Equal(t, "", state.ZoneID) && ok
-		ok = assert.Equal(t, "cloud", state.CloudID) && ok
-		ok = assert.Equal(t, "folder", state.FolderID) && ok
 		return ok
 	})).Return("taskID", nil)
 
@@ -158,8 +156,6 @@ func TestSchedulerScheduleTask(t *testing.T) {
 		"task",
 		"Some task",
 		request,
-		"cloud",
-		"folder",
 	)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
@@ -202,8 +198,6 @@ func TestSchedulerScheduleZonalTask(t *testing.T) {
 		ok = assert.Equal(t, "", state.ErrorMessage) && ok
 		ok = assert.Equal(t, marshalledRequest, state.Request) && ok
 		ok = assert.Equal(t, "zone", state.ZoneID) && ok
-		ok = assert.Equal(t, "cloud", state.CloudID) && ok
-		ok = assert.Equal(t, "folder", state.FolderID) && ok
 		return ok
 	})).Return("taskID", nil)
 
@@ -213,8 +207,6 @@ func TestSchedulerScheduleZonalTask(t *testing.T) {
 		"Some task",
 		"zone",
 		request,
-		"cloud",
-		"folder",
 	)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.NoError(t, err)
@@ -247,8 +239,6 @@ func TestSchedulerScheduleTaskFailOnCreateTask(t *testing.T) {
 		"task",
 		"Some task",
 		&empty.Empty{},
-		"",
-		"",
 	)
 	mock.AssertExpectationsForObjects(t, task, storage)
 	assert.Error(t, err)

@@ -80,8 +80,6 @@ func (t *ChainTask) scheduleChild(
 		&protos.ChainTaskRequest{
 			Depth: t.request.Depth - 1,
 		},
-		"",
-		"",
 	)
 }
 

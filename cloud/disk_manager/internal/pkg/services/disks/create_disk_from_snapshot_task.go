@@ -160,8 +160,6 @@ func (t *createDiskFromSnapshotTask) Run(
 				DstDisk:       params.Disk,
 				DstEncryption: encryption,
 			},
-			t.request.OperationCloudId,
-			t.request.OperationFolderId,
 		)
 
 		t.state.DataplaneTaskId = taskID
@@ -176,8 +174,6 @@ func (t *createDiskFromSnapshotTask) Run(
 				DstDisk:       params.Disk,
 				DstEncryption: encryption,
 			},
-			t.request.OperationCloudId,
-			t.request.OperationFolderId,
 		)
 
 		t.state.DataplaneTaskId = taskID

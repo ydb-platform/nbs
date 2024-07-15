@@ -125,8 +125,6 @@ func (s *service) CreateFilesystem(
 			BlocksCount: blocksCount,
 			StorageKind: kind,
 		},
-		req.CloudId,
-		req.FolderId,
 	)
 }
 
@@ -152,8 +150,6 @@ func (s *service) DeleteFilesystem(
 				FilesystemId: req.FilesystemId.FilesystemId,
 			},
 		},
-		"",
-		"",
 	)
 }
 
@@ -183,8 +179,6 @@ func (s *service) ResizeFilesystem(
 			},
 			Size: uint64(req.Size),
 		},
-		"",
-		"",
 	)
 }
 

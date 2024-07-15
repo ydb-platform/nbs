@@ -54,17 +54,12 @@ func (s *service) CreateImage(
 			"images.CreateImageFromSnapshot",
 			"",
 			&protos.CreateImageFromSnapshotRequest{
-				SrcSnapshotId:                       src.SrcSnapshotId,
-				DstImageId:                          req.DstImageId,
-				FolderId:                            req.FolderId,
-				OperationCloudId:                    req.OperationCloudId,
-				OperationFolderId:                   req.OperationFolderId,
-				DiskPools:                           pools,
-				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
-				UseS3:                               useS3,
+				SrcSnapshotId: src.SrcSnapshotId,
+				DstImageId:    req.DstImageId,
+				FolderId:      req.FolderId,
+				DiskPools:     pools,
+				UseS3:         useS3,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	case *disk_manager.CreateImageRequest_SrcImageId:
 		if len(src.SrcImageId) == 0 || len(req.DstImageId) == 0 {
@@ -79,17 +74,12 @@ func (s *service) CreateImage(
 			"images.CreateImageFromImage",
 			"",
 			&protos.CreateImageFromImageRequest{
-				SrcImageId:                          src.SrcImageId,
-				DstImageId:                          req.DstImageId,
-				FolderId:                            req.FolderId,
-				OperationCloudId:                    req.OperationCloudId,
-				OperationFolderId:                   req.OperationFolderId,
-				DiskPools:                           pools,
-				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
-				UseS3:                               useS3,
+				SrcImageId: src.SrcImageId,
+				DstImageId: req.DstImageId,
+				FolderId:   req.FolderId,
+				DiskPools:  pools,
+				UseS3:      useS3,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	case *disk_manager.CreateImageRequest_SrcUrl:
 		if len(src.SrcUrl.Url) == 0 || len(req.DstImageId) == 0 {
@@ -104,19 +94,12 @@ func (s *service) CreateImage(
 			"images.CreateImageFromURL",
 			"",
 			&protos.CreateImageFromURLRequest{
-				SrcURL:                                src.SrcUrl.Url,
-				DstImageId:                            req.DstImageId,
-				FolderId:                              req.FolderId,
-				DiskPools:                             pools,
-				OperationCloudId:                      req.OperationCloudId,
-				OperationFolderId:                     req.OperationFolderId,
-				UseDataplaneTasks:                     true, // TODO: remove it.
-				UseDataplaneTasksSupportedFormatsOnly: true, // TODO: remove it.
-				UseS3:                                 useS3,
-				UseDataplaneTasksForVMDK:              true, // TODO: remove it.,
+				SrcURL:     src.SrcUrl.Url,
+				DstImageId: req.DstImageId,
+				FolderId:   req.FolderId,
+				DiskPools:  pools,
+				UseS3:      useS3,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	case *disk_manager.CreateImageRequest_SrcDiskId:
 		if len(src.SrcDiskId.ZoneId) == 0 ||
@@ -138,16 +121,11 @@ func (s *service) CreateImage(
 					ZoneId: src.SrcDiskId.ZoneId,
 					DiskId: src.SrcDiskId.DiskId,
 				},
-				DstImageId:        req.DstImageId,
-				FolderId:          req.FolderId,
-				OperationCloudId:  req.OperationCloudId,
-				OperationFolderId: req.OperationFolderId,
-				DiskPools:         pools,
-				UseDataplaneTasks: true, // TODO: remove it.
-				UseS3:             useS3,
+				DstImageId: req.DstImageId,
+				FolderId:   req.FolderId,
+				DiskPools:  pools,
+				UseS3:      useS3,
 			},
-			req.OperationCloudId,
-			req.OperationFolderId,
 		)
 	default:
 		return "", errors.NewInvalidArgumentError("unknown src %s", src)
@@ -171,12 +149,8 @@ func (s *service) DeleteImage(
 		"images.DeleteImage",
 		"",
 		&protos.DeleteImageRequest{
-			ImageId:           req.ImageId,
-			OperationCloudId:  req.OperationCloudId,
-			OperationFolderId: req.OperationFolderId,
+			ImageId: req.ImageId,
 		},
-		req.OperationCloudId,
-		req.OperationFolderId,
 	)
 }
 

@@ -117,8 +117,6 @@ func (t *retireBaseDisksTask) Run(
 				BaseDiskId: baseDiskID,
 				SrcDisk:    srcDisk,
 			},
-			"",
-			"",
 		)
 		if err != nil {
 			return err

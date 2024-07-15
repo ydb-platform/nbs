@@ -42,8 +42,6 @@ func (s *scheduler) ScheduleTask(
 	taskType string,
 	description string,
 	request proto.Message,
-	cloudID string,
-	folderID string,
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
@@ -51,10 +49,8 @@ func (s *scheduler) ScheduleTask(
 		ctx,
 		taskType,
 		description,
-		"",
+		"", // zoneID
 		request,
-		cloudID,
-		folderID,
 	)
 }
 
@@ -64,8 +60,6 @@ func (s *scheduler) ScheduleZonalTask(
 	description string,
 	zoneID string,
 	request proto.Message,
-	cloudID string,
-	folderID string,
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
@@ -103,8 +97,6 @@ func (s *scheduler) ScheduleZonalTask(
 		Metadata:       metadata,
 		Dependencies:   tasks_storage.NewStringSet(),
 		ZoneID:         zoneID,
-		CloudID:        cloudID,
-		FolderID:       folderID,
 	})
 	if err != nil {
 		logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
@@ -527,7 +519,7 @@ func (s *scheduler) WaitTaskSync(
 }
 
 func (s *scheduler) ScheduleBlankTask(ctx context.Context) (string, error) {
-	return s.ScheduleTask(ctx, "tasks.Blank", "", &empty.Empty{}, "", "")
+	return s.ScheduleTask(ctx, "tasks.Blank", "", &empty.Empty{})
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -101,8 +101,6 @@ func (t *optimizeBaseDisksTask) Run(
 			"pools.ConfigurePool",
 			"",
 			request,
-			"",
-			"",
 		)
 		if err != nil {
 			return err
@@ -138,8 +136,6 @@ func (t *optimizeBaseDisksTask) Run(
 				ImageId:          request.GetImageId(),
 				UseBaseDiskAsSrc: true,
 			},
-			"",
-			"",
 		)
 		if err != nil {
 			return err

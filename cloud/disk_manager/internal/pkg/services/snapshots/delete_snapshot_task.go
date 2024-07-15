@@ -111,8 +111,6 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 		&dataplane_protos.DeleteSnapshotRequest{
 			SnapshotId: t.request.SnapshotId,
 		},
-		t.request.OperationCloudId,
-		t.request.OperationFolderId,
 	)
 	if err != nil {
 		return err

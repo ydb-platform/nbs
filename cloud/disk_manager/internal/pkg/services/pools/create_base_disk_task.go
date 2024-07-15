@@ -104,8 +104,6 @@ func (t *createBaseDiskTask) Run(
 						SrcDiskCheckpointId:     t.request.SrcDiskCheckpointId,
 						DstDisk:                 t.request.BaseDisk,
 					},
-					t.cloudID,
-					t.folderID,
 				)
 				if err != nil {
 					return err
@@ -133,8 +131,6 @@ func (t *createBaseDiskTask) Run(
 							SrcSnapshotId: t.request.SrcImageId,
 							DstDisk:       t.request.BaseDisk,
 						},
-						t.cloudID,
-						t.folderID,
 					)
 				} else {
 					taskID, err = t.scheduler.ScheduleZonalTask(
@@ -149,8 +145,6 @@ func (t *createBaseDiskTask) Run(
 							SrcSnapshotId: t.request.SrcImageId,
 							DstDisk:       t.request.BaseDisk,
 						},
-						t.cloudID,
-						t.folderID,
 					)
 				}
 				if err != nil {

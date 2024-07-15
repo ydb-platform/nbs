@@ -82,8 +82,6 @@ func (s *service) CreatePlacementGroup(
 			PlacementStrategy:       placementStrategy,
 			PlacementPartitionCount: req.PlacementPartitionCount,
 		},
-		"",
-		"",
 	)
 }
 
@@ -109,8 +107,6 @@ func (s *service) DeletePlacementGroup(
 			ZoneId:  req.GroupId.ZoneId,
 			GroupId: req.GroupId.GroupId,
 		},
-		"",
-		"",
 	)
 }
 
@@ -139,8 +135,6 @@ func (s *service) AlterPlacementGroupMembership(
 			DisksToAdd:              req.DisksToAdd,
 			DisksToRemove:           req.DisksToRemove,
 		},
-		"",
-		"",
 	)
 }
 

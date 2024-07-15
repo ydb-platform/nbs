@@ -28,6 +28,8 @@ service ImageService {
 }
 
 message CreateImageRequest {
+    reserved 8, 9;
+
     oneof src {
         string src_snapshot_id = 1;
         string src_image_id = 2;
@@ -36,8 +38,6 @@ message CreateImageRequest {
     }
     string dst_image_id = 6;
     string folder_id = 7;
-    string operation_cloud_id = 8;
-    string operation_folder_id = 9;
     bool pooled = 10;
 }
 
@@ -60,9 +60,9 @@ message UpdateImageMetadata {
 }
 
 message DeleteImageRequest {
+    reserved 2, 3;
+
     string image_id = 1;
-    string operation_cloud_id = 2;
-    string operation_folder_id = 3;
 }
 
 message DeleteImageMetadata {
