@@ -489,6 +489,7 @@ TDuration MSeconds(ui32 value)
     xxx(WaitDependentDisksRetryRequestDelay,            TDuration, Seconds(1)    )\
                                                                                   \
     xxx(DataScrubbingEnabled,                           bool,      false         )\
+    xxx(ResyncRangeAfterScrubbing,                      bool,      false         )\
     xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\
     xxx(ScrubbingChecksumMismatchTimeout,               TDuration, Seconds(300)  )\
     xxx(ScrubbingBandwidth,                             ui64,      20            )\

@@ -2,6 +2,7 @@
 #include "part_mirror_resync_util.h"
 #include "part_nonrepl.h"
 #include "part_nonrepl_migration.h"
+#include "resync_range.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
@@ -204,9 +205,54 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
                 checksums[i]);
         }
         ReportMirroredDiskChecksumMismatch();
+
+        if (Config->GetResyncRangeAfterScrubbing()) {
+            StartResyncRange(ctx);
+            return;
+        }
     }
 
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
+}
+
+void TMirrorPartitionActor::StartResyncRange(
+    const NActors::TActorContext& ctx)
+{
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Resyncing range %s",
+        DiskId.c_str(),
+        DescribeRange(GetScrubbingRange()).c_str());
+    ResyncRangeStarted = true;
+
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,  // cookie
+        MakeIntrusive<TCallContext>()
+    );
+
+    TVector<TReplicaDescriptor> replicas;
+    const auto& replicaInfos = State.GetReplicaInfos();
+    const auto& replicaActors = State.GetReplicaActors();
+    for (ui32 i = 0; i < replicaInfos.size(); i++) {
+        if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange()))
+        {
+            replicas.emplace_back(
+                replicaInfos[i].Config->GetName(),
+                i,
+                replicaActors[i]);
+        }
+    }
+
+    NCloud::Register<TResyncRangeActor>(
+        ctx,
+        std::move(requestInfo),
+        State.GetBlockSize(),
+        GetScrubbingRange(),
+        std::move(replicas),
+        State.GetRWClientId(),
+        BlockDigestGenerator);
 }
 
 void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
@@ -408,6 +454,23 @@ void TMirrorPartitionActor::HandleChecksumResponse(
     CompareChecksums(ctx);
 }
 
+void TMirrorPartitionActor::HandleRangeResynced(
+    const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto range = msg->Range;
+
+    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Range %s resync finished: %s",
+        DiskId.c_str(),
+        DescribeRange(range).c_str(),
+        FormatError(msg->GetError()).c_str());
+
+    ResyncRangeStarted = false;
+    StartScrubbingRange(ctx, ScrubbingRangeId + 1);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandleRWClientIdChanged(
@@ -465,6 +528,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
             HandleChecksumResponse);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvRangeResynced,
+            HandleRangeResynced);
 
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);

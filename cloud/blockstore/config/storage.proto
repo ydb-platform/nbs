@@ -1004,4 +1004,7 @@ message TStorageServiceConfig
     // CMS actions such as "REMOVE_HOST" and "REMOVE_DEVICE" will attempt to
     // remove devices and the host from DR memory (including persistent storage).
     optional bool CleanupDRConfigOnCMSActions = 375;
+
+    // Resync range, if scrubbing found a mismatch.
+    optional bool ResyncRangeAfterScrubbing = 376;
 }
