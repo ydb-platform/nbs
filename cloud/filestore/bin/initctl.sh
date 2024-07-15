@@ -13,7 +13,7 @@ SERVER_PORT=${SERVER_PORT:-9021}
 VHOST_PORT=${VHOST_PORT:-9022}
 
 FS=${FS:-"nfs"}
-SHARDS_NO=${SHARDS_NO:-0}
+SHARD_COUNT=${SHARD_COUNT:-0}
 BLOCK_SIZE=${BLOCK_SIZE:-4096}
 MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
@@ -124,10 +124,10 @@ if [[ "$1" == "create" ]]; then
         --block-size        "$BLOCK_SIZE"   \
         nfs
 
-    if [[ "$SHARDS_NO" -gt 0 ]]; then
-        echo "creating $SHARDS_NO shards"
+    if [[ "$SHARD_COUNT" -gt 0 ]]; then
+        echo "creating $SHARD_COUNT shards"
         followers=""
-        for shard in $(seq 1 $SHARDS_NO); do
+        for shard in $(seq 1 $SHARD_COUNT); do
             echo "creating shard $shard"
 
             $BIN_DIR/filestore-client create        \
