@@ -99,6 +99,7 @@ constexpr TDuration Seconds(int s)
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
+    xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

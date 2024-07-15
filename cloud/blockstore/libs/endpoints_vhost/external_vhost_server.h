@@ -18,6 +18,7 @@ namespace NCloud::NBlockStore::NServer {
 struct IExternalEndpoint
 {
     virtual ~IExternalEndpoint() = default;
+    virtual void PrepareToStart() = 0;
     virtual void Start() = 0;
     virtual NThreading::TFuture<NProto::TError> Stop() = 0;
 };
@@ -39,6 +40,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString binaryPath,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
@@ -47,6 +49,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory);
 

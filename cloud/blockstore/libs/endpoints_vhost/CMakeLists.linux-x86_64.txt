@@ -12,6 +12,7 @@ add_library(blockstore-libs-endpoints_vhost)
 target_link_libraries(blockstore-libs-endpoints_vhost PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
+  cpp-getopt-small
   yutil
   blockstore-libs-client
   blockstore-libs-common

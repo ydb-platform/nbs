@@ -419,6 +419,7 @@ void TBootstrapBase::Init()
                     ? TString {}
                     : FQDNHostName(),
                 Configs->ServerConfig->GetSocketAccessMode(),
+                Configs->ServerConfig->GetVhostServerTimeoutAfterParentExit(),
                 std::move(vhostEndpointListener));
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");

@@ -133,6 +133,8 @@ public:
     TString GetEndpointProxySocketPath() const;
     bool GetAllowAllRequestsViaUDS() const;
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
+    TDuration GetVhostServerTimeoutAfterParentExit() const;
+    TString GetNodeRegistrationToken() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

@@ -13,6 +13,8 @@ PEERDIR(
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/service
     cloud/blockstore/libs/vhost
+
+    library/cpp/getopt/small
 )
 
 END()
