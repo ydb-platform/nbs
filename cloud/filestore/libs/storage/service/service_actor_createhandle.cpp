@@ -253,7 +253,10 @@ void TStorageServiceActor::HandleCreateHandle(
     const NProto::TFileStore& filestore = session->FileStore;
     const auto& followerId = session->SelectFollower();
 
-    if (!StorageConfig->GetMultiTabletForwardingEnabled() || !followerId) {
+    const bool multiTabletForwardingEnabled =
+        StorageConfig->GetMultiTabletForwardingEnabled()
+        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
+    if (!multiTabletForwardingEnabled || !followerId) {
         ForwardRequest<TEvService::TCreateHandleMethod>(ctx, ev);
         return;
     }

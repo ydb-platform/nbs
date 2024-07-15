@@ -23,9 +23,13 @@ def __exec_ls(client, *args):
     nodes: list = json.loads(output)['content']
 
     for node in nodes:
-        del node["ATime"]
-        del node["MTime"]
-        del node["CTime"]
+        def d(k):
+            if k in node:
+                del node[k]
+
+        d("ATime")
+        d("MTime")
+        d("CTime")
 
     return json.dumps(nodes, indent=4).encode('utf-8')
 
@@ -244,3 +248,45 @@ def test_partial_set_node_attr():
     assert stat["Uid"] == new_stat["Uid"]
     assert stat["Size"] == new_stat["Size"]
     assert stat["Mode"] == new_stat["Mode"]
+
+
+def test_multitablet_ls():
+    client, results_path = __init_test()
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    out = client.create(
+        "fs0",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.create(
+        "fs0-shard",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.execute_action("configureasfollower", {
+        "FileSystemId": "fs0-shard",
+        "ShardNo": 1,
+    })
+
+    out += client.execute_action("configurefollowers", {
+        "FileSystemId": "fs0",
+        "FollowerFileSystemIds": ["fs0-shard"],
+    })
+
+    client.write("fs0", "/xxx", "--data", data_file)
+    out += __exec_ls(client, "fs0", "/")
+    out += __exec_ls(client, "fs0", "/", "--disable-multitablet-forwarding")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret

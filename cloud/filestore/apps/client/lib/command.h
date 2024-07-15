@@ -113,6 +113,7 @@ class TFileStoreServiceCommand
 protected:
     TString ClientId;
     TString FileSystemId;
+    bool DisableMultiTabletForwarding = false;
 
     IFileStoreServicePtr Client;
 

@@ -289,10 +289,13 @@ void TStorageServiceActor::HandleCreateNode(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
+    const bool multiTabletForwardingEnabled =
+        StorageConfig->GetMultiTabletForwardingEnabled()
+        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     if (msg->Record.HasFile()) {
         const auto& followerId = session->SelectFollower();
 
-        if (StorageConfig->GetMultiTabletForwardingEnabled() && followerId) {
+        if (multiTabletForwardingEnabled && followerId) {
             msg->Record.SetFollowerFileSystemId(followerId);
         }
     } else if (msg->Record.HasLink()) {
@@ -304,6 +307,7 @@ void TStorageServiceActor::HandleCreateNode(
             ctx,
             sessionId,
             seqNo,
+            msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
             "",
             msg->CallContext->RequestId,
             filestore,
@@ -313,7 +317,7 @@ void TStorageServiceActor::HandleCreateNode(
                 std::move(error));
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
-        if (followerId && StorageConfig->GetMultiTabletForwardingEnabled()) {
+        if (followerId) {
             // If the target node is located on a shard, start a worker actor
             // to separately increment the link count in the follower and insert
             // the node in the leader.

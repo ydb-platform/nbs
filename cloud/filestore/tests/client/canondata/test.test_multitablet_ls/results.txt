@@ -1,0 +1,17 @@
+{}
+{}
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx",
+        "Id": 72057594037927938
+    }
+][
+    {
+        "Name": "xxx",
+        "FollowerNodeName": "1f9cf00c-96f77e4c-56dc2f2f-5113b685",
+        "FollowerFileSystemId": "fs0-shard"
+    }
+]
