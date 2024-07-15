@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +18,7 @@ struct TPendingRequest
 
     TPendingRequest(NActors::IEventHandlePtr event, TRequestInfoPtr requestInfo)
         : Event(std::move(event))
-        , RequestInfo(requestInfo)
+        , RequestInfo(std::move(requestInfo))
     {}
 };
 

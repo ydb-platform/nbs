@@ -32,7 +32,8 @@ inline EDeviceStateFlags& operator|=(EDeviceStateFlags& a, EDeviceStateFlags b)
 
 IOutputStream& DumpAgentState(
     IOutputStream& out,
-    NProto::EAgentState state);
+    NProto::EAgentState state,
+    bool connected);
 
 IOutputStream& DumpDiskState(
     IOutputStream& out,
