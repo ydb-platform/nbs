@@ -19,6 +19,7 @@
 #include <contrib/ydb/core/driver_lib/version/version.h>
 #include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
 #include <contrib/ydb/core/mind/table_adapter.h>
+#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/protos/blobstorage_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_distributed_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>

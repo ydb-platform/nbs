@@ -1,4 +1,5 @@
 #include "actor.h"
+#include <contrib/ydb/core/tx/columnshard/columnshard_private_events.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
 
 namespace NKikimr::NColumnShard::NWriting {

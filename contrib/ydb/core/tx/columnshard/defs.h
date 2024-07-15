@@ -1,4 +1,5 @@
 #pragma once
+#include "common/blob.h"
 #include <contrib/ydb/core/base/defs.h>
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/base/blobstorage.h>

@@ -60,12 +60,14 @@ SRCS(
     ui64id.cpp
     ui64id.h
     wildcard.h
+    wilson.h
 )
 
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect/mock
     contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/wilson
     library/cpp/containers/stack_vector
     library/cpp/html/escape
     library/cpp/ipmath

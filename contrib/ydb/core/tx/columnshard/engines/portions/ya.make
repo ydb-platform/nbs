@@ -6,12 +6,14 @@ SRCS(
     with_blobs.cpp
     meta.cpp
     common.cpp
+    index_chunk.cpp
 )
 
 PEERDIR(
     contrib/ydb/core/tx/columnshard/engines/scheme
     contrib/ydb/core/tx/columnshard/splitter
     contrib/ydb/core/tx/columnshard/common
+    contrib/ydb/core/tx/columnshard/data_sharing/protos
     contrib/ydb/core/tablet_flat
 )
 

@@ -1,0 +1,12 @@
+RECURSE(
+    apps
+    core
+    library
+    public
+    services
+    tests
+    tools
+    docs
+    docs/ru/core
+    docs/en/core
+)

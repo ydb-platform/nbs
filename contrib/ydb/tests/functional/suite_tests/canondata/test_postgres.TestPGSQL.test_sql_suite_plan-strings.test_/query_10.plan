@@ -1,0 +1,12 @@
+{
+    "Plan": {
+        "Node Type": "Query",
+        "PlanNodeType": "Query",
+        "Plans": []
+    },
+    "meta": {
+        "type": "query",
+        "version": "0.2"
+    },
+    "tables": []
+}

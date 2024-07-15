@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/base/memobserver.h>
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/threading/future/future.h>
@@ -46,6 +47,7 @@ namespace NActors {
             TAutoPtr<NKikimr::TAppData> App0;
             TAutoPtr<NActors::IDestructable> Opaque;
             TKeyConfigGenerator KeyConfigGenerator;
+            std::vector<TIntrusivePtr<NKikimr::TControlBoard>> Icb;
         };
 
         TTestActorRuntime(THeSingleSystemEnv d);

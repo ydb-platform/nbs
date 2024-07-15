@@ -23,6 +23,7 @@ PEERDIR(
     contrib/ydb/library/yql/sql/pg_dummy
     contrib/ydb/library/yql/core/arrow_kernels/request
     contrib/ydb/core/testlib/default
+    contrib/ydb/core/tx/columnshard/test_helper
     contrib/ydb/core/tx/columnshard/hooks/abstract
     contrib/ydb/core/tx/columnshard/hooks/testing
 

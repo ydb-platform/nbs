@@ -14,7 +14,14 @@ ENDIF()
 
 SRCS(
     kqp_olap_stats_ut.cpp
-    kqp_olap_ut.cpp
+    GLOBAL kqp_olap_ut.cpp
+    sys_view_ut.cpp
+    indexes_ut.cpp
+    GLOBAL blobs_sharing_ut.cpp
+    statistics_ut.cpp
+    clickbench_ut.cpp
+    aggregations_ut.cpp
+    write_ut.cpp
 )
 
 PEERDIR(
@@ -22,6 +29,7 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/library/yql/sql/pg_dummy
     contrib/ydb/core/tx/columnshard/hooks/testing
+    contrib/ydb/core/kqp/ut/olap/helpers
     contrib/ydb/core/tx/datashard/ut_common
 )
 

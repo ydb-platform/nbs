@@ -158,6 +158,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/services
     contrib/ydb/library/ydb_issue/proto
+    contrib/ydb/core/tx/columnshard/engines/scheme/statistics/protos
 )
 
 EXCLUDE_TAGS(GO_PROTO)

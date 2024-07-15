@@ -1,0 +1,10 @@
+RECURSE(
+    fq
+    functional
+    library
+    library/sqs
+    oss
+    perf
+    supp
+    tools
+)

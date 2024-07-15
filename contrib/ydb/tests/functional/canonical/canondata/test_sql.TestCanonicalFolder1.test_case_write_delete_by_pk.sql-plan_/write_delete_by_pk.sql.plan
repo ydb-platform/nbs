@@ -1,0 +1,16 @@
+{
+    "meta": {
+        "type": "query",
+        "version": "0.2"
+    },
+    "tables": [
+        {
+            "name": "/local/base_write_delete_by_pk_sql_plan/Input",
+            "writes": [
+                {
+                    "type": "MultiErase"
+                }
+            ]
+        }
+    ]
+}

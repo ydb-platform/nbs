@@ -15,6 +15,13 @@ PEERDIR(
 
     contrib/ydb/library/actors/core
     contrib/ydb/core/tx/columnshard/engines/scheme/indexes
+    contrib/ydb/core/tx/columnshard/engines/scheme/statistics
+    contrib/ydb/core/tx/columnshard/engines/scheme/abstract
+    contrib/ydb/core/tx/columnshard/engines/scheme/versions
+    contrib/ydb/core/tx/columnshard/engines/scheme/tiering
+    contrib/ydb/core/tx/columnshard/engines/scheme/column
+    contrib/ydb/core/tx/columnshard/blobs_action/abstract
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction
 )
 
 YQL_LAST_ABI_VERSION()
