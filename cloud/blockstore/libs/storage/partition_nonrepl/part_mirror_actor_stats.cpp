@@ -62,6 +62,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         }
     }
 
+    stats->Simple.ChecksumMismatches.Value = ChecksumMismatches;
     stats->Simple.ScrubbingProgress.Value =
         100 * GetScrubbingRange().Start / State.GetBlockCount();
     stats->Cumulative.ScrubbingThroughput.Value = ScrubbingThroughput;
