@@ -166,7 +166,7 @@ void TLinkActor::HandleFollowerResponse(
         TFileStoreComponents::SERVICE,
         "[%s] Creating nodeRef in leader for %lu, %s",
         LogTag.c_str(),
-        msg->Record.GetNode().GetId(),
+        FollowerResponse.GetNode().GetId(),
         CreateNodeRequest.GetLink().GetTargetNode());
 
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
