@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include <cloud/filestore/config/server.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/server/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
