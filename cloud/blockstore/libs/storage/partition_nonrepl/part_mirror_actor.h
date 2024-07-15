@@ -77,6 +77,7 @@ private:
     ui64 ScrubbingThroughput = 0;
     TInstant ScrubbingRangeStarted;
     bool ResyncRangeStarted = false;
+    ui32 ChecksumMismatches = 0;
 
 public:
     TMirrorPartitionActor(

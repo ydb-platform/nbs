@@ -1184,6 +1184,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             2 * 4_MB,
             counters.Cumulative.ScrubbingThroughput.Value);
         UNIT_ASSERT_VALUES_EQUAL(33, counters.Simple.ScrubbingProgress.Value);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ChecksumMismatches.Value);
     }
 
     Y_UNIT_TEST(ShouldFindChecksumMismatch)
@@ -1234,6 +1235,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             true);
 
         UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
 
         const auto range3 = TBlockRange64::WithLength(1025, 50);
         env.WriteMirror(range3, 'A');
@@ -1250,6 +1252,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.AdvanceCurrentTime(UpdateCountersInterval);
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
+        UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
 
         // check that all ranges was resynced and there is no more mismatches
@@ -1264,6 +1267,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.AdvanceCurrentTime(UpdateCountersInterval);
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
+        UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
     }
 
