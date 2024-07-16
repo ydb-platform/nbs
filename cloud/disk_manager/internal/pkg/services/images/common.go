@@ -120,8 +120,6 @@ func scheduleRetireBaseDisks(
 				UseBaseDiskAsSrc: true,
 				UseImageSize:     imageMeta.Size,
 			},
-			"",
-			"",
 		)
 		if err != nil {
 			return err
@@ -130,6 +128,8 @@ func scheduleRetireBaseDisks(
 
 	return nil
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 func configureImagePools(
 	ctx context.Context,
