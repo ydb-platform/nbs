@@ -963,7 +963,7 @@ i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
     for (auto* metric: AllRequestMetrics) {
         sumRequestBytes += metric->RequestBytes;
     }
-    auto delta = LastNetworkMetric - sumRequestBytes;
+    auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;
 }

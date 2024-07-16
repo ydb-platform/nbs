@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -614,6 +615,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
     Y_UNIT_TEST(ShouldProperlyReportMetricsToHive)
     {
         NProto::TStorageConfig storageConfig;
+        storageConfig.SetGarbageCompactionThresholdAverage(10000);
+        storageConfig.SetCompactionThresholdAverage(10000);
+
         storageConfig.SetThrottlingEnabled(false);
 
         TTestEnv env({}, storageConfig);
@@ -632,7 +636,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         const auto sz = DefaultBlockSize * blockCount;
 
         ui64 reportCount = 0;
-        ui64 network = 0;
+        i64 network = 0;
+        const i64 reportInterval = 15;
 
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
@@ -640,31 +645,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case NKikimr::TEvLocal::EvTabletMetrics: {
-                        ++reportCount;
-
                         const auto* msg = event->template Get<
                             NKikimr::TEvLocal::TEvTabletMetrics>();
-                        NKikimrTabletBase::TMetrics metrics = msg->ResourceValues;
+                        if (tabletId != msg->TabletId) {
+                            break;
+                        }
+                        ++reportCount;
+                        NKikimrTabletBase::TMetrics metrics =
+                            msg->ResourceValues;
                         network += metrics.GetNetwork();
                     }
                 }
                 return false;
             });
 
+        env.GetRuntime().AdvanceCurrentTime(
+            TDuration::Seconds(reportInterval));
+        env.GetRuntime().DispatchEvents(
+            {},
+            TDuration::Seconds(reportInterval));
 
-        for (int i = 0; i < 16; ++i)
+        tablet.WriteData(handle, 0, sz, 'b');
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
         {
-            tablet.WriteData(handle, 0, sz, 'a');
-            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(1));
-            {
-                NActors::TDispatchOptions options;
-                options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
-                env.GetRuntime().DispatchEvents(options);
-            }
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
         }
 
-        UNIT_ASSERT_VALUES_UNEQUAL(0, reportCount);
-        UNIT_ASSERT_VALUES_UNEQUAL(0, network);
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+        env.GetRuntime().DispatchEvents(NActors::TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return reportCount;
+            }});
+
+        // tablets reports to hive average value for interval of 15 + ~0.3 sec
+        bool equalWithInaccuracy = 0.95 < sz / network * reportInterval < 1.05;
+
+        UNIT_ASSERT_VALUES_EQUAL(equalWithInaccuracy, true);
     }
 }
 
