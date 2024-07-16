@@ -43,6 +43,7 @@ namespace NActors {
         i16 PoolCount;
         i16 SharedThreadCount;
         std::unique_ptr<TSharedExecutorThreadCtx[]> Threads;
+        std::unique_ptr<TTimers[]> Timers;
 
         std::unique_ptr<NSchedulerQueue::TReader[]> ScheduleReaders;
         std::unique_ptr<NSchedulerQueue::TWriter[]> ScheduleWriters;

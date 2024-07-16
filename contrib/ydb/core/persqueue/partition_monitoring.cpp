@@ -12,7 +12,6 @@
 #include <contrib/ydb/core/protos/counters_pq.pb.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
-#include <contrib/ydb/library/protobuf_printer/security_printer.h>
 #include <contrib/ydb/public/lib/base/msgbus.h>
 #include <library/cpp/html/pcdata/pcdata.h>
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -22,14 +21,6 @@
 #include <util/system/byteorder.h>
 
 namespace NKikimr::NPQ {
-
-TString PrintConfig(const NKikimrPQ::TPQTabletConfig& cfg) {
-    TSecurityTextFormatPrinter<NKikimrPQ::TPQTabletConfig> printer;
-    printer.SetSingleLineMode(true);
-    TString string;
-    printer.PrintToString(cfg, &string);
-    return string;
-}
 
 void HtmlOutput(IOutputStream& out, const TString& line, const std::deque<std::pair<TKey, ui32>>& keys) {
     HTML(out) {
@@ -118,7 +109,7 @@ void TPartition::HandleMonitoring(TEvPQ::TEvMonRequest::TPtr& ev, const TActorCo
         out << "AvgWriteSize per " << avg.GetDuration().ToString() << " is " << avg.GetValue() << " bytes";
         res.push_back(out.Str()); out.Clear();
     }
-    out << PrintConfig(Config); res.push_back(out.Str()); out.Clear();
+    out << Config.DebugString(); res.push_back(out.Str()); out.Clear();
     HTML(out) {
         DIV_CLASS_ID("tab-pane fade", Sprintf("partition_%u", ui32(Partition))) {
             TABLE_SORTABLE_CLASS("table") {

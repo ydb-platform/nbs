@@ -12,8 +12,6 @@
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executor.h>
 
-#include <contrib/ydb/library/protobuf_printer/security_printer.h>
-
 #include <util/generic/algorithm.h>
 
 namespace NKikimr::NSchemeShard {
@@ -85,14 +83,6 @@ NKikimrScheme::TEvModifySchemeTransaction GetRecordForPrint(const NKikimrScheme:
         recordForPrint.SetUserToken("***hide token***");
     }
     return recordForPrint;
-}
-
-TString PrintSecurely(const NKikimrScheme::TEvModifySchemeTransaction& record) {
-    TSecurityTextFormatPrinter<NKikimrScheme::TEvModifySchemeTransaction> printer;
-    printer.SetSingleLineMode(true);
-    TString string;
-    printer.PrintToString(record, &string);
-    return string;
 }
 
 THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request, TOperationContext& context) {
@@ -193,7 +183,7 @@ THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request
                                     << ", already accepted parts: " << operation->Parts.size()
                                     << ", propose result status: " << NKikimrScheme::EStatus_Name(response->Record.GetStatus())
                                     << ", with reason: " << response->Record.GetReason()
-                                    << ", tx message: " << PrintSecurely(record));
+                                    << ", tx message: " << GetRecordForPrint(record).ShortDebugString());
                 }
 
                 Y_VERIFY_S(context.IsUndoChangesSafe(),
@@ -204,7 +194,7 @@ THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request
                                << ", already accepted parts: " << operation->Parts.size()
                                << ", propose result status: " << NKikimrScheme::EStatus_Name(response->Record.GetStatus())
                                << ", with reason: " << response->Record.GetReason()
-                               << ", tx message: " << PrintSecurely(record));
+                               << ", tx message: " << GetRecordForPrint(record).ShortDebugString());
 
                 context.OnComplete = {}; // recreate
                 context.DbChanges = {};
@@ -247,7 +237,7 @@ struct TSchemeShard::TTxOperationPropose: public NTabletFlatExecutor::TTransacti
 
         LOG_DEBUG_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                     "TTxOperationPropose Execute"
-                        << ", message: " << PrintSecurely(Request->Get()->Record)
+                        << ", message: " << GetRecordForPrint(Request->Get()->Record).ShortDebugString()
                         << ", at schemeshard: " << selfId);
 
         txc.DB.NoMoreReadsForTx();

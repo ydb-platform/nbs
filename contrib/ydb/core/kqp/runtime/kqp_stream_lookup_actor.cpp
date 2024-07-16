@@ -54,13 +54,8 @@ public:
 
     void Bootstrap() {
         CA_LOG_D("Start stream lookup actor");
+
         Counters->StreamLookupActorsCount->Inc();
-
-        if (!StreamLookupWorker) {
-            return RuntimeError(TStringBuilder() << "Uninitialized StreamLookupWorker",
-                NYql::NDqProto::StatusIds::INTERNAL_ERROR);
-        }
-
         ResolveTableShards();
         Become(&TKqpStreamLookupActor::StateFunc);
     }

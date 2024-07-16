@@ -199,8 +199,6 @@ void TPartitionWriterCacheActor::Handle(TEvents::TEvPoisonPill::TPtr& ev, const 
     for (auto& [_, writer] : Writers) {
         ctx.Send(writer->Actor, new TEvents::TEvPoisonPill());
     }
-
-    Die(ctx);
 }
 
 auto TPartitionWriterCacheActor::GetPartitionWriter(const TString& sessionId, const TString& txId,

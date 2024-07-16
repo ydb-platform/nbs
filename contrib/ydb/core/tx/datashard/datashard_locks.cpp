@@ -624,23 +624,12 @@ void TLockLocker::UpdateSchema(const TPathId& tableId, const TUserTable& tableIn
     table->UpdateKeyColumnsTypes(tableInfo.KeyColumnTypes);
 }
 
-void TLockLocker::RemoveSchema(const TPathId& tableId, ILocksDb* db) {
-    // Make sure all persistent locks are removed from the database
-    for (auto& pr : Locks) {
-        if (pr.second->IsPersistent()) {
-            pr.second->PersistRemoveLock(db);
-        }
-        pr.second->OnRemoved();
-    }
-
+void TLockLocker::RemoveSchema(const TPathId& tableId) {
     Tables.erase(tableId);
     Y_ABORT_UNLESS(Tables.empty());
     Locks.clear();
     ShardLocks.clear();
-    ExpireQueue.Clear();
     BrokenLocks.Clear();
-    BrokenPersistentLocks.Clear();
-    BrokenLocksCount_ = 0;
     CleanupPending.clear();
     CleanupCandidates.clear();
     PendingSubscribeLocks.clear();

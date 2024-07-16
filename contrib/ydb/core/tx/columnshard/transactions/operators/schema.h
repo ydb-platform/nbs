@@ -110,8 +110,7 @@ namespace NKikimr::NColumnShard {
                 //NTypeIds::Float,
                 //NTypeIds::Double,
                 NTypeIds::String,
-                NTypeIds::Utf8,
-                NTypeIds::Decimal
+                NTypeIds::Utf8
             };
 
             if (!schema.HasEngine() ||

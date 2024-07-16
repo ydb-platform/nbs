@@ -2,7 +2,6 @@
 
 #include "defs.h"
 #include "thread_context.h"
-#include "worker_context.h"
 
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/threadparkpad.h>
@@ -96,20 +95,16 @@ namespace NActors {
                 return false;
             }
 
-            NHPTimer::STime hpnow = GetCycleCountFast();
-            NHPTimer::STime hpprev = TlsThreadContext->UpdateStartOfProcessingEventTS(hpnow);
-            TlsThreadContext->ElapsingActorActivity.store(Max<ui64>(), std::memory_order_release);
-            TlsThreadContext->WorkerCtx->AddElapsedCycles(TlsThreadContext->ActorSystemIndex, hpnow - hpprev);
             do {
+                TlsThreadContext->Timers.HPNow = GetCycleCountFast();
+                TlsThreadContext->Timers.Elapsed += TlsThreadContext->Timers.HPNow - TlsThreadContext->Timers.HPStart;
                 if (WaitingPad.Park()) // interrupted
                     return true;
-                hpnow = GetCycleCountFast();
-                hpprev = TlsThreadContext->UpdateStartOfProcessingEventTS(hpnow);
-                TlsThreadContext->WorkerCtx->AddParkedCycles(hpnow - hpprev);
+                TlsThreadContext->Timers.HPStart = GetCycleCountFast();
+                TlsThreadContext->Timers.Parked += TlsThreadContext->Timers.HPStart - TlsThreadContext->Timers.HPNow;
                 state = GetState<TWaitState>();
             } while (static_cast<EThreadState>(state) == EThreadState::Sleep && !stopFlag->load(std::memory_order_relaxed));
-            TlsThreadContext->ActivationStartTS.store(hpnow, std::memory_order_release);
-            TlsThreadContext->ElapsingActorActivity.store(TlsThreadContext->ActorSystemIndex, std::memory_order_release);
+
             static_cast<TDerived*>(this)->AfterWakeUp(state);
             return false;
         }

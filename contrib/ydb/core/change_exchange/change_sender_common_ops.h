@@ -76,35 +76,19 @@ public:
 };
 
 class TBaseChangeSender: public IChangeSender {
-    using TIncompleteRecord = TEvChangeExchange::TEvRequestRecords::TRecordInfo;
-
-    struct TEnqueuedRecord: TIncompleteRecord {
-        bool ReEnqueued = false;
-
-        using TIncompleteRecord::TIncompleteRecord;
-        explicit TEnqueuedRecord(const TIncompleteRecord& record)
-            : TIncompleteRecord(record)
-        {
-        }
-    };
-
-    template <typename... Args>
-    static TEnqueuedRecord ReEnqueue(Args&&... args) {
-        TEnqueuedRecord record(std::forward<Args>(args)...);
-        record.ReEnqueued = true;
-        return record;
-    }
+    using TEnqueuedRecord = TEvChangeExchange::TEvRequestRecords::TRecordInfo;
+    using TRequestedRecord = TEvChangeExchange::TEvRequestRecords::TRecordInfo;
 
     struct TSender {
         TActorId ActorId;
         bool Ready = false;
-        TVector<TIncompleteRecord> Pending;
+        TVector<TEnqueuedRecord> Pending;
         TVector<IChangeRecord::TPtr> Prepared;
         TVector<ui64> Broadcasting;
     };
 
     struct TBroadcast {
-        const TIncompleteRecord Record;
+        const TEnqueuedRecord Record;
         THashSet<ui64> Partitions;
         THashSet<ui64> PendingPartitions;
         THashSet<ui64> CompletedPartitions;
@@ -172,7 +156,7 @@ private:
 
     THashMap<ui64, TSender> Senders; // ui64 is partition id
     TSet<TEnqueuedRecord> Enqueued;
-    TSet<TIncompleteRecord> PendingBody;
+    TSet<TRequestedRecord> PendingBody;
     TMap<ui64, IChangeRecord::TPtr> PendingSent; // ui64 is order
     THashMap<ui64, TBroadcast> Broadcasting; // ui64 is order
 

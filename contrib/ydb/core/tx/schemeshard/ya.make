@@ -268,7 +268,6 @@ PEERDIR(
     contrib/ydb/library/aclib/protos
     contrib/ydb/library/login
     contrib/ydb/library/login/protos
-    contrib/ydb/library/protobuf_printer
     contrib/ydb/library/yql/minikql
     contrib/ydb/services/bg_tasks
 )

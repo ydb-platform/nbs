@@ -488,7 +488,7 @@ bool TOperationQueue<T, TQueue>::Remove(const T& item) {
         StartOperations();
     }
 
-    removed |= WaitingItems.Remove(TItemWithTs(item));
+    removed = WaitingItems.Remove(TItemWithTs(item)) || removed;
 
     if (ItemsToShuffle) {
         auto it = Find(ItemsToShuffle.begin(), ItemsToShuffle.end(), item);

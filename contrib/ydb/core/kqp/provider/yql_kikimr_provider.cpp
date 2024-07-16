@@ -531,7 +531,6 @@ TVector<NKqpProto::TKqpTableOp> TableOperationsToProto(const TKiOperationList& o
     return protoOps;
 }
 
-// Is used only for key types now
 template<typename TProto>
 void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
     auto type = literal.Ref().GetTypeAnn();
@@ -563,7 +562,6 @@ void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
         case EDataSlot::Datetime:
             protoValue.SetUint32(FromString<ui32>(value));
             break;
-        case EDataSlot::Int8:
         case EDataSlot::Int32:
             protoValue.SetInt32(FromString<i32>(value));
             break;
@@ -580,17 +578,7 @@ void FillLiteralProtoImpl(const NNodes::TCoDataCtor& literal, TProto& proto) {
             protoValue.SetBytes(value.Data(), value.Size());
             break;
         case EDataSlot::Utf8:
-        case EDataSlot::Json:
             protoValue.SetText(ToString(value));
-            break;
-        case EDataSlot::Double:
-            protoValue.SetDouble(FromString<double>(value));
-            break;
-        case EDataSlot::Float:
-            protoValue.SetFloat(FromString<float>(value));
-            break;
-        case EDataSlot::Yson:
-            protoValue.SetBytes(ToString(value));
             break;
         case EDataSlot::Decimal: {
             const auto paramsDataType = type->Cast<TDataExprParamsType>();
@@ -615,56 +603,8 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, NKqpProto::TKqpPhyLite
     FillLiteralProtoImpl(literal, proto);
 }
 
-bool IsPgNullExprNode(const NNodes::TExprBase& maybeLiteral) {
-    return maybeLiteral.Ptr()->IsCallable() &&
-        maybeLiteral.Ptr()->Content() == "PgCast" && maybeLiteral.Ptr()->ChildrenSize() >= 1 &&
-        maybeLiteral.Ptr()->Child(0)->IsCallable() && maybeLiteral.Ptr()->Child(0)->Content() == "Null";
-}
-
-std::optional<TString> FillLiteralProto(NNodes::TExprBase maybeLiteral, const TTypeAnnotationNode* valueType, Ydb::TypedValue& proto)
-{
-    if (auto maybeJust = maybeLiteral.Maybe<TCoJust>()) {
-        maybeLiteral = maybeJust.Cast().Input();
-    }
-
-    if (auto literal = maybeLiteral.Maybe<TCoDataCtor>()) {
-        FillLiteralProto(literal.Cast(), proto);
-        return std::nullopt;
-    }
-
-    const bool isPgNull = IsPgNullExprNode(maybeLiteral);
-    if (maybeLiteral.Maybe<TCoPgConst>() || isPgNull) {
-        YQL_ENSURE(valueType);
-        auto actualPgType = valueType->Cast<TPgExprType>();
-        YQL_ENSURE(actualPgType);
-
-        auto* typeDesc = NKikimr::NPg::TypeDescFromPgTypeId(actualPgType->GetId());
-        if (!typeDesc) {
-            return TStringBuilder() << "Failed to parse default expr typename " << actualPgType->GetName();
-        }
-
-        if (isPgNull) {
-            proto.mutable_value()->set_null_flag_value(NProtoBuf::NULL_VALUE);
-        } else {
-            YQL_ENSURE(maybeLiteral.Maybe<TCoPgConst>());
-            auto pgConst = maybeLiteral.Cast<TCoPgConst>();
-            TString content = TString(pgConst.Value().Value());
-            auto parseResult = NKikimr::NPg::PgNativeBinaryFromNativeText(content, typeDesc);
-            if (parseResult.Error) {
-                return TStringBuilder() << "Failed to parse default expr for typename " << actualPgType->GetName()
-                    << ", error reason: " << *parseResult.Error;
-            }
-
-            proto.mutable_value()->set_bytes_value(parseResult.Str);
-        }
-
-        auto* pg = proto.mutable_type()->mutable_pg_type();
-        pg->set_type_name(NKikimr::NPg::PgTypeNameFromTypeDesc(typeDesc));
-        pg->set_oid(NKikimr::NPg::PgTypeIdFromTypeDesc(typeDesc));
-        return std::nullopt;
-    }
-
-    return TStringBuilder() << "Unsupported type of literal: " << maybeLiteral.Ptr()->Content();
+void FillLiteralProto(const NNodes::TCoDataCtor& literal, NKikimrMiniKQL::TResult& proto) {
+    FillLiteralProtoImpl(literal, proto);
 }
 
 void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto)
@@ -677,7 +617,8 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
     auto slot = type->Cast<TDataExprType>()->GetSlot();
     auto typeId = NKikimr::NUdf::GetDataTypeInfo(slot).TypeId;
 
-    YQL_ENSURE(NKikimr::NScheme::NTypeIds::IsYqlType(typeId));
+    YQL_ENSURE(NKikimr::NScheme::NTypeIds::IsYqlType(typeId) &&
+        NKikimr::NSchemeShard::IsAllowedKeyType(NKikimr::NScheme::TTypeInfo(typeId)));
 
     auto& protoType = *proto.mutable_type();
     auto& protoValue = *proto.mutable_value();
@@ -696,7 +637,6 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
         case EDataSlot::Datetime:
             protoValue.set_uint32_value(FromString<ui32>(value));
             break;
-        case EDataSlot::Int8:
         case EDataSlot::Int32:
             protoValue.set_int32_value(FromString<i32>(value));
             break;
@@ -713,17 +653,7 @@ void FillLiteralProto(const NNodes::TCoDataCtor& literal, Ydb::TypedValue& proto
             protoValue.set_bytes_value(value.Data(), value.Size());
             break;
         case EDataSlot::Utf8:
-        case EDataSlot::Json:
             protoValue.set_text_value(ToString(value));
-            break;
-        case EDataSlot::Double:
-            protoValue.set_double_value(FromString<double>(value));
-            break;
-        case EDataSlot::Float:
-            protoValue.set_float_value(FromString<float>(value));
-            break;
-        case EDataSlot::Yson:
-            protoValue.set_bytes_value(ToString(value));
             break;
         case EDataSlot::Decimal: {
             const auto paramsDataType = type->Cast<TDataExprParamsType>();

@@ -258,7 +258,6 @@ struct TSchemeCacheNavigate {
 
         // in
         TVector<TString> Path;
-        ui32 Access = NACLib::DescribeSchema;
         TTableId TableId;
         ERequestType RequestType = ERequestType::ByPath;
         EOp Operation = OpUnknown;

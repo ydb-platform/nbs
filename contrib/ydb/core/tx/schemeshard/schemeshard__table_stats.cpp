@@ -215,11 +215,9 @@ bool TTxStoreTableStats::PersistSingleStats(const TPathId& pathId,
     const TPartitionStats newStats = PrepareStats(ctx, rec);
 
     LOG_INFO_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
-               "Add stats from shard with datashardId(TabletID)=" << datashardId 
-                    << ", pathId " << pathId.LocalPathId
-                    << ": RowCount " << newStats.RowCount 
-                    << ", DataSize " << newStats.DataSize
-                    << (newStats.HasBorrowedData ? ", with borrowed parts" : ""));
+               "Add stats from shard with datashardId(TabletID)=" << datashardId << ", pathId " << pathId.LocalPathId
+                                                                  << ": RowCount " << newStats.RowCount << ", DataSize "
+                                                                  << newStats.DataSize);
 
     NIceDb::TNiceDb db(txc.DB);
 

@@ -25,7 +25,6 @@ Y_UNIT_TEST_SUITE(ActorBenchmark) {
     using TSendReceiveActorParams = TActorBenchmark::TSendReceiveActorParams;
 
     Y_UNIT_TEST(WithOnlyOneSharedExecutors) {
-        return;
         THolder<TActorSystemSetup> setup =  TActorBenchmark::GetActorSystemSetup();
         TActorBenchmark::AddBasicPool(setup, 1, 1, true);
 
@@ -65,7 +64,6 @@ Y_UNIT_TEST_SUITE(ActorBenchmark) {
     }
 
     Y_UNIT_TEST(WithOnlyOneSharedAndOneCommonExecutors) {
-        return;
         THolder<TActorSystemSetup> setup =  TActorBenchmark::GetActorSystemSetup();
         TActorBenchmark::AddBasicPool(setup, 2, true, true);
 
@@ -107,7 +105,6 @@ Y_UNIT_TEST_SUITE(ActorBenchmark) {
     }
 
     Y_UNIT_TEST(WithSharedExecutors) {
-        return;
         THolder<TActorSystemSetup> setup =  TActorBenchmark::GetActorSystemSetup();
          TActorBenchmark::AddBasicPool(setup, 2, 1, false);
          TActorBenchmark::AddBasicPool(setup, 2, 1, true);

@@ -332,7 +332,6 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
             participants,
             tx->GetDataTx()->GetVolatileChangeGroup(),
             tx->GetDataTx()->GetVolatileCommitOrdered(),
-            /* arbiter */ false,
             txc);
     }
 

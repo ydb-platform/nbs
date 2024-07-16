@@ -107,9 +107,9 @@ namespace {
             if (value.IsValueReady()) {
                 auto val = !value.IsValueObsolete(now) ? value.GetValue() : 0;
                 ui32 levelVal = val / significantChange;
-                auto [lit, inserted] = levels.insert({groupId, 0});
-                if (inserted || lit->second != levelVal || force) {
-                    lit->second = levelVal;
+                auto& lit = levels[groupId];
+                if (lit != levelVal || force) {
+                    lit = levelVal;
                     haveChanges = true;
                     // N.B. keep going so all levels are properly updated
                 }

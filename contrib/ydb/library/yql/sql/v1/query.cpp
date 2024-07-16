@@ -120,8 +120,8 @@ public:
         return Name.GetLiteral() ? &Full : nullptr;
     }
 
-    TNodePtr BuildKeys(TContext& ctx, ITableKeys::EBuildKeysMode) override {
-        const auto path = ctx.GetPrefixedPath(Service, Cluster, Name);
+    TNodePtr BuildKeys(TContext&, ITableKeys::EBuildKeysMode) override {
+        auto path = Name.Build(); // ToDo Need some prefix here?
         if (!path) {
             return nullptr;
         }

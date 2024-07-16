@@ -86,8 +86,6 @@ protected:
                 return ReplyWithTypeDescription(*NKikimrConfig::TImmediateControlsConfig::TTracingControls::TSamplingThrottlingOptions::TSamplingOptions::descriptor(), ctx);
             else if (name == ".NKikimrConfig.TImmediateControlsConfig.TTracingControls.TKeyValue")
                 return ReplyWithTypeDescription(*NKikimrConfig::TImmediateControlsConfig::TTracingControls::TKeyValue::descriptor(), ctx);
-            else if (name == ".NKikimrConfig.TImmediateControlsConfig.TTabletControls")
-                return ReplyWithTypeDescription(*NKikimrConfig::TImmediateControlsConfig::TTabletControls::descriptor(), ctx);
         }
 
         ctx.Send(RequestEvent->Sender,

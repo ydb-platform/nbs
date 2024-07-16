@@ -20,6 +20,7 @@ TSharedExecutorPool::TSharedExecutorPool(const TSharedExecutorPoolConfig &config
     , PoolCount(poolCount)
     , SharedThreadCount(poolsWithThreads.size())
     , Threads(new TSharedExecutorThreadCtx[SharedThreadCount])
+    , Timers(new TTimers[SharedThreadCount])
     , TimePerMailbox(config.TimePerMailbox)
     , EventsPerMailbox(config.EventsPerMailbox)
     , SoftProcessingDurationTs(config.SoftProcessingDurationTs)

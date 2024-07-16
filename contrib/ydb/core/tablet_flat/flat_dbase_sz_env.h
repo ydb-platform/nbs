@@ -11,11 +11,6 @@ namespace NTable {
     struct TSizeEnv : public IPages {
         using TInfo = NTabletFlatExecutor::TPrivatePageCache::TInfo;
 
-        TSizeEnv(IPages* env)
-            : Env(env)
-        {
-        }
-
         TResult Locate(const TMemTable*, ui64, ui32) noexcept override
         {
             Y_ABORT("IPages::Locate(TMemTable*, ...) shouldn't be used here");
@@ -25,29 +20,14 @@ namespace NTable {
         {
             auto *partStore = CheckedCast<const NTable::TPartStore*>(part);
 
-            AddPageSize(partStore->Locate(lob, ref), ref);
-
-            return { true, nullptr };
+            return { true, Touch(partStore->Locate(lob, ref), ref) };
         }
 
-        const TSharedData* TryGetPage(const TPart* part, TPageId pageId, TGroupId groupId) override
+        const TSharedData* TryGetPage(const TPart* part, TPageId page, TGroupId groupId) override
         {
             auto *partStore = CheckedCast<const NTable::TPartStore*>(part);
 
-            auto info = partStore->PageCollections.at(groupId.Index).Get();
-            auto type = EPage(info->PageCollection->Page(pageId).Type);
-            
-            switch (type) {
-                case EPage::Index:
-                case EPage::BTreeIndex:
-                    // need index pages to continue counting
-                    // do not count index
-                    // if these pages are not in memory, data won't be counted in precharge
-                    return Env->TryGetPage(part, pageId, groupId);
-                default:
-                    AddPageSize(partStore->PageCollections.at(groupId.Index).Get(), pageId);
-                    return nullptr;
-            }
+            return Touch(partStore->PageCollections.at(groupId.Index).Get(), page);
         }
 
         ui64 GetSize() const {
@@ -55,16 +35,17 @@ namespace NTable {
         }
 
     private:
-        void AddPageSize(TInfo *info, TPageId page) noexcept
+        const TSharedData* Touch(TInfo *info, TPageId page) noexcept
         {
             if (Touched[info].insert(page).second) {
                 Pages++;
                 Bytes += info->PageCollection->Page(page).Size;
             }
+
+            return nullptr;
         }
 
     private:
-        IPages* Env;
         THashMap<const void*, THashSet<TPageId>> Touched;
         ui64 Pages = 0;
         ui64 Bytes = 0;

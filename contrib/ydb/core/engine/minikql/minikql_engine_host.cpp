@@ -73,7 +73,7 @@ bool TEngineHost::IsValidKey(TKeyDesc& key) const {
     return NMiniKQL::IsValidKey(Scheme, localTableId, key);
 }
 ui64 TEngineHost::CalculateReadSize(const TVector<const TKeyDesc*>& keys) const {
-    auto env = Db.CreateSizeEnv();
+    NTable::TSizeEnv env;
 
     for (const TKeyDesc* ki : keys) {
         DoCalculateReadSize(*ki, env);
@@ -120,7 +120,7 @@ ui64 TEngineHost::CalculateResultSize(const TKeyDesc& key) const {
     if (key.Range.Point) {
         return Db.EstimateRowSize(localTid);
     } else {
-        auto env = Db.CreateSizeEnv();
+        NTable::TSizeEnv env;
         DoCalculateReadSize(key, env);
         ui64 size = env.GetSize();
 

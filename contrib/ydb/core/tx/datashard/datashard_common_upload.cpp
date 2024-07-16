@@ -286,7 +286,6 @@ bool TCommonUploadOps<TEvRequest, TEvResponse>::Execute(TDataShard* self, TTrans
             /* participants */ { },
             groupProvider.GetCurrentChangeGroup(),
             /* ordered */ false,
-            /* arbiter */ false,
             txc);
         // Note: transaction is already committed, no additional waiting needed
     }

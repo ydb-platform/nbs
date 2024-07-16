@@ -1104,14 +1104,8 @@ public:
                                     }
 
                                     columnBuild->SetColumnName(TString(columnName));
-                                    auto err = FillLiteralProto(constraint.Value().Cast(), actualType, *columnBuild->mutable_default_from_literal());
-                                    if (err) {
-                                        ctx.AddError(TIssue(ctx.GetPosition(constraint.Pos()), err.value()));
-                                        return SyncError();
-                                    }
-
+                                    FillLiteralProto(constraint.Value().Cast<TCoDataCtor>(), *columnBuild->mutable_default_from_literal());
                                     hasDefaultValue = true;
-
                                 } else if (constraint.Name().Value() == "not_null") {
                                     if (columnBuild == nullptr) {
                                         columnBuild = indexBuildSettings.mutable_column_build_operation()->add_column();

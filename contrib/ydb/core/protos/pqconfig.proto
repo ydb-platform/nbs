@@ -1,8 +1,6 @@
 import "contrib/ydb/public/api/protos/draft/persqueue_error_codes.proto";
 import "contrib/ydb/public/api/protos/draft/persqueue_common.proto";
 
-import "contrib/ydb/public/api/protos/annotations/sensitive.proto";
-
 import "contrib/ydb/core/protos/base.proto";
 import "contrib/ydb/core/protos/msgbus_kv.proto";
 import "contrib/ydb/core/protos/node_limits.proto";
@@ -210,11 +208,11 @@ message TMirrorPartitionConfig {
     message TCredentials {
         message IamCredentials {
             optional string Endpoint = 1;
-            optional string ServiceAccountKey = 2 [(Ydb.sensitive) = true];
+            optional string ServiceAccountKey = 2;
         }
         oneof Credentials {
-            string OauthToken = 1 [(Ydb.sensitive) = true];
-            string JwtParams = 2 [(Ydb.sensitive) = true];
+            string OauthToken = 1;
+            string JwtParams = 2;
             IamCredentials Iam = 3;
         }
     }

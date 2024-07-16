@@ -18,7 +18,7 @@ void TBaseChangeSender::LazyCreateSender(THashMap<ui64, TSender>& senders, ui64 
     for (const auto& [order, broadcast] : Broadcasting) {
         if (AddBroadcastPartition(order, partitionId)) {
             // re-enqueue record to send it in the correct order
-            Enqueued.insert(ReEnqueue(broadcast.Record));
+            Enqueued.insert(broadcast.Record);
         }
     }
 }
@@ -101,16 +101,11 @@ bool TBaseChangeSender::RequestRecords() {
     }
 
     auto it = Enqueued.begin();
-    TVector<TIncompleteRecord> records;
+    TVector<TRequestedRecord> records;
 
-    bool exceeded = false;
     while (it != Enqueued.end()) {
         if (MemUsage && (MemUsage + it->BodySize) > MemLimit) {
-            if (!it->ReEnqueued || exceeded) {
-                break;
-            }
-
-            exceeded = true;
+            break;
         }
 
         MemUsage += it->BodySize;
@@ -167,14 +162,6 @@ void TBaseChangeSender::SendRecords() {
     bool needToResolve = false;
 
     while (it != PendingSent.end()) {
-        if (Enqueued && Enqueued.begin()->Order <= it->first) {
-            break;
-        }
-
-        if (PendingBody && PendingBody.begin()->Order <= it->first) {
-            break;
-        }
-
         if (!it->second->IsBroadcast()) {
             const ui64 partitionId = Resolver->GetPartitionId(it->second);
             if (!Senders.contains(partitionId)) {
@@ -310,12 +297,12 @@ void TBaseChangeSender::SendPreparedRecords(ui64 partitionId) {
 
 void TBaseChangeSender::ReEnqueueRecords(const TSender& sender) {
     for (const auto& record : sender.Pending) {
-        Enqueued.insert(ReEnqueue(record));
+        Enqueued.insert(record);
     }
 
     for (const auto& record : sender.Prepared) {
         if (!record->IsBroadcast()) {
-            Enqueued.insert(ReEnqueue(record->GetOrder(), record->GetBody().size()));
+            Enqueued.emplace(record->GetOrder(), record->GetBody().size());
             MemUsage -= record->GetBody().size();
         }
     }

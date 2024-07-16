@@ -1,5 +1,6 @@
 #pragma once
 #include "viewer.h"
+#include <unordered_map>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -11,6 +12,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
 #include <contrib/ydb/core/viewer/json/json.h>
+//#include <ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/lib/json_value/ydb_json_value.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
 #include "json_pipe_req.h"
@@ -100,8 +102,17 @@ public:
         }
     }
 
-    bool IsPostContent() const {
-        return NViewer::IsPostContent(Event);
+    bool IsPostContent() {
+        if (Event->Get()->Request.GetMethod() == HTTP_METHOD_POST) {
+            const THttpHeaders& headers = Event->Get()->Request.GetHeaders();
+            auto itContentType = FindIf(headers, [](const auto& header) { return header.Name() == "Content-Type"; });
+            if (itContentType != headers.end()) {
+                TStringBuf contentTypeHeader = itContentType->Value();
+                TStringBuf contentType = contentTypeHeader.NextTok(';');
+                return contentType == "application/json";
+            }
+        }
+        return false;
     }
 
     TJsonQuery(IViewer* viewer, NMon::TEvHttpInfo::TPtr& ev)
@@ -177,7 +188,6 @@ public:
             request.SetAction(NKikimrKqp::QUERY_ACTION_EXECUTE);
             request.SetType(NKikimrKqp::QUERY_TYPE_SQL_GENERIC_QUERY);
             request.mutable_txcontrol()->mutable_begin_tx()->mutable_serializable_read_write();
-            request.mutable_txcontrol()->set_commit_tx(true);
             request.SetKeepSession(false);
         } else if (Action == "explain-query") {
             request.SetAction(NKikimrKqp::QUERY_ACTION_EXPLAIN);
@@ -191,7 +201,6 @@ public:
             request.SetAction(NKikimrKqp::QUERY_ACTION_EXECUTE);
             request.SetType(NKikimrKqp::QUERY_TYPE_SQL_DML);
             request.mutable_txcontrol()->mutable_begin_tx()->mutable_serializable_read_write();
-            request.mutable_txcontrol()->set_commit_tx(true);
             request.SetKeepSession(false);
         } else if (Action == "explain" || Action == "explain-ast" || Action == "explain-data") {
             request.SetAction(NKikimrKqp::QUERY_ACTION_EXPLAIN);
@@ -418,12 +427,7 @@ private:
     }
 
     void HandleReply(TEvViewer::TEvViewerResponse::TPtr& ev) {
-        auto& record = ev.Get()->Get()->Record;
-        if (record.HasQueryResponse()) {
-            Handle(*(ev.Get()->Get()->Record.MutableQueryResponse()));
-        } else {
-            SendKpqProxyRequest(); // fallback
-        }
+        Handle(*(ev.Get()->Get()->Record.MutableQueryResponse()));
     }
 
     void HandleReply(NKqp::TEvKqp::TEvAbortExecution::TPtr& ev) {

@@ -87,7 +87,7 @@ TString TPartition::LogPrefix() const {
 
 bool TPartition::CanWrite() const {
     if (PartitionConfig == nullptr) {
-        // Old format without AllPartitions configuration field.
+        // Old format without AllPartitions configuration field. 
         // It is not split/merge partition.
         return true;
     }
@@ -235,10 +235,9 @@ ui64 TPartition::MeteringDataSize(const TActorContext& /*ctx*/) const {
     // We assume that DataKyesBody contains an up-to-date set of blobs, their relevance is
     // maintained by the background process. However, the last block may contain several irrelevant
     // messages. Because of them, we throw out the size of the entire blob.
-    auto size = Size();
-    auto lastBlobSize = DataKeysBody[0].Size;
-    Y_DEBUG_ABORT_UNLESS(size >= lastBlobSize, "Metering data size must be positive");
-    return size >= lastBlobSize ? size - lastBlobSize : 0;
+    ui64 size = Size() - DataKeysBody[0].Size;
+    Y_DEBUG_ABORT_UNLESS(size >= 0, "Metering data size must be positive");
+    return std::max<ui64>(size, 0);
 }
 
 ui64 TPartition::ReserveSize() const {
@@ -258,9 +257,7 @@ ui64 TPartition::GetUsedStorage(const TActorContext& ctx) {
     const auto duration = now - LastUsedStorageMeterTimestamp;
     LastUsedStorageMeterTimestamp = now;
 
-    auto dataSize = MeteringDataSize(ctx);
-    auto reservedSize = ReserveSize();
-    ui64 size = dataSize > reservedSize ? dataSize - reservedSize : 0;
+    ui64 size = std::max<ui64>(MeteringDataSize(ctx) - ReserveSize(), 0);
     return size * duration.MilliSeconds() / 1000 / 1_MB; // mb*seconds
 }
 
@@ -276,7 +273,7 @@ ui64 TPartition::ImportantClientsMinOffset() const {
         minOffset = Min<ui64>(minOffset, curOffset);
     }
 
-    return minOffset;
+    return minOffset;    
 }
 
 void TPartition::HandleWakeup(const TActorContext& ctx) {
@@ -555,7 +552,7 @@ void TPartition::InitComplete(const TActorContext& ctx) {
         PartitionCountersLabeled->GetCounters()[METRIC_INIT_TIME] = InitDuration.MilliSeconds();
         PartitionCountersLabeled->GetCounters()[METRIC_LIFE_TIME] = CreationTime.MilliSeconds();
         PartitionCountersLabeled->GetCounters()[METRIC_PARTITIONS] = 1;
-        PartitionCountersLabeled->GetCounters()[METRIC_PARTITIONS_TOTAL] = std::max(Config.PartitionIdsSize(), Config.PartitionsSize());
+        PartitionCountersLabeled->GetCounters()[METRIC_PARTITIONS_TOTAL] = Config.PartitionIdsSize();
         ctx.Send(Tablet, new TEvPQ::TEvPartitionLabeledCounters(Partition, *PartitionCountersLabeled));
     }
     UpdateUserInfoEndOffset(ctx.Now());
@@ -972,7 +969,7 @@ void TPartition::Handle(TEvPQ::TEvBlobResponse::TPtr& ev, const TActorContext& c
 
     auto it = ReadInfo.find(cookie);
     Y_ABORT_UNLESS(it != ReadInfo.end());
-
+    
     TReadInfo info = std::move(it->second);
     ReadInfo.erase(it);
 
@@ -983,7 +980,7 @@ void TPartition::Handle(TEvPQ::TEvBlobResponse::TPtr& ev, const TActorContext& c
         info.Destination, GetSizeLag(info.Offset), Tablet, Config.GetMeteringMode()
     ));
     const auto& resp = dynamic_cast<TEvPQ::TEvProxyResponse*>(answer.Event.Get())->Response;
-
+    
     if (HasError(*ev->Get())) {
         if (info.IsSubscription) {
             TabletCounters.Cumulative()[COUNTER_PQ_READ_SUBSCRIPTION_ERROR].Increment(1);

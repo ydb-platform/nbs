@@ -38,7 +38,6 @@ union ViewerWhiteboardCookie {
 };
 
 IActor* CreateViewerRequestHandler(TEvViewer::TEvViewerRequest::TPtr& request);
-bool IsPostContent(const NMon::TEvHttpInfo::TPtr& event);
 
 }
 }

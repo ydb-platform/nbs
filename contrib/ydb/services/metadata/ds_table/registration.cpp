@@ -77,8 +77,9 @@ void TRegistrationData::InitializationFinished(const TString& initId) {
 }
 
 void TRegistrationData::SetInitializationSnapshot(NFetcher::ISnapshot::TPtr s) {
-    const bool notInitializedBefore = !SnapshotOwner->HasInitializationSnapshot();
-    SnapshotOwner->SetInitializationSnapshot(s);
+    const bool notInitializedBefore = !InitializationSnapshot;
+    InitializationSnapshot = dynamic_pointer_cast<NInitializer::TSnapshot>(s);
+    Y_ABORT_UNLESS(InitializationSnapshot);
     if (notInitializedBefore) {
         EventsWaiting->TryResendOne();
     }
@@ -90,12 +91,11 @@ void TRegistrationData::StartInitialization() {
 }
 
 TRegistrationData::TRegistrationData() {
-    SnapshotOwner = std::make_shared<TInitializationSnapshotOwner>();
     InitializationFetcher = std::make_shared<NInitializer::TFetcher>();
 }
 
 void TRegistrationData::NoInitializationSnapshot() {
-    SnapshotOwner->NoInitializationSnapshot();
+    InitializationSnapshot = std::make_shared<NInitializer::TSnapshot>(TInstant::Zero());
     EventsWaiting->TryResendOne();
 }
 

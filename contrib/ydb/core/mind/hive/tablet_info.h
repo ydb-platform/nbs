@@ -230,7 +230,7 @@ public:
     void UpdateResourceUsage(const NKikimrTabletBase::TMetrics& metrics);
     TResourceRawValues GetResourceCurrentValues() const;
     TResourceRawValues GetResourceMaximumValues() const;
-    i64 GetCounterValue() const;
+    static i64 GetCounterValue(const NKikimrTabletBase::TMetrics& metrics, const TVector<i64>& allowedMetricIds);
     void FilterRawValues(TResourceRawValues& values) const;
     void FilterRawValues(TResourceNormalizedValues& values) const;
     void ActualizeCounter();
