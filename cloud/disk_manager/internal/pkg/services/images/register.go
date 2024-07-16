@@ -90,6 +90,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.DeleteImage", func() tasks.Task {
 		return &deleteImageTask{
+			config:      config,
 			scheduler:   taskScheduler,
 			storage:     storage,
 			poolService: poolService,
