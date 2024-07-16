@@ -659,14 +659,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 return false;
             });
 
-        // First metrics submission simply sets the submission time, but does not provide any metrics. So we wait for the initial submission before generating the load. 
-        env.GetRuntime().AdvanceCurrentTime(
-            TDuration::Seconds(reportInterval));
-        env.GetRuntime().DispatchEvents(
-            {},
-            TDuration::Seconds(reportInterval));
+        // First metrics submission simply sets the submission time, but does not provide any metrics.
+        // So we wait for the initial submission before generating the load.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(reportInterval));
 
-        tablet.WriteData(handle, 0, sz, 'b');
+        tablet.WriteData(handle, 0, sz, 'a');
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
         {
@@ -685,7 +683,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             }});
 
         // tablets reports to hive average value for interval of 15 + ~0.3 sec
-        bool equalWithInaccuracy = 0.95 < sz / network * reportInterval < 1.05;
+        bool equalWithInaccuracy = (0.95 < (sz / (network * reportInterval))) &&
+                                   ((sz / (network * reportInterval)) < 1.05);
 
         UNIT_ASSERT_VALUES_EQUAL(equalWithInaccuracy, true);
     }
