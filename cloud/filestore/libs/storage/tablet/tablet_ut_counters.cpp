@@ -659,6 +659,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 return false;
             });
 
+        // First metrics submission simply sets the submission time, but does not provide any metrics. So we wait for the initial submission before generating the load. 
         env.GetRuntime().AdvanceCurrentTime(
             TDuration::Seconds(reportInterval));
         env.GetRuntime().DispatchEvents(
