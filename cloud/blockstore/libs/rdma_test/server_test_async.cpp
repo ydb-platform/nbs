@@ -141,6 +141,7 @@ public:
         const size_t serializedSize = Serializer->Serialize(
             wrapper->Serialized,
             messageType,
+            0, // flags
             request,
             ioVector);
         UNIT_ASSERT(expectedSerializedSize >= serializedSize);

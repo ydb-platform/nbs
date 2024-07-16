@@ -255,17 +255,24 @@ struct TFixture
 
     THistory History;
 
-    IEndpointListenerPtr Listener = CreateExternalVhostEndpointListener(
-        Logging,
-        ServerStats,
-        Executor,
-        LocalAgentId,
-        S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
-        TDuration::Seconds(30),
-        CreateFallbackListener(),
-        CreateExternalEndpointFactory());
+    IEndpointListenerPtr Listener =
+        CreateEndpointListener(false);   // no rdma aligned data
 
 public:
+    IEndpointListenerPtr CreateEndpointListener(bool isAlignedDataEnabled)
+    {
+        return CreateExternalVhostEndpointListener(
+            Logging,
+            ServerStats,
+            Executor,
+            LocalAgentId,
+            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
+            TDuration::Seconds(30),
+            isAlignedDataEnabled,
+            CreateFallbackListener(),
+            CreateExternalEndpointFactory());
+    }
+
     NProto::TStartEndpointRequest CreateDefaultStartEndpointRequest()
     {
         NProto::TStartEndpointRequest request;
@@ -364,6 +371,11 @@ TString GetArg(const TVector<TString>& args, TStringBuf name)
         return {};
     }
     return *std::next(it);
+}
+
+bool HasArg(const TVector<TString>& args, TStringBuf name)
+{
+    return Find(args, name) != args.end();
 }
 
 TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
@@ -564,6 +576,30 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL(1, History.size());
             auto* stop = std::get_if<TStopExternalEndpoint>(&History[0]);
             UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
+
+            History.clear();
+        }
+
+        {
+            auto alignedDataListener = CreateEndpointListener(true);
+
+            auto request = CreateDefaultStartEndpointRequest();
+
+            auto error = alignedDataListener
+                             ->StartEndpoint(request, FastPathVolume, Session)
+                             .GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+
+            auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
+
+            UNIT_ASSERT_C(
+                HasArg(create->CmdArgs, "--rdma-aligned-data"),
+                "missing --rdma-aligned-data arg");
+
+            History.clear();
         }
     }
 

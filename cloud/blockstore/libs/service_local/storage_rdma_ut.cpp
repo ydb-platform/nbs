@@ -68,6 +68,11 @@ public:
     {
         Y_UNUSED(out);
     }
+
+    bool IsAlignedDataEnabled() const override
+    {
+        return false;
+    }
 };
 
 }   // namespace

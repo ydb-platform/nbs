@@ -56,12 +56,21 @@ public:
     static size_t Serialize(
         TStringBuf buffer,
         ui32 msgId,
+        ui32 flags,
         const TProtoMessage& proto,
         TContIOVector data);
+
+    static size_t Serialize(
+        TStringBuf buffer,
+        ui32 msgId,
+        ui32 flags,
+        const TProtoMessage& proto,
+        size_t dataLen);
 
     struct TParseResult
     {
         ui32 MsgId;
+        ui32 Flags;
         TProtoMessagePtr Proto;
         TStringBuf Data;
     };

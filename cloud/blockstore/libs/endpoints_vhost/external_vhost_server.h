@@ -41,6 +41,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString localAgentId,
     ui32 socketAccessMode,
     TDuration vhostServerTimeoutAfterParentExit,
+    bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
@@ -50,6 +51,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString localAgentId,
     ui32 socketAccessMode,
     TDuration vhostServerTimeoutAfterParentExit,
+    bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory);
 

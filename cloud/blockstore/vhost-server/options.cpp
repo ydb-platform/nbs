@@ -132,6 +132,10 @@ void TOptions::Parse(int argc, char** argv)
             [this](const auto& timeout)
             { WaitAfterParentExit = TDuration::Seconds(timeout); });
 
+    opts.AddLongOption("rdma-aligned-data", "enable rdma aligned data")
+        .NoArgument()
+        .SetFlag(&RdmaClient.AlignedData);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {

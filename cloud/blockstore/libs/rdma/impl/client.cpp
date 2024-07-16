@@ -737,11 +737,11 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
 
     req->RequestBuffer = TStringBuf {
         reinterpret_cast<char*>(req->InBuffer.Address),
-        requestBytes,
+        req->InBuffer.Length,
     };
     req->ResponseBuffer = TStringBuf {
         reinterpret_cast<char*>(req->OutBuffer.Address),
-        responseBytes,
+        req->OutBuffer.Length,
     };
 
     return TClientRequestPtr(std::move(req));
@@ -1583,6 +1583,7 @@ public:
         TString host,
         ui32 port) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
+    bool IsAlignedDataEnabled() const override;
 
 private:
     // called from external thread
@@ -2067,6 +2068,11 @@ void TClient::DumpHtml(IOutputStream& out) const
             }
         }
     }
+}
+
+bool TClient::IsAlignedDataEnabled() const
+{
+    return Config->AlignedDataEnabled;
 }
 
 }   // namespace
