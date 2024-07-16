@@ -3,10 +3,13 @@ import logging
 
 from concurrent import futures
 from threading import Timer
+import typing
+
+from google.protobuf.message import Message
 
 from .error import ClientError, _handle_errors, client_error_from_response
 from .request import request_name, request_details, _RetryState
-from .base_client import dispatch_nbs_client_methods
+from .base_client import dispatch_nbs_client_methods, _BaseClient
 
 
 DEFAULT_RETRY_TIMEOUT = 300             # 300 sec = 5 min
@@ -16,7 +19,12 @@ DEFAULT_RETRY_TIMEOUT_INCREMENT = 0.5   # 0.5 sec = 500 msec
 @dispatch_nbs_client_methods
 class DurableClient(object):
 
-    def __init__(self, grpc_client, timeout=None, timeout_increment=None, log=None):
+    def __init__(
+            self,
+            grpc_client: type[_BaseClient],
+            timeout: int | None = None,
+            timeout_increment: float | None = None,
+            log: type[logging.Logger] | None = None):
         self.__grpc_client = grpc_client
 
         self.__timeout = DEFAULT_RETRY_TIMEOUT
@@ -36,22 +44,22 @@ class DurableClient(object):
         self.__grpc_client.close()
 
     @property
-    def timeout(self):
+    def timeout(self) -> int:
         return self.__timeout
 
     @property
-    def timeout_increment(self):
+    def timeout_increment(self) -> float:
         return self.__timeout_increment
 
     @_handle_errors
     def _handle_request_async(
             self,
-            retry_state,
-            call,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            retry_state: _RetryState,
+            call: typing.Callable,
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int):
 
         future = futures.Future()
         try:
@@ -83,12 +91,12 @@ class DurableClient(object):
     @_handle_errors
     def _execute_request_async_impl(
             self,
-            request,
-            call,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            request : type[Message],
+            call: typing.Callable,
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int) -> futures.Future:
 
         retry_state = _RetryState(
             request,
@@ -106,13 +114,13 @@ class DurableClient(object):
 
     def _process_response(
             self,
-            future,
-            retry_state,
-            call,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            future: futures.Future,
+            retry_state: _RetryState,
+            call: typing.Callable,
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int):
 
         error = ClientError()
         exception = future.exception()
@@ -180,12 +188,12 @@ class DurableClient(object):
     @_handle_errors
     def _execute_request_async(
             self,
-            method_name,
-            request,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            method_name: str,
+            request: type[Message],
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int) -> futures.Future:
 
         call = getattr(self.__grpc_client, method_name + '_async')
         return self._execute_request_async_impl(

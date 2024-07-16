@@ -1,6 +1,9 @@
 import datetime
+import typing
 import uuid
 import time
+
+from google.protobuf.message import Message
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
@@ -47,14 +50,14 @@ NBS_CLIENT_METHODS = [
 ]
 
 
-def __create_sync_method_impl(method_name):
+def __create_sync_method_impl(method_name: str) -> typing.Callable:
     def method_impl(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         if hasattr(self, '_execute_request'):
             return self._execute_request(
@@ -76,14 +79,14 @@ def __create_sync_method_impl(method_name):
     return method_impl
 
 
-def __create_async_method_impl(method_name):
+def __create_async_method_impl(method_name: str) -> typing.Callable:
     def method_impl(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> typing.Callable:
 
         return self._execute_request_async(
             method_name,
@@ -107,7 +110,7 @@ def dispatch_nbs_client_methods(Cls):
 @dispatch_nbs_client_methods
 class _BaseClient(object):
 
-    def __init__(self, endpoint, timeout):
+    def __init__(self, endpoint: str, timeout: int | None):
 
         self.__endpoint = endpoint
         self.__client_id = str(uuid.uuid4())
@@ -118,11 +121,11 @@ class _BaseClient(object):
 
     def _setup_headers(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         if request.Headers is None:
             request.Headers = protos.THeaders()
@@ -152,7 +155,13 @@ class _BaseClient(object):
         request.Headers.RequestTimeout = request_timeout * 1000000
 
     @_handle_errors
-    def _process_response(self, response, request, request_id, started):
+    def _process_response(
+            self,
+            response: type[Message],
+            request: type[Message],
+            request_id: int,
+            started: datetime.datetime) -> type[Message]:
+
         request_time = datetime.datetime.now() - started
         error = client_error_from_response(response)
 
@@ -179,13 +188,13 @@ class _BaseClient(object):
         return response
 
     @property
-    def client_id(self):
+    def client_id(self) -> str:
         return self.__client_id
 
     @property
-    def timeout(self):
+    def timeout(self) -> int:
         return self.__timeout
 
     @property
-    def endpoint(self):
+    def endpoint(self) -> str:
         return self.__endpoint

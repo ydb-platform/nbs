@@ -1,6 +1,8 @@
 import datetime
+from google.protobuf.message import Message
 import grpc
 import logging
+import typing
 
 from concurrent import futures
 
@@ -89,12 +91,12 @@ class GrpcClient(_BaseClient):
     @_handle_errors
     def _send_request(
             self,
-            request,
-            call,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            call: typing.Callable,
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request_id = _next_request_id()
         self._setup_headers(
@@ -115,12 +117,12 @@ class GrpcClient(_BaseClient):
     @_handle_errors
     def _execute_request_async(
             self,
-            path,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            path: str,
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         call = self._resolve(path)
 
@@ -155,12 +157,12 @@ class GrpcClient(_BaseClient):
     @_handle_errors
     def _execute_request(
             self,
-            path,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            path: str,
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime.datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         call = self._resolve(path)
 

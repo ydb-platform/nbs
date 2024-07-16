@@ -6,8 +6,10 @@ import threading
 from concurrent import futures
 
 from .base_client import _BaseClient
+from .credentials import ClientCredentials
 from .request import _next_request_id, request_name
 
+from google.protobuf.message import Message
 from google.protobuf.json_format import MessageToJson, Parse
 
 from .error import ClientError, _handle_errors
@@ -21,7 +23,7 @@ CONNECT_TIMEOUT = 5
 MAX_MESSAGE_SIZE = 8 * 1024 * 1024
 
 
-def _response_name(request):
+def _response_name(request: type[Message]) -> str:
     name = type(request).__name__
     return name[:len(name) - 7] + 'Response'
 
@@ -30,12 +32,12 @@ class HttpClient(_BaseClient):
 
     def __init__(
             self,
-            endpoint,
-            credentials=None,
-            timeout=None,
-            log=None,
-            executor=None,
-            connect_timeout=CONNECT_TIMEOUT):
+            endpoint: str,
+            credentials: ClientCredentials | None = None,
+            timeout: int | None = None,
+            log: type[logging.Logger] | None = None,
+            executor: futures.ThreadPoolExecutor | None = None,
+            connect_timeout: int = CONNECT_TIMEOUT):
         try:
             super(HttpClient, self).__init__(endpoint, timeout)
 
@@ -59,7 +61,7 @@ class HttpClient(_BaseClient):
                 log.exception("Can't create client")
             raise ClientError(EResult.E_FAIL.value, str(e))
 
-    def _session(self):
+    def _session(self) -> requests.Session:
         session = getattr(self.__context, 'session', None)
         if session is None:
             thread = threading.current_thread()
@@ -82,12 +84,12 @@ class HttpClient(_BaseClient):
     @_handle_errors
     def _post(
             self,
-            path,
-            request,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            path: str,
+            request: type[Message],
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int):
 
         self._setup_headers(
             request,
@@ -125,12 +127,12 @@ class HttpClient(_BaseClient):
 
     def _execute_request(
             self,
-            path,
-            request,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            path: str,
+            request: type[Message],
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int):
 
         request_id = _next_request_id()
 
@@ -152,12 +154,12 @@ class HttpClient(_BaseClient):
 
     def _execute_request_async(
             self,
-            path,
-            request,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            path: str,
+            request: type[Message],
+            idempotence_id: str,
+            timestamp: datetime.datetime,
+            trace_id: str,
+            request_timeout: int) -> futures.Future:
 
         request_id = _next_request_id()
 
@@ -169,7 +171,7 @@ class HttpClient(_BaseClient):
 
         future = futures.Future()
 
-        def set_result(f):
+        def set_result(f: futures.Future):
             try:
                 response = self._process_response(
                     f.result(),
