@@ -3037,13 +3037,12 @@ func (s *storageYDB) getNonRetiringBaseDisks(
 		from base_disks
 		where image_id = $image_id
 			and zone_id = $zone_id
-			and retiring = $retiring
-			and status <= $status
+			and retiring = false
+			and status = $status
 	`, s.tablesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-		persistence.ValueParam("$retiring", persistence.BoolValue(false)),                       // not retiring
-		persistence.ValueParam("$status", persistence.Uint32Value(uint32(baseDiskStatusReady))), // not doomed
+		persistence.ValueParam("$status", persistence.Uint32Value(uint32(baseDiskStatusReady))),
 	)
 	if err != nil {
 		return nil, err
@@ -3072,12 +3071,12 @@ func (s *storageYDB) retireBaseDisk(
 	}
 	defer tx.Rollback(ctx)
 
-	srcBaseDisk, err := s.findBaseDisk(ctx, tx, baseDiskID)
+	found, err := s.findBaseDisk(ctx, tx, baseDiskID)
 	if err != nil {
 		return nil, err
 	}
 
-	if srcBaseDisk == nil || srcBaseDisk.isDoomed() {
+	if found == nil || found.isDoomed() {
 		// Already retired.
 		return nil, tx.Commit(ctx)
 	}
@@ -3104,9 +3103,9 @@ func (s *storageYDB) retireBaseDisk(
 		})
 	}
 
-	imageID := srcBaseDisk.imageID
-	zoneID := srcBaseDisk.zoneID
-	imageSize := srcBaseDisk.imageSize
+	imageID := found.imageID
+	zoneID := found.zoneID
+	imageSize := found.imageSize
 	if useImageSize != 0 {
 		imageSize = useImageSize
 	}
@@ -3116,18 +3115,18 @@ func (s *storageYDB) retireBaseDisk(
 		return nil, err
 	}
 
-	var freeBaseDisks []baseDisk
+	var suitableBaseDisks []baseDisk
 	if config != nil {
 		imageSize = config.imageSize
 
-		freeBaseDisks, err = s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
+		suitableBaseDisks, err = s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// If pool is deleted then all non retiring base disks are suitable for
 		// rebasing.
-		freeBaseDisks, err = s.getNonRetiringBaseDisks(ctx, tx, imageID, zoneID)
+		suitableBaseDisks, err = s.getNonRetiringBaseDisks(ctx, tx, imageID, zoneID)
 		if err != nil {
 			return nil, err
 		}
@@ -3232,14 +3231,14 @@ func (s *storageYDB) retireBaseDisk(
 		slotIndex++
 	}
 
-	baseDiskOldState := *srcBaseDisk
+	updated := *found
 	// Remove base disk from pool. It also removes base disk from 'free' table.
-	srcBaseDisk.fromPool = false
-	srcBaseDisk.retiring = true
+	updated.fromPool = false
+	updated.retiring = true
 
 	baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
-		oldState: &baseDiskOldState,
-		state:    srcBaseDisk,
+		oldState: found,
+		state:    &updated,
 	})
 
 	err = s.updateBaseDisksAndSlots(ctx, tx, baseDiskTransitions, slotTransitions)
@@ -3255,7 +3254,7 @@ func (s *storageYDB) retireBaseDisk(
 	logging.Info(
 		ctx,
 		"retired base disk %+v, rebaseInfos=%+v",
-		srcBaseDisk,
+		updated,
 		rebaseInfos,
 	)
 	return rebaseInfos, nil
