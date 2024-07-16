@@ -329,7 +329,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaStorage
+class TRdmaStorage final
     : public IStorage
     , public NRdma::IClientHandler
     , public std::enable_shared_from_this<TRdmaStorage>
@@ -351,7 +351,7 @@ public:
             new TRdmaStorage(std::move(uuid), blockSize, std::move(taskQueue))};
     }
 
-    ~TRdmaStorage()
+    ~TRdmaStorage() override
     {
         if (Endpoint) {
             Endpoint->Stop();

@@ -466,8 +466,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWakeup(
 
 void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext& ctx)
 {
-    for (auto& it: AgentId2EndpointFuture) {
-        it.second.Subscribe([](auto& future) {
+    for (auto& [_, endpoint]: AgentId2EndpointFuture) {
+        endpoint.Subscribe([](auto& future) {
             if (future.HasValue()) {
                 future.GetValue()->Stop();
             }

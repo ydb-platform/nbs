@@ -1066,13 +1066,10 @@ void TClientEndpoint::RecvResponseCompleted(
 
 TFuture<void> TClientEndpoint::Stop() noexcept
 {
-    if (StopFlag.test_and_set()) {
-        return StopResult.GetFuture();
+    if (!StopFlag.test_and_set()) {
+        RDMA_DEBUG("stop endpoint");
+        SetError();
     }
-
-    RDMA_DEBUG("stop endpoint");
-
-    SetError();
     return StopResult.GetFuture();
 }
 
@@ -1370,6 +1367,7 @@ public:
 
     void Release(TClientEndpoint* endpoint)
     {
+        endpoint->Poller = nullptr;
         Endpoints.Delete([=](auto x) {
             return endpoint == x.get();
         });
@@ -1803,9 +1801,14 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 // implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
-    // detach pollers and close connection
     if (endpoint->ShouldStop()) {
-        StopEndpoint(endpoint);
+        if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+            // wait for completion poller to flush WRs
+            endpoint->Reconnect.Schedule();
+        } else {
+            // detach pollers and close connection
+            StopEndpoint(endpoint);
+        }
         return;
     }
 
