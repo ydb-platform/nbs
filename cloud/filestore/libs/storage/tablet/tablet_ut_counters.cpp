@@ -675,17 +675,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         NActors::TDispatchOptions options;
         options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
-        env.GetRuntime().DispatchEvents(NActors::TDispatchOptions{
-            .CustomFinalCondition = [&]()
-            {
-                return reportCount;
-            }});
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                {
+                    return reportCount;
+                }
+            }, TDuration::Seconds(reportInterval));
 
-        // tablets reports to hive average value for interval of 15 + ~0.3 sec
-        bool equalWithInaccuracy = (0.95 < (sz / (network * reportInterval))) &&
-                                   ((sz / (network * reportInterval)) < 1.05);
-
-        UNIT_ASSERT_VALUES_EQUAL(equalWithInaccuracy, true);
+        UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval), sz / 100);
     }
 }
 
