@@ -141,10 +141,11 @@ private:
         const NActors::TActorContext& ctx,
         const TString& sessionId,
         const ui64 seqNo,
+        const bool disableMultiTabletForwarding,
         const TString& methodName,
         const ui64 requestId,
         const NProto::TFileStore& filestore,
-        ui32 shardNo) const;
+        const ui32 shardNo) const;
 
 private:
     // actions

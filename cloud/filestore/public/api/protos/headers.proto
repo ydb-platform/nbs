@@ -53,6 +53,9 @@ message THeaders
 
     // FQDN of the host, where the request originated.
     string OriginFqdn = 10;
+
+    // Explicitly disables multitablet forwarding.
+    bool DisableMultiTabletForwarding = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

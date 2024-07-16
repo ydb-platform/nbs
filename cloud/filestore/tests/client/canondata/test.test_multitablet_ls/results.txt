@@ -1,0 +1,16 @@
+{}
+{}
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx",
+        "Id": 72057594037927938
+    }
+][
+    {
+        "Name": "xxx",
+        "FollowerFileSystemId": "fs0-shard"
+    }
+]

@@ -279,6 +279,10 @@ TFileStoreCommand::TFileStoreCommand()
         .Required()
         .RequiredArgument("STR")
         .StoreResult(&FileSystemId);
+
+    Opts.AddLongOption("disable-multitablet-forwarding")
+        .NoArgument()
+        .SetFlag(&DisableMultiTabletForwarding);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,6 +313,7 @@ TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateSession()
 
     Headers.SetClientId(ClientId);
     Headers.SetSessionId(sessionId);
+    Headers.SetDisableMultiTabletForwarding(DisableMultiTabletForwarding);
 
     return TSessionGuard(*this);
 }
