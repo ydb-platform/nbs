@@ -84,6 +84,8 @@ struct TBootstrap
 
     TString SocketPath;
 
+    TPromise<void> StopIsRunning = NewPromise<void>();
+
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler())
@@ -185,7 +187,12 @@ struct TBootstrap
 
     void Stop()
     {
-        StopAsync().Wait();
+        if (StopIsRunning.HasValue()) {
+            return;
+        }
+        auto stop = StopAsync();
+        StopIsRunning.SetValue();
+        stop.Wait();
         Fuse->DeInit();
         Loop = nullptr;
         std::remove(SocketPath.c_str());
@@ -1282,23 +1289,32 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         TBootstrap bootstrap;
         auto promise = NewPromise<NProto::TAcquireLockResponse>();
+        auto handlerCalled = NewPromise<void>();
 
         bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
+            if (!handlerCalled.HasValue()) {
+                handlerCalled.SetValue();
+            }
             return promise.GetFuture();
         };
+
+        bootstrap.StopIsRunning.GetFuture().Subscribe([&] (const auto&) {
+            NProto::TAcquireLockResponse response;
+            *response.MutableError() =
+                std::move(MakeError(E_FS_WOULDBLOCK, "waiting"));
+            promise.SetValue(std::move(response));
+        });
 
         bootstrap.Start();
 
         auto future =
             bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
 
-        bootstrap.Stop(); // wait till all requests are done writing their stats
+        handlerCalled.GetFuture().Wait();
 
-        UNIT_ASSERT_C(
-            !future.HasValue(),
-            "TAcquireLockRequest future should not be set after stop");
+        bootstrap.Stop(); // wait till all requests are done writing their stats
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
