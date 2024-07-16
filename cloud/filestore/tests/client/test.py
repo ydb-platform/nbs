@@ -30,6 +30,7 @@ def __exec_ls(client, *args):
         d("ATime")
         d("MTime")
         d("CTime")
+        d("FollowerNodeName")
 
     return json.dumps(nodes, indent=4).encode('utf-8')
 
