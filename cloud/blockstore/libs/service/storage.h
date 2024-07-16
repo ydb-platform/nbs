@@ -67,13 +67,21 @@ public:
         TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksRequest> request,
-        ui32 requestBlockSize) const;
+        ui32 requestBlockSize,
+        TStringBuf dataBuffer   // if non empty,
+                                // response data is written into the buffer
+                                // instead of TReadBlocksResponse
+    ) const;
 
     NThreading::TFuture<NProto::TWriteBlocksResponse> WriteBlocks(
         TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksRequest> request,
-        ui32 requestBlockSize) const;
+        ui32 requestBlockSize,
+        TStringBuf dataBuffer   // if non empty,
+                                // data is read from the buffer
+                                // instead of TWriteBlocksRequest
+    ) const;
 
     NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TInstant now,

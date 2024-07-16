@@ -46,6 +46,11 @@ struct TRdmaClientTest: NRdma::IClient
         Y_UNUSED(out);
     }
 
+    bool IsAlignedDataEnabled() const override
+    {
+        return false;
+    }
+
     void InjectErrors(
         NProto::TError allocationError,
         NProto::TError rdmaResponseError,

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 
@@ -85,11 +86,17 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
+        ui32 flags = 0;
+        if (isAlignedDataEnabled) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
+            flags,
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -191,16 +198,22 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
 
+        ui32 flags = 0;
+        if (isAlignedDataEnabled) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
+            flags,
             Proto,
             TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
     }
@@ -278,11 +291,14 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
+        Y_UNUSED(isAlignedDataEnabled);
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
+            0, // flags
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -324,6 +340,7 @@ private:
 
     ITaskQueuePtr TaskQueue;
     NRdma::IClientEndpointPtr Endpoint;
+    bool IsAlignedDataEnabled = false;
 public:
     static std::shared_ptr<TRdmaStorage> Create(
         TString uuid,
@@ -377,9 +394,10 @@ public:
     void ReportIOError() override
     {}
 
-    void Init(NRdma::IClientEndpointPtr endpoint)
+    void Init(NRdma::IClientEndpointPtr endpoint, bool isAlignedDataEnabled)
     {
         Endpoint = std::move(endpoint);
+        IsAlignedDataEnabled = isAlignedDataEnabled;
     }
 
 private:
@@ -423,7 +441,7 @@ private:
             return MakeFuture<typename T::TResponse>(TErrorResponse(err));
         }
 
-        handler->PrepareRequest(req->RequestBuffer);
+        handler->PrepareRequest(req->RequestBuffer, IsAlignedDataEnabled);
         auto response = handler->GetResponse();
         req->Context = std::move(handler);
         Endpoint->SendRequest(std::move(req), std::move(callContext));
@@ -547,7 +565,7 @@ public:
 
                     auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
                         .Subscribe([=] (const auto& future) {
-                            storage->Init(future.GetValue());
+                            storage->Init(future.GetValue(), Client->IsAlignedDataEnabled());
                         });
 
                     endpoints.emplace_back(std::move(endpoint));

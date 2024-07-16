@@ -68,6 +68,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(MaxInflightBytes, MaxInflightBytes);
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
+                ENTRY(AlignedDataEnabled, true);
             }
         }
     }
