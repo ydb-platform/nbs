@@ -42,6 +42,7 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(PollerThreads);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
+    SET(AlignedDataEnabled);
 }
 
 #undef SET
@@ -65,6 +66,7 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(MaxResponseDelay, MaxResponseDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
+                ENTRY(AlignedDataEnabled, AlignedDataEnabled);
             }
         }
     }

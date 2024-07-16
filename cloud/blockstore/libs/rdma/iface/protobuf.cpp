@@ -3,6 +3,7 @@
 #include "protocol.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <google/protobuf/message.h>
 
@@ -56,13 +57,38 @@ size_t TProtoMessageSerializer::MessageByteSize(
 size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
+    ui32 flags,
     const TProtoMessage& proto,
     TContIOVector data)
+{
+    size_t dataLen = data.Bytes();
+    char* ptr = const_cast<char*>(buffer.data());
+    ptr += Serialize(buffer, msgId, flags, proto, dataLen);
+
+    if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+        ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
+    }
+
+    for (size_t i = 0; i < data.Count(); ++i) {
+        const auto& part = data.Parts()[i];
+        memcpy(ptr, part.buf, part.len);
+        ptr += part.len;
+    }
+
+    return ptr - buffer.data();
+}
+
+// static
+size_t TProtoMessageSerializer::Serialize(
+    TStringBuf buffer,
+    ui32 msgId,
+    ui32 flags,
+    const TProtoMessage& proto,
+    size_t dataLen)
 {
     size_t protoLen = proto.ByteSizeLong();
     Y_ENSURE(protoLen < RDMA_MAX_PROTO_LEN, "protobuf message is too big");
 
-    size_t dataLen = data.Bytes();
     Y_ENSURE(dataLen < RDMA_MAX_DATA_LEN, "attached data is too big");
 
     size_t totalLen = NRdma::MessageByteSize(protoLen, dataLen);
@@ -73,6 +99,7 @@ size_t TProtoMessageSerializer::Serialize(
 
     TProtoHeader header = {
         .MsgId = msgId,
+        .Flags = flags,
         .ProtoLen = (ui32)protoLen,
         .DataLen = (ui32)dataLen,
     };
@@ -84,12 +111,6 @@ size_t TProtoMessageSerializer::Serialize(
     bool succeeded = proto.SerializeToArray(ptr, protoLen);
     Y_ENSURE(succeeded, "could not serialize protobuf message");
     ptr += protoLen;
-
-    for (size_t i = 0; i < data.Count(); ++i) {
-        const auto& part = data.Parts()[i];
-        memcpy(ptr, part.buf, part.len);
-        ptr += part.len;
-    }
 
     return ptr - buffer.data();
 }
@@ -120,10 +141,15 @@ TProtoMessageSerializer::Parse(TStringBuf buffer) const
     Y_ENSURE_RETURN(succeeded, "could not parse protobuf message");
     ptr += header.ProtoLen;
 
+    if (HasProtoFlag(header.Flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+        ptr =
+            const_cast<char*>(buffer.data()) + buffer.length() - header.DataLen;
+    }
+
     auto data = TStringBuf(ptr, header.DataLen);
     ptr += header.DataLen;
 
-    return TParseResult { header.MsgId, std::move(proto), data };
+    return TParseResult { header.MsgId, header.Flags, std::move(proto), data };
 }
 
 ////////////////////////////////////////////////////////////////////////////////

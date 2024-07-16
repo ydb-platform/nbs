@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -279,9 +280,15 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             return err;
         }
 
+        ui32 flags = 0;
+        if (RdmaClient->IsAlignedDataEnabled()) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
+            flags,
             deviceRequest,
             TContIOVector(nullptr, 0));
 

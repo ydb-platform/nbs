@@ -229,6 +229,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
+            0, // flags
             deviceRequest,
             TContIOVector(nullptr, 0));
 

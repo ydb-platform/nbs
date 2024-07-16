@@ -1,8 +1,12 @@
 #include "protobuf.h"
 
+#include "protocol.h"
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <util/generic/singleton.h>
 
@@ -48,28 +52,49 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
         NProto::TReadBlocksRequest proto;
         proto.SetDiskId("test");
 
-        auto data = TString(1024, 0);
+        auto data = TString(1024, 'A');
         IOutputStream::TPart part(data.data(), data.length());
 
-        size_t byteSize = serializer->MessageByteSize(proto, data.length());
-        auto buffer = TString::Uninitialized(byteSize);
+        size_t msgByteSize = serializer->MessageByteSize(proto, data.length());
+        TVector testedFlags{0U, RDMA_PROTO_FLAG_DATA_AT_THE_END};
+        TVector testedBufferSizes{
+            msgByteSize,
+            msgByteSize + 1024,
+            msgByteSize + 4096};
 
-        size_t serializedBytes = serializer->Serialize(
-            buffer,
-            TBlockStoreProtocol::ReadBlocksRequest,
-            proto,
-            TContIOVector(&part, 1));
-        UNIT_ASSERT_EQUAL(serializedBytes, byteSize);
+        for (auto bufferSize: testedBufferSizes) {
+            for (auto flag: testedFlags) {
+                ui32 flags = 0;
+                if (flag) {
+                    SetProtoFlag(flags, flag);
+                }
 
-        auto resultOrError = serializer->Parse(buffer);
-        UNIT_ASSERT(!HasError(resultOrError));
+                auto buffer = TString::Uninitialized(bufferSize);
 
-        const auto& result = resultOrError.GetResult();
-        UNIT_ASSERT_EQUAL(result.MsgId, TBlockStoreProtocol::ReadBlocksRequest);
-        UNIT_ASSERT_EQUAL(result.Data, data);
+                size_t serializedBytes = serializer->Serialize(
+                    buffer,
+                    TBlockStoreProtocol::ReadBlocksRequest,
+                    flags,
+                    proto,
+                    TContIOVector(&part, 1));
 
-        const auto& proto2 = static_cast<const NProto::TReadBlocksRequest&>(*result.Proto);
-        UNIT_ASSERT_EQUAL(proto2.GetDiskId(), "test");
+                if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+                    UNIT_ASSERT_VALUES_EQUAL(bufferSize, serializedBytes);
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(msgByteSize, serializedBytes);
+                }
+
+                auto resultOrError = serializer->Parse(buffer);
+                UNIT_ASSERT(!HasError(resultOrError));
+
+                const auto& result = resultOrError.GetResult();
+                UNIT_ASSERT_EQUAL(TBlockStoreProtocol::ReadBlocksRequest, result.MsgId);
+                UNIT_ASSERT_EQUAL(data, result.Data);
+
+                const auto& proto2 = static_cast<const NProto::TReadBlocksRequest&>(*result.Proto);
+                UNIT_ASSERT_EQUAL("test", proto2.GetDiskId());
+            }
+        }
     }
 };
 
