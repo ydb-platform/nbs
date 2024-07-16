@@ -1,6 +1,5 @@
 #include "tablet.h"
 
-#include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
