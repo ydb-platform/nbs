@@ -134,6 +134,12 @@ private:
 
         struct TRequestMetrics
         {
+            explicit TRequestMetrics(
+                TVector<TRequestMetrics*>& allRequestMetrics)
+            {
+                allRequestMetrics.push_back(this);
+            }
+            
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
@@ -148,24 +154,33 @@ private:
 
         struct TCompactionMetrics: TRequestMetrics
         {
+            explicit TCompactionMetrics(
+                    TVector<TRequestMetrics*>& allRequestMetrics)
+                : TRequestMetrics(allRequestMetrics)
+            {}
+
             std::atomic<i64> DudCount{0};
         };
+        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(14)};
 
-        TRequestMetrics ReadBlob;
-        TRequestMetrics WriteBlob;
-        TRequestMetrics PatchBlob;
-        TRequestMetrics ReadData;
-        TRequestMetrics DescribeData;
-        TRequestMetrics WriteData;
-        TRequestMetrics AddData;
-        TRequestMetrics GenerateBlobIds;
-        TCompactionMetrics Compaction;
-        TRequestMetrics Cleanup;
-        TRequestMetrics Flush;
-        TRequestMetrics FlushBytes;
-        TRequestMetrics TrimBytes;
-        TRequestMetrics CollectGarbage;
+        TRequestMetrics ReadBlob{AllRequestMetrics};
+        TRequestMetrics WriteBlob{AllRequestMetrics};
+        TRequestMetrics PatchBlob{AllRequestMetrics};
+        TRequestMetrics ReadData{AllRequestMetrics};
+        TRequestMetrics DescribeData{AllRequestMetrics};
+        TRequestMetrics WriteData{AllRequestMetrics};
+        TRequestMetrics AddData{AllRequestMetrics};
+        TRequestMetrics GenerateBlobIds{AllRequestMetrics};
+        TCompactionMetrics Compaction{AllRequestMetrics};
+        TRequestMetrics Cleanup{AllRequestMetrics};
+        TRequestMetrics Flush{AllRequestMetrics};
+        TRequestMetrics FlushBytes{AllRequestMetrics};
+        TRequestMetrics TrimBytes{AllRequestMetrics};
+        TRequestMetrics CollectGarbage{AllRequestMetrics};
 
+        i64 LastNetworkMetric = 0;
+
+        i64 TakeTotalRequestBytes();
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
@@ -494,6 +509,8 @@ private:
     void HandleNodeUnlinkedInFollower(
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
