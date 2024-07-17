@@ -203,7 +203,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 
         auto& runtime = env.GetRuntime();
         runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
                     TEvDiskRegistry::EvDeallocateDiskRequest)
@@ -214,7 +214,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                         syncDealloc = msg->Record.GetSync();
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         {
@@ -234,7 +234,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 
         syncDealloc = false;
         runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeResponse: {
@@ -263,7 +263,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         {
