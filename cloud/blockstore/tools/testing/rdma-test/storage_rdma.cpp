@@ -227,13 +227,24 @@ public:
             new TRdmaStorage(std::move(taskQueue))};
     }
 
+    ~TRdmaStorage()
+    {
+        Stop();
+    }
+
     void Init(NRdma::IClientEndpointPtr endpoint)
     {
         Endpoint = std::move(endpoint);
     }
 
     void Start() override {}
-    void Stop() override {}
+
+    void Stop() override
+    {
+        if (Endpoint) {
+            Endpoint->Stop();
+        }
+    }
 
     TFuture<NProto::TError> ReadBlocks(
         TCallContextPtr callContext,

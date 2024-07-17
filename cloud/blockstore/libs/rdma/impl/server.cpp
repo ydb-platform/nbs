@@ -320,7 +320,7 @@ public:
 
     // called from external thread
     void EnqueueRequest(TRequestPtr req) noexcept;
-    TString GetAddress() const;
+    TString PeerAddress() const;
 
     // called from CQ thread
     void HandleCompletionEvent(ibv_wc* wc) override;
@@ -456,7 +456,7 @@ TServerSession::~TServerSession()
     STORAGE_INFO("close session [send_magic=%X recv_magic=%X] to %s",
         SendMagic,
         RecvMagic,
-        GetAddress().c_str());
+        PeerAddress().c_str());
 
     Verbs->DestroyQP(Connection.get());
 
@@ -502,7 +502,7 @@ void TServerSession::EnqueueRequest(TRequestPtr req) noexcept
     }
 }
 
-TString TServerSession::GetAddress() const
+TString TServerSession::PeerAddress() const
 {
     return NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get()));
 }
@@ -1372,7 +1372,7 @@ private:
 
         for (const auto& session: *sessions) {
             if (session->IsFlushed()) {
-                session->CompletionPoller->Release(session.get());
+                Release(session.get());
             }
         }
     }
@@ -1661,7 +1661,7 @@ void TServer::DumpHtml(IOutputStream& out) const
 
                 for (auto& session: *sessions) {
                     TABLER() {
-                        TABLED() { out << session->GetAddress(); }
+                        TABLED() { out << session->PeerAddress(); }
                         TABLED()
                         {
                             Printf(
