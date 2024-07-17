@@ -157,22 +157,22 @@ def test_cleanup():
     should_delete_inner_test_acceptance_nonrepl_93gib_8kib = [
         *should_delete_inner_test_acceptance_common,
         _Resource(
-            name='acc-disk-acceptance-network-ssd-nonreplicated-93gib-8kib-1823123123',
+            name='acc-disk-acceptance-ssd-nonrepl-93gib-8kib-1823123123',
             resource_type='disk',
             created_at=_now - timedelta(hours=34)
         ),
         _Resource(
-            name='acc-image-acceptance-network-ssd-nonreplicated-93gib-8kib-10',
+            name='acc-image-acceptance-ssd-nonrepl-93gib-8kib-10',
             resource_type='image',
             created_at=_now - timedelta(days=367),
         ),
         _Resource(
-            name='acc-snapshot-acceptance-network-ssd-nonreplicated-93gib-8kib-19199199',
+            name='acc-snapshot-acceptance-ssd-nonrepl-93gib-8kib-19199199',
             resource_type='snapshot',
             created_at=_now - timedelta(days=3),
         ),
         _Resource(
-            name='acc-snapshot-acceptance-network-ssd-nonreplicated-93gib-8kib-19',
+            name='acc-snapshot-acceptance-ssd-nonrepl-93gib-8kib-19',
             resource_type='snapshot',
             created_at=_now - timedelta(days=2),
         ),
@@ -238,17 +238,17 @@ def test_cleanup():
     should_delete_inner_test_eternal_nonrepl_372gib_8kib = [
         *should_delete_inner_test_eternal_common,
         _Resource(
-            name='acc-disk-eternal-network-ssd-nonreplicated-372gib-8kib-12391293',
+            name='acc-disk-eternal-ssd-nonrepl-372gib-8kib-12391293',
             resource_type='disk',
             created_at=_now - timedelta(days=19),
         ),
         _Resource(
-            name='acc-snapshot-eternal-network-ssd-nonreplicated-372gib-8kib-1707897850',
+            name='acc-snapshot-eternal-ssd-nonrepl-372gib-8kib-1707897850',
             resource_type='snapshot',
             created_at=_now - timedelta(days=14),
         ),
         _Resource(
-            name='acc-image-eternal-network-ssd-nonreplicated-372gib-8kib-123123213',
+            name='acc-image-eternal-ssd-nonrepl-372gib-8kib-123123213',
             resource_type='image',
             created_at=_now - timedelta(days=15),
         ),
@@ -340,7 +340,7 @@ def test_cleanup():
     ]
     should_delete_test_eternal_nonrepl_93gib_4kib = [
         _Resource(
-            name='acc-eternal-network-ssd-nonreplicated-93gib-4kib-1703757663',
+            name='acc-eternal-ssd-nonrepl-93gib-4kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
