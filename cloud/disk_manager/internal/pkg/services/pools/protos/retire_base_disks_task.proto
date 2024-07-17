@@ -10,6 +10,7 @@ message RetireBaseDisksRequest {
     string ImageId = 1;
     string ZoneId = 2;
     bool UseBaseDiskAsSrc = 3;
+    uint64 UseImageSize = 4;
 }
 
 message RetireBaseDisksTaskState {

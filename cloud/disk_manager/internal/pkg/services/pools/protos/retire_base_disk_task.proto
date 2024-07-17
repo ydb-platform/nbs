@@ -10,9 +10,10 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message RetireBaseDiskRequest {
     reserved 3;
-    
+
     string BaseDiskId = 1;
     types.Disk SrcDisk = 2;
+    uint64 UseImageSize = 4;
 }
 
 message RetireBaseDiskTaskState {
