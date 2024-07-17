@@ -301,9 +301,9 @@ def test_cleanup():
             created_at=_now - timedelta(days=9),
         ),
     ]
-    should_delete_test_acceptance_disk_registry_based = [
+    should_delete_test_acceptance_drbased = [
         _Resource(
-            name='acc-acceptance-disk_registry_based-2412341243',
+            name='acc-acceptance-drbased-2412341243',
             resource_type='disk',
             created_at=_now - timedelta(days=9),
         ),
@@ -453,7 +453,7 @@ def test_cleanup():
                 *should_delete_test_acceptance_medium,
                 *should_delete_test_acceptance_big,
                 *should_delete_test_acceptance_enormous,
-                *should_delete_test_acceptance_disk_registry_based,
+                *should_delete_test_acceptance_drbased,
                 *should_delete_test_acceptance_default,
                 *should_delete_test_eternal_1tib_4kib,
                 *should_delete_test_eternal_8gib_8kib,
@@ -546,9 +546,9 @@ def test_cleanup():
             AcceptanceTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='acceptance',
-                test_suite='disk_registry_based',
+                test_suite='drbased',
             ),
-            should_delete_test_acceptance_disk_registry_based,
+            should_delete_test_acceptance_drbased,
 
         ),
         (
