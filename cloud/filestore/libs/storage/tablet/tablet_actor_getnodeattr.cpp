@@ -28,6 +28,22 @@ NProto::TError ValidateRequest(const NProto::TGetNodeAttrRequest& request)
     return {};
 }
 
+NProto::TError ValidateBatchRequest(
+    const NProtoPrivate::TGetNodeAttrBatchRequest& request)
+{
+    if (request.GetNodeId() == InvalidNodeId) {
+        return ErrorInvalidArgument();
+    }
+
+    for (const auto& name: request.GetNames()) {
+        if (auto error = ValidateNodeName(name); HasError(error)) {
+            return error;
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,6 +222,223 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleGetNodeAttrBatch(
+    const TEvIndexTablet::TEvGetNodeAttrBatchRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    bool accepted = AcceptRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(
+        ev,
+        ctx,
+        ValidateBatchRequest);
+    if (!accepted) {
+        return;
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    ui32 cacheHits = 0;
+    NProtoPrivate::TGetNodeAttrBatchResponse result;
+    for (ui32 i = 0; i < msg->Record.NamesSize(); ++i) {
+        auto* nodeResult = result.AddResponses();
+
+        if (TryFillGetNodeAttrResult(
+                msg->Record.GetNodeId(),
+                msg->Record.GetNames(i),
+                nodeResult->MutableNode()))
+        {
+            ++cacheHits;
+        }
+    }
+
+    Metrics.NodeIndexCacheHitCount.fetch_add(
+        cacheHits,
+        std::memory_order_relaxed);
+
+    if (cacheHits == msg->Record.NamesSize()) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvGetNodeAttrBatchResponse>();
+
+        CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(
+            response->Record,
+            msg->CallContext,
+            ctx);
+
+        Metrics.NodeIndexCacheHitCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+    }
+
+    AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
+
+    ExecuteTx<TGetNodeAttrBatch>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record),
+        std::move(result));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TGetNodeAttrBatch& args)
+{
+    Y_UNUSED(ctx);
+
+    auto* session = FindSession(
+        args.ClientId,
+        args.SessionId,
+        args.SessionSeqNo);
+    if (!session) {
+        args.Error = ErrorInvalidSession(
+            args.ClientId,
+            args.SessionId,
+            args.SessionSeqNo);
+        return true;
+    }
+
+    args.CommitId = GetReadCommitId(session->GetCheckpointId());
+    if (args.CommitId == InvalidCommitId) {
+        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        return true;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+
+    // validate parent node exists
+    const bool readParent =
+        ReadNode(db, args.Request.GetNodeId(), args.CommitId, args.ParentNode);
+    if (!readParent) {
+        return false;   // not ready
+    }
+
+    if (!args.ParentNode) {
+        args.Error = ErrorInvalidParent(args.Request.GetNodeId());
+        return true;
+    }
+
+    // TODO: access check
+
+    TVector<TMaybe<IIndexTabletDatabase::TNodeRef>> refs(
+        args.Request.NamesSize());
+    ui32 foundRefs = 0;
+    for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
+        if (args.Response.GetResponses(i).GetNode().GetId() != InvalidNodeId) {
+            // found in cache
+            ++foundRefs;
+            continue;
+        }
+
+        foundRefs += ReadNodeRef(
+            db,
+            args.Request.GetNodeId(),
+            args.CommitId,
+            args.Request.GetNames(i),
+            refs[i]);
+    }
+
+    if (foundRefs < refs.size()) {
+        return false;   // not ready
+    }
+
+    TVector<TMaybe<IIndexTabletDatabase::TNode>> nodes(
+        args.Request.NamesSize());
+    bool ready = true;
+    for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
+        auto* nodeResult = args.Response.MutableResponses(i);
+        if (nodeResult->GetNode().GetId() != InvalidNodeId) {
+            // found in cache
+            continue;
+        }
+
+        if (!refs[i]) {
+            *nodeResult->MutableError() = ErrorInvalidTarget(
+                args.Request.GetNodeId(),
+                args.Request.GetNames(i));
+            continue;
+        }
+
+        auto* nodeAttr = nodeResult->MutableNode();
+        if (refs[i]->FollowerId) {
+            nodeAttr->SetFollowerFileSystemId(refs[i]->FollowerId);
+            nodeAttr->SetFollowerNodeName(refs[i]->FollowerName);
+            continue;
+        }
+
+        if (!ReadNode(db, refs[i]->NodeId, args.CommitId, nodes[i])) {
+            ready = false;
+        }
+    }
+
+    if (!ready) {
+        return false;
+    }
+
+    for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
+        auto* nodeResult = args.Response.MutableResponses(i);
+        if (nodeResult->GetNode().GetId() != InvalidNodeId
+                || HasError(nodeResult->GetError())
+                || nodeResult->GetNode().GetFollowerFileSystemId())
+        {
+            continue;
+        }
+
+        if (!nodes[i]) {
+            *nodeResult->MutableError() = ErrorInvalidTarget(
+                refs[i]->NodeId,
+                args.Request.GetNames(i));
+        }
+    }
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_GetNodeAttrBatch(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TGetNodeAttrBatch& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
+    const TActorContext& ctx,
+    TTxIndexTablet::TGetNodeAttrBatch& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    using TResponse = TEvIndexTablet::TEvGetNodeAttrBatchResponse;
+    auto response = std::make_unique<TResponse>(args.Error);
+    TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
+    if (SUCCEEDED(args.Error.GetCode())) {
+        for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
+            const auto& nodeResult = args.Response.GetResponses(i);
+            RegisterGetNodeAttrResult(
+                args.ParentNode->NodeId,
+                args.Request.GetNames(i),
+                nodeResult.GetNode());
+        }
+    }
+
+    CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);

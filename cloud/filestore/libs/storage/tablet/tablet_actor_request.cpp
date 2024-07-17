@@ -122,6 +122,7 @@ FILESTORE_GENERATE_IMPL(DescribeData, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(DescribeSessions, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(GenerateBlobIds, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AddData, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(GetNodeAttrBatch, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 
