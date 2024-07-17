@@ -24,6 +24,7 @@ PEERDIR(
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/wilson
     contrib/ydb/library/keys
 
