@@ -27,12 +27,6 @@ PEERDIR(
     contrib/libs/grpc
 )
 
-IF(NETLINK)
-    CFLAGS(
-        -DNETLINK
-    )
-ENDIF()
-
 END()
 
 RECURSE_FOR_TESTS(ut)
