@@ -3413,6 +3413,41 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
     }
 
+    Y_UNIT_TEST(DestroyFileStoreWithActiveSessionShouldFail)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        headers.SessionId =
+            createSessionResponse->Record.GetSession().GetSessionId();
+        auto destroySessionResponse = service.DestroySession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroySessionResponse->GetStatus(),
+            destroySessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
     {
         TTestEnv env;
@@ -4928,6 +4963,50 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             nodeId1,
             createHandleResponse->Record.GetNodeAttr().GetId());
+    }
+
+    Y_UNIT_TEST(ShouldForceDestroyWithAllowFileStoreForceDestroyFlag)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAllowFileStoreForceDestroy(true);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        const TString fsId = "test";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId, true);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ForceDestroyWithoutAllowFileStoreForceDestroyFlagShouldFail)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        const TString fsId = "test";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        service.AssertDestroyFileStoreFailed(fsId, true);
     }
 }
 

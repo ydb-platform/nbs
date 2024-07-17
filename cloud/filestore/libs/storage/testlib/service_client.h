@@ -139,10 +139,14 @@ public:
         return request;
     }
 
-    auto CreateDestroyFileStoreRequest(const TString& fileSystemId)
+    auto CreateDestroyFileStoreRequest(
+        const TString& fileSystemId,
+        bool forceDestroy = false)
     {
-        auto request = std::make_unique<TEvService::TEvDestroyFileStoreRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvDestroyFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetForceDestroy(forceDestroy);
         return request;
     }
 

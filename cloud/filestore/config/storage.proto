@@ -298,4 +298,7 @@ message TStorageConfig
 
     // Controls BlobIndexOps' priority over each other.
     optional EBlobIndexOpsPriority BlobIndexOpsPriority = 356;
+
+    // Allow to destroy filestore with active sessions
+    optional bool AllowFileStoreForceDestroy = 357;
 }

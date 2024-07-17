@@ -40,7 +40,7 @@ public:
     {
         TString data = TIFStream(DataPath).ReadAll();
 
-        CreateSession();
+        auto sessionGuard = CreateSession();
 
         const auto resolved = ResolvePath(Path, true);
 

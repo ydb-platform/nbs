@@ -160,6 +160,9 @@ message TDestroyFileStoreRequest
 
     // FileSystem identifier.
     string FileSystemId = 2;
+
+    // Destroy mounted filestore
+    bool ForceDestroy = 3;
 }
 
 message TDestroyFileStoreResponse
