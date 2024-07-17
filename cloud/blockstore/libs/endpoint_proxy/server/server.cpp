@@ -583,7 +583,6 @@ struct TServer: IEndpointProxyServer
             ep.NbdDevicePath = request.GetNbdDevice();
             if (ep.NbdDevicePath) {
                 if (Config.Netlink) {
-#ifdef NETLINK
                     try {
                         ep.NbdDevice = NBD::CreateNetlinkDevice(
                             Logging,
@@ -598,11 +597,6 @@ struct TServer: IEndpointProxyServer
                             << " - Unable to create netlink device: " << e.what()
                             << ", falling back to ioctl");
                     }
-#else
-                    STORAGE_ERROR(request.ShortDebugString().Quote()
-                        << " - Built without netlink support"
-                        << ", falling back to ioctl");
-#endif
                 }
                 // request timeout is mainly useful as a tool to retry requests
                 // in kernel, but since devices configured via ioctl can't be
