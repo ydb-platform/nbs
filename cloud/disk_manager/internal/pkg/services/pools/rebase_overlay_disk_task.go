@@ -61,12 +61,6 @@ func (t *rebaseOverlayDiskTask) rebaseOverlayDisk(
 		SlotGeneration:   t.request.SlotGeneration,
 	})
 	if err != nil {
-		if nbs.IsDiskNotFoundError(err) {
-			// Disk might not be created yet.
-			// Restart task to avoid this race (NBS-3761).
-			return errors.NewInterruptExecutionError()
-		}
-
 		return err
 	}
 
@@ -78,6 +72,12 @@ func (t *rebaseOverlayDiskTask) rebaseOverlayDisk(
 		t.request.TargetBaseDiskId,
 	)
 	if err != nil {
+		if nbs.IsDiskNotFoundError(err) {
+			// Disk might not be created yet.
+			// Restart task to avoid this race (NBS-3761).
+			return errors.NewInterruptExecutionError()
+		}
+
 		return err
 	}
 
