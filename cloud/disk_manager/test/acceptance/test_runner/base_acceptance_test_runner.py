@@ -70,6 +70,8 @@ class BaseTestBinaryExecutor:
 
         if args.verbose:
             self._acceptance_test_cmd.append('--verbose')
+        if args.skip_images:
+            self._acceptance_test_cmd.append('--skip-images')
 
         self._s3_host = getattr(args, 's3_host', None)
 
