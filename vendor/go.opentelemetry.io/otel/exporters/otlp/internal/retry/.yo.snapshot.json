@@ -1,0 +1,25 @@
+{
+	"Version": "v1.16.0",
+	"GoVersion": "1.19",
+	"Sum": "h1:t4ZwRPU+emrcvM2e9DHd0Fsf0JTPVcbfa/BhTDF03d0=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/otlp/internal/retry": {
+			"Imports": [
+				"context",
+				"fmt",
+				"github.com/cenkalti/backoff/v4",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"github.com/cenkalti/backoff/v4",
+				"github.com/stretchr/testify/assert",
+				"math",
+				"sync",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

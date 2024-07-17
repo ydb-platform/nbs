@@ -1,0 +1,168 @@
+{
+	"Version": "v1.24.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:Xw8U6u2f8DK2XAkGRFV7BBLENgnTGX9i4rQRxJf+/vs=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp": {
+			"Imports": [
+				"bytes",
+				"compress/gzip",
+				"context",
+				"crypto/tls",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpconfig",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/retry",
+				"go.opentelemetry.io/proto/otlp/collector/trace/v1",
+				"go.opentelemetry.io/proto/otlp/trace/v1",
+				"google.golang.org/protobuf/proto",
+				"io",
+				"net",
+				"net/http",
+				"net/url",
+				"strconv",
+				"sync",
+				"time"
+			],
+			"TestImports": [
+				"bytes",
+				"compress/gzip",
+				"context",
+				"crypto/ecdsa",
+				"crypto/elliptic",
+				"crypto/rand",
+				"crypto/tls",
+				"crypto/x509",
+				"crypto/x509/pkix",
+				"encoding/pem",
+				"errors",
+				"fmt",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpconfig",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlptracetest",
+				"go.opentelemetry.io/otel/sdk/trace",
+				"go.opentelemetry.io/proto/otlp/collector/trace/v1",
+				"go.opentelemetry.io/proto/otlp/trace/v1",
+				"google.golang.org/protobuf/proto",
+				"io",
+				"math/big",
+				"net",
+				"net/http",
+				"strings",
+				"sync",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal": {
+			"Imports": [
+				"fmt"
+			],
+			"TestImports": [
+				"errors",
+				"github.com/stretchr/testify/require",
+				"strings",
+				"testing"
+			]
+		},
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/envconfig": {
+			"Imports": [
+				"crypto/tls",
+				"crypto/x509",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel/internal/global",
+				"net/url",
+				"strconv",
+				"strings",
+				"time"
+			],
+			"TestImports": [
+				"crypto/tls",
+				"crypto/x509",
+				"errors",
+				"github.com/stretchr/testify/assert",
+				"net/url",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpconfig": {
+			"Imports": [
+				"crypto/tls",
+				"crypto/x509",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/envconfig",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/retry",
+				"go.opentelemetry.io/otel/internal/global",
+				"google.golang.org/grpc",
+				"google.golang.org/grpc/backoff",
+				"google.golang.org/grpc/credentials",
+				"google.golang.org/grpc/credentials/insecure",
+				"google.golang.org/grpc/encoding/gzip",
+				"net/url",
+				"os",
+				"path",
+				"strings",
+				"time"
+			],
+			"TestImports": [
+				"errors",
+				"github.com/stretchr/testify/assert",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/envconfig",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlptracetest": {
+			"Imports": [
+				"context",
+				"errors",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/codes",
+				"go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/sdk/trace",
+				"go.opentelemetry.io/otel/sdk/trace/tracetest",
+				"go.opentelemetry.io/otel/trace",
+				"go.opentelemetry.io/proto/otlp/collector/trace/v1",
+				"go.opentelemetry.io/proto/otlp/common/v1",
+				"go.opentelemetry.io/proto/otlp/resource/v1",
+				"go.opentelemetry.io/proto/otlp/trace/v1",
+				"sort",
+				"sync",
+				"testing",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/retry": {
+			"Imports": [
+				"context",
+				"fmt",
+				"github.com/cenkalti/backoff/v4",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"github.com/cenkalti/backoff/v4",
+				"github.com/stretchr/testify/assert",
+				"math",
+				"sync",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

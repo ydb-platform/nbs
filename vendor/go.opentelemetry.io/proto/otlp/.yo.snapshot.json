@@ -1,0 +1,122 @@
+{
+	"Version": "v1.1.0",
+	"GoVersion": "1.17",
+	"Sum": "h1:2Di21piLrCqJ3U3eXGCTPHE9R8Nh+0uglSnOyxikMeI=",
+	"Packages": {
+		"go.opentelemetry.io/proto/otlp/collector/logs/v1": {
+			"Imports": [
+				"context",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/runtime",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/utilities",
+				"go.opentelemetry.io/proto/otlp/logs/v1",
+				"google.golang.org/grpc",
+				"google.golang.org/grpc/codes",
+				"google.golang.org/grpc/grpclog",
+				"google.golang.org/grpc/metadata",
+				"google.golang.org/grpc/status",
+				"google.golang.org/protobuf/proto",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"io",
+				"net/http",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/collector/metrics/v1": {
+			"Imports": [
+				"context",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/runtime",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/utilities",
+				"go.opentelemetry.io/proto/otlp/metrics/v1",
+				"google.golang.org/grpc",
+				"google.golang.org/grpc/codes",
+				"google.golang.org/grpc/grpclog",
+				"google.golang.org/grpc/metadata",
+				"google.golang.org/grpc/status",
+				"google.golang.org/protobuf/proto",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"io",
+				"net/http",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/collector/trace/v1": {
+			"Imports": [
+				"context",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/runtime",
+				"github.com/grpc-ecosystem/grpc-gateway/v2/utilities",
+				"go.opentelemetry.io/proto/otlp/trace/v1",
+				"google.golang.org/grpc",
+				"google.golang.org/grpc/codes",
+				"google.golang.org/grpc/grpclog",
+				"google.golang.org/grpc/metadata",
+				"google.golang.org/grpc/status",
+				"google.golang.org/protobuf/proto",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"io",
+				"net/http",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/common/v1": {
+			"Imports": [
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/logs/v1": {
+			"Imports": [
+				"go.opentelemetry.io/proto/otlp/common/v1",
+				"go.opentelemetry.io/proto/otlp/resource/v1",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/metrics/v1": {
+			"Imports": [
+				"go.opentelemetry.io/proto/otlp/common/v1",
+				"go.opentelemetry.io/proto/otlp/resource/v1",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/resource/v1": {
+			"Imports": [
+				"go.opentelemetry.io/proto/otlp/common/v1",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/proto/otlp/trace/v1": {
+			"Imports": [
+				"go.opentelemetry.io/proto/otlp/common/v1",
+				"go.opentelemetry.io/proto/otlp/resource/v1",
+				"google.golang.org/protobuf/reflect/protoreflect",
+				"google.golang.org/protobuf/runtime/protoimpl",
+				"reflect",
+				"sync"
+			],
+			"TestImports": null
+		}
+	}
+}

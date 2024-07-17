@@ -1,0 +1,25 @@
+{
+	"Version": "v3.2.2",
+	"GoVersion": "1.12",
+	"Sum": "h1:cfUAAO3yvKMYKPrvhDuHSwQnhZNk/RMHKdZqKTxfm6M=",
+	"Packages": {
+		"github.com/cenkalti/backoff/v3": {
+			"Imports": [
+				"context",
+				"math/rand",
+				"sync",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"fmt",
+				"log",
+				"math",
+				"math/rand",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

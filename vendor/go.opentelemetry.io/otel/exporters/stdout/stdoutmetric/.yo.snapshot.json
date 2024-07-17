@@ -1,0 +1,40 @@
+{
+	"Version": "v0.45.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:NjN6zc7Mwy9torqa3mo+pMJ3mHoPI0uzVSYcqB2t72A=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric": {
+			"Imports": [
+				"context",
+				"encoding/json",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel/internal/global",
+				"go.opentelemetry.io/otel/sdk/metric",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"io",
+				"os",
+				"sync",
+				"sync/atomic"
+			],
+			"TestImports": [
+				"bytes",
+				"context",
+				"encoding/json",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/metric",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/semconv/v1.24.0",
+				"io",
+				"os",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

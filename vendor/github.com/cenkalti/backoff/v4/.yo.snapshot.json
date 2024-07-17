@@ -1,0 +1,27 @@
+{
+	"Version": "v4.2.1",
+	"GoVersion": "1.18",
+	"Sum": "h1:y4OZtCnogmCPw98Zjyt5a6+QwPLGkiQsYW5oUqylYbM=",
+	"Packages": {
+		"github.com/cenkalti/backoff/v4": {
+			"Imports": [
+				"context",
+				"errors",
+				"math/rand",
+				"sync",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"fmt",
+				"io",
+				"log",
+				"math",
+				"math/rand",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

@@ -1,0 +1,49 @@
+{
+	"Version": "v0.45.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:BeIK2KGho0oCWa7LxEGSqfDZbs7Fpv/Viz+FS4P8CXE=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/prometheus": {
+			"Imports": [
+				"context",
+				"errors",
+				"fmt",
+				"github.com/prometheus/client_golang/prometheus",
+				"github.com/prometheus/client_model/go",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/internal/global",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/metric",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"google.golang.org/protobuf/proto",
+				"sort",
+				"strings",
+				"sync",
+				"unicode",
+				"unicode/utf8"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"fmt",
+				"github.com/prometheus/client_golang/prometheus",
+				"github.com/prometheus/client_golang/prometheus/testutil",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/metric",
+				"go.opentelemetry.io/otel/sdk/metric",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/semconv/v1.24.0",
+				"io",
+				"os",
+				"sync",
+				"testing"
+			]
+		}
+	}
+}
