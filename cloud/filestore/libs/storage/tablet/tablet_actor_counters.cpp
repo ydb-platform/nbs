@@ -492,6 +492,13 @@ void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
     }
 }
 
+void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
+{
+    auto* resourceMetrics = Executor()->GetResourceMetrics();
+    resourceMetrics->Network.Increment(Metrics.TakeTotalRequestBytes(), ctx.Now());
+    resourceMetrics->TryUpdate(ctx);
+}
+
 void TIndexTabletActor::HandleUpdateCounters(
     const TEvIndexTabletPrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
@@ -508,6 +515,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
         CalculateNodeIndexCacheStats());
+    SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
