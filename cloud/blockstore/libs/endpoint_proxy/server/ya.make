@@ -27,12 +27,6 @@ PEERDIR(
     contrib/ydb/library/actors/util
 )
 
-IF(NETLINK)
-    CFLAGS(
-        -DNETLINK
-    )
-ENDIF()
-
 END()
 
 RECURSE_FOR_TESTS(ut)

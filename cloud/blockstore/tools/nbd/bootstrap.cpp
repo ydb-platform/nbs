@@ -294,7 +294,6 @@ void TBootstrap::Start()
     if (Options->ConnectDevice) {
 #if defined(_linux_)
         if (Options->Netlink) {
-#if defined(NETLINK)
             NbdDevice = CreateNetlinkDevice(
                 Logging,
                 listenAddress,
@@ -302,9 +301,6 @@ void TBootstrap::Start()
                 Options->Timeout,
                 Options->DeadConnectionTimeout,
                 Options->Reconfigure);
-#else
-            ythrow yexception() << "built without netlink support";
-#endif
         } else {
             NbdDevice = CreateDevice(
                 Logging,
