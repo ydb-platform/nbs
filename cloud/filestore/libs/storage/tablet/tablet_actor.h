@@ -384,7 +384,7 @@ private:
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        NProto::TCreateNodeResponse response);
+        TCreateNodeInFollowerResult result);
 
     void RegisterUnlinkNodeInFollowerActor(
         const NActors::TActorContext& ctx,
@@ -500,10 +500,6 @@ private:
 
     void HandleNodeCreatedInFollower(
         const TEvIndexTabletPrivate::TEvNodeCreatedInFollower::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleNodeCreatedInFollowerUponCreateHandle(
-        const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleNodeUnlinkedInFollower(

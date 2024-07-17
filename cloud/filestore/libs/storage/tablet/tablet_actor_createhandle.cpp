@@ -41,196 +41,6 @@ NProto::TError ValidateRequest(const NProto::TCreateHandleRequest& request)
     return {};
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO(#1350): extract common code, see TCreateNodeInFollowerActor
-class TCreateNodeInFollowerUponCreateHandleActor final
-    : public TActorBootstrapped<TCreateNodeInFollowerUponCreateHandleActor>
-{
-private:
-    const TString LogTag;
-    TRequestInfoPtr RequestInfo;
-    const TActorId ParentId;
-    const NProto::TCreateNodeRequest Request;
-    const ui64 RequestId;
-    const ui64 OpLogEntryId;
-    NProto::TCreateHandleResponse Response;
-
-public:
-    TCreateNodeInFollowerUponCreateHandleActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProto::TCreateNodeRequest request,
-        ui64 requestId,
-        ui64 opLogEntryId,
-        NProto::TCreateHandleResponse response);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void SendRequest(const TActorContext& ctx);
-
-    void HandleCreateNodeResponse(
-        const TEvService::TEvCreateNodeResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TCreateNodeInFollowerUponCreateHandleActor::TCreateNodeInFollowerUponCreateHandleActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProto::TCreateNodeRequest request,
-        ui64 requestId,
-        ui64 opLogEntryId,
-        NProto::TCreateHandleResponse response)
-    : LogTag(std::move(logTag))
-    , RequestInfo(std::move(requestInfo))
-    , ParentId(parentId)
-    , Request(std::move(request))
-    , RequestId(requestId)
-    , OpLogEntryId(opLogEntryId)
-    , Response(std::move(response))
-{}
-
-void TCreateNodeInFollowerUponCreateHandleActor::Bootstrap(const TActorContext& ctx)
-{
-    SendRequest(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TCreateNodeInFollowerUponCreateHandleActor::SendRequest(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
-    request->Record = Request;
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Sending CreateNodeRequest to follower %s, %s",
-        LogTag.c_str(),
-        Request.GetFileSystemId().c_str(),
-        Request.GetName().c_str());
-
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
-}
-
-void TCreateNodeInFollowerUponCreateHandleActor::HandleCreateNodeResponse(
-    const TEvService::TEvCreateNodeResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    if (msg->GetError().GetCode() == E_FS_EXIST) {
-        // EXIST can arrive after a successful operation is retried, it's ok
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node creation for %s, %s returned EEXIST %s",
-            LogTag.c_str(),
-            Request.GetFileSystemId().c_str(),
-            Request.GetName().c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        msg->Record.ClearError();
-    }
-
-    if (HasError(msg->GetError())) {
-        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::TABLET_WORKER,
-                "%s Follower node creation failed for %s, %s with error %s"
-                ", retrying",
-                LogTag.c_str(),
-                Request.GetFileSystemId().c_str(),
-                Request.GetName().c_str(),
-                FormatError(msg->GetError()).Quote().c_str());
-
-            SendRequest(ctx);
-            return;
-        }
-
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node creation failed for %s, %s with error %s"
-            ", will not retry",
-            LogTag.c_str(),
-            Request.GetFileSystemId().c_str(),
-            Request.GetName().c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Follower node created for %s, %s",
-        LogTag.c_str(),
-        Request.GetFileSystemId().c_str(),
-        Request.GetName().c_str());
-
-    *Response.MutableNodeAttr() = std::move(*msg->Record.MutableNode());
-
-    ReplyAndDie(ctx, {});
-}
-
-void TCreateNodeInFollowerUponCreateHandleActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-}
-
-void TCreateNodeInFollowerUponCreateHandleActor::ReplyAndDie(
-    const TActorContext& ctx,
-    NProto::TError error)
-{
-    if (HasError(error)) {
-        *Response.MutableError() = std::move(error);
-    }
-
-    using TResponse =
-        TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle;
-    ctx.Send(ParentId, std::make_unique<TResponse>(
-        std::move(RequestInfo),
-        Request.GetHeaders().GetSessionId(),
-        RequestId,
-        OpLogEntryId,
-        std::move(Response)));
-
-    Die(ctx);
-}
-
-STFUNC(TCreateNodeInFollowerUponCreateHandleActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
-
-        default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
-            break;
-    }
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -575,17 +385,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             args.FollowerId.c_str(),
             args.FollowerName.c_str());
 
-        auto actor = std::make_unique<TCreateNodeInFollowerUponCreateHandleActor>(
-            LogTag,
+        RegisterCreateNodeInFollowerActor(
+            ctx,
             args.RequestInfo,
-            ctx.SelfID,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
             args.RequestId,
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
-
-        auto actorId = NCloud::Register(ctx, std::move(actor));
-        WorkerActors.insert(actorId);
 
         return;
     }
@@ -606,31 +412,6 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TIndexTabletActor::HandleNodeCreatedInFollowerUponCreateHandle(
-    const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    auto response = std::make_unique<TEvService::TEvCreateHandleResponse>();
-    response->Record = std::move(msg->CreateHandleResponse);
-
-    RemoveTransaction(*msg->RequestInfo);
-    CommitDupCacheEntry(msg->SessionId, msg->RequestId);
-
-    CompleteResponse<TEvService::TCreateHandleMethod>(
-        response->Record,
-        msg->RequestInfo->CallContext,
-        ctx);
-
-    NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
-
-    WorkerActors.erase(ev->Sender);
-    ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

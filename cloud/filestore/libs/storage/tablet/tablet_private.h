@@ -156,6 +156,10 @@ struct TWriteRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TCreateNodeInFollowerResult = std::variant<
+    NProto::TCreateNodeResponse,
+    NProto::TCreateHandleResponse>;
+
 using TUnlinkNodeInFollowerResult = std::variant<
     NProto::TUnlinkNodeResponse,
     NProto::TRenameNodeResponse>;
@@ -508,49 +512,22 @@ struct TEvIndexTabletPrivate
     struct TNodeCreatedInFollower
     {
         const TRequestInfoPtr RequestInfo;
-        TString SessionId;
+        const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
-        NProto::TCreateNodeResponse CreateNodeResponse;
+        TCreateNodeInFollowerResult Result;
 
         TNodeCreatedInFollower(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
-                NProto::TCreateNodeResponse createNodeResponse)
+                TCreateNodeInFollowerResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
-            , CreateNodeResponse(std::move(createNodeResponse))
-        {
-        }
-    };
-
-    //
-    // NodeCreatedInFollowerUponCreateHandle
-    //
-
-    struct TNodeCreatedInFollowerUponCreateHandle
-    {
-        TRequestInfoPtr RequestInfo;
-        const TString SessionId;
-        const ui64 RequestId;
-        const ui64 OpLogEntryId;
-        NProto::TCreateHandleResponse CreateHandleResponse;
-
-        TNodeCreatedInFollowerUponCreateHandle(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 requestId,
-                ui64 opLogEntryId,
-                NProto::TCreateHandleResponse createHandleResponse)
-            : RequestInfo(std::move(requestInfo))
-            , SessionId(std::move(sessionId))
-            , RequestId(requestId)
-            , OpLogEntryId(opLogEntryId)
-            , CreateHandleResponse(std::move(createHandleResponse))
+            , Result(std::move(result))
         {
         }
     };
@@ -799,7 +776,6 @@ struct TEvIndexTabletPrivate
         EvForcedRangeOperationProgress,
 
         EvNodeCreatedInFollower,
-        EvNodeCreatedInFollowerUponCreateHandle,
         EvNodeUnlinkedInFollower,
 
         EvEnd
@@ -826,10 +802,6 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeCreatedInFollower =
         TRequestEvent<TNodeCreatedInFollower, EvNodeCreatedInFollower>;
-
-    using TEvNodeCreatedInFollowerUponCreateHandle = TRequestEvent<
-        TNodeCreatedInFollowerUponCreateHandle,
-        EvNodeCreatedInFollowerUponCreateHandle>;
 
     using TEvNodeUnlinkedInFollower =
         TRequestEvent<TNodeUnlinkedInFollower, EvNodeUnlinkedInFollower>;

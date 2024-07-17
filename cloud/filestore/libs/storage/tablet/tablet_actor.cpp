@@ -757,9 +757,6 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
             HandleNodeCreatedInFollower);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
-            HandleNodeCreatedInFollowerUponCreateHandle);
-        HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
             HandleNodeUnlinkedInFollower);
 
@@ -797,9 +794,6 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
             HandleNodeCreatedInFollower);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
-            HandleNodeCreatedInFollowerUponCreateHandle);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
             HandleNodeUnlinkedInFollower);
@@ -859,9 +853,6 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
             HandleNodeCreatedInFollower);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
-            HandleNodeCreatedInFollowerUponCreateHandle);
-        HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
             HandleNodeUnlinkedInFollower);
 
@@ -901,9 +892,6 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
             HandleNodeCreatedInFollower);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
-            HandleNodeCreatedInFollowerUponCreateHandle);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
             HandleNodeUnlinkedInFollower);
