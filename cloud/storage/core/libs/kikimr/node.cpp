@@ -322,7 +322,11 @@ struct TDiscoveryNodeRegistrant
         for (const auto& node: result.GetNodes()) {
             if (node.NodeId == result.GetNodeId()) {
                 // update node information based on registration response
-                *DnConfig.MutableNodeInfo() = CreateNodeInfo(node);
+                *DnConfig.MutableNodeInfo() = CreateNodeInfo(
+                    node,
+                    result.HasNodeName()
+                        ? result.GetNodeName()
+                        : std::optional<TString>{});
             } else {
                 *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }

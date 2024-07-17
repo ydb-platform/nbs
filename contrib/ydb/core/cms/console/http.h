@@ -1,8 +1,8 @@
 #pragma once
 #include "defs.h"
 
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
-#include <contrib/ydb/core/cms/console/config_item_info.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -58,7 +58,7 @@ void OutputConfigDebugInfoHTML(
     const NKikimrConfig::TAppConfig &initialConfig,
     const NKikimrConfig::TAppConfig &yamlConfig,
     const NKikimrConfig::TAppConfig &protoConfig,
-    const THashMap<ui32, TConfigItemInfo>& configInitInfo,
+    const THashMap<ui32, NConfig::TConfigItemInfo>& configInitInfo,
     const THashSet<ui32> &dynamicKinds,
     const THashSet<ui32> &nonYamlKinds,
     bool yamlEnabled);

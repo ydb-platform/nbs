@@ -61,8 +61,16 @@ Y_UNIT_TEST_SUITE(TNodeRegistrationHelpersTest)
     Y_UNIT_TEST(ShouldFillNodeInfo)
     {
         NYdb::NDiscovery::TNodeInfo info;
-        auto msg = CreateNodeInfo(info);
-        CheckAllFieldsSet(msg, {});
+
+        {
+            auto msg = CreateNodeInfo(info, {});
+            CheckAllFieldsSet(msg, {"Name"});
+        }
+
+        {
+            auto msg = CreateNodeInfo(info, "xyz");
+            CheckAllFieldsSet(msg, {});
+        }
     }
 
     Y_UNIT_TEST(ShouldFillLocationInfo)

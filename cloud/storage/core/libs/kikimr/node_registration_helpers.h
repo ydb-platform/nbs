@@ -12,7 +12,8 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
-    const NYdb::NDiscovery::TNodeInfo& info);
+    const NYdb::NDiscovery::TNodeInfo& info,
+    std::optional<TString> nodeName);
 
 NActorsInterconnect::TNodeLocation CreateNodeLocation(
     const NYdb::NDiscovery::TNodeLocation& source);

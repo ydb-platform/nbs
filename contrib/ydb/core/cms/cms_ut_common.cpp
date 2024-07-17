@@ -487,7 +487,7 @@ static void SetupServices(TTestActorRuntime &runtime, const TTestEnvOpts &option
     appConfig.MutableBootstrapConfig()->CopyFrom(TFakeNodeWhiteboardService::BootstrapConfig);
     runtime.AddLocalService(MakeConfigsDispatcherID(runtime.GetNodeId(0)),
                             TActorSetupCmd(CreateConfigsDispatcher(
-                                NKikimr::NConsole::TConfigsDispatcherInitInfo {
+                                NConfig::TConfigsDispatcherInitInfo {
                                     .InitialConfig = appConfig,
                                 }),
                                 TMailboxType::Simple,

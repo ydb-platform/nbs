@@ -60,6 +60,7 @@ PEERDIR(
     contrib/ydb/core/cms
     contrib/ydb/core/cms/console
     contrib/ydb/core/control
+    contrib/ydb/core/config/init
     contrib/ydb/core/driver_lib/base_utils
     contrib/ydb/core/driver_lib/cli_config_base
     contrib/ydb/core/driver_lib/cli_utils
