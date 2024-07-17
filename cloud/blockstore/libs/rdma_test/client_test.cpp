@@ -253,6 +253,11 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             responseBytes);
     }
 
+    NThreading::TFuture<void> Stop() override
+    {
+        return NThreading::MakeFuture();
+    }
+
     TDeque<TString>& GetDeviceBlocks(
         const TString& deviceUUID,
         size_t minBlockCount)

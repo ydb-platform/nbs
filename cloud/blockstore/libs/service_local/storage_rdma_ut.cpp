@@ -40,6 +40,11 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
         Y_UNUSED(req);
         Y_UNUSED(callContext);
     }
+
+    NThreading::TFuture<void> Stop() override
+    {
+        return MakeFuture();
+    }
 };
 
 class TRdmaClientHelper: public NRdma::IClient

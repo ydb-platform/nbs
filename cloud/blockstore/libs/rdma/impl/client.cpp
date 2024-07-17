@@ -396,11 +396,13 @@ private:
 
     std::atomic<EEndpointState> State = EEndpointState::Disconnected;
     std::atomic<ui32> Status = S_OK;
+    std::atomic_flag StopFlag = ATOMIC_FLAG_INIT;
 
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
     NVerbs::TCompletionQueuePtr CompletionQueue = NVerbs::NullPtr;
 
     TPromise<IClientEndpointPtr> StartResult = NewPromise<IClientEndpointPtr>();
+    TPromise<void> StopResult = NewPromise<void>();
 
     ui64 FlushStartCycles = 0;
 
@@ -455,14 +457,15 @@ public:
     void ChangeState(EEndpointState expectedState, EEndpointState newState);
     void ChangeState(EEndpointState newState) noexcept;
     void SetError() noexcept;
+    void FlushQueues() noexcept;
 
     // called from CM thread
     void CreateQP();
     void DestroyQP() noexcept;
     void StartReceive();
-    void ResetConnection(NVerbs::TConnectionPtr connection) noexcept;
-    TString PeerAddress() const;
+    void SetConnection(NVerbs::TConnectionPtr connection) noexcept;
     int ReconnectTimerHandle() const;
+    bool ShouldStop() const;
 
     // called from external thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
@@ -473,6 +476,7 @@ public:
     void SendRequest(
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
+    TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
     void HandleCompletionEvent(ibv_wc* wc) override;
@@ -481,6 +485,9 @@ public:
     bool AbortRequests() noexcept;
     bool Flushed() const;
     bool FlushHanging() const;
+
+    // called from CM and external thread
+    TString PeerAddress() const;
 
 private:
     // called from CQ thread
@@ -535,23 +542,14 @@ TClientEndpoint::TClientEndpoint(
         return TStringBuilder() << "[" << Id << "] " << msg;
     });
 
-    RDMA_INFO("new session [send_magic=" << Hex(SendMagic, 0)
-        << " recv_magic=" << Hex(RecvMagic, 0) << "]");
+    RDMA_INFO("new endpoint [send_magic=" << Hex(SendMagic, 0)
+        << " recv_magic=" << Hex(RecvMagic, 0) << "] to " << Host);
 }
 
 TClientEndpoint::~TClientEndpoint()
 {
-    RDMA_INFO("close session");
-
-    if (SendBuffers.Initialized()) {
-        SendBuffers.ReleaseBuffer(SendBuffer);
-    }
-
-    if (RecvBuffers.Initialized()) {
-        RecvBuffers.ReleaseBuffer(RecvBuffer);
-    }
-
-    // TODO detach pollers
+    RDMA_INFO("close endpoint [send_magic=" << Hex(SendMagic, 0)
+        << " recv_magic=" << Hex(RecvMagic, 0) << "] to " << Host);
 }
 
 bool TClientEndpoint::CheckState(EEndpointState expectedState) const
@@ -571,8 +569,7 @@ void TClientEndpoint::ChangeState(
         GetEndpointStateName(expectedState),
         GetEndpointStateName(actualState));
 
-    // FIXME change back to DEBUG when NBS-4644 is resolved
-    RDMA_INFO(GetEndpointStateName(expectedState)
+    RDMA_DEBUG(GetEndpointStateName(expectedState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -580,7 +577,7 @@ void TClientEndpoint::ChangeState(EEndpointState newState) noexcept
 {
     auto currentState = State.exchange(newState);
 
-    RDMA_INFO(GetEndpointStateName(currentState)
+    RDMA_DEBUG(GetEndpointStateName(currentState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -1067,8 +1064,21 @@ void TClientEndpoint::RecvResponseCompleted(
         responseBytes);
 }
 
-void TClientEndpoint::ResetConnection(
-    NVerbs::TConnectionPtr connection) noexcept
+TFuture<void> TClientEndpoint::Stop() noexcept
+{
+    if (!StopFlag.test_and_set()) {
+        RDMA_DEBUG("stop endpoint");
+        SetError();
+    }
+    return StopResult.GetFuture();
+}
+
+bool TClientEndpoint::ShouldStop() const
+{
+    return StopFlag.test();
+}
+
+void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
 {
     connection->context = this;
     Connection = std::move(connection);
@@ -1082,6 +1092,20 @@ TString TClientEndpoint::PeerAddress() const
 int TClientEndpoint::ReconnectTimerHandle() const
 {
     return Reconnect.Timer.Handle();
+}
+
+void TClientEndpoint::FlushQueues() noexcept
+{
+    STORAGE_INFO("flush queues");
+
+    try {
+        ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
+        Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+        FlushStartCycles = GetCycleCount();
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR("flush error: " << e.what());
+    }
 }
 
 void TClientEndpoint::SetError() noexcept
@@ -1100,20 +1124,13 @@ void TClientEndpoint::SetError() noexcept
         case EEndpointState::ResolvingRoute:
             break;
 
-        // flush queues and schedule reconnect
+        // flush queues, signal the poller and schedule reconnect
         case EEndpointState::Connected:
             ChangeState(
                 EEndpointState::Connected,
                 EEndpointState::Disconnecting);
 
-            try {
-                struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
-                Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
-                FlushStartCycles = GetCycleCount();
-
-            } catch (const TServiceError& e) {
-                RDMA_ERROR("flush error: " << e.what());
-            }
+            FlushQueues();
 
             if (WaitMode == EWaitMode::Poll) {
                 DisconnectEvent.Set();
@@ -1342,10 +1359,18 @@ public:
         Join();
     }
 
-    void Add(TClientEndpointPtr endpoint)
+    void Acquire(TClientEndpointPtr endpoint)
     {
         endpoint->Poller = this;
         Endpoints.Add(std::move(endpoint));
+    }
+
+    void Release(TClientEndpoint* endpoint)
+    {
+        endpoint->Poller = nullptr;
+        Endpoints.Delete([=](auto x) {
+            return endpoint == x.get();
+        });
     }
 
     void Attach(TClientEndpoint* endpoint)
@@ -1603,6 +1628,7 @@ private:
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
+    void StopEndpoint(TClientEndpoint* endpoint) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1695,7 +1721,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
         auto future = endpoint->StartResult.GetFuture();
 
         ConnectionPoller->Attach(endpoint.get());
-        PickPoller().Add(endpoint);
+        PickPoller().Acquire(endpoint);
         BeginResolveAddress(endpoint.get());
         return future;
 
@@ -1762,15 +1788,38 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
+void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
+{
+    ConnectionPoller->Detach(endpoint);
+    endpoint->Poller->Detach(endpoint);
+    endpoint->DestroyQP();
+    endpoint->Connection.reset();
+    endpoint->StopResult.SetValue();
+    endpoint->Poller->Release(endpoint);
+}
+
 // implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
+    if (endpoint->ShouldStop()) {
+        if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+            // wait for completion poller to flush WRs
+            endpoint->Reconnect.Schedule();
+        } else {
+            // detach pollers and close connection
+            StopEndpoint(endpoint);
+        }
+        return;
+    }
+
     if (endpoint->Reconnect.Hanging()) {
         // if this is our first connection, fail over to IC
         if (endpoint->StartResult.Initialized()) {
             auto startResult = std::move(endpoint->StartResult);
             startResult.SetException(std::make_exception_ptr(TServiceError(
                 MakeError(endpoint->Status, "connection timeout"))));
+
+            StopEndpoint(endpoint);
             return;
         }
         // otherwise keep trying
@@ -1790,25 +1839,16 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         case EEndpointState::ResolvingRoute:
             break;
 
-        // reset connection and try again
+        // create new connection and try again
         case EEndpointState::Connecting:
         case EEndpointState::Disconnected:
-            try {
-                auto connection = ConnectionPoller->CreateConnection();
-                endpoint->Poller->Detach(endpoint);
-                endpoint->DestroyQP();
-                endpoint->ResetConnection(std::move(connection));
-
-            } catch (const TServiceError& e) {
-                RDMA_ERROR(endpoint->Log, e.what());
-                endpoint->Reconnect.Schedule();
-                return;
-            }
+            endpoint->Poller->Detach(endpoint);
+            endpoint->DestroyQP();
+            endpoint->SetConnection(ConnectionPoller->CreateConnection());
             break;
 
-        // shouldn't happen
+        // reconnect timer hit at the same time connection was established
         case EEndpointState::Connected:
-            RDMA_WARN(endpoint->Log, "attempting to reconnect in Connected state");
             return;
     }
 
@@ -1851,7 +1891,7 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
 
 void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 {
-    RDMA_INFO(endpoint->Log, "resolve route to "
+    RDMA_INFO(endpoint->Log, "resolve route to " << endpoint->Host << " "
         << endpoint->PeerAddress());
 
     endpoint->ChangeState(
@@ -2049,7 +2089,8 @@ void TClient::DumpHtml(IOutputStream& out) const
             for (size_t i = 0; i < CompletionPollers.size(); ++i) {
                 auto& poller = CompletionPollers[i];
                 auto endpoints = poller->GetEndpoints();
-                for (auto& ep : *endpoints) {
+
+                for (auto& ep: *endpoints) {
                     TABLER() {
                         TABLED() { out << i; }
                         TABLED() { out << ep->Host; }

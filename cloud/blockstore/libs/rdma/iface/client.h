@@ -100,6 +100,8 @@ struct IClientEndpoint
     virtual void SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
+
+    virtual NThreading::TFuture<void> Stop() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

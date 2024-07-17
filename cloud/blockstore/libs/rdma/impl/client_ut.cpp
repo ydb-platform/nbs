@@ -80,6 +80,41 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         Y_UNUSED(clientEndpoint);
     }
 
+    Y_UNIT_TEST(ShouldDetachFromPoller)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(
+            verbs,
+            logging,
+            monitoring,
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        auto shared = client->StartEndpoint("::", 10020).ExtractValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(2, shared.use_count());
+
+        shared->Stop().Wait();
+        auto deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
+        while (deadline > GetCycleCount() && shared.use_count() > 1) {
+            SpinLockPause();
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, shared.use_count());
+    }
+
     Y_UNIT_TEST(ShouldReturnErrorUponStartEndpointTimeout)
     {
         auto verbs =
