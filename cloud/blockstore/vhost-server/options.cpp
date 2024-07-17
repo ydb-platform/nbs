@@ -1,5 +1,7 @@
 #include "options.h"
 
+#include <cloud/blockstore/libs/encryption/model/utils.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 
 #include <util/generic/strbuf.h>
@@ -135,6 +137,23 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("rdma-aligned-data", "enable rdma aligned data")
         .NoArgument()
         .SetFlag(&RdmaClient.AlignedData);
+
+    opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        .RequiredArgument("STR")
+        .Handler1T<TString>([this](const auto& s)
+                            { EncryptionMode = EncryptionModeFromString(s); });
+
+    opts.AddLongOption(
+            "encryption-key-path",
+            "path to file with encryption key")
+        .RequiredArgument("STR")
+        .StoreResult(&EncryptionKeyPath);
+
+    opts.AddLongOption(
+            "encryption-keyring-id",
+            "keyring id with encryption key")
+        .RequiredArgument("INT")
+        .StoreResult(&EncryptionKeyringId);
 
     TOptsParseResultException res(&opts, argc, argv);
 
