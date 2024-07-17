@@ -1301,10 +1301,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         bootstrap.StopIsRunning.GetFuture().Subscribe([&] (const auto&) {
-            NProto::TAcquireLockResponse response;
-            *response.MutableError() =
-                std::move(MakeError(E_FS_WOULDBLOCK, "waiting"));
-            promise.SetValue(std::move(response));
+            promise.SetValue(
+                TErrorResponse(E_FS_WOULDBLOCK, "waiting"));
         });
 
         bootstrap.Start();
@@ -1319,6 +1317,31 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "AcquireLock");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Service->CreateHandleHandler = [&] (auto , auto) {
+            UNIT_ASSERT_C(false, "Handler should not be called");
+            return MakeFuture(NProto::TCreateHandleResponse{});
+        };
+
+        bootstrap.Start();
+
+        bootstrap.StopIsRunning.GetFuture().Subscribe([&] (const auto&) {
+            auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
+            UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
+        });
+
+        bootstrap.Stop();
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
