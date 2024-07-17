@@ -167,12 +167,12 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	diskIdPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
-	if len(diskIdPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIdPrefix) {
+	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
+	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
 		return nil, errors.NewInvalidArgumentError(
 			"can't create disk with id %q, because only disks with id prefix %q are allowed to be created",
 			req.DiskId.DiskId,
-			diskIdPrefix,
+			diskIDPrefix,
 		)
 	}
 
@@ -378,12 +378,12 @@ func (s *service) DeleteDisk(
 		)
 	}
 
-	diskIdPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
-	if len(diskIdPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIdPrefix) {
+	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
+	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
 		return "", errors.NewInvalidArgumentError(
 			"can't delete disk with id %q, because only disks with id prefix %q are allowed to be deleted",
 			req.DiskId.DiskId,
-			diskIdPrefix,
+			diskIDPrefix,
 		)
 	}
 

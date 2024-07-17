@@ -60,6 +60,7 @@ func deleteImage(
 			imageID,
 		)
 	}
+
 	err = scheduleRetireBaseDisks(
 		ctx,
 		execCtx,
@@ -111,7 +112,6 @@ func scheduleRetireBaseDisks(
 				"retire_base_disks_"+execCtx.GetTaskID()+
 					":"+c.GetZoneId()+":"+imageMeta.ID,
 			),
-			headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_"+c.GetZoneId()),
 			"pools.RetireBaseDisks",
 			"",
 			&pools_protos.RetireBaseDisksRequest{
