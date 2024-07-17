@@ -81,7 +81,7 @@ private:
     const NProto::TCreateNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
-    NProto::TCreateNodeResponse Response;
+    TCreateNodeInFollowerResult Result;
 
 public:
     TCreateNodeInFollowerActor(
@@ -91,7 +91,7 @@ public:
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        NProto::TCreateNodeResponse response);
+        TCreateNodeInFollowerResult result);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -120,14 +120,14 @@ TCreateNodeInFollowerActor::TCreateNodeInFollowerActor(
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        NProto::TCreateNodeResponse response)
+        TCreateNodeInFollowerResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
     , Request(std::move(request))
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
-    , Response(std::move(response))
+    , Result(std::move(result))
 {}
 
 void TCreateNodeInFollowerActor::Bootstrap(const TActorContext& ctx)
@@ -212,7 +212,15 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    *Response.MutableNode() = std::move(*msg->Record.MutableNode());
+    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
+        *x->MutableNode() = std::move(*msg->Record.MutableNode());
+    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result)) {
+        *x->MutableNodeAttr() = std::move(*msg->Record.MutableNode());
+    } else {
+        TABLET_VERIFY_C(
+            0,
+            TStringBuilder() << "bad variant index: " << Result.index());
+    }
 
     ReplyAndDie(ctx, {});
 }
@@ -230,7 +238,17 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
     NProto::TError error)
 {
     if (HasError(error)) {
-        *Response.MutableError() = std::move(error);
+        if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
+            *x->MutableError() = std::move(error);
+        } else if (auto* x =
+                std::get_if<NProto::TCreateHandleResponse>(&Result))
+        {
+            *x->MutableError() = std::move(error);
+        } else {
+            TABLET_VERIFY_C(
+                0,
+                TStringBuilder() << "bad variant index: " << Result.index());
+        }
     }
 
     using TResponse = TEvIndexTabletPrivate::TEvNodeCreatedInFollower;
@@ -239,7 +257,7 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
-        std::move(Response)));
+        std::move(Result)));
 
     Die(ctx);
 }
@@ -592,29 +610,58 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    auto response = std::make_unique<TEvService::TEvCreateNodeResponse>();
-    response->Record = msg->CreateNodeResponse;
+    auto& res = msg->Result;
 
     if (msg->RequestInfo) {
         RemoveTransaction(*msg->RequestInfo);
-
-        CompleteResponse<TEvService::TCreateNodeMethod>(
-            response->Record,
-            msg->RequestInfo->CallContext,
-            ctx);
-
-        // replying before DupCacheEntry is committed to reduce response latency
-        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
     }
 
     WorkerActors.erase(ev->Sender);
-    ExecuteTx<TCommitNodeCreationInFollower>(
-        ctx,
-        std::move(msg->SessionId),
-        msg->RequestId,
-        std::move(msg->CreateNodeResponse),
-        msg->OpLogEntryId);
+
+    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
+        if (msg->RequestInfo) {
+            auto response =
+                std::make_unique<TEvService::TEvCreateNodeResponse>();
+            response->Record = *x;
+
+            CompleteResponse<TEvService::TCreateNodeMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
+
+            // replying before DupCacheEntry is committed to reduce response
+            // latency
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        }
+
+        ExecuteTx<TCommitNodeCreationInFollower>(
+            ctx,
+            msg->SessionId,
+            msg->RequestId,
+            std::move(*x),
+            msg->OpLogEntryId);
+    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&res)) {
+        CommitDupCacheEntry(msg->SessionId, msg->RequestId);
+
+        if (msg->RequestInfo) {
+            auto response =
+                std::make_unique<TEvService::TEvCreateHandleResponse>();
+            response->Record = std::move(*x);
+
+            CompleteResponse<TEvService::TCreateHandleMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        }
+
+        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+    } else {
+        TABLET_VERIFY_C(
+            0,
+            TStringBuilder() << "bad variant index: " << res.index());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -669,7 +716,7 @@ void TIndexTabletActor::RegisterCreateNodeInFollowerActor(
     NProto::TCreateNodeRequest request,
     ui64 requestId,
     ui64 opLogEntryId,
-    NProto::TCreateNodeResponse response)
+    TCreateNodeInFollowerResult result)
 {
     auto actor = std::make_unique<TCreateNodeInFollowerActor>(
         LogTag,
@@ -678,7 +725,7 @@ void TIndexTabletActor::RegisterCreateNodeInFollowerActor(
         std::move(request),
         requestId,
         opLogEntryId,
-        std::move(response));
+        std::move(result));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
