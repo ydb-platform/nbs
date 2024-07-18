@@ -371,7 +371,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     auto it = dirtyDevices.begin();
     while (it != dirtyDevices.end()) {
         auto first = it;
-        const auto& poolName = first->GetPoolName();
+        const auto poolName = first->GetPoolName();
         it = std::partition(
             first,
             dirtyDevices.end(),
