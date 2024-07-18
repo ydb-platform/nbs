@@ -41,7 +41,6 @@
 
 #include <atomic>
 #include <fstream>
-#include <mutex>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -85,7 +84,6 @@ struct TBootstrap
 
     TString SocketPath;
 
-    std::once_flag StopTriggeredFired;
     TPromise<void> StopTriggered = NewPromise<void>();
 
     TBootstrap(
@@ -190,12 +188,7 @@ struct TBootstrap
     void Stop()
     {
         auto stop = StopAsync();
-        std::call_once(
-            StopTriggeredFired,
-            [&] () {
-                StopTriggered.SetValue();
-            }
-        );
+        StopTriggered.TrySetValue();
         stop.Wait();
         Fuse->DeInit();
         Loop = nullptr;
