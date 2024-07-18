@@ -308,7 +308,10 @@ void TBootstrap::Start()
                 Options->ConnectDevice,
                 Options->Timeout);
         }
-        NbdDevice->Start();
+        auto status = NbdDevice->Start().ExtractValue();
+        if (HasError(status)) {
+            ythrow yexception() << status.GetMessage();
+        }
 #else
         ythrow yexception() << "unsupported platform";
 #endif

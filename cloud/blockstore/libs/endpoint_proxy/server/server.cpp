@@ -576,57 +576,51 @@ struct TServer: IEndpointProxyServer
 
         if (HasError(startResult)) {
             *response.MutableError() = std::move(startResult);
-        } else {
-            STORAGE_INFO(request.ShortDebugString().Quote()
-                << " - Started NBD server endpoint");
-
-            ep.NbdDevicePath = request.GetNbdDevice();
-            if (ep.NbdDevicePath) {
-                if (Config.Netlink) {
-                    try {
-                        ep.NbdDevice = NBD::CreateNetlinkDevice(
-                            Logging,
-                            *ep.ListenAddress,
-                            request.GetNbdDevice(),
-                            Config.NbdRequestTimeout,
-                            TDuration::Days(1),         // connection timeout
-                            true);                      // reconfigure existing device
-
-                    } catch (const std::exception& e) {
-                        STORAGE_ERROR(request.ShortDebugString().Quote()
-                            << " - Unable to create netlink device: " << e.what()
-                            << ", falling back to ioctl");
-                    }
-                }
-                // request timeout is mainly useful as a tool to retry requests
-                // in kernel, but since devices configured via ioctl can't be
-                // reconnected to, there is little reason to configure it
-                if (ep.NbdDevice == nullptr) {
-                    ep.NbdDevice = NBD::CreateDevice(
-                        Logging,
-                        *ep.ListenAddress,
-                        request.GetNbdDevice(),
-                        TDuration::Days(1));    // request timeout
-                }
-
-                auto start = ep.NbdDevice->Start();
-                const auto& value = start.GetValue();
-                if (HasError(value)) {
-                    STORAGE_ERROR(request.ShortDebugString().Quote()
-                        << " - Unable to start nbd device: "
-                        << value.GetMessage());
-                } else {
-                    STORAGE_INFO(request.ShortDebugString().Quote()
-                        << " - Started NBD device connection");
-                }
-            } else {
-                STORAGE_WARN(request.ShortDebugString().Quote()
-                    << " - NbdDevice missing - no nbd connection with the"
-                    << " kernel will be established");
-            }
-
-            response.SetInternalUnixSocketPath(ep.InternalUnixSocketPath);
+            return;
         }
+        response.SetInternalUnixSocketPath(ep.InternalUnixSocketPath);
+
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started NBD server endpoint");
+
+        ep.NbdDevicePath = request.GetNbdDevice();
+        if (!ep.NbdDevicePath) {
+            STORAGE_WARN(request.ShortDebugString().Quote()
+                << " - NbdDevice missing - no nbd connection with the"
+                << " kernel will be established");
+            return;
+        }
+
+        if (Config.Netlink) {
+            ep.NbdDevice = NBD::CreateNetlinkDevice(
+                Logging,
+                *ep.ListenAddress,
+                request.GetNbdDevice(),
+                Config.NbdRequestTimeout,
+                TDuration::Days(1),         // connection timeout
+                true);                      // reconfigure device if exists
+        } else {
+            // For netlink devices we have to balance request timeout between
+            // time it takes to fail request for good and resend it if socket
+            // is dead due to proxy restart. We can't configure ioctl device
+            // to use a fresh socket, so there is no point configuring it
+            ep.NbdDevice = NBD::CreateDevice(
+                Logging,
+                *ep.ListenAddress,
+                request.GetNbdDevice(),
+                TDuration::Days(1));    // request timeout
+        }
+
+        auto status = ep.NbdDevice->Start().ExtractValue();
+        if (HasError(status)) {
+            STORAGE_ERROR(request.ShortDebugString().Quote()
+                << " - Unable to start nbd device: "
+                << status.GetMessage());
+            return;
+        }
+
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started NBD device connection");
     }
 
     void ProcessRequest(TStartRequestContext* requestContext)
