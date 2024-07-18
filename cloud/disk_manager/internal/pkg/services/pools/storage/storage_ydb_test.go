@@ -2233,7 +2233,7 @@ func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
 			Slot{
 				OverlayDisk: &types.Disk{
 					ZoneId: "zone",
-					DiskId: "disk" + string(i),
+					DiskId: fmt.Sprintf("disk%v", i),
 				},
 			},
 		)
@@ -2305,7 +2305,7 @@ func TestStorageYDBRetireBaseDiskForDeletedPoolUsingImageSize(t *testing.T) {
 			Slot{
 				OverlayDisk: &types.Disk{
 					ZoneId: "zone",
-					DiskId: "disk" + string(i),
+					DiskId: fmt.Sprintf("disk%v", i),
 				},
 			},
 		)
