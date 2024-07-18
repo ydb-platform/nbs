@@ -41,6 +41,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <mutex>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -84,7 +85,8 @@ struct TBootstrap
 
     TString SocketPath;
 
-    TPromise<void> StopIsRunning = NewPromise<void>();
+    std::once_flag StopTriggeredFired;
+    TPromise<void> StopTriggered = NewPromise<void>();
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -187,11 +189,13 @@ struct TBootstrap
 
     void Stop()
     {
-        if (StopIsRunning.HasValue()) {
-            return;
-        }
         auto stop = StopAsync();
-        StopIsRunning.SetValue();
+        std::call_once(
+            StopTriggeredFired,
+            [&] () {
+                StopTriggered.SetValue();
+            }
+        );
         stop.Wait();
         Fuse->DeInit();
         Loop = nullptr;
@@ -1294,13 +1298,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
-            if (!handlerCalled.HasValue()) {
-                handlerCalled.SetValue();
-            }
+            handlerCalled.TrySetValue();
             return promise.GetFuture();
         };
 
-        bootstrap.StopIsRunning.GetFuture().Subscribe([&] (const auto&) {
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
             promise.SetValue(
                 TErrorResponse(E_FS_WOULDBLOCK, "waiting"));
         });
@@ -1332,8 +1334,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        bootstrap.StopIsRunning.GetFuture().Subscribe([&] (const auto&) {
-            auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+                    "/file1",
+                    RootNodeId);
             UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
         });
 
