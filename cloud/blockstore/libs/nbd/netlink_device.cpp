@@ -219,7 +219,6 @@ public:
             ParseIndex();
             ConnectSocket();
             ConnectDevice();
-
         } catch (const TServiceError& e) {
             StartResult.SetValue(MakeError(
                 e.GetCode(),
@@ -246,7 +245,6 @@ public:
             DisconnectDevice();
             DisconnectSocket();
             StopResult.SetValue(MakeError(S_OK));
-
         } catch (const TServiceError& e) {
             StopResult.SetValue(MakeError(
                 e.GetCode(),
@@ -274,20 +272,10 @@ private:
 
 void TNetlinkDevice::ParseIndex()
 {
-    try {
-        // accept /dev/nbd devices with a prefix other than /
-        // (e.g. inside a container)
-
-        const size_t pos = DeviceName.rfind(NBD_DEVICE_SUFFIX);
-        if (pos == TString::npos) {
-            throw std::exception();
-        }
-
-        TMemoryInput stream(
-            DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
-        stream >> DeviceIndex;
-
-    } catch (...) {
+    // accept dev/nbd* devices with prefix other than /
+    TStringBuf l, r;
+    TStringBuf(DeviceName).RSplit(NBD_DEVICE_SUFFIX, l, r);
+    if (!TryFromString(r, DeviceIndex)) {
         throw TServiceError(E_ARGUMENT) << "unable to parse device index";
     }
 }
