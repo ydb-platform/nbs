@@ -84,6 +84,8 @@ struct TBootstrap
 
     TString SocketPath;
 
+    TPromise<void> StopTriggered = NewPromise<void>();
+
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler())
@@ -185,7 +187,9 @@ struct TBootstrap
 
     void Stop()
     {
-        StopAsync().Wait();
+        auto stop = StopAsync();
+        StopTriggered.TrySetValue();
+        stop.Wait();
         Fuse->DeInit();
         Loop = nullptr;
         std::remove(SocketPath.c_str());
@@ -1282,27 +1286,59 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         TBootstrap bootstrap;
         auto promise = NewPromise<NProto::TAcquireLockResponse>();
+        auto handlerCalled = NewPromise<void>();
 
         bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
+            handlerCalled.TrySetValue();
             return promise.GetFuture();
         };
+
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            promise.SetValue(
+                TErrorResponse(E_FS_WOULDBLOCK, "waiting"));
+        });
 
         bootstrap.Start();
 
         auto future =
             bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
 
-        bootstrap.Stop(); // wait till all requests are done writing their stats
+        handlerCalled.GetFuture().Wait();
 
-        UNIT_ASSERT_C(
-            !future.HasValue(),
-            "TAcquireLockRequest future should not be set after stop");
+        bootstrap.Stop(); // wait till all requests are done writing their stats
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "AcquireLock");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Service->CreateHandleHandler = [&] (auto , auto) {
+            UNIT_ASSERT_C(false, "Handler should not be called");
+            return MakeFuture(NProto::TCreateHandleResponse{});
+        };
+
+        bootstrap.Start();
+
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+                    "/file1",
+                    RootNodeId);
+            UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
+        });
+
+        bootstrap.Stop();
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
