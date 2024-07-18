@@ -2,6 +2,9 @@
 
 #include "agent_list.h"
 
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/iterator_range.h>
@@ -90,7 +93,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (THashSet<TString> racks) {
             return deviceList.AllocateDevice(
@@ -154,7 +157,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n, THashSet<TString> racks) {
             return deviceList.AllocateDevices(
@@ -306,7 +309,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n, THashSet<TString> racks) {
             return deviceList.AllocateDevices(
@@ -368,7 +371,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n) {
             return deviceList.AllocateDevices(
@@ -423,7 +426,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n, THashSet<TString> preferredRacks = {}) {
             return deviceList.AllocateDevices(
@@ -472,7 +475,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n) {
             return deviceList.AllocateDevices(
@@ -543,7 +546,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (ui32 n) {
             return deviceList.AllocateDevices(
@@ -630,7 +633,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto allocate = [&] (
             ui32 n,
@@ -682,7 +685,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         TVector agents {
             CreateAgentConfig("agent1", 1, "rack1"),
@@ -741,7 +744,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         const TString ssdLocalTag = "ssd_local";
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         TVector agents {
             CreateAgentConfig("agent1", 1, "rack1"),
@@ -821,7 +824,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             localPoolName, 93_GB, NProto::DEVICE_POOL_KIND_LOCAL
         }});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         TVector agents {
             CreateAgentConfig("agent1", 1, "rack1"),
@@ -879,7 +882,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             {{rotPoolName, 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL},
              {otherPoolName, 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL}});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         TVector agents {
             CreateAgentConfig("agent1", 1, "rack1"),
@@ -1030,7 +1033,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldForgetDevice)
     {
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
@@ -1105,7 +1108,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         const auto poolConfigs = CreateDevicePoolConfigs(
             {{"rot", 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL}});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         auto a1 = CreateAgentConfig("a1", 1000, "rack-1");
         auto a2 = CreateAgentConfig(
@@ -1143,6 +1146,13 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldFilterOutDeviceWithWrongSize)
     {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto configMismatch = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryAgentDevicePoolConfigMismatch",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, configMismatch->Val());
+
         const auto poolConfigs = CreateDevicePoolConfigs({});
         const ui64 hugeDeviceBlockCount = 10 * DefaultBlockCount;
 
@@ -1173,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         const ui32 expectedDeviceCount = 3;
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
 
         {
             deviceList.UpdateDevices(createAgentConfig(true), poolConfigs);
@@ -1184,6 +1194,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             });
             UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, configMismatch->Val());
 
         {
 
@@ -1210,6 +1222,59 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     device);
             }
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, configMismatch->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotTriggerDevicePoolConfigMismatchOnAllocatedDevices)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto configMismatch = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryAgentDevicePoolConfigMismatch",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, configMismatch->Val());
+
+        const TString diskId = "vol0";
+
+        NProto::TAgentConfig agent;
+        agent.SetAgentId("agent-id");
+        agent.SetNodeId(42);
+
+        auto& device = *agent.AddDevices();
+        device.SetBlockSize(4_KB);
+        device.SetUnadjustedBlockCount(93_GB / 4_KB + 1);
+        device.SetBlocksCount(device.GetUnadjustedBlockCount());
+        device.SetNodeId(42);
+        device.SetDeviceName("path");
+        device.SetDeviceUUID("uuid");
+
+        TDevicePoolConfigs poolConfigs;
+        auto& defaultPool = poolConfigs[""];
+        defaultPool.SetAllocationUnit(93_GB);
+
+        {
+            TDeviceList deviceList{
+                {},   // dirtyDevices
+                {},   // suspendedDevices
+                {{device.GetDeviceUUID(), diskId}}};
+
+            deviceList.UpdateDevices(agent, poolConfigs);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, configMismatch->Val());
+
+        {
+            TDeviceList deviceList{
+                {},   // dirtyDevices
+                {},   // suspendedDevices
+                {}    // allocatedDevices
+            };
+
+            deviceList.UpdateDevices(agent, poolConfigs);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, configMismatch->Val());
     }
 }
 
