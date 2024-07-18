@@ -1,6 +1,7 @@
 #include "node_registration_helpers.h"
 
 #include <contrib/ydb/core/protos/node_broker.pb.h>
+#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 
 namespace NCloud::NStorage {
@@ -8,7 +9,8 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
-    const NYdb::NDiscovery::TNodeInfo& info)
+    const NYdb::NDiscovery::TNodeInfo& info,
+    std::optional<TString> nodeName)
 {
     NKikimrNodeBroker::TNodeInfo node;
     node.SetNodeId(info.NodeId);
@@ -18,6 +20,9 @@ NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
     node.SetHost(info.Host);
     node.SetResolveHost(info.ResolveHost);
     *node.MutableLocation() = CreateNodeLocation(info.Location);
+    if (nodeName.has_value()) {
+        node.SetName(std::move(*nodeName));
+    }
     return node;
 }
 
