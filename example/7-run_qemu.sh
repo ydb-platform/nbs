@@ -9,20 +9,20 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./7-run_qemu.sh [-hids]
+Usage: ./7-run_qemu.sh [-hkds]
 Run qemu
--h, --help         Display help
--i, --image        Image path
--d, --diskid       NBS Disk ID
--s, --socket       Socket path
+-h, --help                     Display help
+-d, --diskid                   NBS Disk ID
+-s, --socket                   Socket path
+-k, --encryption-key-path      Encryption key path
 EOF
 }
 
 #defaults
-image=""
+encryption=""
 diskid=""
 socket=""
-options=$(getopt -l "help,image:,diskid:,socket:" -o "hid:s:" -a -- "$@")
+options=$(getopt -l "help,key:,diskid:,socket:" -o "hk:d:s:" -a -- "$@")
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -37,8 +37,8 @@ do
         show_help
         exit 0
         ;;
-    -i | --image )
-        image=${2}
+    -k | --encryption-key-path )
+        encryption="--encryption-mode=aes-xts --encryption-key-path=${2}"
         shift 2
         ;;
     -d | --diskid )
@@ -65,24 +65,37 @@ if [ -z "$socket" ] ; then
     exit 1
 fi
 
+# prepare qemu image
+
+QEMU_BIN_DIR=$BIN_DIR/$(qemu_bin_dir)
+QEMU_BIN_TAR=$QEMU_BIN_DIR/qemu-bin.tar.gz
+QEMU=$QEMU_BIN_DIR/usr/bin/qemu-system-x86_64
+QEMU_FIRMWARE=$QEMU_BIN_DIR/usr/share/qemu
+DISK_IMAGE=$QEMU_BIN_DIR/../image/rootfs.img
+
+[[ ( ! -x $QEMU ) ]] &&
+      echo expand qemu tar from [$QEMU_BIN_TAR]
+      tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
+
 # start endpoint for disk
-echo "starting endpoint ${socket} for disk ${diskid}"
+echo "starting endpoint [${socket}] for disk [${diskid}]"
 blockstore-client stopendpoint --socket $socket
-blockstore-client startendpoint --ipc-type vhost --socket $socket --disk-id $diskid --persistent
+blockstore-client startendpoint --ipc-type vhost --socket $socket --disk-id $diskid $encryption
 
 # run qemu with secondary disk
 qmp_port=8678
 ssh_port=8679
 
 MACHINE_ARGS=" \
-    -L /usr/share/qemu \
+    -L $QEMU_FIRMWARE \
     -snapshot \
+    -nodefaults
     -cpu host \
-    -smp 16,sockets=1,cores=16,threads=1 \
+    -smp 4,sockets=1,cores=4,threads=1 \
     -enable-kvm \
     -m 16G \
     -name debug-threads=on \
-    -qmp tcp:localhost:${qmp_port},server,nowait \
+    -qmp tcp:127.0.0.1:${qmp_port},server,nowait \
     "
 
 MEMORY_ARGS=" \
@@ -97,7 +110,7 @@ NET_ARGS=" \
 
 DISK_ARGS=" \
     -object iothread,id=iot0 \
-    -drive format=qcow2,file=$image,id=lbs0,if=none,aio=native,cache=none,discard=unmap \
+    -drive format=qcow2,file=$DISK_IMAGE,id=lbs0,if=none,aio=native,cache=none,discard=unmap \
     -device virtio-blk-pci,scsi=off,drive=lbs0,id=virtio-disk0,iothread=iot0,bootindex=1 \
     "
 
@@ -106,8 +119,7 @@ NBS_ARGS=" \
     -device vhost-user-blk-pci,chardev=vhost0,id=vhost-user-blk0,num-queues=1 \
     "
 
-echo "Running qemu with disk $diskid"
-QEMU="/usr/bin/qemu-system-x86_64"
+echo "Running qemu with disk [$diskid]"
 $QEMU \
     $MACHINE_ARGS \
     $MEMORY_ARGS \
@@ -115,7 +127,5 @@ $QEMU \
     $DISK_ARGS \
     $NBS_ARGS \
     -nographic \
-    -s & ps aux | grep "$diskid" | grep -v grep & echo "started qemu"
-
-# TODO: wait for guest startup properly
-sleep 30
+    -serial stdio \
+    -s
