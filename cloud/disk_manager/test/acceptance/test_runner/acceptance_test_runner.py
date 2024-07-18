@@ -21,9 +21,10 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
     def __init__(self, args, *arguments, **kwargs):
         super(AcceptanceTestBinaryExecutor, self).__init__(args, *arguments, **kwargs)
         location = args.bucket_location or args.profile_name or args.cluster
-        self._acceptance_test_cmd.extend([
-            '--url-for-create-image-from-url-test',
-            f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
+        if not args.skip_images:
+            self._acceptance_test_cmd.extend([
+                '--url-for-create-image-from-url-test',
+                f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
 
 
 class AcceptanceTestCleaner(BaseResourceCleaner):

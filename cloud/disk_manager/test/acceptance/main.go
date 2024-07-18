@@ -834,10 +834,6 @@ func main() {
 		"skip creation of images and creation of disks from images",
 	)
 
-	if skipImages && len(urlForCreateImageFromURLTest) != 0 {
-		log.Fatalf("skip images option is set, but image url is present: %v", urlForCreateImageFromURLTest)
-	}
-
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Failed to execute: %v", err)
 	}
