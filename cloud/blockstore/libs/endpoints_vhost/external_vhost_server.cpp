@@ -1041,8 +1041,8 @@ private:
             args.emplace_back("--read-only");
         }
 
-        if (request.HasEncryptionSpec()) {
-            const auto& encryptionSpec = request.GetEncryptionSpec();
+        const auto& encryptionSpec = request.GetEncryptionSpec();
+        if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
             args.emplace_back("--encryption-mode");
             args.emplace_back(EncryptionModeToString(encryptionSpec.GetMode()));
 
@@ -1056,7 +1056,7 @@ private:
             } else {
                 ythrow yexception()
                     << "EncryptionSpec should has FilePath or KeyringId "
-                    << encryptionSpec.ShortDebugString();
+                    << encryptionSpec.AsJSON();
             }
         }
 
