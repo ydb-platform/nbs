@@ -378,14 +378,18 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         if (!inserted) {
             continue;
         }
-        auto request = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
-         poolName,
-         std::move(devices),
-         Config->GetNonReplicatedSecureEraseTimeout());
+        auto request =
+            std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
+                poolName,
+                std::move(devices),
+                Config->GetNonReplicatedSecureEraseTimeout());
 
-        auto deadline = Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
+        auto deadline =
+            Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
         if (deadline > ctx.Now()) {
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Scheduled secure erase for pool: %s, now: %lu, "
                 "deadline: %lu",
                 TabletID(),
@@ -398,7 +402,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
                 new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
             request.release();
         } else {
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Sending secure erase request",
                 TabletID());
 
