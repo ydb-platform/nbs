@@ -381,7 +381,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
             continue;
         }
 
-        if (!ReadNode(db, refs[i]->NodeId, args.CommitId, nodes[i])) {
+        if (!ReadNode(db, refs[i]->ChildNodeId, args.CommitId, nodes[i])) {
             ready = false;
         }
     }
@@ -399,7 +399,12 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
             continue;
         }
 
-        if (!nodes[i]) {
+        if (nodes[i]) {
+            ConvertNodeFromAttrs(
+                *nodeResult->MutableNode(),
+                refs[i]->ChildNodeId,
+                nodes[i]->Attrs);
+        } else {
             *nodeResult->MutableError() = ErrorInvalidTarget(
                 refs[i]->NodeId,
                 args.Request.GetNames(i));
@@ -428,7 +433,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     using TResponse = TEvIndexTablet::TEvGetNodeAttrBatchResponse;
     auto response = std::make_unique<TResponse>(args.Error);
     TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
-    if (SUCCEEDED(args.Error.GetCode())) {
+    if (!HasError(args.Error)) {
         for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
             const auto& nodeResult = args.Response.GetResponses(i);
             RegisterGetNodeAttrResult(
@@ -436,6 +441,8 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
                 args.Request.GetNames(i),
                 nodeResult.GetNode());
         }
+
+        response->Record = std::move(args.Response);
     }
 
     CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(
