@@ -368,20 +368,27 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         countBeforeFiltration,
         dirtyDevices.size());
 
-    TMap<TString, TVector<NProto::TDeviceConfig>> poolMap;
-    for (auto& device: dirtyDevices) {
-        poolMap[device.GetPoolName()].push_back(std::move(device));
-    }
+    auto it = dirtyDevices.begin();
+    while (it != dirtyDevices.end()) {
+        auto first = it;
+        const auto& poolName = first->GetPoolName();
+        it = std::partition(
+            first,
+            dirtyDevices.end(),
+            [&poolName](const auto& device)
+            { return poolName == device.GetPoolName(); });
 
-    for (auto& [poolName, devices]: poolMap) {
-        auto [it, inserted] = SecureEraseInProgressPerPool.insert(poolName);
+        auto [_, inserted] = SecureEraseInProgressPerPool.insert(poolName);
         if (!inserted) {
             continue;
         }
+
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
                 poolName,
-                std::move(devices),
+                TVector<NProto::TDeviceConfig>(
+                    std::make_move_iterator(first),
+                    std::make_move_iterator(it)),
                 Config->GetNonReplicatedSecureEraseTimeout());
 
         auto deadline =
