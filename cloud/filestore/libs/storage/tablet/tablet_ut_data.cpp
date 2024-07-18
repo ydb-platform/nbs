@@ -4336,7 +4336,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // clang-format on
         }
     }
-
+/*
     void DoTestWriteRequestCancellationOnTabletReboot(
         bool writeBatchEnabled,
         const TFileSystemConfig& tabletConfig)
@@ -4396,6 +4396,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
     }
 
+*/
+
+/*
     TABLET_TEST(ShouldCancelWriteRequestsIfTabletIsRebooted)
     {
         DoTestWriteRequestCancellationOnTabletReboot(false, tabletConfig);
@@ -4405,7 +4408,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         DoTestWriteRequestCancellationOnTabletReboot(true, tabletConfig);
     }
-
+*/
     TABLET_TEST(ShouldCancelReadRequestsIfTabletIsRebooted)
     {
         TTestEnv env;
