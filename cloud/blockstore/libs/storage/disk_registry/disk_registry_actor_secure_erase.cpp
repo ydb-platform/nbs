@@ -426,8 +426,9 @@ void TDiskRegistryActor::HandleSecureErase(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(SecureErase);
 
-    auto* msg = ev->Get();
     SecureEraseStartTs = ctx.Now();
+
+    auto* msg = ev->Get();
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received SecureErase request: DirtyDevices=%lu",
