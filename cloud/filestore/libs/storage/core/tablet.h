@@ -274,7 +274,7 @@ protected:
 //
 // This macro also provides TryToExecuteRO_ function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
-#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, db_type, db_iface_type)   \
+#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
     struct T##name                                                             \
     {                                                                          \
         using TArgs = ns::T##name;                                             \
@@ -291,7 +291,7 @@ protected:
         {                                                                      \
             Y_UNUSED(tx);                                                      \
             if (target.ValidateTx_##name(ctx, std::forward<Args>(args)...)) {  \
-                db_type db(tx.DB);                                             \
+                dbType db(tx.DB);                                              \
                 return target.ExecuteTx_##name(                                \
                     ctx, db, std::forward<Args>(args)...);                     \
             }                                                                  \
@@ -324,7 +324,7 @@ protected:
                                                                                \
     bool ExecuteTx_##name(                                                     \
         const NActors::TActorContext& ctx,                                     \
-        db_iface_type& db,                                                     \
+        dbIfaceType& db,                                                       \
         ns::T##name& args);                                                    \
                                                                                \
     void CompleteTx_##name(                                                    \
@@ -333,7 +333,7 @@ protected:
                                                                                \
     bool TryExecuteTx_##name(                                                  \
         const NActors::TActorContext& ctx,                                     \
-        db_iface_type& db,                                                     \
+        dbIfaceType& db,                                                       \
         ns::T##name& args)                                                     \
     {                                                                          \
         if (!ValidateTx_##name(ctx, args) || ExecuteTx_##name(ctx, db, args)) {\
