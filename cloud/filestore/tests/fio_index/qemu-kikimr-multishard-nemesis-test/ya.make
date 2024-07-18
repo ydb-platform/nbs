@@ -22,7 +22,7 @@ SET(VHOST_RESTART_FLAG 1)
 SET(FILESTORE_SHARD_COUNT 5)
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fio_index/qemu-kikimr-multishard-test/nfs-storage.txt
+    cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
