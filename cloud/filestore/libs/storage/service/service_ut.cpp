@@ -3426,6 +3426,83 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         DoTestShouldNotFailListNodesUponGetAttrENOENT(std::move(config));
     }
 
+    Y_UNIT_TEST(ShouldListMultipleNodesWithGetNodeAttrBatch)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetGetNodeAttrBatchEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        TVector<TString> names;
+        TVector<ui64> ids;
+        for (ui32 i = 10; i < 50; ++i) {
+            const auto name = Sprintf("file%u", i);
+            const auto id = service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, name)
+            )->Record.GetNode().GetId();
+            names.push_back(name);
+            ids.push_back(id);
+        }
+
+        auto listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            names.size() / 2,
+            listNodesResponse.NamesSize());
+        const ui32 idxToUnlink = 13;
+        const auto shard1NodeName = listNodesResponse.GetNames(idxToUnlink);
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
+        for (ui32 i = 0; i < names.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ids[i],
+                listNodesResponse.GetNodes(i).GetId());
+        }
+
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
+        for (ui32 i = 0; i < names.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
+            UNIT_ASSERT_VALUES_EQUAL(
+                i == idxToUnlink ? InvalidNodeId : ids[i],
+                listNodesResponse.GetNodes(i).GetId());
+        }
+    }
+
     Y_UNIT_TEST(DestroyFileStoreWithActiveSessionShouldFail)
     {
         TTestEnv env;

@@ -155,6 +155,7 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
             }
 
             batch.Record.AddNames(node.GetFollowerNodeName());
+            batch.NodeIndices.push_back(i);
         } else {
             ++GetNodeAttrResponses;
         }
@@ -297,7 +298,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttr from follower: %s, %s",
+                "Failed to GetNodeAttrBatch from follower: %s, %s",
                 followerId.c_str(),
                 FormatError(msg->GetError()).Quote().c_str());
 
@@ -343,6 +344,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
                 << FormatError(responseIter->GetError()).Quote();
             ReportNodeNotFoundInFollower(message);
             LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
+            ++responseIter;
             continue;
         }
 
@@ -354,6 +356,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
                 Response.GetNames(i).Quote().c_str(),
                 followerId.c_str(),
                 FormatError(responseIter->GetError()).Quote().c_str());
+            ++responseIter;
             continue;
         }
 
@@ -364,7 +367,6 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     }
 
     GetNodeAttrResponses += nodeIndices.size();
-
     if (GetNodeAttrResponses == Response.NodesSize()) {
         ReplyAndDie(ctx);
         return;
