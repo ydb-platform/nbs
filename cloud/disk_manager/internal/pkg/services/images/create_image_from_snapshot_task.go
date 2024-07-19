@@ -58,14 +58,17 @@ func (t *createImageFromSnapshotTask) Run(
 		return err
 	}
 
+	var srcSnapshotDiskID string
 	var srcSnapshotEncryption *types.EncryptionDesc
 	if srcSnapshotMeta != nil {
+		srcSnapshotDiskID = srcSnapshotMeta.Disk.DiskId
 		srcSnapshotEncryption = srcSnapshotMeta.Encryption
 	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
+		DiskID:            srcSnapshotDiskID,
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),

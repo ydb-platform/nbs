@@ -44,6 +44,7 @@ func TestImagesCreateImage(t *testing.T) {
 	image := ImageMeta{
 		ID:       "image",
 		FolderID: "folder",
+		DiskID:   "disk",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -77,6 +78,8 @@ func TestImagesCreateImage(t *testing.T) {
 	created, err = storage.CreateImage(ctx, image)
 	require.NoError(t, err)
 	require.Nil(t, created)
+
+	require.EqualValues(t, "disk", created.DiskID)
 }
 
 func TestImagesDeleteImage(t *testing.T) {
