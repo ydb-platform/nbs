@@ -453,7 +453,7 @@ public:
         return request;
     }
 
-    auto CreateGetNodeAttrRequest(ui64 node, const TString& name)
+    auto CreateGetNodeAttrRequest(ui64 node, const TString& name = "")
     {
         auto request = CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
         request->Record.SetNodeId(node);
@@ -461,10 +461,14 @@ public:
         return request;
     }
 
-    auto CreateGetNodeAttrRequest(ui64 node)
+    auto CreateGetNodeAttrBatchRequest(ui64 node, const TVector<TString>& names)
     {
-        auto request = CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvGetNodeAttrBatchRequest>();
         request->Record.SetNodeId(node);
+        for (const auto& name: names) {
+            *request->Record.AddNames() = name;
+        }
         return request;
     }
 

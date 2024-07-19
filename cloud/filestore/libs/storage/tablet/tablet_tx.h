@@ -88,6 +88,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
     xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
@@ -930,6 +931,37 @@ struct TTxIndexTablet
             TargetNode.Clear();
             FollowerId.clear();
             FollowerName.clear();
+        }
+    };
+
+    //
+    // GetNodeAttrBatch
+    //
+
+    struct TGetNodeAttrBatch : TSessionAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TGetNodeAttrBatchRequest Request;
+
+        NProtoPrivate::TGetNodeAttrBatchResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+
+        TGetNodeAttrBatch(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TGetNodeAttrBatchRequest request,
+                NProtoPrivate::TGetNodeAttrBatchResponse response)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , Response(std::move(response))
+        {}
+
+        void Clear()
+        {
+            CommitId = InvalidCommitId;
+            ParentNode.Clear();
         }
     };
 

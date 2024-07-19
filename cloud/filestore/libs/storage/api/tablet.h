@@ -30,6 +30,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ConfigureFollowers,         __VA_ARGS__)                               \
     xxx(ConfigureAsFollower,        __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
+    xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +89,9 @@ struct TEvIndexTablet
 
         EvGetStorageConfigRequest = EvBegin + 29,
         EvGetStorageConfigResponse,
+
+        EvGetNodeAttrBatchRequest = EvBegin + 31,
+        EvGetNodeAttrBatchResponse,
 
         EvEnd
     };
