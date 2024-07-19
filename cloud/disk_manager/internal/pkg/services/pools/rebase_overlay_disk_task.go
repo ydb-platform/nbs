@@ -74,7 +74,7 @@ func (t *rebaseOverlayDiskTask) rebaseOverlayDisk(
 	if err != nil {
 		if nbs.IsDiskNotFoundError(err) {
 			// Disk might not be created yet.
-			// Restart task to avoid this race (NBS-3761).
+			// Restart task to avoid this race (issue #1577).
 			return errors.NewInterruptExecutionError()
 		}
 
