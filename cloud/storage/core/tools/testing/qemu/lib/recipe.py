@@ -136,7 +136,7 @@ def start_instance(args, inst_index):
 def stop(argv):
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
-        logger.info('Stopping qemu instances with pids: ', ', '.join(pids))
+        logger.info('Stopping qemu instances with pids: %s', ', '.join(pids))
         for pid in pids:
             logger.info("will kill process with pid `%s`", pid)
             try:
