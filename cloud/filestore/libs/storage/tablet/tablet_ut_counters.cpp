@@ -631,7 +631,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         const auto nodeId =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const auto handle = CreateHandle(tablet, nodeId);
-        const int blockCount = 1024;
+        const int blockCount = 1024 * 4;
         const auto sz = DefaultBlockSize * blockCount;
 
         ui64 reportCount = 0;
