@@ -74,12 +74,12 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
+	require.EqualValues(t, "disk", created.DiskID)
+
 	image.CreateTaskID = "other"
 	created, err = storage.CreateImage(ctx, image)
 	require.NoError(t, err)
 	require.Nil(t, created)
-
-	require.EqualValues(t, "disk", created.DiskID)
 }
 
 func TestImagesDeleteImage(t *testing.T) {
