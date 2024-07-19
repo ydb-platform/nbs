@@ -1259,6 +1259,90 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             // clang-format on
         }
     }
+
+    Y_UNIT_TEST(ShouldGetNodeAttrBatch)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id1 = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test2"));
+
+        // testing successful response
+        {
+            const TVector<TString> names = {"test1", "test2"};
+            auto response = tablet.GetNodeAttrBatch(RootNodeId, names);
+            const auto nodeResponses = response->Record.GetResponses();
+            UNIT_ASSERT_VALUES_EQUAL(2, nodeResponses.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                nodeResponses[0].GetError().GetCode(),
+                nodeResponses[0].GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(id1, nodeResponses[0].GetNode().GetId());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                nodeResponses[1].GetError().GetCode(),
+                nodeResponses[1].GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(id2, nodeResponses[1].GetNode().GetId());
+        }
+
+        // testing the case when one of the requested names doesn't exist
+        {
+            const TVector<TString> names = {"test1", "test3"};
+            auto response = tablet.GetNodeAttrBatch(RootNodeId, names);
+            const auto nodeResponses = response->Record.GetResponses();
+            UNIT_ASSERT_VALUES_EQUAL(2, nodeResponses.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                nodeResponses[0].GetError().GetCode(),
+                nodeResponses[0].GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(id1, nodeResponses[0].GetNode().GetId());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                nodeResponses[1].GetError().GetCode(),
+                nodeResponses[1].GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                InvalidNodeId,
+                nodeResponses[1].GetNode().GetId());
+        }
+
+        // parent missing
+        {
+            const TVector<TString> names = {"test1", "test3"};
+            const ui64 someOtherNodeId = 777;
+            tablet.SendGetNodeAttrBatchRequest(someOtherNodeId, names);
+            auto response = tablet.RecvGetNodeAttrBatchResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto nodeResponses = response->Record.GetResponses();
+            UNIT_ASSERT_VALUES_EQUAL(0, nodeResponses.size());
+        }
+
+        // invalid parameters
+        {
+            const TVector<TString> names = {"test1", "///"};
+            tablet.SendGetNodeAttrBatchRequest(RootNodeId, names);
+            auto response = tablet.RecvGetNodeAttrBatchResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto nodeResponses = response->Record.GetResponses();
+            UNIT_ASSERT_VALUES_EQUAL(0, nodeResponses.size());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
