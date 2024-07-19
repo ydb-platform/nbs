@@ -43,22 +43,21 @@ NProto::TEncryptionSpec CreateEncryptionSpec(
     const TString& keyHash)
 {
     if (mode == NProto::NO_ENCRYPTION) {
-        if (keyHash || keyPath) {
-            throw yexception() << "invalid encryption options: "
-                << " set encryption mode or remove key hash and key path";
-        }
+        Y_ENSURE(
+            keyHash.empty() && keyPath.empty(),
+            "invalid encryption options: set encryption mode or remove key "
+            "hash and key path");
         return {};
     }
 
-    if (keyHash && keyPath) {
-        throw yexception() << "invalid encryption options: "
-            << " set key path or key hash, not both";
-    }
+    Y_ENSURE(
+        keyHash.empty() || keyPath.empty(),
+        "invalid encryption options: set key path or key hash, not both");
 
-    if (!keyHash && !keyPath) {
-        throw yexception() << "invalid encryption options: "
-            << " set key hash or key path or remove encryption mode";
-    }
+    Y_ENSURE(
+        keyHash || keyPath,
+        "invalid encryption options: set key hash or key path or remove "
+        "encryption mode");
 
     NProto::TEncryptionSpec encryptionSpec;
     encryptionSpec.SetMode(mode);
