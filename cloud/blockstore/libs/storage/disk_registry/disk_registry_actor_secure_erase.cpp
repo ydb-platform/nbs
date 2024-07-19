@@ -378,8 +378,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             [&poolName](const auto& device)
             { return poolName == device.GetPoolName(); });
 
-        auto [_, inserted] = SecureEraseInProgressPerPool.insert(poolName);
-        if (!inserted) {
+        auto [_, alreadyInProgress] =
+            SecureEraseInProgressPerPool.insert(poolName);
+        if (!alreadyInProgress) {
             continue;
         }
 
@@ -406,8 +407,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 
             ctx.ExecutorThread.Schedule(
                 deadline,
-                new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
-            request.release();
+                new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
         } else {
             LOG_INFO(
                 ctx,
