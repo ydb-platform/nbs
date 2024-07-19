@@ -2229,23 +2229,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // 3. Call ResumeDevice for all devices. Internally ResumeDevice
         // triggers SecureErase.
 
+        const TString poolName1 = "pool-1";
+        const auto withPool1 =
+            WithPool(poolName1, NProto::DEVICE_POOL_KIND_GLOBAL);
         auto agent1 = CreateAgentConfig(
             "agent-1",
-            {Device("dev-1", "uuid-1", "rack-1", 10_GB) |
-                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_LOCAL),
-             Device("dev-2", "uuid-2", "rack-1", 10_GB) |
-                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_LOCAL),
-             Device("dev-3", "uuid-3", "rack-1", 10_GB) |
-                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_LOCAL)});
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB) | withPool1,
+             Device("dev-2", "uuid-2", "rack-1", 10_GB) | withPool1,
+             Device("dev-3", "uuid-3", "rack-1", 10_GB) | withPool1});
 
+        const TString poolName2 = "pool-2";
+        const auto withPool2 =
+            WithPool(poolName2, NProto::DEVICE_POOL_KIND_GLOBAL);
         auto agent2 = CreateAgentConfig(
             "agent-2",
-            {Device("dev-4", "uuid-4", "rack-1", 10_GB) |
-                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL),
-             Device("dev-5", "uuid-5", "rack-1", 10_GB) |
-                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL),
-             Device("dev-6", "uuid-6", "rack-1", 10_GB) |
-                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL)});
+            {Device("dev-4", "uuid-4", "rack-1", 10_GB) | withPool2,
+             Device("dev-5", "uuid-5", "rack-1", 10_GB) | withPool2,
+             Device("dev-6", "uuid-6", "rack-1", 10_GB) | withPool2});
 
         auto runtime =
             TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
@@ -2260,12 +2260,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 auto config = CreateRegistryConfig(0, {agent1, agent2});
 
                 auto* pool1 = config.AddDevicePoolConfigs();
-                pool1->SetName("pool-1");
+                pool1->SetName(poolName1);
                 pool1->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
                 pool1->SetAllocationUnit(10_GB);
 
                 auto* pool2 = config.AddDevicePoolConfigs();
-                pool2->SetName("pool-2");
+                pool2->SetName(poolName2);
                 pool2->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
                 pool2->SetAllocationUnit(10_GB);
 
@@ -2276,12 +2276,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForAgents(*runtime, 2);
 
         THashMap<TString, TString> deviceUuidToPoolName = {
-            {"uuid-1", "pool-1"},
-            {"uuid-2", "pool-1"},
-            {"uuid-3", "pool-1"},
-            {"uuid-4", "pool-2"},
-            {"uuid-5", "pool-2"},
-            {"uuid-6", "pool-2"},
+            {"uuid-1", poolName1},
+            {"uuid-2", poolName1},
+            {"uuid-3", poolName1},
+            {"uuid-4", poolName2},
+            {"uuid-5", poolName2},
+            {"uuid-6", poolName2},
         };
 
         runtime->SetObserverFunc(
@@ -2316,14 +2316,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPoolsIndependently)
     {
-        const auto rotPool = WithPool("rot", NProto::DEVICE_POOL_KIND_GLOBAL);
+        const TString defaultPool = "";
+        const TString rotPool = "rot";
+        const auto withRotPool =
+            WithPool(rotPool, NProto::DEVICE_POOL_KIND_GLOBAL);
 
         TVector agents{
             CreateAgentConfig(
                 "agent-1",
-                {Device("path", "uuid-1", "rack-1", 10_GB) | rotPool,
-                 Device("path", "uuid-2", "rack-1", 10_GB) | rotPool,
-                 Device("path", "uuid-3", "rack-1", 10_GB) | rotPool}),
+                {Device("path", "uuid-1", "rack-1", 10_GB) | withRotPool,
+                 Device("path", "uuid-2", "rack-1", 10_GB) | withRotPool,
+                 Device("path", "uuid-3", "rack-1", 10_GB) | withRotPool}),
             CreateAgentConfig(
                 "agent-2",
                 {Device("path", "uuid-4", "rack-1", 10_GB),
@@ -2331,12 +2334,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                  Device("path", "uuid-6", "rack-1", 10_GB)})};
 
         THashMap<TString, TString> deviceUuidToPoolName = {
-            {"uuid-1", "rot"},
-            {"uuid-2", "rot"},
-            {"uuid-3", "rot"},
-            {"uuid-4", ""},
-            {"uuid-5", ""},
-            {"uuid-6", ""},
+            {"uuid-1", rotPool},
+            {"uuid-2", rotPool},
+            {"uuid-3", rotPool},
+            {"uuid-4", defaultPool},
+            {"uuid-5", defaultPool},
+            {"uuid-6", defaultPool},
         };
 
         auto runtime =
@@ -2368,7 +2371,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 auto config = CreateRegistryConfig(0, agents);
 
                 auto* rot = config.AddDevicePoolConfigs();
-                rot->SetName("rot");
+                rot->SetName(rotPool);
                 rot->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
                 rot->SetAllocationUnit(10_GB);
 
@@ -2408,8 +2411,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         SortBy(secureEraseRequests, getPoolName);
 
-        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[0]));
-        UNIT_ASSERT_VALUES_EQUAL("rot", getPoolName(secureEraseRequests[1]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL(rotPool, getPoolName(secureEraseRequests[1]));
 
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
@@ -2426,50 +2431,50 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 event->Cookie));
         };
 
-        // send response for ''
+        // send the first response for the device from the default pool
         sendResponse(std::move(secureEraseRequests[0]));
 
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
             15s);
-        // we have new request for ''
         UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[2]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[2]));
 
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
             15s);
         UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
 
-        // send response for the second ''
+        // send the second response for the device from the default pool
         sendResponse(std::move(secureEraseRequests[2]));
 
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
             15s);
-        // we have new request for ''
         UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL("", getPoolName(secureEraseRequests[3]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[3]));
 
-        // send response for the last ''
+        // send the third response for the device from the default pool
         sendResponse(std::move(secureEraseRequests[3]));
-
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
             15s);
 
-        // there are no new requests - all '' are clean
+        // there are no new requests - all devices from the default pool are
+        // clean
         UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
 
-        // send response for 'rot'
+        // send the response for the device from the rot pool
         sendResponse(std::move(secureEraseRequests[1]));
-
         runtime->DispatchEvents(
             {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
             15s);
-        // we have new request for 'rot'
         UNIT_ASSERT_VALUES_EQUAL(5, secureEraseRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL("rot", getPoolName(secureEraseRequests[4]));
+        UNIT_ASSERT_VALUES_EQUAL(rotPool, getPoolName(secureEraseRequests[4]));
     }
 }
 
