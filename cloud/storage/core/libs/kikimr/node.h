@@ -1,5 +1,6 @@
 #pragma once
 
+#include "node_registration_settings.h"
 #include "public.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -19,7 +20,6 @@ struct TRegisterDynamicNodeOptions
 {
     TString Domain;
     TString SchemeShardDir;
-    TString NodeType;
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
@@ -33,15 +33,7 @@ struct TRegisterDynamicNodeOptions
 
     bool LoadCmsConfigs = false;
 
-    int MaxAttempts = 0;
-    TDuration ErrorTimeout;
-    TDuration RegistrationTimeout;
-
-    TString PathToGrpcCaFile;
-    TString PathToGrpcCertFile;
-    TString PathToGrpcPrivateKeyFile;
-
-    TString NodeRegistrationToken;
+    TNodeRegistrationSettings Settings;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
