@@ -14,6 +14,8 @@ ServerConfig {
     CertFile: "certs/server-fallback.crt"
     CertPrivateKeyFile: "certs/server.key"
   }
+  EndpointStorageType: ENDPOINT_STORAGE_FILE
+  EndpointStorageDir: "endpoints"
   NodeType: "nbs"
   NbdEnabled: true
   VhostEnabled: true
