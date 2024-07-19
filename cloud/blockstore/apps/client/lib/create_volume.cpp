@@ -3,6 +3,7 @@
 #include "volume_manipulation_params.h"
 
 #include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>

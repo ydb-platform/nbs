@@ -21,6 +21,7 @@ ADDINCL(
 
 PEERDIR(
     cloud/blockstore/libs/client
+    cloud/blockstore/libs/encryption/model
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service_local
 

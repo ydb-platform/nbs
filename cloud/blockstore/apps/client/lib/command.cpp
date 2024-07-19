@@ -60,13 +60,6 @@ const TString DefaultIamTokenFile = "~/.nbs-client/iam-token";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TMap<TString, NProto::EEncryptionMode> EncryptionModes = {
-    { "no",         NProto::NO_ENCRYPTION       },
-    { "aes-xts",    NProto::ENCRYPTION_AES_XTS  },
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 TString ResolvePath(const TString& path)
 {
     if (path.StartsWith('~')) {
@@ -332,46 +325,6 @@ TString TCommand::NormalizeCommand(TString command)
     SubstGlobal(command, "-", TStringBuf{});
     SubstGlobal(command, "_", TStringBuf{});
     return command;
-}
-
-NProto::EEncryptionMode TCommand::EncryptionModeFromString(const TString& str)
-{
-    auto it = EncryptionModes.find(str);
-    if (it != EncryptionModes.end()) {
-        return it->second;
-    }
-
-    ythrow yexception() << "invalid encryption mode: " << str;
-}
-
-NProto::TEncryptionSpec TCommand::CreateEncryptionSpec(
-    NProto::EEncryptionMode mode,
-    const TString& keyPath,
-    const TString& keyHash)
-{
-    if (mode == NProto::NO_ENCRYPTION) {
-        if (keyHash || keyPath) {
-            throw yexception() << "invalid encryption options: "
-                << " set encryption mode or remove key hash and key path";
-        }
-        return {};
-    }
-
-    if (keyHash && keyPath) {
-        throw yexception() << "invalid encryption options: "
-            << " set key path or key hash, not both";
-    }
-
-    if (!keyHash && !keyPath) {
-        throw yexception() << "invalid encryption options: "
-            << " set key hash or key path or remove encryption mode";
-    }
-
-    NProto::TEncryptionSpec encryptionSpec;
-    encryptionSpec.SetMode(mode);
-    encryptionSpec.SetKeyHash(keyHash);
-    encryptionSpec.MutableKeyPath()->SetFilePath(keyPath);
-    return encryptionSpec;
 }
 
 NProto::TMountVolumeResponse TCommand::MountVolume(

@@ -1,5 +1,6 @@
 #include "options.h"
 
+#include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/nbd/utils.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -64,23 +65,6 @@ NProto::EVolumeMountMode MountModeFromString(const TString& s)
     }
 
     ythrow yexception() << "invalid mount mode: " << s;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-static const TMap<TString, NProto::EEncryptionMode> EncryptionModes = {
-    { "no",         NProto::NO_ENCRYPTION       },
-    { "aes-xts",    NProto::ENCRYPTION_AES_XTS  },
-};
-
-NProto::EEncryptionMode EncryptionModeFromString(const TString& str)
-{
-    auto it = EncryptionModes.find(str);
-    if (it != EncryptionModes.end()) {
-        return it->second;
-    }
-
-    ythrow yexception() << "invalid encryption mode: " << str;
 }
 
 }   // namespace

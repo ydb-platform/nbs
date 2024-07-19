@@ -12,6 +12,7 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/encryption/model
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/service

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/public/api/protos/encryption.pb.h>
 #include <cloud/storage/core/libs/common/affinity.h>
 
 #include <util/datetime/base.h>
@@ -39,6 +40,10 @@ struct TOptions
 
     TString ClientId = "vhost-server";
     TDuration WaitAfterParentExit = TDuration::Seconds(60);
+
+    NProto::EEncryptionMode EncryptionMode = NProto::NO_ENCRYPTION;
+    TString EncryptionKeyPath;
+    ui32 EncryptionKeyringId = 0;
 
     struct
     {

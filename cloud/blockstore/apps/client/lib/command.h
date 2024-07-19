@@ -142,13 +142,6 @@ public:
 protected:
     virtual bool DoExecute() = 0;
 
-    static NProto::EEncryptionMode EncryptionModeFromString(const TString& str);
-
-    static NProto::TEncryptionSpec CreateEncryptionSpec(
-        NProto::EEncryptionMode mode,
-        const TString& keyPath,
-        const TString& keyHash);
-
     // For read/write/zero blocks requests
     NProto::TMountVolumeResponse MountVolume(
         TString diskId,
