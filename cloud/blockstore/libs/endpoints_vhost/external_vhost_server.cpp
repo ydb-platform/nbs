@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/vhost-server/options.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -1038,6 +1039,25 @@ private:
 
         if (request.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY) {
             args.emplace_back("--read-only");
+        }
+
+        const auto& encryptionSpec = request.GetEncryptionSpec();
+        if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
+            args.emplace_back("--encryption-mode");
+            args.emplace_back(EncryptionModeToString(encryptionSpec.GetMode()));
+
+            const auto& keyPath = encryptionSpec.GetKeyPath();
+            if (keyPath.HasFilePath()) {
+                args.emplace_back("--encryption-key-path");
+                args.emplace_back(keyPath.GetFilePath());
+            } else if (keyPath.HasKeyringId()) {
+                args.emplace_back("--encryption-keyring-id");
+                args.emplace_back(ToString(keyPath.GetKeyringId()));
+            } else {
+                ythrow yexception()
+                    << "EncryptionSpec should has FilePath or KeyringId "
+                    << encryptionSpec.AsJSON();
+            }
         }
 
         TVector<TString> cgroups(

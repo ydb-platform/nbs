@@ -2,9 +2,9 @@
 
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>

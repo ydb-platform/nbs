@@ -13,8 +13,9 @@ PEERDIR(
 
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
+    cloud/blockstore/libs/encryption/model
     cloud/blockstore/libs/service
-    
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/endpoints/keyring
 
