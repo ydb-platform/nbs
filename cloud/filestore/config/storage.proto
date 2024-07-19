@@ -301,4 +301,8 @@ message TStorageConfig
 
     // Allow to destroy filestore with active sessions
     optional bool AllowFileStoreForceDestroy = 357;
+
+    // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
+    // appropriate.
+    optional bool GetNodeAttrBatchEnabled = 358;
 }

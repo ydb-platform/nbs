@@ -3342,10 +3342,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             FormatError(response->GetError()));
     }
 
-    Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
+    void DoTestShouldNotFailListNodesUponGetAttrENOENT(
+        NProto::TStorageConfig config)
     {
-        NProto::TStorageConfig config;
-        config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3410,6 +3409,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto counter =
             counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        DoTestShouldNotFailListNodesUponGetAttrENOENT(std::move(config));
+    }
+
+    Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENTWithGetNodeAttrBatch)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetGetNodeAttrBatchEnabled(true);
+        DoTestShouldNotFailListNodesUponGetAttrENOENT(std::move(config));
     }
 
     Y_UNIT_TEST(DestroyFileStoreWithActiveSessionShouldFail)
