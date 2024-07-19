@@ -3473,6 +3473,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             listNodesResponse.NamesSize());
         const ui32 idxToUnlink = 13;
         const auto shard1NodeName = listNodesResponse.GetNames(idxToUnlink);
+        const ui64 unlinkedId = listNodesResponse.GetNodes(idxToUnlink).GetId();
 
         listNodesResponse = service.ListNodes(
             headers,
@@ -3498,7 +3499,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         for (ui32 i = 0; i < names.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
             UNIT_ASSERT_VALUES_EQUAL(
-                i == idxToUnlink ? InvalidNodeId : ids[i],
+                ids[i] == unlinkedId ? InvalidNodeId : ids[i],
                 listNodesResponse.GetNodes(i).GetId());
         }
     }
