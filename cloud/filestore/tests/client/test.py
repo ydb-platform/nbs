@@ -127,6 +127,8 @@ def test_describe_sessions():
     out = client.execute_action("describesessions", {"FileSystemId": "fs0"})
     sessions = json.loads(out)
 
+    client.destroy("fs0")
+
     with open(results_path, "w") as results_file:
         json.dump(sessions, results_file, indent=4)
 
@@ -143,6 +145,8 @@ def test_stat():
     del stat["ATime"]
     del stat["MTime"]
     del stat["CTime"]
+
+    client.destroy("fs0")
 
     with open(results_path, "w") as results_file:
         json.dump(stat, results_file, indent=4)
@@ -170,6 +174,8 @@ def test_write_ls_rm_ls():
     out += __exec_ls(client, "fs0", "/")
     out += client.rm("fs0", "/xxx")
     out += __exec_ls(client, "fs0", "/")
+
+    client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
@@ -206,6 +212,8 @@ def test_set_node_attr():
 
     out = client.stat("fs0", "/aaa")
     stat = json.loads(out)
+
+    client.destroy("fs0")
 
     assert uid == stat["Uid"]
     assert gid == stat["Gid"]
@@ -245,6 +253,9 @@ def test_partial_set_node_attr():
         "--gid", gid)
     out = client.stat("fs0", "/aaa/bbb")
     new_stat = json.loads(out)
+
+    client.destroy("fs0")
+
     assert gid == new_stat["Gid"]
     assert stat["Uid"] == new_stat["Uid"]
     assert stat["Size"] == new_stat["Size"]
@@ -285,6 +296,9 @@ def test_multitablet_ls():
     client.write("fs0", "/xxx", "--data", data_file)
     out += __exec_ls(client, "fs0", "/")
     out += __exec_ls(client, "fs0", "/", "--disable-multitablet-forwarding")
+
+    client.destroy("fs0")
+    client.destroy("fs0-shard")
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
@@ -343,10 +357,15 @@ def test_multitablet_findgarbage():
     client.write(fs_id, "/xxx", "--data", data_file)
     client.write(fs_id, "/xxx1", "--data", data_file)
     client.write(fs_id, "/xxx2", "--data", data_file)
-    client.write(shard1_id, "/garbage1", "--data", data_file)
-    client.write(shard2_id, "/garbage2", "--data", data_file)
+    client.write(shard1_id, "/garbage1_1", "--data", data_file)
+    client.write(shard2_id, "/garbage2_1", "--data", data_file)
+    client.write(shard2_id, "/garbage2_2", "--data", data_file)
     # TODO: teach the client to fetch shard list by itself
     out += client.find_garbage(fs_id, [shard1_id, shard2_id])
+
+    client.destroy(fs_id)
+    client.destroy(shard1_id)
+    client.destroy(shard2_id)
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)

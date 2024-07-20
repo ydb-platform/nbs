@@ -1,3 +1,6 @@
 {}
 {}
 {}
+fs0-shard1	garbage1_1
+fs0-shard2	garbage2_1
+fs0-shard2	garbage2_2

@@ -14,6 +14,9 @@ enum ENodeConstants
 {
     option allow_alias = true;
 
+    // 0 value is important here - we don't explicitly set NodeId/Handle values
+    // to INVALID values everywhere and rely on the fact that the default (0)
+    // value means INVALID
     E_INVALID_NODE_ID = 0;
     E_INVALID_HANDLE = 0;
     E_ROOT_NODE_ID = 1;
