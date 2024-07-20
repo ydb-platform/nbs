@@ -157,6 +157,17 @@ class NfsCliClient:
 
         return common.execute(cmd).stdout
 
+    def find_garbage(self, fs, shards):
+        shard_params = []
+        for shard in shards:
+            shard_params += ["--shard", shard]
+        cmd = [
+            self.__binary_path, "findgarbage",
+            "--filesystem", fs,
+        ] + shard_params + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
     def set_node_attr(self, fs, node_id, *argv):
         list_args = [str(x) for x in argv]
         cmd = [

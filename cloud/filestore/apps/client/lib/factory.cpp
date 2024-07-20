@@ -33,6 +33,7 @@ TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
 TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
+TCommandPtr NewFindGarbageCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,6 +47,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "describe", NewDescribeCommand },
     { "destroy", NewDestroyCommand },
     { "executeaction", NewExecuteActionCommand },
+    { "findgarbage", NewFindGarbageCommand },
     { "kickendpoint", NewKickEndpointCommand },
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },

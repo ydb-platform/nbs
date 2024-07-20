@@ -291,3 +291,65 @@ def test_multitablet_ls():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_multitablet_findgarbage():
+    client, results_path = __init_test()
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    fs_id = "fs0"
+    shard1_id = fs_id + "-shard1"
+    shard2_id = fs_id + "-shard2"
+
+    out = client.create(
+        fs_id,
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.create(
+        shard1_id,
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.create(
+        shard2_id,
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.execute_action("configureasfollower", {
+        "FileSystemId": shard1_id,
+        "ShardNo": 1,
+    })
+
+    out += client.execute_action("configureasfollower", {
+        "FileSystemId": shard2_id,
+        "ShardNo": 2,
+    })
+
+    out += client.execute_action("configurefollowers", {
+        "FileSystemId": fs_id,
+        "FollowerFileSystemIds": [shard1_id, shard2_id],
+    })
+
+    client.write(fs_id, "/xxx", "--data", data_file)
+    client.write(fs_id, "/xxx1", "--data", data_file)
+    client.write(fs_id, "/xxx2", "--data", data_file)
+    client.write(shard1_id, "/garbage1", "--data", data_file)
+    client.write(shard2_id, "/garbage2", "--data", data_file)
+    # TODO: teach the client to fetch shard list by itself
+    out += client.find_garbage(fs_id, [shard1_id, shard2_id])
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
