@@ -7,6 +7,7 @@ SRCS(
     create_session.cpp
     describe.cpp
     destroy.cpp
+    destroy_session.cpp
     execute_action.cpp
     factory.cpp
     find_garbage.cpp

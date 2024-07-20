@@ -147,6 +147,16 @@ class NfsCliClient:
 
         return common.execute(cmd).stdout
 
+    def destroy_session(self, fs, session_id, client_id):
+        cmd = [
+            self.__binary_path, "destroysession",
+            "--filesystem", fs,
+            "--session-id", session_id,
+            "--client-id", client_id,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
     def stat(self, fs, path):
         cmd = [
             self.__binary_path, "stat",

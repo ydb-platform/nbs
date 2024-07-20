@@ -127,6 +127,8 @@ def test_describe_sessions():
     out = client.execute_action("describesessions", {"FileSystemId": "fs0"})
     sessions = json.loads(out)
 
+    client.destroy_session("fs0", "session0", "client0")
+    client.destroy_session("fs0", "session1", "client1")
     client.destroy("fs0")
 
     with open(results_path, "w") as results_file:
