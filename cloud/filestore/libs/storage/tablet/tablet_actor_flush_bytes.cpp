@@ -901,8 +901,12 @@ void TIndexTabletActor::ExecuteTx_TrimBytes(
 
     TIndexTabletDatabase db(tx.DB);
 
-    args.TrimmedBytes =
-        FinishFlushBytes(db, args.ChunkId, args.ProfileLogRequest);
+    std::tie(args.TrimmedBytes, args.TrimmedAll) =
+        FinishFlushBytes(
+            db,
+            Config->GetTrimBytesItemsCount(),
+            args.ChunkId,
+            args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_TrimBytes(
@@ -917,16 +921,35 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         {},
         ProfileLog);
 
+    FILESTORE_TRACK(
+        ResponseSent_Tablet,
+        args.RequestInfo->CallContext,
+        "TrimBytes");
+
+    Metrics.TrimBytes.Update(
+        1,
+        args.TrimmedBytes,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
+    if (!args.TrimmedAll) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s TrimBytes partially completed (%lu, %lu)",
+            LogTag.c_str(),
+            args.ChunkId,
+            args.TrimmedBytes);
+
+        ExecuteTx<TTrimBytes>(
+            ctx,
+            args.RequestInfo,
+            args.ChunkId);
+        return;
+    }
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s TrimBytes completed (%lu, %lu)",
         LogTag.c_str(),
         args.ChunkId,
         args.TrimmedBytes);
-
-    FILESTORE_TRACK(
-        ResponseSent_Tablet,
-        args.RequestInfo->CallContext,
-        "TrimBytes");
 
     BlobIndexOpState.Complete();
     FlushState.Complete();
@@ -934,11 +957,6 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
     EnqueueFlushIfNeeded(ctx);
-
-    Metrics.TrimBytes.Update(
-        1,
-        args.TrimmedBytes,
-        ctx.Now() - args.RequestInfo->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

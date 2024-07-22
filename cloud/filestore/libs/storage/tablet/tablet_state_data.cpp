@@ -366,34 +366,44 @@ TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(
         deletionMarkers);
 }
 
-ui64 TIndexTabletState::FinishFlushBytes(
+std::pair<ui64, bool> TIndexTabletState::FinishFlushBytes(
     TIndexTabletDatabase& db,
+    ui64 itemLimit,
     ui64 chunkId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     ui64 sz = 0;
     ui64 deletedSz = 0;
-    Impl->FreshBytes.VisitTop([&] (const TBytes& bytes, bool isDeletionMarker) {
-        db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
-        if (isDeletionMarker) {
-            deletedSz += bytes.Length;
-        } else {
-            sz += bytes.Length;
-        }
+    auto result = Impl->FreshBytes.VisitTop(
+        itemLimit,
+        [&] (const TBytes& bytes, bool isDeletionMarker) {
+            db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
+            if (isDeletionMarker) {
+                deletedSz += bytes.Length;
+            } else {
+                sz += bytes.Length;
+            }
 
-        auto* range = profileLogRequest.AddRanges();
-        range->SetNodeId(bytes.NodeId);
-        range->SetOffset(bytes.Offset);
-        range->SetBytes(bytes.Length);
+            auto* range = profileLogRequest.AddRanges();
+            range->SetNodeId(bytes.NodeId);
+            range->SetOffset(bytes.Offset);
+            range->SetBytes(bytes.Length);
     });
 
-    Impl->FreshBytes.FinishCleanup(chunkId);
+    if (result.ChunkCompleted) {
+        Impl->FreshBytes.FinishCleanup(chunkId);
+    } else {
+        Impl->FreshBytes.CleanupChunkPartially(
+            chunkId,
+            result.DataItemsProcessed,
+            result.DeletionMarkersProcessed);
+    }
 
     auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
     SetFreshBytesCount(db, freshBytes);
     SetDeletedFreshBytesCount(db, deletedFreshBytes);
 
-    return sz + deletedSz;
+    return {sz + deletedSz, result.ChunkCompleted};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

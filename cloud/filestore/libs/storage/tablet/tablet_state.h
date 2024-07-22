@@ -717,8 +717,9 @@ public:
     TFlushBytesCleanupInfo StartFlushBytes(
         TVector<TBytes>* bytes,
         TVector<TBytes>* deletionMarkers);
-    ui64 FinishFlushBytes(
+    std::pair<ui64, bool> FinishFlushBytes(
         TIndexTabletDatabase& db,
+        ui64 itemLimit,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 

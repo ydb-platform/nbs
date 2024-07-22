@@ -305,4 +305,7 @@ message TStorageConfig
     // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
+
+    // Max number of items to delete during TrimBytes.
+    optional uint64 TrimBytesItemsCount = 359;
 }
