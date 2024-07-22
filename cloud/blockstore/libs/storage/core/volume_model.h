@@ -98,4 +98,13 @@ ui64 ComputeMaxBlocks(
     const NCloud::NProto::EStorageMediaKind mediaKind,
     ui32 currentPartitions);
 
+void FairComputeLimitNumberOfChannels(
+    int freeChannelCount,
+    ui32 haveMerged,
+    int& wantAddMerged,
+    ui32 haveMixed,
+    int& wantAddMixed,
+    ui32 haveFresh,
+    int& wantAddFresh);
+
 }   // namespace NCloud::NBlockStore::NStorage

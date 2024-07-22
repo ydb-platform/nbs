@@ -6,8 +6,10 @@
 
 #include <contrib/ydb/core/protos/blockstore_config.pb.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/ymath.h>
 
 #include <cmath>
 
@@ -49,6 +51,44 @@ THROTTLING_PARAM(MaxReadIops);
 THROTTLING_PARAM(MaxWriteIops);
 
 #undef THROTTLING_PARAM
+
+// Calculates the deterioration when desired channel count reduced.
+// 1. calculate the total number of channels that should be obtained after
+//    completion.
+// 2. calculate the proportion for each kind
+// 3. calculate how much the proportion deteriorates after reducing the number
+//    of channels to be created
+// 4. select the channel kind that will suffer least and reduce it wants
+// 5. repeat until the number of channels that we can create matches
+struct TChannelKindDeterioration
+{
+    static int TotalChannelCount;
+
+    const ui32 ExistingChannelCount = 0;
+    int* WantToAdd = nullptr;
+    double DesiredProportion = 0.0;
+
+    void CalcDesiredProportion()
+    {
+        DesiredProportion =
+            1.0 * (ExistingChannelCount + *WantToAdd) / TotalChannelCount;
+    }
+
+    // 0.0f - the proportion has not changed
+    // 1.0f - the proportion has changed completely
+    [[nodiscard]] double GetDeteriorationOfTheProportion() const
+    {
+        if (*WantToAdd == 0) {
+            // We return the biggest deterioration for the kind that is not
+            // going to increase the number of channels.
+            return 1.0;
+        }
+        double newProportion =
+            1.0 * (ExistingChannelCount + *WantToAdd - 1) / TotalChannelCount;
+        return Abs(newProportion / DesiredProportion - 1.0);
+    }
+};
+int TChannelKindDeterioration::TotalChannelCount = 0;
 
 ui32 ReadBandwidth(
     const TStorageConfig& config,
@@ -366,6 +406,26 @@ void SetExplicitChannelProfiles(
 
         ++c;
     }
+
+    auto countChannels = [&](EChannelDataKind dataKind) -> ui32
+    {
+        return CountIf(
+            volumeConfig.GetExplicitChannelProfiles(),
+            [&](const auto& profile)
+            { return profile.GetDataKind() == static_cast<ui32>(dataKind); });
+    };
+
+    FairComputeLimitNumberOfChannels(
+        255 - c,
+        countChannels(EChannelDataKind::Merged),
+        mergedChannels,
+        countChannels(EChannelDataKind::Mixed),
+        mixedChannels,
+        countChannels(EChannelDataKind::Fresh),
+        freshChannels);
+
+    Y_DEBUG_ABORT_UNLESS(
+        c + mergedChannels + mixedChannels + freshChannels <= 255);
 
     while (mergedChannels > 0) {
         AddOrModifyChannel(
@@ -806,6 +866,84 @@ ui64 ComputeMaxBlocks(
     }
 
     return MaxPartitionBlocksCount;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void FairComputeLimitNumberOfChannels(
+    int freeChannelCount,
+    ui32 existingChannelCountMerged,
+    int& wantAddMerged,
+    ui32 existingChannelCountMixed,
+    int& wantAddMixed,
+    ui32 existingChannelCountFresh,
+    int& wantAddFresh)
+{
+    TChannelKindDeterioration channelKinds[3] = {
+        {existingChannelCountMerged, &wantAddMerged},
+        {existingChannelCountMixed, &wantAddMixed},
+        {existingChannelCountFresh, &wantAddFresh},
+    };
+    TVector<TChannelKindDeterioration*> kindPtrs;
+    for (auto& channelKind: channelKinds) {
+        kindPtrs.push_back(&channelKind);
+    }
+
+    if (!freeChannelCount) {
+        // There are no free channels.
+        for (auto& channelKind: channelKinds) {
+            *channelKind.WantToAdd = 0;
+        }
+        return;
+    }
+
+    auto totalWantToAdd = [&]() -> int
+    {
+        return Accumulate(
+            channelKinds,
+            int{},
+            [](int acc, const TChannelKindDeterioration& channel)
+            { return acc + *channel.WantToAdd; });
+    };
+
+    if (totalWantToAdd() < freeChannelCount) {
+        // There are enough free channels to satisfy everyone.
+        return;
+    }
+
+    auto calcTotalChannelCount = [&]()
+    {
+        TChannelKindDeterioration::TotalChannelCount = Accumulate(
+            channelKinds,
+            int{},
+            [](int acc, const TChannelKindDeterioration& channel)
+            { return acc + channel.ExistingChannelCount + *channel.WantToAdd; });
+    };
+    calcTotalChannelCount();
+
+    // Fill desired proportion.
+    for (auto& channelKind: channelKinds) {
+        channelKind.CalcDesiredProportion();
+    }
+
+    auto findTheLeastAffectedChannelKind = [&]() -> TChannelKindDeterioration*
+    {
+        Sort(
+            kindPtrs,
+            [&](TChannelKindDeterioration* lh, TChannelKindDeterioration* rh)
+            {
+                return lh->GetDeteriorationOfTheProportion() <
+                       rh->GetDeteriorationOfTheProportion();
+            });
+        return kindPtrs[0];
+    };
+
+    while (freeChannelCount < totalWantToAdd()) {
+        auto* leastAffected = findTheLeastAffectedChannelKind();
+        Y_DEBUG_ABORT_UNLESS(*leastAffected->WantToAdd > 0);
+        --(*leastAffected->WantToAdd);
+        calcTotalChannelCount();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
