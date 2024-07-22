@@ -275,8 +275,8 @@ void TBootstrapCommon::InitActorSystem()
     Y_ABORT_UNLESS(Configs->StorageConfig);
 
     NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts = static_cast<int>(
-            Configs->Options->NodeRegistrationMaxAttempts),
+        .MaxAttempts =
+            Configs->Options->NodeRegistrationMaxAttempts,
         .ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout,
         .RegistrationTimeout = Configs->Options->NodeRegistrationTimeout,
     };

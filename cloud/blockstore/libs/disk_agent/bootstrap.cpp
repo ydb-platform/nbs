@@ -295,8 +295,8 @@ void TBootstrap::InitKikimrService()
     Configs->InitSpdkEnvConfig();
 
     NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts = static_cast<int>(
-            Configs->ServerConfig->GetNodeRegistrationMaxAttempts()),
+        .MaxAttempts =
+            Configs->ServerConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
         .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout(),
         .PathToGrpcCaFile = Configs->ServerConfig->GetRootCertsFile(),

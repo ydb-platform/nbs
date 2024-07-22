@@ -409,7 +409,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             dnConfig);
     }
 
-    int attempts = 0;
+    ui32 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 

@@ -9,7 +9,7 @@ namespace NCloud::NStorage {
 
 struct TNodeRegistrationSettings
 {
-    int MaxAttempts = 0;
+    ui32 MaxAttempts = 0;
     TDuration ErrorTimeout;
     TDuration RegistrationTimeout;
 
