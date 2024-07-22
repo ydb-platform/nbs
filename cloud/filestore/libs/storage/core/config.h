@@ -207,6 +207,7 @@ public:
     bool GetNewLocalDBCompactionPolicyEnabled() const;
 
     bool GetMultiTabletForwardingEnabled() const;
+    bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
 
