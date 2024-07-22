@@ -38,6 +38,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <thread>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
@@ -528,8 +530,7 @@ void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 class TEndpoint final
     : public IExternalEndpoint
     , public std::enable_shared_from_this<TEndpoint>
-    , public ISimpleThread  // XXX: pidfd_open is not implemented for Linux 4.14
-{                           // so we are forced to use a thread for waitpid.
+{
 private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
@@ -589,7 +590,14 @@ public:
     {
         Process = StartProcess();
 
-        ISimpleThread::Start();
+        // To avoid a race, we need to get the shared pointer in the calling
+        // thread and pass it to the background thread. This guaranteed that the
+        // background thread will deal with a live this.
+        auto workFunc = [self = shared_from_this()]()
+        {
+            self->ThreadProc();
+        };
+        std::thread(std::move(workFunc)).detach();
     }
 
     TFuture<NProto::TError> Stop() override
@@ -605,12 +613,10 @@ public:
     }
 
 private:
-    void* ThreadProc() override
+    // XXX: pidfd_open is not implemented for Linux 4.14
+    // so we are forced to use a thread for waitpid.
+    void ThreadProc()
     {
-        auto holder = shared_from_this();
-
-        Detach();   // don't call Join in the same thread
-
         ::NCloud::SetCurrentThreadName("waitEP");
 
         NProto::TError error;
@@ -645,8 +651,6 @@ private:
         }
 
         StopPromise.SetValue(error);
-
-        return nullptr;
     }
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
