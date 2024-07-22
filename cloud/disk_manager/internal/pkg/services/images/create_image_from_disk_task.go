@@ -65,7 +65,7 @@ func (t *createImageFromDiskTask) run(
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
-		DiskID:            t.request.SrcDisk.DiskId,
+		SrcDiskID:         t.request.SrcDisk.DiskId,
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),

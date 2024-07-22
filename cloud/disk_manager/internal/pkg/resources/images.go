@@ -163,7 +163,7 @@ func imageStateStructTypeString() string {
 	return `Struct<
 		id: Utf8,
 		folder_id: Utf8,
-		disk_id: Utf8,
+		src_disk_id: Utf8,
 		create_request: String,
 		create_task_id: Utf8,
 		creating_at: Timestamp,
@@ -184,7 +184,7 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_disk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
