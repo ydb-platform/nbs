@@ -64,7 +64,6 @@ using namespace NCloud::NStorage;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
 class TFileStoreEndpoints final
     : public IFileStoreEndpoints
 {

@@ -55,8 +55,18 @@ public:
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
 
+    TString GetNodeRegistrationToken() const;
+
+    TString GetNodeType() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetCertFileFromConfig(const TServerConfigPtr& serverConfig);
+TString GetCertPrivateKeyFileFromConfig(const TServerConfigPtr& serverConfig);
 
 }   // namespace NCloud::NFileStore::NServer

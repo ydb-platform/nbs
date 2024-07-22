@@ -5,7 +5,6 @@
 #include <cloud/filestore/config/vhost.pb.h>
 #include <cloud/filestore/libs/daemon/common/config_initializer.h>
 #include <cloud/filestore/libs/endpoint_vhost/public.h>
-#include <cloud/filestore/libs/server/config.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -17,14 +16,19 @@ struct TConfigInitializerVhost final
     TOptionsVhostPtr Options;
 
     NProto::TVhostAppConfig AppConfig;
-    NVhost::TVhostServiceConfigPtr VhostServiceConfig;
     NServer::TServerConfigPtr ServerConfig;
+    NVhost::TVhostServiceConfigPtr VhostServiceConfig;
 
     TConfigInitializerVhost(TOptionsVhostPtr options);
 
     void InitAppConfig();
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+
+    virtual NCloud::NStorage::TNodeRegistrationSettings
+        GetNodeRegistrationSettings() override;
+
+    void ApplyVHostAppConfig(const TString& text);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

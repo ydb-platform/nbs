@@ -317,4 +317,22 @@ TServerAppConfig::DeprecatedGetRdmaClientConfig() const
     return ServerConfig->GetRdmaClientConfig();
 }
 
+TString GetCertFileFromConfig(const TServerAppConfig& serverConfig)
+{
+    const auto& certs = serverConfig.GetCerts();
+    if (certs.empty()) {
+        return serverConfig.GetCertFile();
+    }
+    return certs.front().CertFile;
+}
+
+TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig)
+{
+    const auto& certs = serverConfig.GetCerts();
+    if (certs.empty()) {
+        return serverConfig.GetCertPrivateKeyFile();
+    }
+    return certs.front().CertPrivateKeyFile;
+}
+
 }   // namespace NCloud::NBlockStore::NServer

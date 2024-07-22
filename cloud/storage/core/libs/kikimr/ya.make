@@ -8,6 +8,7 @@ SRCS(
     events.cpp
     helpers.cpp
     node_registration_helpers.cpp
+    node_registration_settings.cpp
     node.cpp
     options.cpp
     proxy.cpp
