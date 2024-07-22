@@ -52,6 +52,9 @@ func imageStatusToString(status imageStatus) string {
 type imageState struct {
 	id                string
 	folderID          string
+	srcDiskID         string
+	srcImageID        string
+	srcSnapshotID     string
 	createRequest     []byte
 	createTaskID      string
 	creatingAt        time.Time
@@ -75,6 +78,9 @@ func (s *imageState) toImageMeta() *ImageMeta {
 	return &ImageMeta{
 		ID:                s.id,
 		FolderID:          s.folderID,
+		SrcDiskID:         s.srcDiskID,
+		SrcImageID:        s.srcImageID,
+		SrcSnapshotID:     s.srcSnapshotID,
 		CreateTaskID:      s.createTaskID,
 		CreatingAt:        s.creatingAt,
 		CreatedBy:         s.createdBy,
@@ -96,6 +102,9 @@ func (s *imageState) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
+		persistence.StructFieldValue("src_disk_id", persistence.UTF8Value(s.srcDiskID)),
+		persistence.StructFieldValue("src_image_id", persistence.UTF8Value(s.srcImageID)),
+		persistence.StructFieldValue("src_snapshot_id", persistence.UTF8Value(s.srcSnapshotID)),
 		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
 		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
 		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
@@ -117,6 +126,9 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
+		persistence.OptionalWithDefault("src_disk_id", &state.srcDiskID),
+		persistence.OptionalWithDefault("src_image_id", &state.srcImageID),
+		persistence.OptionalWithDefault("src_snapshot_id", &state.srcSnapshotID),
 		persistence.OptionalWithDefault("create_request", &state.createRequest),
 		persistence.OptionalWithDefault("create_task_id", &state.createTaskID),
 		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
@@ -159,6 +171,9 @@ func imageStateStructTypeString() string {
 	return `Struct<
 		id: Utf8,
 		folder_id: Utf8,
+		src_disk_id: Utf8,
+		src_image_id: Utf8,
+		src_snapshot_id: Utf8,
 		create_request: String,
 		create_task_id: Utf8,
 		creating_at: Timestamp,
@@ -179,6 +194,9 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_image_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -383,6 +401,9 @@ func (s *storageYDB) createImage(
 	state := imageState{
 		id:                image.ID,
 		folderID:          image.FolderID,
+		srcDiskID:         image.SrcDiskID,
+		srcImageID:        image.SrcImageID,
+		srcSnapshotID:     image.SrcSnapshotID,
 		createRequest:     createRequest,
 		createTaskID:      image.CreateTaskID,
 		creatingAt:        image.CreatingAt,

@@ -66,6 +66,7 @@ func (t *createImageFromImageTask) Run(
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
+		SrcImageID:        t.request.SrcImageId,
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),
