@@ -52,7 +52,7 @@ func imageStatusToString(status imageStatus) string {
 type imageState struct {
 	id                string
 	folderID          string
-	diskID            string
+	srcDiskID         string
 	createRequest     []byte
 	createTaskID      string
 	creatingAt        time.Time
@@ -76,7 +76,7 @@ func (s *imageState) toImageMeta() *ImageMeta {
 	return &ImageMeta{
 		ID:                s.id,
 		FolderID:          s.folderID,
-		DiskID:            s.diskID,
+		SrcDiskID:         s.srcDiskID,
 		CreateTaskID:      s.createTaskID,
 		CreatingAt:        s.creatingAt,
 		CreatedBy:         s.createdBy,
@@ -98,7 +98,7 @@ func (s *imageState) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
-		persistence.StructFieldValue("disk_id", persistence.UTF8Value(s.diskID)),
+		persistence.StructFieldValue("src_disk_id", persistence.UTF8Value(s.srcDiskID)),
 		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
 		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
 		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
@@ -120,7 +120,7 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
-		persistence.OptionalWithDefault("disk_id", &state.diskID),
+		persistence.OptionalWithDefault("src_disk_id", &state.srcDiskID),
 		persistence.OptionalWithDefault("create_request", &state.createRequest),
 		persistence.OptionalWithDefault("create_task_id", &state.createTaskID),
 		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
@@ -389,7 +389,7 @@ func (s *storageYDB) createImage(
 	state := imageState{
 		id:                image.ID,
 		folderID:          image.FolderID,
-		diskID:            image.DiskID,
+		srcDiskID:         image.SrcDiskID,
 		createRequest:     createRequest,
 		createTaskID:      image.CreateTaskID,
 		creatingAt:        image.CreatingAt,

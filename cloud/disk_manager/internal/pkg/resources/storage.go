@@ -40,7 +40,7 @@ type DiskMeta struct {
 type ImageMeta struct {
 	ID                string                `json:"id"`
 	FolderID          string                `json:"folder_id"`
-	DiskID            string                `json:"disk"`
+	SrcDiskID         string                `json:"src_disk_id"`
 	CreateRequest     proto.Message         `json:"create_request"`
 	CreateTaskID      string                `json:"create_task_id"`
 	CreatingAt        time.Time             `json:"creating_at"`
