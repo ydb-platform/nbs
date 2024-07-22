@@ -13,6 +13,7 @@ add_library(blockstore-libs-nbd)
 target_link_libraries(blockstore-libs-nbd PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
+  contrib-restricted-libnl-lib-nl-genl-3
   yutil
   blockstore-libs-client
   blockstore-libs-common
@@ -29,23 +30,10 @@ target_sources(blockstore-libs-nbd PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/client.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/client_handler.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/limiter.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/netlink_device.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/protocol.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/server.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/server_handler.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/utils.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/device.cpp
 )
-if(DEFINED ENV{NETLINK})
-  target_sources(blockstore-libs-nbd PRIVATE
-    ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/nbd/netlink_device.cpp
-  )
-  target_compile_options(blockstore-libs-nbd PUBLIC
-    -DNETLINK
-    -I/usr/include/libnl3
-  )
-  target_link_options(blockstore-libs-nbd PUBLIC
-    -L/usr/lib/x86_64-linux-gnu
-    -l:libnl-3.a
-    -l:libnl-genl-3.a
-  )
-endif()

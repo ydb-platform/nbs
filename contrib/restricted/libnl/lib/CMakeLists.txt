@@ -1,0 +1,6 @@
+add_subdirectory(nl-3)
+add_subdirectory(nl-genl-3)
+add_subdirectory(nl-idiag-3)
+add_subdirectory(nl-nf-3)
+add_subdirectory(nl-route-3)
+add_subdirectory(nl-xfrm-3)

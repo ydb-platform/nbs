@@ -1,0 +1,112 @@
+add_library(contrib-restricted-libnl-lib-nl-route-3)
+
+target_link_libraries(contrib-restricted-libnl-lib-nl-route-3 PRIVATE
+  contrib-libs-linux-headers
+  contrib-restricted-libnl-lib-nl-3
+)
+
+target_include_directories(contrib-restricted-libnl-lib-nl-route-3 PUBLIC
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/include
+)
+
+target_include_directories(contrib-restricted-libnl-lib-nl-route-3 PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls
+)
+
+target_compile_options(contrib-restricted-libnl-lib-nl-route-3 PRIVATE
+  -DHAVE_CONFIG_H
+  -DSYSCONFDIR=\"/etc/libnl\"
+)
+
+target_sources(contrib-restricted-libnl-lib-nl-route-3 PRIVATE
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/fib_lookup/lookup.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/fib_lookup/request.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act/gact.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act/mirred.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act/nat.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act/skbedit.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/act/vlan.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/addr.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/class.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/classid.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/basic.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/cgroup.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch/cmp.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch/container.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch/meta.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch/nbyte.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch/text.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch_grammar.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/ematch_syntax.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/flower.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/fw.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/mall.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/police.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/cls/u32.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/api.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/bonding.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/bridge.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/bridge_info.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/can.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/dummy.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/geneve.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ifb.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/inet.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/inet6.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ip6gre.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ip6tnl.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ip6vti.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ipgre.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ipip.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ipvlan.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ipvti.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/macsec.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/macvlan.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/ppp.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/sit.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/sriov.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/team.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/veth.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/vlan.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/vrf.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/vxlan.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/link/xfrmi.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/mdb.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/neigh.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/neightbl.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/netconf.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/nexthop.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/nexthop_encap.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/nh.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/nh_encap_mpls.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/pktloc.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/pktloc_grammar.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/pktloc_syntax.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/blackhole.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/cbq.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/dsmark.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/fifo.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/fq_codel.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/hfsc.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/htb.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/ingress.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/mqprio.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/netem.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/plug.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/prio.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/red.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/sfq.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/qdisc/tbf.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/route.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/route_obj.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/route_utils.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/rtnl.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/rule.c
+  ${CMAKE_SOURCE_DIR}/contrib/restricted/libnl/lib/route/tc.c
+)
