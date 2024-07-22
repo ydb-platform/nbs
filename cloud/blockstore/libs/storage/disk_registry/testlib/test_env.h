@@ -744,6 +744,7 @@ public:
         TDuration requestTimeout = {})
     {
         return std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
+            TString{},
             std::move(devices),
             requestTimeout);
     }
