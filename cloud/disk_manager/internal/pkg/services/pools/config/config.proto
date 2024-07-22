@@ -31,5 +31,5 @@ message PoolsConfig {
     optional string OptimizeBaseDisksTaskScheduleInterval = 19 [default = "15m"];
     optional string MinOptimizedPoolAge = 20 [default = "24h"];
     optional bool RegularBaseDiskOptimizationEnabled = 21 [default = true];
-    optional string BaseDiskIdPrefix = 22;
+    optional string BaseDiskIdPrefix = 22 [default = "base-"];
 }
