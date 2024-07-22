@@ -266,6 +266,12 @@ func (t *createSnapshotFromDiskTask) run(
 		storageSize,
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
+		storage.IncrementalInfo{
+			ZoneID:         t.request.SrcDisk.ZoneId,
+			DiskID:         t.request.SrcDisk.DiskId,
+			CheckpointID:   t.request.SrcDiskCheckpointId,
+			BaseSnapshotID: t.request.BaseSnapshotId,
+		},
 	)
 }
 

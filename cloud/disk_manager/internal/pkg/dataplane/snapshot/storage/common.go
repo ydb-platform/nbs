@@ -138,3 +138,12 @@ func snapshotStateStructTypeString() string {
 		encryption_keyhash: String,
 		status: Int64>`
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+type IncrementalInfo struct {
+	ZoneID         string
+	DiskID         string
+	CheckpointID   string
+	BaseSnapshotID string
+}
