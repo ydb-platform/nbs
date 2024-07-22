@@ -610,6 +610,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         tablet.FlushBytes();
     }
+
+    Y_UNIT_TEST(ShouldProperlyReportMetricsToHive)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetGarbageCompactionThresholdAverage(10000);
+        storageConfig.SetCompactionThresholdAverage(10000);
+
+        storageConfig.SetThrottlingEnabled(false);
+
+        TTestEnv env({}, storageConfig);
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        const auto nodeIdx = env.CreateNode("nfs");
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+        const int blockCount = 1024 * 4;
+        const auto sz = DefaultBlockSize * blockCount;
+
+        ui64 reportCount = 0;
+        i64 network = 0;
+        const i64 reportInterval = 15;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvLocal::EvTabletMetrics: {
+                        const auto* msg = event->template Get<
+                            NKikimr::TEvLocal::TEvTabletMetrics>();
+                        if (tabletId != msg->TabletId) {
+                            break;
+                        }
+                        ++reportCount;
+                        NKikimrTabletBase::TMetrics metrics =
+                            msg->ResourceValues;
+                        network += metrics.GetNetwork();
+                    }
+                }
+                return false;
+            });
+
+        // First metrics submission simply sets the submission time, but does not provide any metrics.
+        // So we wait for the initial submission before generating the load.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(reportInterval));
+
+        tablet.WriteData(handle, 0, sz, 'a');
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                {
+                    return reportCount;
+                }
+            }, TDuration::Seconds(reportInterval));
+
+        UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval), sz / 100);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
