@@ -46,6 +46,7 @@ target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/reset_session.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/resize.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/rm.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/set_node_attr.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/start_endpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/stat.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/stop_endpoint.cpp
