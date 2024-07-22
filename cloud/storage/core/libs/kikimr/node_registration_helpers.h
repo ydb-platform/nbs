@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
+#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 
 
