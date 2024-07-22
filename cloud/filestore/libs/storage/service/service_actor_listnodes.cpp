@@ -1,8 +1,11 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
+#include <util/string/join.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -30,11 +33,15 @@ private:
     NProto::TListNodesResponse Response;
     ui32 GetNodeAttrResponses = 0;
 
+    TVector<TVector<ui32>> Cookie2NodeIndices;
+    TVector<TString> Cookie2FollowerId;
+
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
 
     const bool MultiTabletForwardingEnabled;
+    const bool GetNodeAttrBatchEnabled;
 
 public:
     TListNodesActor(
@@ -43,7 +50,8 @@ public:
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        bool multiTabletForwardingEnabled);
+        bool multiTabletForwardingEnabled,
+        bool getNodeAttrBatchEnabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -54,6 +62,12 @@ private:
 
     void HandleListNodesResponse(
         const TEvService::TEvListNodesResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void GetNodeAttrsBatch(const TActorContext& ctx);
+
+    void HandleGetNodeAttrBatchResponse(
+        const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void GetNodeAttrs(const TActorContext& ctx);
@@ -78,13 +92,15 @@ TListNodesActor::TListNodesActor(
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        bool multiTabletForwardingEnabled)
+        bool multiTabletForwardingEnabled,
+        bool getNodeAttrBatchEnabled)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
+    , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
 {
 }
 
@@ -110,7 +126,9 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
-void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
+////////////////////////////////////////////////////////////////////////////////
+
+void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 {
     if (!MultiTabletForwardingEnabled) {
         GetNodeAttrResponses = Response.NodesSize();
@@ -118,7 +136,67 @@ void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
     }
 
     // TODO(#1350): register inflight requests for these GetNodeAttr requests
-    // TODO(#1350): batch GetNodeAttr requests by FollowerFileSystemId
+
+    struct TBatch
+    {
+        NProtoPrivate::TGetNodeAttrBatchRequest Record;
+        TVector<ui32> NodeIndices;
+    };
+    THashMap<TString, TBatch> batches;
+
+    for (ui32 i = 0; i < Response.NodesSize(); ++i) {
+        const auto& node = Response.GetNodes(i);
+        if (node.GetFollowerFileSystemId()) {
+            auto& batch = batches[node.GetFollowerFileSystemId()];
+            if (batch.Record.GetHeaders().GetSessionId().Empty()) {
+                batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
+                batch.Record.SetFileSystemId(node.GetFollowerFileSystemId());
+                batch.Record.SetNodeId(RootNodeId);
+            }
+
+            batch.Record.AddNames(node.GetFollowerNodeName());
+            batch.NodeIndices.push_back(i);
+        } else {
+            ++GetNodeAttrResponses;
+        }
+    }
+
+    ui64 cookie = 0;
+    Cookie2NodeIndices.resize(batches.size());
+    Cookie2FollowerId.resize(batches.size());
+    for (auto& [_, batch]: batches) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Executing GetNodeAttrBatch in follower for %s, %s",
+            LogTag.c_str(),
+            batch.Record.GetFileSystemId().c_str(),
+            JoinSeq(", ", batch.Record.GetNames()).c_str());
+
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvGetNodeAttrBatchRequest>();
+        request->Record = std::move(batch.Record);
+
+        Cookie2NodeIndices[cookie] = std::move(batch.NodeIndices);
+        Cookie2FollowerId[cookie] = request->Record.GetFileSystemId();
+
+        // forward request through tablet proxy
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0, // flags
+            cookie);
+
+        ++cookie;
+    }
+}
+
+void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
+{
+    if (!MultiTabletForwardingEnabled) {
+        GetNodeAttrResponses = Response.NodesSize();
+        return;
+    }
 
     for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
         const auto& node = Response.GetNodes(cookie);
@@ -165,7 +243,11 @@ void TListNodesActor::HandleListNodesResponse(
     }
 
     Response = std::move(msg->Record);
-    GetNodeAttrs(ctx);
+    if (GetNodeAttrBatchEnabled) {
+        GetNodeAttrsBatch(ctx);
+    } else {
+        GetNodeAttrs(ctx);
+    }
 
     if (GetNodeAttrResponses == Response.NodesSize()) {
         LOG_DEBUG(
@@ -180,6 +262,116 @@ void TListNodesActor::HandleListNodesResponse(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TListNodesActor::HandleGetNodeAttrBatchResponse(
+    const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    TABLET_VERIFY(ev->Cookie < Cookie2NodeIndices.size());
+    const auto& nodeIndices = Cookie2NodeIndices[ev->Cookie];
+    TABLET_VERIFY(ev->Cookie < Cookie2FollowerId.size());
+    const auto& followerId = Cookie2FollowerId[ev->Cookie];
+
+    const auto noent = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
+    if (HasError(msg->GetError())) {
+        if (msg->GetError().GetCode() == noent) {
+            ReportNodeNotFoundInFollower();
+
+            TStringBuilder names;
+            for (auto i: nodeIndices) {
+                if (names) {
+                    names << ", ";
+                }
+                names << Response.GetNames(i).Quote();
+            }
+
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Nodes not found in follower: %s, %s, %s",
+                followerId.c_str(),
+                FormatError(msg->GetError()).Quote().c_str(),
+                names.c_str());
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Failed to GetNodeAttrBatch from follower: %s, %s",
+                followerId.c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+
+            HandleError(ctx, *msg->Record.MutableError());
+            return;
+        }
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "GetNodeAttrBatchResponse from follower: %s",
+        msg->Record.DebugString().Quote().c_str());
+
+    auto& responses = *msg->Record.MutableResponses();
+    auto responseIter = responses.begin();
+    for (const auto i: nodeIndices) {
+        if (i >= Response.NodesSize()) {
+            const auto message = TStringBuilder() << "NodeIndex " << i
+                << " >= " << Response.NodesSize() << ", FollowerId: "
+                << followerId;
+            ReportIndexOutOfBounds(message);
+            LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
+            continue;
+        }
+
+        if (responseIter == responses.end()) {
+            const auto message = TStringBuilder() << "NodeIndex " << i
+                << " >= " << responses.size() << ", FollowerId: " << followerId;
+            ReportNotEnoughResultsInGetNodeAttrBatchResponses(message);
+            LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
+            continue;
+        }
+
+        if (responseIter->GetError().GetCode() == noent) {
+            // TODO(#1350): mb this shouldn't be a critical event - list ->
+            // unlink -> get attr race may lead to such cases
+            // nodes and names for which getnodeattr returns an error should be
+            // removed from the response
+            const auto message = TStringBuilder() << "Node not found in follower: "
+                << Response.GetNames(i).Quote() << ", FollowerId: "
+                << followerId << ", Error: "
+                << FormatError(responseIter->GetError()).Quote();
+            ReportNodeNotFoundInFollower(message);
+            LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
+            ++responseIter;
+            continue;
+        }
+
+        if (HasError(responseIter->GetError())) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Failed to GetNodeAttr from follower: %s, %s, %s",
+                Response.GetNames(i).Quote().c_str(),
+                followerId.c_str(),
+                FormatError(responseIter->GetError()).Quote().c_str());
+            ++responseIter;
+            continue;
+        }
+
+        auto* node = Response.MutableNodes(i);
+        *node = std::move(*responseIter->MutableNode());
+
+        ++responseIter;
+    }
+
+    GetNodeAttrResponses += nodeIndices.size();
+    if (GetNodeAttrResponses == Response.NodesSize()) {
+        ReplyAndDie(ctx);
+        return;
+    }
+}
 
 void TListNodesActor::HandleGetNodeAttrResponse(
     const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
@@ -271,6 +463,9 @@ STFUNC(TListNodesActor::StateWork)
         HFunc(
             TEvService::TEvGetNodeAttrResponse,
             HandleGetNodeAttrResponse);
+        HFunc(
+            TEvIndexTablet::TEvGetNodeAttrBatchResponse,
+            HandleGetNodeAttrBatchResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
@@ -318,7 +513,8 @@ void TStorageServiceActor::HandleListNodes(
         msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        multiTabletForwardingEnabled);
+        multiTabletForwardingEnabled,
+        StorageConfig->GetGetNodeAttrBatchEnabled());
 
     NCloud::Register(ctx, std::move(actor));
 }
