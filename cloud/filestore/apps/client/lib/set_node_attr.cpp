@@ -17,7 +17,7 @@ namespace {
 class TSetNodeAttrCommand final: public TFileStoreCommand
 {
 private:
-    ui32 NodeId = 0;
+    ui64 NodeId = 0;
     std::optional<ui32> ModeAttr;
     std::optional<ui32> UidAttr;
     std::optional<ui32> GidAttr;

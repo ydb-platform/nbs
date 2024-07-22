@@ -7,8 +7,10 @@ SRCS(
     create_session.cpp
     describe.cpp
     destroy.cpp
+    destroy_session.cpp
     execute_action.cpp
     factory.cpp
+    find_garbage.cpp
     kick_endpoint.cpp
     list_cluster_nodes.cpp
     list_endpoints.cpp
