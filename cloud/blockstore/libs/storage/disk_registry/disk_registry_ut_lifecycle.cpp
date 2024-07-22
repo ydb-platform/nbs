@@ -2219,6 +2219,263 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_EQUAL(E_NOT_FOUND, response->Record.GetError().GetCode());
         }
     }
+
+    Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPools)
+    {
+        // 1 .Create devices from two different pools with pool kind
+        // DEVICE_POOL_KIND_LOCAL. Devices are created in the suspended state.
+        // 2. Set observer for EvCleanupDevicesRequest which check that
+        // all devices from one message belong to the same pool.
+        // 3. Call ResumeDevice for all devices. Internally ResumeDevice
+        // triggers SecureErase.
+
+        const TString poolName1 = "pool-1";
+        const auto withPool1 =
+            WithPool(poolName1, NProto::DEVICE_POOL_KIND_GLOBAL);
+        auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB) | withPool1,
+             Device("dev-2", "uuid-2", "rack-1", 10_GB) | withPool1,
+             Device("dev-3", "uuid-3", "rack-1", 10_GB) | withPool1});
+
+        const TString poolName2 = "pool-2";
+        const auto withPool2 =
+            WithPool(poolName2, NProto::DEVICE_POOL_KIND_GLOBAL);
+        auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {Device("dev-4", "uuid-4", "rack-1", 10_GB) | withPool2,
+             Device("dev-5", "uuid-5", "rack-1", 10_GB) | withPool2,
+             Device("dev-6", "uuid-6", "rack-1", 10_GB) | withPool2});
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, {agent1, agent2});
+
+                auto* pool1 = config.AddDevicePoolConfigs();
+                pool1->SetName(poolName1);
+                pool1->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                pool1->SetAllocationUnit(10_GB);
+
+                auto* pool2 = config.AddDevicePoolConfigs();
+                pool2->SetName(poolName2);
+                pool2->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                pool2->SetAllocationUnit(10_GB);
+
+                return config;
+            }());
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+
+        THashMap<TString, TString> deviceUuidToPoolName = {
+            {"uuid-1", poolName1},
+            {"uuid-2", poolName1},
+            {"uuid-3", poolName1},
+            {"uuid-4", poolName2},
+            {"uuid-5", poolName2},
+            {"uuid-6", poolName2},
+        };
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>();
+                        TSet<TString> poolNameSet;
+                        for (auto& device: msg.Devices) {
+                            poolNameSet.insert(deviceUuidToPoolName[device]);
+                        }
+                        // each SecureErase actor handles devices only from one
+                        // pool
+                        UNIT_ASSERT_EQUAL(1, poolNameSet.size());
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        diskRegistry.ResumeDevice("agent-1", "dev-1", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-4", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-1", "dev-2", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-5", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-1", "dev-3", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-6", /*dryRun=*/false);
+        WaitForSecureErase(*runtime, 6);
+    }
+
+    Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPoolsIndependently)
+    {
+        const TString defaultPool = "";
+        const TString rotPool = "rot";
+        const auto withRotPool =
+            WithPool(rotPool, NProto::DEVICE_POOL_KIND_GLOBAL);
+
+        TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("path", "uuid-1", "rack-1", 10_GB) | withRotPool,
+                 Device("path", "uuid-2", "rack-1", 10_GB) | withRotPool,
+                 Device("path", "uuid-3", "rack-1", 10_GB) | withRotPool}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("path", "uuid-4", "rack-1", 10_GB),
+                 Device("path", "uuid-5", "rack-1", 10_GB),
+                 Device("path", "uuid-6", "rack-1", 10_GB)})};
+
+        THashMap<TString, TString> deviceUuidToPoolName = {
+            {"uuid-1", rotPool},
+            {"uuid-2", rotPool},
+            {"uuid-3", rotPool},
+            {"uuid-4", defaultPool},
+            {"uuid-5", defaultPool},
+            {"uuid-6", defaultPool},
+        };
+
+        auto runtime =
+            TTestRuntimeBuilder()
+                .With(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfig();
+
+                        config
+                            .SetMaxDevicesToErasePerDeviceNameForDefaultPoolKind(
+                                1);
+                        config
+                            .SetMaxDevicesToErasePerDeviceNameForGlobalPoolKind(
+                                1);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
+
+                auto* rot = config.AddDevicePoolConfigs();
+                rot->SetName(rotPool);
+                rot->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                rot->SetAllocationUnit(10_GB);
+
+                return config;
+            }());
+
+        TVector<TAutoPtr<IEventHandle>> secureEraseRequests;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvSecureEraseDeviceRequest: {
+                        secureEraseRequests.emplace_back(std::move(event));
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest, 2}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(2, secureEraseRequests.size());
+
+        auto getPoolName = [&](const auto& event)
+        {
+            const auto& msg = *event->template Get<
+                TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+
+            return deviceUuidToPoolName[msg.Record.GetDeviceUUID()];
+        };
+
+        SortBy(secureEraseRequests, getPoolName);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL(rotPool, getPoolName(secureEraseRequests[1]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(2, secureEraseRequests.size());
+
+        auto sendResponse = [&](auto event)
+        {
+            runtime->Send(new IEventHandle(
+                event->Sender,
+                event->Recipient,
+                new TEvDiskAgent::TEvSecureEraseDeviceResponse(),
+                0,   // flags
+                event->Cookie));
+        };
+
+        // send the first response for the device from the default pool
+        sendResponse(std::move(secureEraseRequests[0]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[2]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(3, secureEraseRequests.size());
+
+        // send the second response for the device from the default pool
+        sendResponse(std::move(secureEraseRequests[2]));
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultPool,
+            getPoolName(secureEraseRequests[3]));
+
+        // send the third response for the device from the default pool
+        sendResponse(std::move(secureEraseRequests[3]));
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+
+        // there are no new requests - all devices from the default pool are
+        // clean
+        UNIT_ASSERT_VALUES_EQUAL(4, secureEraseRequests.size());
+
+        // send the response for the device from the rot pool
+        sendResponse(std::move(secureEraseRequests[1]));
+        runtime->DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvSecureEraseDeviceRequest}}},
+            15s);
+        UNIT_ASSERT_VALUES_EQUAL(5, secureEraseRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(rotPool, getPoolName(secureEraseRequests[4]));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
