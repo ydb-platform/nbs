@@ -76,7 +76,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
-// RW transactions that modify inode-related tables
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
     xxx(InitSchema,                         __VA_ARGS__)                       \
     xxx(LoadState,                          __VA_ARGS__)                       \
