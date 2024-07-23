@@ -66,6 +66,8 @@ public:
 
     TMonitoringUrlData GetMonitoringUrlData() const;
 
+    NProto::EStatsFetcherType GetStatsFetcherType() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

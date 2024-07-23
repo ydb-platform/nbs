@@ -84,8 +84,8 @@ namespace NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICgroupStatsFetcher;
-using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
+struct IStatsFetcher;
+using IStatsFetcherPtr = std::shared_ptr<IStatsFetcher>;
 
 }   // namespace NStorage
 

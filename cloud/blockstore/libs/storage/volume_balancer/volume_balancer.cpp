@@ -11,14 +11,14 @@ using namespace NActors;
 IActorPtr CreateVolumeBalancerActor(
     TStorageConfigPtr storageConfig,
     IVolumeStatsPtr volumeStats,
-    NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatFetcher,
+    NCloud::NStorage::IStatsFetcherPtr statFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     NActors::TActorId serviceActorId)
 {
     return std::make_unique<TVolumeBalancerActor>(
         std::move(storageConfig),
         std::move(volumeStats),
-        std::move(cgroupStatFetcher),
+        std::move(statFetcher),
         std::move(volumeBalancerSwitch),
         serviceActorId);
 }

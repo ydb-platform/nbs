@@ -148,6 +148,8 @@ public:
     TDuration GetLocalSSDDowntimeThreshold() const;
     TRequestThresholds GetRequestThresholds() const;
 
+    NProto::EStatsFetcherType GetStatsFetcherType() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

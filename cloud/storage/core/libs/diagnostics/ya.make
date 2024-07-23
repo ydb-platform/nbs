@@ -29,6 +29,8 @@ PEERDIR(
 
     library/cpp/lwtrace/mon
 
+    contrib/restricted/libnl/lib/nl-3
+    contrib/restricted/libnl/lib/nl-genl-3
     contrib/ydb/library/actors/prof
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic

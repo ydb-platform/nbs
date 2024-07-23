@@ -105,6 +105,48 @@ TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig)
     return certs.front().CertPrivateKeyFile;
 }
 
+// One can use either a service name and have the stats file inferred from it,
+// or provide the stats file explicitly.
+NCloud::NStorage::IStatsFetcherPtr BuildStatsFetcher(
+    NProto::EStatsFetcherType statsFetcherType,
+    const TString& cpuWaitServiceName,
+    const TString& cpuWaitFilename,
+    const TLog& log,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    TCgroupStatsFetcherMonitoringSettings cgroupStatsFetcherMonitoringSettings)
+{
+    switch (statsFetcherType) {
+        case NProto::EStatsFetcherType::CGROUP: {
+            if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
+                const auto& Log = log;
+                STORAGE_INFO(
+                    "CpuWaitServiceName and CpuWaitFilename are empty, can't "
+                    "build "
+                    "CgroupStatsFetcher");
+                return CreateStatsFetcherStub();
+            }
+            TString statsFile =
+                cpuWaitFilename.Empty()
+                    ? NCloud::NStorage::BuildCpuWaitStatsFilename(
+                          cpuWaitServiceName)
+                    : cpuWaitFilename;
+
+            return CreateCgroupStatsFetcher(
+                "FILESTORE_CGROUPS",
+                std::move(logging),
+                std::move(monitoring),
+                statsFile,
+                std::move(cgroupStatsFetcherMonitoringSettings));
+        }
+        case NProto::EStatsFetcherType::KERNEL_TASK_DELAYACCT:
+            return CreateKernelTaskDelayAcctStatsFetcher(
+                "FILESTORE_KERNEL_TASK_DELAYACCT",
+                std::move(logging),
+                std::move(monitoring));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +187,7 @@ IStartable* TBootstrapYdb::GetYdbStorage()         { return YdbStorage.get(); }
 IStartable* TBootstrapYdb::GetTraceSerializer()    { return TraceSerializer.get(); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
-IStartable* TBootstrapYdb::GetCgroupStatsFetcher() { return CgroupStatsFetcher.get(); }
+IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
@@ -482,11 +524,13 @@ void TBootstrapYdb::InitKikimrService()
             .CounterName = "CpuWaitFailure",
         };
 
-    CgroupStatsFetcher = CreateCgroupStatsFetcher(
-        "BLOCKSTORE_CGROUPS",
+    StatsFetcher = BuildStatsFetcher(
+        Configs->DiagnosticsConfig->GetStatsFetcherType(),
+        {},
+        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+        Log,
         logging,
         monitoring,
-        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         std::move(cgroupStatsFetcherMonitoringSettings));
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
@@ -538,7 +582,7 @@ void TBootstrapYdb::InitKikimrService()
     args.LogbrokerService = LogbrokerService;
     args.NotifyService = NotifyService;
     args.VolumeStats = VolumeStats;
-    args.CgroupStatsFetcher = CgroupStatsFetcher;
+    args.StatsFetcher = StatsFetcher;
     args.RdmaServer = nullptr;
     args.RdmaClient = RdmaClient;
     args.Logging = logging;

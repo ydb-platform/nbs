@@ -16,15 +16,15 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICgroupStatsFetcher
+struct IStatsFetcher
     : public IStartable
 {
-    virtual ~ICgroupStatsFetcher() = default;
+    virtual ~IStatsFetcher() = default;
 
     virtual TDuration GetCpuWait() = 0;
 };
 
-using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
+using IStatsFetcherPtr = std::shared_ptr<IStatsFetcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -35,14 +35,19 @@ struct TCgroupStatsFetcherMonitoringSettings
     TString CounterName;
 };
 
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
+IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     TString statsFile,
     TCgroupStatsFetcherMonitoringSettings settings);
 
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
+IStatsFetcherPtr CreateKernelTaskDelayAcctStatsFetcher(
+    TString componentName,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring);
+
+IStatsFetcherPtr CreateStatsFetcherStub();
 
 TString BuildCpuWaitStatsFilename(const TString& serviceName);
 

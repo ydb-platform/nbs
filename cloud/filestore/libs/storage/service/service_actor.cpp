@@ -20,11 +20,11 @@ TStorageServiceActor::TStorageServiceActor(
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher)
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig{std::move(storageConfig)}
     , ProfileLog{std::move(profileLog)}
     , TraceSerializer{std::move(traceSerializer)}
-    , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
+    , StatsFetcher(std::move(statsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
 {}

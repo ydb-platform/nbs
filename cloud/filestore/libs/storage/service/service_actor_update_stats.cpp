@@ -32,12 +32,12 @@ void TStorageServiceActor::HandleUpdateStats(
             InFlightRequests.erase(it++);
         }
     }
-    if (CgroupStatsFetcher && CpuWait) {
+    if (StatsFetcher && CpuWait) {
 
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        auto cpuWaitValue = CgroupStatsFetcher->GetCpuWait().MicroSeconds();
+        auto cpuWaitValue = StatsFetcher->GetCpuWait().MicroSeconds();
         auto cpuLack = CpuLackPercentsMultiplier * cpuWaitValue / interval;
 
         LOG_DEBUG_S(

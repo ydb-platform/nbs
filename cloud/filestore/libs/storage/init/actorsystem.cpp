@@ -82,7 +82,7 @@ public:
             StatsRegistry,
             Args.ProfileLog,
             Args.TraceSerializer,
-            Args.CgroupStatsFetcher);
+            Args.StatsFetcher);
 
         setup->LocalServices.emplace_back(
             MakeStorageServiceId(),

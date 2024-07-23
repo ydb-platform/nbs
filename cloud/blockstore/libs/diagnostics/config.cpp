@@ -51,6 +51,8 @@ namespace {
     xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\
+                                                                                                         \
+    xxx(StatsFetcherType,     NProto::EStatsFetcherType,      NProto::EStatsFetcherType::CGROUP         )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
@@ -286,4 +288,13 @@ void Out<NCloud::TRequestThresholds>(
     const NCloud::TRequestThresholds& value)
 {
     OutRequestThresholds(out, value);
+}
+
+template <>
+void Out<NCloud::NBlockStore::NProto::EStatsFetcherType>(
+    IOutputStream& out,
+    NCloud::NBlockStore::NProto::EStatsFetcherType statsFetcherType)
+{
+    out << NCloud::NBlockStore::NProto::EStatsFetcherType_Name(
+        statsFetcherType);
 }

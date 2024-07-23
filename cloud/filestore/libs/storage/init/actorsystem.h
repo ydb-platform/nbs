@@ -34,7 +34,7 @@ struct TActorSystemArgs
 
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
 
-    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
