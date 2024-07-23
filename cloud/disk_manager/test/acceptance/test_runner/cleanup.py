@@ -84,7 +84,12 @@ def cleanup_previous_acceptance_tests_results(
                 fr'{test_type}-'
                 fr'{make_disk_parameters_string(disk_type, disk_size, disk_blocksize)}-[0-9]+$',
             ),
-            re.compile(fr'^acc-{entity_type}-{test_type}-[0-9]+$')
+            re.compile(fr'^acc-{entity_type}-{test_type}-[0-9]+$'),
+            re.compile(
+                fr'^acceptance-test-{entity_type}-'
+                fr'{test_type}-{disk_size}-{disk_blocksize}-[0-9]+$',
+            ),
+            re.compile(fr'^acceptance-test-{entity_type}-{test_type}-[0-9]+$')
         ] for entity_type in entity_accessors
     }
     _cleanup_stale_entities(
@@ -120,7 +125,8 @@ class BaseResourceCleaner:
         }
         self._patterns: dict[str, list[re.Pattern]] = {
             'instance':  [
-                re.compile(rf'^acc-{args.test_type}-[0-9]+$')
+                re.compile(rf'^acc-{args.test_type}-[0-9]+$'),
+                re.compile(rf'^acceptance-test-{args.test_type}-[0-9]+$'),
             ],
         }
 

@@ -22,6 +22,7 @@ class SyncTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(SyncTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
+
         disk_name_string = (
             fr'^acc-{test_type}-'
             fr'{self._disk_parameters_string}-[0-9]+'
@@ -30,14 +31,29 @@ class SyncTestCleaner(BaseResourceCleaner):
         secondary_disk_name_pattern = re.compile(
             fr'{disk_name_string}-from-snapshot$',
         )
+
+        old_disk_name_string = (
+            fr'^acceptance-test-{test_type}-'
+            fr'{self._disk_size}-'
+            fr'{self._disk_blocksize}-[0-9]+'
+        )
+        old_disk_name_pattern = re.compile(fr'{old_disk_name_string}$')
+        old_secondary_disk_name_pattern = re.compile(
+            fr'{old_disk_name_string}-from-snapshot$',
+        )
+
         self._entity_ttls = self._entity_ttls | {
             'disk': datetime.timedelta(days=5),
             'snapshot': datetime.timedelta(days=5),
         }
         self._patterns = {
             **self._patterns,
-            'disk': [disk_name_pattern, secondary_disk_name_pattern],
-            'snapshot': [re.compile(r'^sync-acc-snapshot-.*$')]
+            'disk': [disk_name_pattern,
+                     secondary_disk_name_pattern,
+                     old_disk_name_pattern,
+                     old_secondary_disk_name_pattern],
+            'snapshot': [re.compile(r'^sync-acc-snapshot-.*$'),
+                         re.compile(r'^sync-acceptance-test-snapshot-.*$')]
         }
 
 

@@ -34,9 +34,13 @@ class AcceptanceTestCleaner(BaseResourceCleaner):
             rf'^acc-{args.test_type}-'
             rf'{args.test_suite}-[0-9]+$',
         )
+        _old_instance_name_pattern = re.compile(
+            rf'^acceptance-test-{args.test_type}-'
+            rf'{args.test_suite}-[0-9]+$',
+        )
         self._patterns = {
-            'instance': [_instance_name_pattern],
-            'disk': [_instance_name_pattern],
+            'instance': [_instance_name_pattern, _old_instance_name_pattern],
+            'disk': [_instance_name_pattern, _old_instance_name_pattern],
         }
 
 
