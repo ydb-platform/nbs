@@ -75,7 +75,7 @@ bool TIndexTabletActor::ValidateTx_ReadLink(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_ReadLink(
+bool TIndexTabletActor::PrepareTx_ReadLink(
     const NActors::TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TReadLink& args)

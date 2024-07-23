@@ -111,7 +111,7 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_ListNodes(
+bool TIndexTabletActor::PrepareTx_ListNodes(
     const NActors::TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TListNodes& args)

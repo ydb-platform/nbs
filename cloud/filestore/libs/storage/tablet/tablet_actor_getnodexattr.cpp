@@ -85,7 +85,7 @@ bool TIndexTabletActor::ValidateTx_GetNodeXAttr(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_GetNodeXAttr(
+bool TIndexTabletActor::PrepareTx_GetNodeXAttr(
     const TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TGetNodeXAttr& args)

@@ -82,7 +82,7 @@ bool TIndexTabletActor::ValidateTx_AccessNode(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_AccessNode(
+bool TIndexTabletActor::PrepareTx_AccessNode(
     const NActors::TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TAccessNode& args)

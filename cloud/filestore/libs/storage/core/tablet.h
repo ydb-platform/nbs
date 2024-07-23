@@ -261,8 +261,8 @@ protected:
         ns::T##name& args);                                                    \
 // FILESTORE_IMPLEMENT_RW_TRANSACTION
 
-// For RO transactions we allow to alternatively declare ValidateTx_, ExecuteTx_
-// and CompleteTx_, where Validate and ExecuteTx are two stages of Prepare (one
+// For RO transactions we allow to alternatively declare ValidateTx_, PrepareTx_
+// and CompleteTx_, where Validate and PrepareTx are two stages of Prepare (one
 // not using, and one using db). CompleteTx is the same for all other
 // transactions. ValidateTx is expected to return false if Execute is to be
 // executed, and true if it is not.
@@ -272,7 +272,7 @@ protected:
 // implementations of the database. Thus, signature of ExecuteTx_ is a bit more
 // lax.
 //
-// This macro also provides TryToExecuteRO_ function that will run the whole
+// This macro also provides TryExecuteTx_ function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
 #define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
     struct T##name                                                             \
@@ -292,7 +292,7 @@ protected:
             Y_UNUSED(tx);                                                      \
             if (target.ValidateTx_##name(ctx, std::forward<Args>(args)...)) {  \
                 dbType db(tx.DB);                                              \
-                return target.ExecuteTx_##name(                                \
+                return target.PrepareTx_##name(                                \
                     ctx, db, std::forward<Args>(args)...);                     \
             }                                                                  \
             return true;                                                       \
@@ -322,7 +322,7 @@ protected:
         const NActors::TActorContext& ctx,                                     \
         ns::T##name& args);                                                    \
                                                                                \
-    bool ExecuteTx_##name(                                                     \
+    bool PrepareTx_##name(                                                     \
         const NActors::TActorContext& ctx,                                     \
         dbIfaceType& db,                                                       \
         ns::T##name& args);                                                    \
@@ -336,7 +336,7 @@ protected:
         dbIfaceType& db,                                                       \
         ns::T##name& args)                                                     \
     {                                                                          \
-        if (!ValidateTx_##name(ctx, args) || ExecuteTx_##name(ctx, db, args)) {\
+        if (!ValidateTx_##name(ctx, args) || PrepareTx_##name(ctx, db, args)) {\
             CompleteTx_##name(ctx, args);                                      \
             return true;                                                       \
         }                                                                      \

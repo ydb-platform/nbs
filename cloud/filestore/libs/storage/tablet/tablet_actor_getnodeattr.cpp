@@ -134,7 +134,7 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttr(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_GetNodeAttr(
+bool TIndexTabletActor::PrepareTx_GetNodeAttr(
     const NActors::TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TGetNodeAttr& args)
@@ -296,9 +296,8 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
+bool TIndexTabletActor::ValidateTx_GetNodeAttrBatch(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TGetNodeAttrBatch& args)
 {
     Y_UNUSED(ctx);
@@ -312,16 +311,24 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return true;
+        return false;
     }
 
     args.CommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.CommitId == InvalidCommitId) {
         args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
-        return true;
+        return false;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
+
+bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
+    const NActors::TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TGetNodeAttrBatch& args)
+{
+    Y_UNUSED(ctx);
 
     // validate parent node exists
     const bool readParent =
@@ -414,16 +421,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
     }
 
     return true;
-}
-
-void TIndexTabletActor::ExecuteTx_GetNodeAttrBatch(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TGetNodeAttrBatch& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(

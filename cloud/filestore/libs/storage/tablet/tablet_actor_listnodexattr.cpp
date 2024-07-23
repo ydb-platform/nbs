@@ -81,7 +81,7 @@ bool TIndexTabletActor::ValidateTx_ListNodeXAttr(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_ListNodeXAttr(
+bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
     const TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TListNodeXAttr& args)

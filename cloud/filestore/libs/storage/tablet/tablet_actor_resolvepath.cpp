@@ -70,7 +70,7 @@ bool TIndexTabletActor::ValidateTx_ResolvePath(
     return true;
 }
 
-bool TIndexTabletActor::ExecuteTx_ResolvePath(
+bool TIndexTabletActor::PrepareTx_ResolvePath(
     const TActorContext& ctx,
     IIndexTabletDatabase& db,
     TTxIndexTablet::TResolvePath& args)
