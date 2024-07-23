@@ -226,6 +226,7 @@ protected:
                                                                                \
         static constexpr const char* Name = #name;                             \
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
+        static constexpr bool IsReadOnly = false;                              \
                                                                                \
         template <typename T, typename ...Args>                                \
         static bool PrepareTx(T& target, Args&& ...args)                       \
@@ -272,7 +273,7 @@ protected:
 // implementations of the database. Thus, signature of ExecuteTx_ is a bit more
 // lax.
 //
-// This macro also provides TryExecuteTx_ function that will run the whole
+// This macro also provides TryExecuteTx function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
 #define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
     struct T##name                                                             \
@@ -281,6 +282,7 @@ protected:
                                                                                \
         static constexpr const char* Name = #name;                             \
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
+        static constexpr bool IsReadOnly = true;                               \
                                                                                \
         template <typename T, typename ...Args>                                \
         static bool PrepareTx(                                                 \
@@ -331,7 +333,7 @@ protected:
         const NActors::TActorContext& ctx,                                     \
         ns::T##name& args);                                                    \
                                                                                \
-    bool TryExecuteTx_##name(                                                  \
+    bool TryExecuteTx(                                                         \
         const NActors::TActorContext& ctx,                                     \
         dbIfaceType& db,                                                       \
         ns::T##name& args)                                                     \

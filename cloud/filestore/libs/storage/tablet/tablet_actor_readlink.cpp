@@ -38,12 +38,6 @@ void TIndexTabletActor::HandleReadLink(
         ev->Cookie,
         msg->CallContext);
 
-    TTxIndexTablet::TReadLink tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_ReadLink(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TReadLinkMethod>(*requestInfo);
 
     ExecuteTx<TReadLink>(

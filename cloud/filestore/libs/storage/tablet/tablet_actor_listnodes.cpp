@@ -62,18 +62,12 @@ void TIndexTabletActor::HandleListNodes(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
+
     auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
     }
-
-    TTxIndexTablet::TListNodes tx(requestInfo, msg->Record, maxBytes);
-
-    if (TryExecuteTx_ListNodes(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
-    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
     ExecuteTx<TListNodes>(
         ctx,

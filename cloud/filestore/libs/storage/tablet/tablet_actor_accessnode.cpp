@@ -38,12 +38,6 @@ void TIndexTabletActor::HandleAccessNode(
         ev->Cookie,
         msg->CallContext);
 
-    TTxIndexTablet::TAccessNode tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_AccessNode(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
 
     ExecuteTx<TAccessNode>(

@@ -42,12 +42,6 @@ void TIndexTabletActor::HandleGetNodeXAttr(
         ev->Cookie,
         msg->CallContext);
 
-    TTxIndexTablet::TGetNodeXAttr tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_GetNodeXAttr(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TGetNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeXAttr>(

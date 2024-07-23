@@ -90,13 +90,6 @@ void TIndexTabletActor::HandleGetNodeAttr(
         }
     }
 
-
-    TTxIndexTablet::TGetNodeAttr tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_GetNodeAttr(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttr>(

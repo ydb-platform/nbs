@@ -38,12 +38,6 @@ void TIndexTabletActor::HandleListNodeXAttr(
         ev->Cookie,
         msg->CallContext);
 
-    TTxIndexTablet::TListNodeXAttr tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_ListNodeXAttr(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TListNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TListNodeXAttr>(

@@ -139,7 +139,7 @@ private:
             {
                 allRequestMetrics.push_back(this);
             }
-            
+
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
@@ -342,6 +342,35 @@ private:
         };
 
         AddTransaction(transaction, cancelRoutine);
+    }
+
+    // Depending on whether the transaction is RO or RW, we will either attempt
+    // to execute it using the in-memory index state, or it will be executed in
+    // a regular way.
+
+    template <typename TTx, typename... TArgs>
+    std::enable_if_t<TTx::IsReadOnly, void> ExecuteTx(
+        const NActors::TActorContext& ctx,
+        TArgs&&... args)
+    {
+        typename TTx::TArgs tx(std::forward<TArgs>(args)...);
+
+        // if we can execute the transaction using the in-memory index state,
+        // we will do so and return immediately.
+        if (TryExecuteTx(ctx, GetInMemoryIndexState(), tx)) {
+            return;
+        }
+        TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
+    }
+
+    template <typename TTx, typename... TArgs>
+    std::enable_if_t<!TTx::IsReadOnly, void> ExecuteTx(
+        const NActors::TActorContext& ctx,
+        TArgs&&... args)
+    {
+        TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(
+            ctx,
+            std::forward<TArgs>(args)...);
     }
 
     void RemoveTransaction(TRequestInfo& transaction);

@@ -43,12 +43,6 @@ void TIndexTabletActor::HandleResolvePath(
         ev->Cookie,
         msg->CallContext);
 
-    TTxIndexTablet::TResolvePath tx(requestInfo, msg->Record);
-
-    if (TryExecuteTx_ResolvePath(ctx, GetInMemoryIndexState(), tx)) {
-        return;
-    }
-
     AddTransaction<TEvService::TResolvePathMethod>(*requestInfo);
 
     ExecuteTx<TResolvePath>(
