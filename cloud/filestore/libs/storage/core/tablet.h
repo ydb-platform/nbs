@@ -269,9 +269,8 @@ protected:
 // executed, and true if it is not.
 //
 // Unlike FILESTORE_IMPLEMENT_RW_TRANSACTION, this macro allows to define
-// operations that can be both be run atop of the LocalDB and other
-// implementations of the database. Thus, signature of ExecuteTx_ is a bit more
-// lax.
+// operations that can be both run atop of the LocalDB and other implementations
+// of the database. Thus, signature of ExecuteTx_ is a bit more lax.
 //
 // This macro also provides TryExecuteTx function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
