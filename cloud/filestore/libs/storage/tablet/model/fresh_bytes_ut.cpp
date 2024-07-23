@@ -138,7 +138,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         };
 
         visitTop();
-
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
@@ -300,7 +299,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             TVector<TBytes> expectedDeletionMarkers;
 
             visitTop();
-
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
@@ -320,7 +318,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             TVector<TBytes> expectedDeletionMarkers;
 
             visitTop();
-
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
@@ -340,7 +337,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             TVector<TBytes> expectedDeletionMarkers;
 
             visitTop();
-
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
@@ -359,7 +355,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             };
 
             visitTop();
-
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
