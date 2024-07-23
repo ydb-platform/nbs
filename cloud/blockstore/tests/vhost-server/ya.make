@@ -12,8 +12,4 @@ DEPENDS(
 DATA(
 )
 
-PEERDIR(
-    cloud/blockstore/tests/vhost-server/run_and_die
-)
-
 END()
