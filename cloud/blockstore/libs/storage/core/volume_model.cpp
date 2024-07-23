@@ -62,21 +62,19 @@ THROTTLING_PARAM(MaxWriteIops);
 // 5. repeat until the number of channels that we can create matches
 struct TChannelKindDeterioration
 {
-    static int TotalChannelCount;
-
     const ui32 ExistingChannelCount = 0;
     int* WantToAdd = nullptr;
     double DesiredProportion = 0.0;
 
-    void CalcDesiredProportion()
+    void CalcDesiredProportion(int totalChannelCount)
     {
         DesiredProportion =
-            1.0 * (ExistingChannelCount + *WantToAdd) / TotalChannelCount;
+            1.0 * (ExistingChannelCount + *WantToAdd) / totalChannelCount;
     }
 
     // 0.0f - the proportion has not changed
     // 1.0f - the proportion has changed completely
-    [[nodiscard]] double GetDeteriorationOfTheProportion() const
+    [[nodiscard]] double GetDeteriorationOfTheProportion(int totalChannelCount) const
     {
         if (*WantToAdd == 0) {
             // We return the biggest deterioration for the kind that is not
@@ -84,11 +82,10 @@ struct TChannelKindDeterioration
             return 1.0;
         }
         double newProportion =
-            1.0 * (ExistingChannelCount + *WantToAdd - 1) / TotalChannelCount;
+            1.0 * (ExistingChannelCount + *WantToAdd - 1) / totalChannelCount;
         return Abs(newProportion / DesiredProportion - 1.0);
     }
 };
-int TChannelKindDeterioration::TotalChannelCount = 0;
 
 ui32 ReadBandwidth(
     const TStorageConfig& config,
@@ -911,19 +908,15 @@ void FairComputeLimitNumberOfChannels(
         return;
     }
 
-    auto calcTotalChannelCount = [&]()
-    {
-        TChannelKindDeterioration::TotalChannelCount = Accumulate(
+    int totalChannelCount = Accumulate(
             channelKinds,
             int{},
             [](int acc, const TChannelKindDeterioration& channel)
             { return acc + channel.ExistingChannelCount + *channel.WantToAdd; });
-    };
-    calcTotalChannelCount();
 
     // Fill desired proportion.
     for (auto& channelKind: channelKinds) {
-        channelKind.CalcDesiredProportion();
+        channelKind.CalcDesiredProportion(totalChannelCount);
     }
 
     auto findTheLeastAffectedChannelKind = [&]() -> TChannelKindDeterioration*
@@ -932,8 +925,8 @@ void FairComputeLimitNumberOfChannels(
             kindPtrs,
             [&](TChannelKindDeterioration* lh, TChannelKindDeterioration* rh)
             {
-                return lh->GetDeteriorationOfTheProportion() <
-                       rh->GetDeteriorationOfTheProportion();
+                return lh->GetDeteriorationOfTheProportion(totalChannelCount) <
+                       rh->GetDeteriorationOfTheProportion(totalChannelCount);
             });
         return kindPtrs[0];
     };
@@ -942,7 +935,7 @@ void FairComputeLimitNumberOfChannels(
         auto* leastAffected = findTheLeastAffectedChannelKind();
         Y_DEBUG_ABORT_UNLESS(*leastAffected->WantToAdd > 0);
         --(*leastAffected->WantToAdd);
-        calcTotalChannelCount();
+        --totalChannelCount;
     }
 }
 
