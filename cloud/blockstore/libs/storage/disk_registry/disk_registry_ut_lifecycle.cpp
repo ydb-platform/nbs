@@ -2285,7 +2285,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
@@ -2302,7 +2302,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         diskRegistry.ResumeDevice("agent-1", "dev-1", /*dryRun=*/false);
@@ -2381,7 +2381,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<TAutoPtr<IEventHandle>> secureEraseRequests;
 
         runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvSecureEraseDeviceRequest: {
@@ -2390,7 +2390,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         RegisterAgents(*runtime, 2);
