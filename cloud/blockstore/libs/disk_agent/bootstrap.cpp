@@ -292,20 +292,29 @@ void TBootstrap::InitKikimrService()
     Configs->InitDiagnosticsConfig();
     Configs->InitSpdkEnvConfig();
 
-    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts;
-    registerOpts.Domain = Configs->Options->Domain;
-    registerOpts.SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir();
-    registerOpts.NodeType = Configs->Options->NodeType;
-    registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
-    registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
-    registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
-    registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.MaxAttempts =
-        Configs->ServerConfig->GetNodeRegistrationMaxAttempts();
-    registerOpts.RegistrationTimeout =
-        Configs->ServerConfig->GetNodeRegistrationTimeout();
-    registerOpts.ErrorTimeout =
-        Configs->ServerConfig->GetNodeRegistrationErrorTimeout();
+    NCloud::NStorage::TNodeRegistrationSettings settings {
+        .MaxAttempts =
+            Configs->ServerConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
+        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout(),
+        .PathToGrpcCaFile = Configs->ServerConfig->GetRootCertsFile(),
+        .PathToGrpcCertFile = GetCertFileFromConfig(*Configs->ServerConfig),
+        .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
+            *Configs->ServerConfig),
+        .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
+        .NodeType = Configs->Options->NodeType,
+    };
+
+    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
+        .Domain = Configs->Options->Domain,
+        .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
+        .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
+        .NodeBrokerPort = Configs->Options->NodeBrokerPort,
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+        .InterconnectPort = Configs->Options->InterconnectPort,
+        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
+        .Settings = std::move(settings)
+    };
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;

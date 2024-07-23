@@ -82,20 +82,22 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 {
     NGRpcProxy::TGRpcClientConfig config(
         nodeBrokerAddress,
-        options.RegistrationTimeout);
+        options.Settings.RegistrationTimeout);
 
     if (options.UseNodeBrokerSsl) {
         config.EnableSsl = true;
         auto& sslCredentials = config.SslCredentials;
-        if (options.PathToGrpcCaFile) {
+        if (options.Settings.PathToGrpcCaFile) {
             sslCredentials.pem_root_certs =
-                ReadFile(options.PathToGrpcCaFile);
+                ReadFile(options.Settings.PathToGrpcCaFile);
         }
-        if (options.PathToGrpcCertFile && options.PathToGrpcPrivateKeyFile) {
+        if (options.Settings.PathToGrpcCertFile &&
+            options.Settings.PathToGrpcPrivateKeyFile)
+        {
             sslCredentials.pem_cert_chain =
-                ReadFile(options.PathToGrpcCertFile);
+                ReadFile(options.Settings.PathToGrpcCertFile);
             sslCredentials.pem_private_key =
-                ReadFile(options.PathToGrpcPrivateKeyFile);
+                ReadFile(options.Settings.PathToGrpcPrivateKeyFile);
         }
     }
 
@@ -119,7 +121,7 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
         nodeId,
         hostName,
         options.SchemeShardDir,
-        options.NodeType,
+        options.Settings.NodeType,
         options.Domain);
 
     if (!configResult.IsSuccess()) {
@@ -146,16 +148,19 @@ TDriverConfig CreateDriverConfig(
 {
     TDriverConfig config;
 
-    if (options.PathToGrpcCaFile) {
-        config.UseSecureConnection(ReadFile(options.PathToGrpcCaFile).c_str());
+    if (options.Settings.PathToGrpcCaFile) {
+        config.UseSecureConnection(
+            ReadFile(options.Settings.PathToGrpcCaFile).c_str());
     }
-    if (options.PathToGrpcCertFile && options.PathToGrpcPrivateKeyFile) {
-        auto certificate = ReadFile(options.PathToGrpcCertFile);
-        auto privateKey = ReadFile(options.PathToGrpcPrivateKeyFile);
+    if (options.Settings.PathToGrpcCertFile &&
+        options.Settings.PathToGrpcPrivateKeyFile)
+    {
+        auto certificate = ReadFile(options.Settings.PathToGrpcCertFile);
+        auto privateKey = ReadFile(options.Settings.PathToGrpcPrivateKeyFile);
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
-    config.SetAuthToken(options.NodeRegistrationToken);
+    config.SetAuthToken(options.Settings.NodeRegistrationToken);
     config.SetEndpoint(addr);
 
     return config;
@@ -402,7 +407,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             dnConfig);
     }
 
-    int attempts = 0;
+    ui32 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
@@ -410,14 +415,14 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
-            if (++attempts == options.MaxAttempts) {
+            if (++attempts == options.Settings.MaxAttempts) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
             }
 
             STORAGE_WARN("Failed to register dynamic node at " << nodeBrokerAddress.Quote()
                 << ": " << msg);
-            Sleep(options.ErrorTimeout);
+            Sleep(options.Settings.ErrorTimeout);
             continue;
         }
 
