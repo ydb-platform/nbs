@@ -206,23 +206,6 @@ public:
         , Reconfigure(reconfigure)
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
-
-        // accept /dev/nbd devices with a prefix other than /
-        // (e.g. inside a container)
-        const size_t pos = DeviceName.rfind(NBD_DEVICE_SUFFIX);
-        if (pos == TString::npos) {
-            throw TServiceError(E_ARGUMENT)
-                << "unable to parse " << DeviceName << " device index";
-        }
-
-        try {
-            TMemoryInput stream(
-                DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
-            stream >> DeviceIndex;
-        } catch (...) {
-            throw TServiceError(E_ARGUMENT)
-                << "unable to parse " << DeviceName << " device index";
-        }
     }
 
     ~TNetlinkDevice()
@@ -232,8 +215,16 @@ public:
 
     TFuture<NProto::TError> Start() override
     {
-        ConnectSocket();
-        ConnectDevice();
+        try {
+            ParseIndex();
+            ConnectSocket();
+            ConnectDevice();
+        } catch (const TServiceError& e) {
+            StartResult.SetValue(MakeError(
+                e.GetCode(),
+                TStringBuilder() << "unable to configure " << DeviceName
+                                 << ": " << e.what()));
+        }
 
         // will be set asynchronously in Connect > HandleStatus > DoConnect
         return StartResult.GetFuture();
@@ -254,10 +245,9 @@ public:
             DisconnectDevice();
             DisconnectSocket();
             StopResult.SetValue(MakeError(S_OK));
-
         } catch (const TServiceError& e) {
             StopResult.SetValue(MakeError(
-                E_FAIL,
+                e.GetCode(),
                 TStringBuilder() << "unable to disconnect " << DeviceName
                                  << ": " << e.what()));
         }
@@ -266,6 +256,8 @@ public:
     }
 
 private:
+    void ParseIndex();
+
     void ConnectSocket();
     void DisconnectSocket();
 
@@ -277,6 +269,16 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TNetlinkDevice::ParseIndex()
+{
+    // accept dev/nbd* devices with prefix other than /
+    TStringBuf l, r;
+    TStringBuf(DeviceName).RSplit(NBD_DEVICE_SUFFIX, l, r);
+    if (!TryFromString(r, DeviceIndex)) {
+        throw TServiceError(E_ARGUMENT) << "unable to parse device index";
+    }
+}
 
 void TNetlinkDevice::ConnectSocket()
 {
@@ -369,31 +371,23 @@ void TNetlinkDevice::DisconnectDevice()
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::ConnectDevice()
 {
-    try {
-        TNetlinkSocket socket;
-        auto context = std::make_unique<THandlerContext>(shared_from_this());
+    TNetlinkSocket socket;
+    auto context = std::make_unique<THandlerContext>(shared_from_this());
 
-        if (int err = nl_socket_modify_cb(
-                socket,
-                NL_CB_VALID,
-                NL_CB_CUSTOM,
-                TNetlinkDevice::StatusHandler,
-                context.release())) // libnl doesn't throw
-        {
-            throw TServiceError(E_FAIL)
-                << "unable to set socket callback: " << nl_geterror(err);
-        }
-
-        TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
-        message.Put(NBD_ATTR_INDEX, DeviceIndex);
-        message.Send(socket);
-
-    } catch (const TServiceError& e) {
-        StartResult.SetValue(MakeError(
-            e.GetCode(),
-            TStringBuilder()
-                << "unable to configure " << DeviceName << ": " << e.what()));
+    if (int err = nl_socket_modify_cb(
+            socket,
+            NL_CB_VALID,
+            NL_CB_CUSTOM,
+            TNetlinkDevice::StatusHandler,
+            context.release())) // libnl doesn't throw
+    {
+        throw TServiceError(E_FAIL)
+            << "unable to set socket callback: " << nl_geterror(err);
     }
+
+    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
+    message.Put(NBD_ATTR_INDEX, DeviceIndex);
+    message.Send(socket);
 }
 
 int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
