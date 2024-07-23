@@ -88,7 +88,7 @@ def cleanup_previous_acceptance_tests_results(
             re.compile(
                 fr'^acceptance-test-{entity_type}-'
                 fr'{test_type}-{disk_size}-{disk_blocksize}-[0-9]+$',
-            ),
+            ),  # Should cleanup for both old and new formats of entity names (#1576)
             re.compile(fr'^acceptance-test-{entity_type}-{test_type}-[0-9]+$')
         ] for entity_type in entity_accessors
     }
