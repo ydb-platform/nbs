@@ -3537,6 +3537,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             S_OK,
             destroyFileStoreResponse->GetStatus(),
             destroyFileStoreResponse->GetErrorReason());
+
+        auto alreadyDestroyedFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            alreadyDestroyedFileStoreResponse->GetStatus(),
+            alreadyDestroyedFileStoreResponse->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
