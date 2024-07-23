@@ -366,7 +366,7 @@ TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(
         deletionMarkers);
 }
 
-std::pair<ui64, bool> TIndexTabletState::FinishFlushBytes(
+TFlushBytesStats TIndexTabletState::FinishFlushBytes(
     TIndexTabletDatabase& db,
     ui64 itemLimit,
     ui64 chunkId,
@@ -374,14 +374,18 @@ std::pair<ui64, bool> TIndexTabletState::FinishFlushBytes(
 {
     ui64 sz = 0;
     ui64 deletedSz = 0;
-    auto result = Impl->FreshBytes.VisitTop(
+    ui64 cnt = 0;
+    ui64 deletedCnt = 0;
+    Impl->FreshBytes.VisitTop(
         itemLimit,
         [&] (const TBytes& bytes, bool isDeletionMarker) {
             db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
             if (isDeletionMarker) {
                 deletedSz += bytes.Length;
+                ++deletedCnt;
             } else {
                 sz += bytes.Length;
+                ++cnt;
             }
 
             auto* range = profileLogRequest.AddRanges();
@@ -390,20 +394,16 @@ std::pair<ui64, bool> TIndexTabletState::FinishFlushBytes(
             range->SetBytes(bytes.Length);
     });
 
-    if (result.ChunkCompleted) {
-        Impl->FreshBytes.FinishCleanup(chunkId);
-    } else {
-        Impl->FreshBytes.CleanupChunkPartially(
-            chunkId,
-            result.DataItemsProcessed,
-            result.DeletionMarkersProcessed);
-    }
+    auto completed = Impl->FreshBytes.FinishCleanup(
+        chunkId,
+        cnt,
+        deletedCnt);
 
     auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
     SetFreshBytesCount(db, freshBytes);
     SetDeletedFreshBytesCount(db, deletedFreshBytes);
 
-    return {sz + deletedSz, result.ChunkCompleted};
+    return {sz + deletedSz, completed};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

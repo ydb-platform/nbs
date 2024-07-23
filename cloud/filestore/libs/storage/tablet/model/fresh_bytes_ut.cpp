@@ -125,7 +125,7 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             visitedBytes.clear();
             visitedDeletionMarkers.clear();
             constexpr ui64 itemLimit = 100;
-            return freshBytes.VisitTop(
+            freshBytes.VisitTop(
                 itemLimit,
                 [&] (const TBytes& bytes, bool isDel) {
                     if (isDel) {
@@ -137,17 +137,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             );
         };
 
-        auto result = visitTop();
-        UNIT_ASSERT_VALUES_EQUAL(true, result.ChunkCompleted);
-        UNIT_ASSERT_VALUES_EQUAL(bytes.size(), result.DataItemsProcessed);
-        UNIT_ASSERT_VALUES_EQUAL(
-            deletionMarkers.size(),
-            result.DeletionMarkersProcessed);
+        visitTop();
 
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        freshBytes.FinishCleanup(info.ChunkId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
 
         {
             TFreshBytesVisitor visitor;
@@ -182,7 +182,12 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        freshBytes.FinishCleanup(info.ChunkId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
@@ -294,20 +299,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             };
             TVector<TBytes> expectedDeletionMarkers;
 
-            auto result = visitTop();
-            UNIT_ASSERT_VALUES_EQUAL(false, result.ChunkCompleted);
-            UNIT_ASSERT_VALUES_EQUAL(expectedBytes.size(), result.DataItemsProcessed);
-            UNIT_ASSERT_VALUES_EQUAL(
-                expectedDeletionMarkers.size(),
-                result.DeletionMarkersProcessed);
+            visitTop();
 
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            freshBytes.CleanupChunkPartially(
-                info.ChunkId,
-                result.DataItemsProcessed,
-                result.DeletionMarkersProcessed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                freshBytes.FinishCleanup(
+                    info.ChunkId,
+                    visitedBytes.size(),
+                    visitedDeletionMarkers.size()));
         }
 
         {
@@ -317,20 +319,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             };
             TVector<TBytes> expectedDeletionMarkers;
 
-            auto result = visitTop();
-            UNIT_ASSERT_VALUES_EQUAL(false, result.ChunkCompleted);
-            UNIT_ASSERT_VALUES_EQUAL(expectedBytes.size(), result.DataItemsProcessed);
-            UNIT_ASSERT_VALUES_EQUAL(
-                expectedDeletionMarkers.size(),
-                result.DeletionMarkersProcessed);
+            visitTop();
 
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            freshBytes.CleanupChunkPartially(
-                info.ChunkId,
-                result.DataItemsProcessed,
-                result.DeletionMarkersProcessed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                freshBytes.FinishCleanup(
+                    info.ChunkId,
+                    visitedBytes.size(),
+                    visitedDeletionMarkers.size()));
         }
 
         {
@@ -340,20 +339,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             };
             TVector<TBytes> expectedDeletionMarkers;
 
-            auto result = visitTop();
-            UNIT_ASSERT_VALUES_EQUAL(false, result.ChunkCompleted);
-            UNIT_ASSERT_VALUES_EQUAL(expectedBytes.size(), result.DataItemsProcessed);
-            UNIT_ASSERT_VALUES_EQUAL(
-                expectedDeletionMarkers.size(),
-                result.DeletionMarkersProcessed);
+            visitTop();
 
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            freshBytes.CleanupChunkPartially(
-                info.ChunkId,
-                result.DataItemsProcessed,
-                result.DeletionMarkersProcessed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                freshBytes.FinishCleanup(
+                    info.ChunkId,
+                    visitedBytes.size(),
+                    visitedDeletionMarkers.size()));
         }
 
         {
@@ -362,17 +358,17 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 {2, 100, 3, 16, InvalidCommitId},
             };
 
-            auto result = visitTop();
-            UNIT_ASSERT_VALUES_EQUAL(true, result.ChunkCompleted);
-            UNIT_ASSERT_VALUES_EQUAL(expectedBytes.size(), result.DataItemsProcessed);
-            UNIT_ASSERT_VALUES_EQUAL(
-                expectedDeletionMarkers.size(),
-                result.DeletionMarkersProcessed);
+            visitTop();
 
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            freshBytes.FinishCleanup(info.ChunkId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                freshBytes.FinishCleanup(
+                    info.ChunkId,
+                    visitedBytes.size(),
+                    visitedDeletionMarkers.size()));
         }
 
         {

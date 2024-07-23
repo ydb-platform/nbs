@@ -173,41 +173,29 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
     return {Chunks.front().Id, Chunks.front().ClosingCommitId};
 }
 
-TFreshBytes::TVisitTopResult TFreshBytes::VisitTop(
+void TFreshBytes::VisitTop(
     ui64 itemsLimit,
     const TChunkVisitor& visitor)
 {
     ui64 cnt = 0;
-    TVisitTopResult result;
     for (const auto& e: Chunks.front().Data) {
         if (cnt++ == itemsLimit) {
-            return result;
+            return;
         }
         visitor(e.Descriptor, false);
-        ++result.DataItemsProcessed;
     }
 
     for (const auto& descriptor: Chunks.front().DeletionMarkers) {
         if (cnt++ == itemsLimit) {
-            return result;
+            return;
         }
         visitor(descriptor, true);
-        ++result.DeletionMarkersProcessed;
     }
 
-    result.ChunkCompleted = true;
-    return result;
+    return;
 }
 
-void TFreshBytes::FinishCleanup(ui64 chunkId)
-{
-    Y_ABORT_UNLESS(Chunks.size() > 1);
-    Y_ABORT_UNLESS(Chunks.front().Id == chunkId);
-
-    Chunks.pop_front();
-}
-
-void TFreshBytes::CleanupChunkPartially(
+bool TFreshBytes::FinishCleanup(
     ui64 chunkId,
     ui64 dataItems,
     ui64 deletionMarkers)
@@ -217,13 +205,26 @@ void TFreshBytes::CleanupChunkPartially(
 
     auto& chunk = Chunks.front();
 
-    chunk.Data.erase(
-        chunk.Data.begin(),
-        chunk.Data.begin() + dataItems);
+    const auto dataSize = chunk.Data.size();
+    const auto deletionSize = chunk.DeletionMarkers.size();
+    if (dataItems == dataSize && deletionMarkers == deletionSize) {
+        Chunks.pop_front();
+        return true;
+    }
+
+    if (dataItems == dataSize) {
+        chunk.Data.clear();
+    } else {
+        chunk.Data.erase(
+            chunk.Data.begin(),
+            chunk.Data.begin() + dataItems);
+    }
 
     chunk.DeletionMarkers.erase(
         chunk.DeletionMarkers.begin(),
         chunk.DeletionMarkers.begin() + deletionMarkers);
+
+    return false;
 }
 
 void TFreshBytes::FindBytes(

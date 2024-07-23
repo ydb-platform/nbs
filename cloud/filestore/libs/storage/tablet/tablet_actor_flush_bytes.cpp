@@ -901,12 +901,14 @@ void TIndexTabletActor::ExecuteTx_TrimBytes(
 
     TIndexTabletDatabase db(tx.DB);
 
-    std::tie(args.TrimmedBytes, args.TrimmedAll) =
-        FinishFlushBytes(
-            db,
-            Config->GetTrimBytesItemsCount(),
-            args.ChunkId,
-            args.ProfileLogRequest);
+    auto result = FinishFlushBytes(
+        db,
+        Config->GetTrimBytesItemCount(),
+        args.ChunkId,
+        args.ProfileLogRequest);
+
+    args.TrimmedBytes = result.TotalBytesFlushed;
+    args.TrimmedAll = result.ChunkCompleted;
 }
 
 void TIndexTabletActor::CompleteTx_TrimBytes(

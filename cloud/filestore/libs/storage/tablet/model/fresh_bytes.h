@@ -37,13 +37,6 @@ public:
         }
     };
 
-    struct TVisitTopResult
-    {
-        bool ChunkCompleted = false;
-        ui64 DataItemsProcessed = 0;
-        ui64 DeletionMarkersProcessed = 0;
-    };
-
 private:
     struct TElement
     {
@@ -110,9 +103,8 @@ public:
         ui64 commitId,
         TVector<TBytes>* entries,
         TVector<TBytes>* deletionMarkers);
-    TVisitTopResult VisitTop(ui64 itemsLimit, const TChunkVisitor& visitor);
-    void FinishCleanup(ui64 chunkId);
-    void CleanupChunkPartially(ui64 chunkId, ui64 dataItems, ui64 deletionMarkers);
+    void VisitTop(ui64 itemsLimit, const TChunkVisitor& visitor);
+    bool FinishCleanup(ui64 chunkId, ui64 dataItems, ui64 deletionMarkers);
 
     void FindBytes(
         IFreshBytesVisitor& visitor,

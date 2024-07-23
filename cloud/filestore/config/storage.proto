@@ -307,5 +307,5 @@ message TStorageConfig
     optional bool GetNodeAttrBatchEnabled = 358;
 
     // Max number of items to delete during TrimBytes.
-    optional uint64 TrimBytesItemsCount = 359;
+    optional uint64 TrimBytesItemCount = 359;
 }

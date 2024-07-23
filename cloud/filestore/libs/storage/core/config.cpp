@@ -165,7 +165,7 @@ namespace {
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
-    xxx(TrimBytesItemsCount,                            ui64,      100'000    )\
+    xxx(TrimBytesItemCount,                             ui64,      100'000    )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
