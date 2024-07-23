@@ -3512,9 +3512,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         const TString fsId = "test";
+        const TString fsId2 = "test2";
         const auto initialBlockCount = 1'000;
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
+        service.CreateFileStore(fsId2, initialBlockCount);
 
         auto headers = THeaders{fsId, "client", ""};
         auto createSessionResponse = service.CreateSession(headers);
@@ -3523,6 +3525,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createSessionResponse->GetStatus(),
             createSessionResponse->GetErrorReason());
         service.AssertDestroyFileStoreFailed(fsId);
+
+        auto headers2 = THeaders{fsId2, "client", ""};
+        auto createSessionResponse2 = service.CreateSession(headers2);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse2->GetStatus(),
+            createSessionResponse2->GetErrorReason());
 
         headers.SessionId =
             createSessionResponse->Record.GetSession().GetSessionId();
