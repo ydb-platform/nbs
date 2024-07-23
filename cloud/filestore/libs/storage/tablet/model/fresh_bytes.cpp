@@ -180,7 +180,7 @@ TFreshBytes::TVisitTopResult TFreshBytes::VisitTop(
     ui64 cnt = 0;
     TVisitTopResult result;
     for (const auto& e: Chunks.front().Data) {
-        if (itemsLimit && cnt++ == itemsLimit) {
+        if (cnt++ == itemsLimit) {
             return result;
         }
         visitor(e.Descriptor, false);
@@ -188,7 +188,7 @@ TFreshBytes::TVisitTopResult TFreshBytes::VisitTop(
     }
 
     for (const auto& descriptor: Chunks.front().DeletionMarkers) {
-        if (itemsLimit && cnt++ == itemsLimit) {
+        if (cnt++ == itemsLimit) {
             return result;
         }
         visitor(descriptor, true);

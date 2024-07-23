@@ -124,8 +124,9 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         auto visitTop = [&] () {
             visitedBytes.clear();
             visitedDeletionMarkers.clear();
+            constexpr ui64 itemLimit = 100;
             return freshBytes.VisitTop(
-                0,
+                itemLimit,
                 [&] (const TBytes& bytes, bool isDel) {
                     if (isDel) {
                         visitedDeletionMarkers.push_back(bytes);
