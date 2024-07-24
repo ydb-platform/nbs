@@ -1,8 +1,8 @@
 #pragma once
 
 #include "public.h"
-#include "cloud/filestore/config/server.pb.h"
 
+#include <cloud/filestore/config/server.pb.h>
 #include <cloud/filestore/config/vhost.pb.h>
 
 #include <util/datetime/base.h>
