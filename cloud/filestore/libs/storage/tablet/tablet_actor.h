@@ -139,7 +139,7 @@ private:
             {
                 allRequestMetrics.push_back(this);
             }
-            
+
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
