@@ -103,8 +103,11 @@ public:
         ui64 commitId,
         TVector<TBytes>* entries,
         TVector<TBytes>* deletionMarkers);
-    void VisitTop(ui64 itemsLimit, const TChunkVisitor& visitor);
-    bool FinishCleanup(ui64 chunkId, ui64 dataItems, ui64 deletionMarkers);
+    void VisitTop(ui64 itemLimit, const TChunkVisitor& visitor);
+    bool FinishCleanup(
+        ui64 chunkId,
+        ui64 dataItemCount,
+        ui64 deletionMarkerCount);
 
     void FindBytes(
         IFreshBytesVisitor& visitor,

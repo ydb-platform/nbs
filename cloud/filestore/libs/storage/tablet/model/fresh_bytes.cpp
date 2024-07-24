@@ -174,31 +174,29 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
 }
 
 void TFreshBytes::VisitTop(
-    ui64 itemsLimit,
+    ui64 itemLimit,
     const TChunkVisitor& visitor)
 {
     ui64 cnt = 0;
     for (const auto& e: Chunks.front().Data) {
-        if (cnt++ == itemsLimit) {
+        if (cnt++ == itemLimit) {
             return;
         }
         visitor(e.Descriptor, false);
     }
 
     for (const auto& descriptor: Chunks.front().DeletionMarkers) {
-        if (cnt++ == itemsLimit) {
+        if (cnt++ == itemLimit) {
             return;
         }
         visitor(descriptor, true);
     }
-
-    return;
 }
 
 bool TFreshBytes::FinishCleanup(
     ui64 chunkId,
-    ui64 dataItems,
-    ui64 deletionMarkers)
+    ui64 dataItemCount,
+    ui64 deletionMarkerCount)
 {
     Y_ABORT_UNLESS(Chunks.size() > 1);
     Y_ABORT_UNLESS(Chunks.front().Id == chunkId);
@@ -207,22 +205,18 @@ bool TFreshBytes::FinishCleanup(
 
     const auto dataSize = chunk.Data.size();
     const auto deletionSize = chunk.DeletionMarkers.size();
-    if (dataItems == dataSize && deletionMarkers == deletionSize) {
+    if (dataItemCount == dataSize && deletionMarkerCount == deletionSize) {
         Chunks.pop_front();
         return true;
     }
 
-    if (dataItems == dataSize) {
-        chunk.Data.clear();
-    } else {
-        chunk.Data.erase(
-            chunk.Data.begin(),
-            chunk.Data.begin() + dataItems);
-    }
+    chunk.Data.erase(
+        chunk.Data.begin(),
+        std::next(chunk.Data.begin(), dataItemCount));
 
     chunk.DeletionMarkers.erase(
         chunk.DeletionMarkers.begin(),
-        chunk.DeletionMarkers.begin() + deletionMarkers);
+        std::next(chunk.DeletionMarkers.begin(), deletionMarkerCount));
 
     return false;
 }

@@ -141,12 +141,10 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            freshBytes.FinishCleanup(
-                info.ChunkId,
-                visitedBytes.size(),
-                visitedDeletionMarkers.size()));
+        UNIT_ASSERT(freshBytes.FinishCleanup(
+            info.ChunkId,
+            visitedBytes.size(),
+            visitedDeletionMarkers.size()));
 
         {
             TFreshBytesVisitor visitor;
@@ -181,12 +179,11 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            freshBytes.FinishCleanup(
-                info.ChunkId,
-                visitedBytes.size(),
-                visitedDeletionMarkers.size()));
+        UNIT_ASSERT(freshBytes.FinishCleanup(
+            info.ChunkId,
+            visitedBytes.size(),
+            visitedDeletionMarkers.size()));
+
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
@@ -302,12 +299,11 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                false,
-                freshBytes.FinishCleanup(
-                    info.ChunkId,
-                    visitedBytes.size(),
-                    visitedDeletionMarkers.size()));
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+
         }
 
         {
@@ -321,12 +317,11 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                false,
-                freshBytes.FinishCleanup(
-                    info.ChunkId,
-                    visitedBytes.size(),
-                    visitedDeletionMarkers.size()));
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+
         }
 
         {
@@ -340,12 +335,11 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                false,
-                freshBytes.FinishCleanup(
-                    info.ChunkId,
-                    visitedBytes.size(),
-                    visitedDeletionMarkers.size()));
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+
         }
 
         {
@@ -358,12 +352,10 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(expectedBytes, visitedBytes);
             COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                freshBytes.FinishCleanup(
-                    info.ChunkId,
-                    visitedBytes.size(),
-                    visitedDeletionMarkers.size()));
+            UNIT_ASSERT(freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
         }
 
         {
