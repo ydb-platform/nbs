@@ -23,7 +23,7 @@ void PrepareCompoundIO(
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
     i64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    auto it = std::lower_bound(
+    const auto *it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
@@ -31,7 +31,7 @@ void PrepareCompoundIO(
             return device.EndOffset <= offset;
         });
 
-    auto end = std::lower_bound(
+    const auto *end = std::lower_bound(
         it,
         devices.end(),
         logicalOffset + totalBytes,
@@ -128,7 +128,7 @@ void PrepareIO(
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
     const i64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    auto it = std::lower_bound(
+    const auto *it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
@@ -176,6 +176,7 @@ void PrepareIO(
             if (bio->type == VHD_BDEV_WRITE) {
                 char* dst = static_cast<char*>(req->Data[0].iov_base);
                 for (ui32 i = 0; i != nbufs; ++i) {
+                    // ToDo
                     std::memcpy(dst, buffers[i].base, buffers[i].len);
                     dst += buffers[i].len;
                 }

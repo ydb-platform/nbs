@@ -97,7 +97,7 @@ private:
     NClient::IRetryPolicyPtr Impl;
 
 public:
-    TRetryPolicy(NClient::TClientAppConfigPtr config)
+    explicit TRetryPolicy(NClient::TClientAppConfigPtr config)
         : Impl(NClient::CreateRetryPolicy(std::move(config)))
     {}
 
@@ -152,7 +152,7 @@ private:
         struct vhd_io* io,
         TCpuCycles startCycles,
         bool isError);
-    IBlockStorePtr CreateDataClient(IStoragePtr storage);
+    IBlockStorePtr CreateDataClient(IStoragePtr storage) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +204,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     ui64 totalBytes = 0;
 
-    for (auto& chunk: options.Layout) {
+    for (const auto& chunk: options.Layout) {
         DevicePath devicePath("rdma");
         auto error = devicePath.Parse(chunk.DevicePath);
         STORAGE_VERIFY_C(
@@ -254,7 +254,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
 }
 
-IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage)
+IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage) const
 {
     NProto::TClientAppConfig config;
     config.MutableClientConfig()->SetRequestTimeout(REQUEST_TIMEOUT_MSEC);
@@ -367,7 +367,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
     request->SetBlocksCount(bio->total_sectors >> SectorsToBlockShift);
     request->BlockSize = BlockSize;
-    request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
+    request->Sglist.SetSgList(ConvertVhdSgList(bio->sglist));
 
     STORAGE_DEBUG(
         "READ[%lu] Index=%lu, BlocksCount=%d, BlockSize=%d",
@@ -409,7 +409,7 @@ void TRdmaBackend::ProcessWriteRequest(
     request->SetStartIndex(bio->first_sector >> SectorsToBlockShift);
     request->BlocksCount = bio->total_sectors >> SectorsToBlockShift;
     request->BlockSize = BlockSize;
-    request->Sglist.SetSgList(std::move(ConvertVhdSgList(bio->sglist)));
+    request->Sglist.SetSgList(ConvertVhdSgList(bio->sglist));
 
     STORAGE_DEBUG(
         "WRITE[%lu] Index=%lu, BlocksCount=%d, BlockSize=%d",

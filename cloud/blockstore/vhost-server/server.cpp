@@ -24,7 +24,6 @@
 #include <util/system/file.h>
 
 #include <atomic>
-#include <span>
 #include <thread>
 
 using namespace NThreading;
@@ -118,7 +117,7 @@ private:
 
 TServer::TServer(ILoggingServicePtr logging, IBackendPtr backend)
     : Logging{std::move(logging)}
-    , Backend(backend)
+    , Backend(std::move(backend))
 {}
 
 void TServer::Start(const TOptions& options)

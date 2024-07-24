@@ -51,7 +51,7 @@ void CompleteRequest(
     std::free(req);
 }
 
-void CompleteRequest(
+void CompleteCompoundRequest(
     iocb* sub,
     TAioCompoundRequest* req,
     vhd_bdev_io_result status,
@@ -118,10 +118,15 @@ public:
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
 
 private:
+    // Dequeue requests from |queue| and start processing them. Returns the
+    // number of dequeued requests.
+    // Puts started io-requests iocb to |batch|. Some requests may splitted for
+    // cross-device read/write and produce two iocb.
     size_t PrepareBatch(
         vhd_request_queue* queue,
         TVector<iocb*>& batch,
         TCpuCycles now);
+
     void CompletionThreadFunc();
 };
 
@@ -159,7 +164,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
 
     i64 totalBytes = 0;
 
-    for (auto& chunk: options.Layout) {
+    for (const auto& chunk: options.Layout) {
         TFileHandle file{chunk.DevicePath, flags};
 
         if (!file.IsOpen()) {
@@ -279,7 +284,7 @@ void TAioBackend::ProcessQueue(
             ++queueStats.SubFailed;
 
             if (batch[0]->data) {
-                CompleteRequest(
+                CompleteCompoundRequest(
                     batch[0],
                     static_cast<TAioCompoundRequest*>(batch[0]->data),
                     VHD_BDEV_IOERR,
@@ -313,16 +318,16 @@ size_t TAioBackend::PrepareBatch(
     TVector<iocb*>& batch,
     TCpuCycles now)
 {
-    const size_t size = batch.size();
+    const size_t initialSize = batch.size();
 
-    vhd_request req;
+    vhd_request req{};
     while (batch.size() < BatchSize && vhd_dequeue_request(queue, &req)) {
         Y_DEBUG_ABORT_UNLESS(vhd_vdev_get_priv(req.vdev) == this);
 
         PrepareIO(Log, Devices, req.io, batch, now);
     }
 
-    return batch.size() - size;
+    return batch.size() - initialSize;
 }
 
 void TAioBackend::CompletionThreadFunc()
@@ -338,7 +343,7 @@ void TAioBackend::CompletionThreadFunc()
     TVector<io_event> events(BatchSize);
 
     TSimpleStats stats;
-    timespec timeout{.tv_sec = 1};
+    timespec timeout{.tv_sec = 1, .tv_nsec = 0};
 
     for (;;) {
         // TODO: try AIO_RING_MAGIC trick
@@ -384,7 +389,7 @@ void TAioBackend::CompletionThreadFunc()
                         strerror(-events[i].res));
                 }
 
-                CompleteRequest(sub, req, result, stats, now);
+                CompleteCompoundRequest(sub, req, result, stats, now);
 
                 continue;
             }
