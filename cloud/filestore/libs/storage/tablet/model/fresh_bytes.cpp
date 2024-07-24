@@ -1,5 +1,6 @@
 #include "fresh_bytes.h"
 
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -205,10 +206,15 @@ bool TFreshBytes::FinishCleanup(
 
     const auto dataSize = chunk.Data.size();
     const auto deletionSize = chunk.DeletionMarkers.size();
+
     if (dataItemCount == dataSize && deletionMarkerCount == deletionSize) {
         Chunks.pop_front();
         return true;
     }
+
+    const auto check =
+        dataItemCount <= dataSize && deletionMarkerCount <= deletionSize;
+    STORAGE_VERIFY(check, TWellKnownEntityTypes::FILESYSTEM, chunkId);
 
     chunk.Data.erase(
         chunk.Data.begin(),
