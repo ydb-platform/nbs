@@ -66,6 +66,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskID,
+			InstanceId:       podID,
 			ClientId:         actualClientId,
 			DeviceName:       diskID,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
@@ -218,6 +219,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskID,
+		InstanceId:       podID,
 		ClientId:         actualClientId,
 		DeviceName:       diskID,
 		IpcType:          ipcType,
@@ -341,6 +343,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskID,
+		InstanceId:       podID,
 		ClientId:         actualClientId,
 		DeviceName:       diskID,
 		IpcType:          ipcType,
