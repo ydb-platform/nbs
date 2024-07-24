@@ -74,6 +74,7 @@ class NfsDaemonConfigGenerator:
 
         self.__port_manager = yatest_common.PortManager()
         self.__port = self.__port_manager.get_port()
+        self.__local_service_port = self.__port_manager.get_port()
         self.__mon_port = self.__port_manager.get_port()
         self.__ic_port = self.__port_manager.get_port()
         self.__access_service_port = access_service_port
@@ -89,6 +90,10 @@ class NfsDaemonConfigGenerator:
     @property
     def port(self):
         return self.__port
+
+    @property
+    def local_service_port(self):
+        return self.__local_service_port
 
     @property
     def mon_port(self):

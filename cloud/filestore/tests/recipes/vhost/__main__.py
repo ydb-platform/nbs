@@ -8,6 +8,7 @@ import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
+from cloud.filestore.config.server_pb2 import TLocalServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.config.vhost_pb2 import \
     TVhostAppConfig, TVhostServiceConfig, TServiceEndpoint
@@ -62,6 +63,12 @@ def start(argv):
     if service_type == "local":
         service_endpoint.ClientConfig.Host = "localhost"
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
+    elif service_type == "local-no-server":
+        config.VhostServiceConfig.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
+
+        fs_root_path = common.ram_drive_path()
+        if fs_root_path:
+            config.VhostServiceConfig.LocalServiceConfig.RootPath = fs_root_path
     elif service_type == "kikimr":
         kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
         domain = os.getenv("NFS_DOMAIN")
@@ -78,7 +85,7 @@ def start(argv):
     vhost_configurator = NfsVhostConfigGenerator(
         binary_path=vhost_binary_path,
         app_config=config,
-        service_type=service_type,
+        service_type="local" if service_type == "local-no-server" else service_type,
         verbose=args.verbose,
         kikimr_port=kikimr_port,
         domain=domain,
@@ -101,6 +108,8 @@ def start(argv):
             set_env("QEMU_SET_READY_FLAG", restart_flag)
 
     set_env("NFS_VHOST_PORT", str(vhost_configurator.port))
+    if service_type == "local-no-server":
+        set_env("NFS_SERVER_PORT", str(vhost_configurator.local_service_port))
 
 
 def stop(argv):

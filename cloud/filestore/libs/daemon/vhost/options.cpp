@@ -12,6 +12,12 @@ TOptionsVhost::TOptionsVhost()
         .StoreResult(&AppConfig);
 
     ServerPort = 9022;
+
+    Opts.AddLongOption("local-service-port")
+        .RequiredArgument("PORT")
+        .DefaultValue(9023)
+        .StoreResult(&LocalServicePort);
+
     Service = NDaemon::EServiceKind::Local;
 }
 

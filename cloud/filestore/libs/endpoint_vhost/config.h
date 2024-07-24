@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+#include "cloud/filestore/config/server.pb.h"
 
 #include <cloud/filestore/config/vhost.pb.h>
 
@@ -29,6 +30,7 @@ public:
     TString GetEndpointStorageDir() const;
     ui32 GetSocketAccessMode() const;
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
+    const NProto::TLocalServiceConfig* GetLocalServiceConfig() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
