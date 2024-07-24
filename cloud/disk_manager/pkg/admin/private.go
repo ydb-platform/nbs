@@ -45,7 +45,7 @@ func (c *rebaseOverlayDisk) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -121,7 +121,7 @@ func (c *retireBaseDisk) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -188,7 +188,7 @@ func (c *retireBaseDisks) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -253,7 +253,7 @@ func (c *optimizeBaseDisks) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newOptimizeBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -305,7 +305,7 @@ func (c *configurePool) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newConfigurePoolCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -390,7 +390,7 @@ func (c *deletePool) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newDeletePoolCmd(config *client_config.ClientConfig) *cobra.Command {
