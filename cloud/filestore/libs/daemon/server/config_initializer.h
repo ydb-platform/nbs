@@ -23,6 +23,10 @@ struct TConfigInitializerServer
     void InitAppConfig();
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+    void ApplyServerAppConfig(const TString& text);
+
+    virtual NCloud::NStorage::TNodeRegistrationSettings
+        GetNodeRegistrationSettings() override;
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

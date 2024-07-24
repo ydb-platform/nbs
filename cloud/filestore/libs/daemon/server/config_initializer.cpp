@@ -7,6 +7,8 @@
 
 namespace NCloud::NFileStore::NDaemon {
 
+using namespace NCloud::NStorage;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerServer::TConfigInitializerServer(TOptionsServerPtr options)
@@ -16,6 +18,10 @@ TConfigInitializerServer::TConfigInitializerServer(TOptionsServerPtr options)
 
 void TConfigInitializerServer::InitAppConfig()
 {
+    if (ServerConfig) {
+        return;
+    }
+
     if (Options->AppConfig) {
         ParseProtoTextFromFileRobust(Options->AppConfig, AppConfig);
     }
@@ -32,9 +38,55 @@ void TConfigInitializerServer::InitAppConfig()
     ServerConfig = std::make_shared<NServer::TServerConfig>(serverConfig);
 }
 
-void TConfigInitializerServer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&)
+void TConfigInitializerServer::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
-    // nothing to do
+    TConfigInitializerCommon::ApplyCustomCMSConfigs(config);
+
+    using TSelf = TConfigInitializerServer;
+    using TApplyFn = void (TSelf::*)(const TString&);
+
+    const THashMap<TString, TApplyFn> map {
+        { "ServerAppConfig",    &TSelf::ApplyServerAppConfig},
+    };
+
+    for (auto& item : config.GetNamedConfigs()) {
+        TStringBuf name = item.GetName();
+        if (!name.SkipPrefix("Cloud.NFS.")) {
+            continue;
+        }
+
+        auto it = map.find(name);
+        if (it != map.end()) {
+            std::invoke(it->second, this, item.GetConfig());
+        }
+    }
+}
+
+void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
+{
+    AppConfig.Clear();
+    ParseProtoTextFromStringRobust(text, AppConfig);
+
+    ServerConfig = std::make_shared<NServer::TServerConfig>(
+        AppConfig.GetServerConfig());
+}
+
+TNodeRegistrationSettings
+    TConfigInitializerServer::GetNodeRegistrationSettings()
+{
+    InitAppConfig();
+
+    TNodeRegistrationSettings settings;
+    settings.MaxAttempts = Options->NodeRegistrationMaxAttempts;
+    settings.RegistrationTimeout = Options->NodeRegistrationTimeout;
+    settings.ErrorTimeout = Options->NodeRegistrationErrorTimeout;
+    settings.PathToGrpcCaFile = ServerConfig->GetRootCertsFile();
+    settings.PathToGrpcCertFile = GetCertFileFromConfig(ServerConfig);
+    settings.PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(ServerConfig);
+    settings.NodeRegistrationToken = ServerConfig->GetNodeRegistrationToken();
+    settings.NodeType = ServerConfig->GetNodeType();
+    return settings;
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

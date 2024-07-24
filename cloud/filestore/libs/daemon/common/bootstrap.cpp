@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/server/probes.h>
+#include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
@@ -274,13 +275,6 @@ void TBootstrapCommon::InitActorSystem()
     Y_ABORT_UNLESS(Configs->KikimrConfig);
     Y_ABORT_UNLESS(Configs->StorageConfig);
 
-    NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts =
-            Configs->Options->NodeRegistrationMaxAttempts,
-        .ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout,
-        .RegistrationTimeout = Configs->Options->NodeRegistrationTimeout,
-    };
-
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts;
     registerOpts.Domain = Configs->Options->Domain;
     registerOpts.SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir();
@@ -288,7 +282,9 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.Settings = std::move(settings);
+    registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+    registerOpts.Settings = Configs->GetNodeRegistrationSettings();
+
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
