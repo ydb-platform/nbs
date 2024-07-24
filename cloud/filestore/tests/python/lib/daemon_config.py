@@ -330,7 +330,6 @@ class NfsDaemonConfigGenerator:
                 "--load-configs-from-cms",
             ]
 
-
             if not self.__use_secure_registration or self.__grpc_ssl_port is None:
                 command += [
                     "--node-broker", "localhost:" + str(self.__kikimr_port),
