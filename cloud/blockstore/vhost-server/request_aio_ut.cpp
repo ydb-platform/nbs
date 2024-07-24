@@ -29,14 +29,8 @@ struct virtio_blk_io {
 void Free(TVector<iocb*>& batch)
 {
     for (iocb* cb: batch) {
-        std::free(cb);
+        auto req = TAioSubRequest::FromIocb(cb);
     }
-}
-
-void Free(TAioCompoundRequest* req)
-{
-    std::free(req->Buffer);
-    std::free(req);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,10 +141,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         PrepareIO(Log, Devices, &bio.io, batch, now);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-        auto* req = static_cast<TAioRequest*>(batch[0]);
-        Y_SCOPE_EXIT(req) {
-            std::free(req);
-        };
+        auto req = TAioRequest::FromIocb(batch[0]);
 
         UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -205,11 +196,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         PrepareIO(Log, Devices, &bio.io, batch, now);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-        auto* req = static_cast<TAioRequest*>(batch[0]);
-        Y_SCOPE_EXIT(req) {
-            std::free(req->Data[0].iov_base);
-            std::free(req);
-        };
+        auto req = TAioRequest::FromIocb(batch[0]);
 
         UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -266,15 +253,14 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(2, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
-        Y_SCOPE_EXIT(req) { Free(req); };
+        auto req = TAioCompoundRequest::FromIocb(batch[0]);
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
-        UNIT_ASSERT_VALUES_EQUAL(req, batch[1]->data);
+        UNIT_ASSERT_VALUES_EQUAL(req.get(), batch[1]->data);
         UNIT_ASSERT_VALUES_EQUAL(batch.size(), req->Inflight.load());
         UNIT_ASSERT_VALUES_EQUAL(0, req->Errors.load());
         UNIT_ASSERT_VALUES_EQUAL(&bio.io, req->Io);
-        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer);
+        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer.get());
 
         {
             iocb* sub = batch[0];
@@ -334,22 +320,23 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
-        Y_SCOPE_EXIT(req) { Free(req); };
+        auto req = TAioCompoundRequest::FromIocb(batch[0]);
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
-        UNIT_ASSERT_VALUES_EQUAL(req, batch[1]->data);
+        UNIT_ASSERT_VALUES_EQUAL(req.get(), batch[0]->data);
+        UNIT_ASSERT_VALUES_EQUAL(req.get(), batch[1]->data);
+        UNIT_ASSERT_VALUES_EQUAL(req.get(), batch[2]->data);
         UNIT_ASSERT_VALUES_EQUAL(batch.size(), req->Inflight.load());
         UNIT_ASSERT_VALUES_EQUAL(0, req->Errors.load());
         UNIT_ASSERT_VALUES_EQUAL(&bio.io, req->Io);
-        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer);
+        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer.get());
 
         {
             iocb* sub = batch[0];
 
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(Devices[1].File), sub->aio_fildes);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(req->Buffer.get(), sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(128_KB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(1_MB, Devices[1].StartOffset);
             UNIT_ASSERT_VALUES_EQUAL(offset - Devices[1].StartOffset, sub->u.c.offset);
@@ -361,7 +348,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(Devices[2].File), sub->aio_fildes);
             UNIT_ASSERT_VALUES_EQUAL(2_MB, Devices[2].StartOffset);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer + 128_KB, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(req->Buffer.get() + 128_KB, sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(1_MB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(0, sub->u.c.offset);
         }
@@ -372,7 +359,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(Devices[3].File), sub->aio_fildes);
             UNIT_ASSERT_VALUES_EQUAL(3_MB, Devices[3].StartOffset);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer + 128_KB + 1_MB, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(req->Buffer.get() + 128_KB + 1_MB, sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(1_MB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(0, sub->u.c.offset);
         }
@@ -413,10 +400,12 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             const ui64 now = GetCycleCount();
 
             TVector<iocb*> batch;
+
             PrepareIO(Log, Devices, &bio.io, batch, now);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-            auto* req = static_cast<TAioRequest*>(batch[0]);
+            auto req = TAioRequest::FromIocb(batch[0]);
+            batch.clear();
 
             UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
             UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -433,8 +422,6 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
 
             UNIT_ASSERT_VALUES_EQUAL(buffers[1].base, req->Data[1].iov_base);
             UNIT_ASSERT_VALUES_EQUAL(buffers[1].len, req->Data[1].iov_len);
-
-            Free(batch);
         }
 
         // read the 2nd device
@@ -471,7 +458,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             PrepareIO(Log, Devices, &bio.io, batch, now);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
-            auto* req = static_cast<TAioRequest*>(batch[0]);
+            auto req = TAioRequest::FromIocb(batch[0]);
+            batch.clear();
 
             UNIT_ASSERT_VALUES_EQUAL(nullptr, req->data);
             UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
@@ -491,8 +479,6 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
 
             UNIT_ASSERT_VALUES_EQUAL(buffers[1].base, req->Data[1].iov_base);
             UNIT_ASSERT_VALUES_EQUAL(buffers[1].len, req->Data[1].iov_len);
-
-            Free(batch);
         }
     }
 
@@ -534,18 +520,19 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
 
         TVector<iocb*> batch;
         PrepareIO(Log, Devices, &bio.io, batch, now);
+        Y_SCOPE_EXIT(&batch) { Free(batch); };
 
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
 
-        auto* req = static_cast<TAioCompoundRequest*>(batch[0]->data);
+        auto req = TAioCompoundRequest::FromIocb(batch[0]);
 
         UNIT_ASSERT_VALUES_EQUAL(now, req->SubmitTs);
-        UNIT_ASSERT_VALUES_EQUAL(req, batch[1]->data);
+        UNIT_ASSERT_VALUES_EQUAL(req.get(), batch[1]->data);
         UNIT_ASSERT_VALUES_EQUAL(batch.size(), req->Inflight.load());
         UNIT_ASSERT_VALUES_EQUAL(0, req->Errors.load());
         UNIT_ASSERT_VALUES_EQUAL(&bio.io, req->Io);
-        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer);
+        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, req->Buffer.get());
 
         {
             iocb* sub = batch[0];
@@ -553,7 +540,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
 
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(req->Buffer.get(), sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(512_KB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(0, device.StartOffset);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -568,7 +555,7 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);
             UNIT_ASSERT_VALUES_EQUAL(1_MB, device.StartOffset);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer + 512_KB, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(req->Buffer.get() + 512_KB, sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(1_MB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(device.FileOffset, sub->u.c.offset);
         }
@@ -580,12 +567,11 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             UNIT_ASSERT_EQUAL(IO_CMD_PREAD, sub->aio_lio_opcode);
             UNIT_ASSERT_VALUES_EQUAL(SplitFileHandle, sub->aio_fildes);
             UNIT_ASSERT_VALUES_EQUAL(2_MB, device.StartOffset);
-            UNIT_ASSERT_VALUES_EQUAL(req->Buffer + 512_KB + 1_MB, sub->u.c.buf);
+            UNIT_ASSERT_VALUES_EQUAL(
+                req->Buffer.get() + 512_KB + 1_MB,
+                sub->u.c.buf);
             UNIT_ASSERT_VALUES_EQUAL(256_KB, sub->u.c.nbytes);
             UNIT_ASSERT_VALUES_EQUAL(device.FileOffset, sub->u.c.offset);
         }
-
-        Free(req);
-        Free(batch);
     }
 }

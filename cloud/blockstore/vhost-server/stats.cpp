@@ -21,7 +21,7 @@ private:
     TAutoEvent CompletionStatsEvent;
 
 public:
-    ~TCompletionStats() override = default;
+    virtual ~TCompletionStats() = default;
 
     std::optional<TSimpleStats> Get(TDuration timeout) override
     {
@@ -33,7 +33,7 @@ public:
             CompletionStatsEvent.WaitT(timeout);
         if (!signaled) {
             IsCompletionStatsWaitTimeout = true;
-            return std::nullopt;
+            return {};
         }
 
         IsCompletionStatsWaitTimeout = false;

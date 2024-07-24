@@ -21,7 +21,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 void CompleteRequest(
-    TAioRequest* req,
+    TAioRequestHolder req,
     vhd_bdev_io_result status,
     TSimpleStats& stats,
     TCpuCycles now)
@@ -41,28 +41,31 @@ void CompleteRequest(
 
     if (req->BounceBuf) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
+            // TODO(drbasic): decrypt
             SgListCopy(
                 static_cast<const char*>(req->Data[0].iov_base),
                 bio->sglist);
         }
-        std::free(req->Data[0].iov_base);
     }
     vhd_complete_bio(req->Io, status);
-    std::free(req);
 }
 
 void CompleteCompoundRequest(
-    iocb* sub,
-    TAioCompoundRequest* req,
+    TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
     TSimpleStats& stats,
     TCpuCycles now)
 {
+    auto* req = sub->GetParentRequest();
+
     req->Errors += status != VHD_BDEV_SUCCESS;
 
-    auto* bio = vhd_get_bdev_io(req->Io);
-
     if (req->Inflight.fetch_sub(1) == 1) {
+        // This is the last subrequest. Take ownership of the parent request and
+        // release it when leave the scope.
+        auto holder = TAioCompoundRequest::FromIocb(sub.get());
+
+        auto* bio = vhd_get_bdev_io(req->Io);
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
         stats.Requests[bio->type].Errors += req->Errors != 0;
@@ -75,15 +78,11 @@ void CompleteCompoundRequest(
         }
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            SgListCopy(req->Buffer, bio->sglist);
+            // TODO(drbasic): decrypt
+            SgListCopy(req->Buffer.get(), bio->sglist);
         }
-        std::free(req->Buffer);
-
         vhd_complete_bio(req->Io, status);
-        std::free(req);
     }
-
-    std::free(sub);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -285,14 +284,13 @@ void TAioBackend::ProcessQueue(
 
             if (batch[0]->data) {
                 CompleteCompoundRequest(
-                    batch[0],
-                    static_cast<TAioCompoundRequest*>(batch[0]->data),
+                    TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
                     queueStats,
                     now);
             } else {
                 CompleteRequest(
-                    static_cast<TAioRequest*>(batch[0]),
+                    TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
                     queueStats,
                     now);
@@ -368,10 +366,7 @@ void TAioBackend::CompletionThreadFunc()
 
         for (int i = 0; i != ret; ++i) {
             if (events[i].data) {
-                auto* req = static_cast<TAioCompoundRequest*>(events[i].data);
-                NSan::Acquire(req);
-                iocb* sub = events[i].obj;
-                NSan::Acquire(sub);
+                auto sub = TAioSubRequest::FromIocb(events[i].obj);
 
                 vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
 
@@ -389,13 +384,16 @@ void TAioBackend::CompletionThreadFunc()
                         strerror(-events[i].res));
                 }
 
-                CompleteCompoundRequest(sub, req, result, stats, now);
+                CompleteCompoundRequest(
+                    std::move(sub),
+                    result,
+                    stats,
+                    now);
 
                 continue;
             }
 
-            auto* req = static_cast<TAioRequest*>(events[i].obj);
-            NSan::Acquire(req);
+            auto req = TAioRequest::FromIocb(events[i].obj);
 
             vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
             auto* bio = vhd_get_bdev_io(req->Io);
@@ -416,7 +414,7 @@ void TAioBackend::CompletionThreadFunc()
                     strerror(-events[i].res));
             }
 
-            CompleteRequest(req, result, stats, now);
+            CompleteRequest(std::move(req), result, stats, now);
         }
 
         stats.Completed += ret;
