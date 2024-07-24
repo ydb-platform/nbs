@@ -183,7 +183,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             info.ChunkId,
             visitedBytes.size(),
             visitedDeletionMarkers.size()));
-
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
@@ -303,7 +302,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 info.ChunkId,
                 visitedBytes.size(),
                 visitedDeletionMarkers.size()));
-
         }
 
         {
@@ -321,7 +319,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 info.ChunkId,
                 visitedBytes.size(),
                 visitedDeletionMarkers.size()));
-
         }
 
         {
@@ -339,7 +336,6 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 info.ChunkId,
                 visitedBytes.size(),
                 visitedDeletionMarkers.size()));
-
         }
 
         {
