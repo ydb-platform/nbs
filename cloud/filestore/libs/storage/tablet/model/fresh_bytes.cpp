@@ -206,7 +206,6 @@ bool TFreshBytes::FinishCleanup(
 
     const auto dataSize = chunk.Data.size();
     const auto deletionSize = chunk.DeletionMarkers.size();
-
     if (dataItemCount == dataSize && deletionMarkerCount == deletionSize) {
         Chunks.pop_front();
         return true;
