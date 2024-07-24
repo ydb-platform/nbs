@@ -4,6 +4,7 @@ SRCS(
     actorsystem.cpp
     components.cpp
     components_start.cpp
+    config_dispatcher_helpers.cpp
     config_initializer.cpp
     events.cpp
     helpers.cpp
@@ -30,6 +31,7 @@ PEERDIR(
     contrib/ydb/library/keys
 
     contrib/ydb/core/base
+    contrib/ydb/core/config/init
     contrib/ydb/core/mind
     contrib/ydb/core/protos
     contrib/ydb/core/tx/coordinator
