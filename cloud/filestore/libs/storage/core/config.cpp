@@ -168,6 +168,7 @@ namespace {
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
+    xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\

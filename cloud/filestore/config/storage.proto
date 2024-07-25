@@ -307,6 +307,9 @@ message TStorageConfig
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
 
+    // Max number of items to delete during TrimBytes.
+    optional uint64 TrimBytesItemCount = 359;
+
     // auth token for node registration via ydb discovery api.
     optional string NodeRegistrationToken = 360;
 

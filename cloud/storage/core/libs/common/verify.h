@@ -59,7 +59,7 @@ struct TWellKnownEntityTypes
                     TStringBuilder() << entityType                             \
                         << "\t" << entityId << "\n");                          \
             }                                                                  \
-            Y_ABORT("%s", sb.c_str());                                          \
+            Y_ABORT("%s", sb.c_str());                                         \
         }                                                                      \
     } while (false)                                                            \
 // STORAGE_VERIFY_C
@@ -67,3 +67,11 @@ struct TWellKnownEntityTypes
 #define STORAGE_VERIFY(expr, entityType, entityId)                             \
     STORAGE_VERIFY_C(expr, entityType, entityId, "");                          \
 // STORAGE_VERIFY
+
+#ifndef NDEBUG
+    #define STORAGE_VERIFY_DEBUG STORAGE_VERIFY
+    #define STORAGE_VERIFY_DEBUG_C STORAGE_VERIFY_C
+#else
+    #define STORAGE_VERIFY_DEBUG Y_DEBUG_ABORT_UNLESS
+    #define STORAGE_VERIFY_DEBUG_C Y_DEBUG_ABORT_UNLESS
+#endif

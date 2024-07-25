@@ -72,6 +72,7 @@ TIndexTabletState::~TIndexTabletState()
 
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
+    Impl->FreshBytes.UpdateLogTag(tag);
     LogTag = std::move(tag);
 }
 
