@@ -344,22 +344,22 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
         AddRequestStats(
             *requestStats,
+            NCloud::NProto::STORAGE_MEDIA_HDD,
+            EBlockStoreRequest::WriteBlocks,
+        {
+            { 1_MB, TDuration::MilliSeconds(600), TDuration::Zero() },
+            { 1_MB, TDuration::MilliSeconds(400), TDuration::Zero() },
+            { 1_MB, TDuration::MilliSeconds(500), TDuration::Zero() },
+        });
+
+        AddRequestStats(
+            *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
         {
             { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
             { 1_MB, TDuration::MilliSeconds(200), TDuration::Zero() },
             { 1_MB, TDuration::MilliSeconds(300), TDuration::Zero() },
-        });
-
-        AddRequestStats(
-            *requestStats,
-            NCloud::NProto::STORAGE_MEDIA_HDD,
-            EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(400), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(500), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(600), TDuration::Zero() },
         });
 
         AddRequestStats(
