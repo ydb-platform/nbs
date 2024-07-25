@@ -662,7 +662,12 @@ private:
             }
         };
 
-        AddToCGroups(process.Pid, Cgroups);
+        try {
+            AddToCGroups(process.Pid, Cgroups);
+        } catch (...) {
+            ShouldStop = true;
+            throw;
+        }
 
         auto ep = MakeIntrusive<TEndpointProcess>(
             ClientId,
