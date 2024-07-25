@@ -260,12 +260,14 @@ void TBootstrapVhost::InitComponents()
         serverConfigProto.ClearSecurePort();
         serverConfigProto.SetPort(Configs->Options->LocalServicePort);
         LocalServiceServer = CreateServer(
-            std::make_shared<NServer::TServerConfig>(
-                std::move(serverConfigProto)),
+            std::make_shared<NServer::TServerConfig>(serverConfigProto),
             Logging,
             StatsRegistry->GetRequestStats(),
             ProfileLog,
             LocalService);
+
+        STORAGE_INFO("initialized LocalServiceServer: %s",
+            serverConfigProto.Utf8DebugString().Quote().c_str());
     }
 
     InitLWTrace();
@@ -281,16 +283,18 @@ void TBootstrapVhost::InitEndpoints()
     const auto* localServiceConfig =
         Configs->VhostServiceConfig->GetLocalServiceConfig();
     if (localServiceConfig) {
-        ThreadPool =
-            CreateThreadPool("svc", localServiceConfig->GetNumThreads());
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
+        ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
         LocalService = CreateLocalFileStore(
             std::move(serviceConfig),
             Timer,
             Scheduler,
             Logging,
             ThreadPool);
+
+        STORAGE_INFO("initialized LocalService: %s",
+            localServiceConfig->Utf8DebugString().Quote().c_str());
     }
 
     auto endpoints = std::make_shared<TFileStoreEndpoints>(
