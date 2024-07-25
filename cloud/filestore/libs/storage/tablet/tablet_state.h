@@ -116,6 +116,12 @@ struct TCleanupInfo
     }
 };
 
+struct TFlushBytesStats
+{
+    ui64 TotalBytesFlushed = 0;
+    bool ChunkCompleted = false;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
@@ -723,8 +729,9 @@ public:
     TFlushBytesCleanupInfo StartFlushBytes(
         TVector<TBytes>* bytes,
         TVector<TBytes>* deletionMarkers);
-    ui64 FinishFlushBytes(
+    TFlushBytesStats FinishFlushBytes(
         TIndexTabletDatabase& db,
+        ui64 itemLimit,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 

@@ -223,6 +223,7 @@ public:
     bool GetAllowFileStoreForceDestroy() const;
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
+    ui64 GetTrimBytesItemCount() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
