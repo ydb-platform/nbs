@@ -51,7 +51,7 @@ void PrepareCompoundIO(
         bio->first_sector,
         bio->total_sectors);
 
-    auto req = std::make_unique<TAioCompoundRequest>(n, io, totalBytes, now);
+    auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
 
     if (bio->type == VHD_BDEV_WRITE) {
         // TODO(drbasic): encryption
