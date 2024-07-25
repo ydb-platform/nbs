@@ -130,20 +130,27 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         auto visitTop = [&] () {
             visitedBytes.clear();
             visitedDeletionMarkers.clear();
-            freshBytes.VisitTop([&] (const TBytes& bytes, bool isDel) {
-                if (isDel) {
-                    visitedDeletionMarkers.push_back(bytes);
-                } else {
-                    visitedBytes.push_back(bytes);
+            constexpr ui64 itemLimit = 100;
+            freshBytes.VisitTop(
+                itemLimit,
+                [&] (const TBytes& bytes, bool isDel) {
+                    if (isDel) {
+                        visitedDeletionMarkers.push_back(bytes);
+                    } else {
+                        visitedBytes.push_back(bytes);
+                    }
                 }
-            });
+            );
         };
 
         visitTop();
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        freshBytes.FinishCleanup(info.ChunkId);
+        UNIT_ASSERT(freshBytes.FinishCleanup(
+            info.ChunkId,
+            visitedBytes.size(),
+            visitedDeletionMarkers.size()));
 
         {
             TFreshBytesVisitor visitor;
@@ -178,7 +185,10 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         COMPARE_BYTES(bytes, visitedBytes);
         COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
-        freshBytes.FinishCleanup(info.ChunkId);
+        UNIT_ASSERT(freshBytes.FinishCleanup(
+            info.ChunkId,
+            visitedBytes.size(),
+            visitedDeletionMarkers.size()));
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
@@ -229,6 +239,132 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
 
         for (auto& entry: entries) {
             UNIT_ASSERT_VALUES_EQUAL(entry.Length, dataSize);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldObeyLimitProvidedForVisitTop)
+    {
+        TFreshBytes freshBytes(TDefaultAllocator::Instance());
+
+        freshBytes.AddBytes(1, 100, "aAa", 10);
+        freshBytes.AddBytes(1, 101, "bBbB", 11);
+        freshBytes.AddBytes(1, 50, "cCc", 12);
+        freshBytes.AddBytes(1, 50, "dDd", 13);
+        freshBytes.AddBytes(2, 100, "eEeEe", 14);
+        freshBytes.AddBytes(2, 1000, "fFf", 15);
+        freshBytes.AddDeletionMarker(2, 100, 3, 16);
+
+        TVector<TBytes> bytes;
+        TVector<TBytes> deletionMarkers;
+        auto info = freshBytes.StartCleanup(17, &bytes, &deletionMarkers);
+
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {1, 100, 3, 10, InvalidCommitId},
+                {1, 101, 4, 11, InvalidCommitId},
+                {1, 50, 3, 12, InvalidCommitId},
+                {1, 50, 3, 13, InvalidCommitId},
+                {2, 100, 5, 14, InvalidCommitId},
+                {2, 1000, 3, 15, InvalidCommitId},
+            }), bytes);
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {2, 100, 3, 16, InvalidCommitId},
+            }), deletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(17, info.ClosingCommitId);
+
+        TVector<TBytes> visitedBytes;
+        TVector<TBytes> visitedDeletionMarkers;
+
+        constexpr ui64 itemsLimit = 2;
+
+        auto visitTop = [&] () {
+            visitedBytes.clear();
+            visitedDeletionMarkers.clear();
+            freshBytes.VisitTop(
+                itemsLimit,
+                [&] (const TBytes& bytes, bool isDel) {
+                    if (isDel) {
+                        visitedDeletionMarkers.push_back(bytes);
+                    } else {
+                        visitedBytes.push_back(bytes);
+                    }
+                }
+            );
+        };
+
+        {
+            TVector<TBytes> expectedBytes {
+                {1, 100, 3, 10, InvalidCommitId},
+                {1, 101, 4, 11, InvalidCommitId},
+            };
+            TVector<TBytes> expectedDeletionMarkers;
+
+            visitTop();
+            COMPARE_BYTES(expectedBytes, visitedBytes);
+            COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
+
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+        }
+
+        {
+            TVector<TBytes> expectedBytes {
+                {1, 50, 3, 12, InvalidCommitId},
+                {1, 50, 3, 13, InvalidCommitId},
+            };
+            TVector<TBytes> expectedDeletionMarkers;
+
+            visitTop();
+            COMPARE_BYTES(expectedBytes, visitedBytes);
+            COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
+
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+        }
+
+        {
+            TVector<TBytes> expectedBytes {
+                {2, 100, 5, 14, InvalidCommitId},
+                {2, 1000, 3, 15, InvalidCommitId},
+            };
+            TVector<TBytes> expectedDeletionMarkers;
+
+            visitTop();
+            COMPARE_BYTES(expectedBytes, visitedBytes);
+            COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
+
+            UNIT_ASSERT(!freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+        }
+
+        {
+            TVector<TBytes> expectedBytes;
+            TVector<TBytes> expectedDeletionMarkers {
+                {2, 100, 3, 16, InvalidCommitId},
+            };
+
+            visitTop();
+            COMPARE_BYTES(expectedBytes, visitedBytes);
+            COMPARE_BYTES(expectedDeletionMarkers, visitedDeletionMarkers);
+
+            UNIT_ASSERT(freshBytes.FinishCleanup(
+                info.ChunkId,
+                visitedBytes.size(),
+                visitedDeletionMarkers.size()));
+        }
+
+        {
+            TFreshBytesVisitor visitor;
+            freshBytes.FindBytes(visitor, 1, TByteRange(0, 1000, 4_KB), 14);
+            COMPARE_BYTES(TVector<TBytes>(), visitor.Bytes);
+            UNIT_ASSERT_VALUES_EQUAL(TString(), visitor.Data);
         }
     }
 
