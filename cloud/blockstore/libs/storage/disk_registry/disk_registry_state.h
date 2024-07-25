@@ -493,10 +493,22 @@ public:
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
-    TString MarkDeviceAsClean(
+
+    /// Mark selected device as clean and remove it
+    /// from lists of suspended/dirty/pending cleanup devices
+    /// @return disk id where selected device was allocated
+    TDiskId MarkDeviceAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDeviceId& uuid);
+
+    /// Mark selected devices as clean and remove them
+    /// from lists of suspended/dirty/pending cleanup devices
+    /// @return vector of disk ids where selected devices were allocated
+    TVector<TDiskId> MarkDevicesAsClean(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TVector<TDeviceId>& uuids);
     bool MarkDeviceAsDirty(TDiskRegistryDatabase& db, const TDeviceId& uuid);
 
     NProto::TError CreatePlacementGroup(
@@ -1123,10 +1135,21 @@ private:
         TDiskRegistryDatabase& db,
         const TString& diskId);
 
+    /// Try to update configuration of selected device and its agent
+    /// in the disk registry database
+    /// @return true if the device updates successfully; otherwise, return false
     bool TryUpdateDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDeviceId& uuid);
+
+    /// Try to update configuration of selected devices and their agents
+    /// in the disk registry database
+    /// @return List of updated devices
+    TVector<TDeviceId> TryUpdateDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TVector<TDeviceId>& uuids);
 
     TDeviceList::TAllocationQuery MakeMigrationQuery(
         const TDiskId& sourceDiskId,

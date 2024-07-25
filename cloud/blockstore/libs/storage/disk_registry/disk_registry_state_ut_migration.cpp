@@ -66,14 +66,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk("foo", { "uuid-1.1", "uuid-1.2" }),    // rack-1
-                Disk("bar", { "uuid-2.1" })                 // rack-2
-            })
-            .WithDirtyDevices({"uuid-4.1", "uuid-4.2", "uuid-4.3"})
-            .Build();
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(agents)
+                .WithDisks({
+                    Disk("foo", {"uuid-1.1", "uuid-1.2"}),   // rack-1
+                    Disk("bar", {"uuid-2.1"})                // rack-2
+                })
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-4.1", {}},
+                     TDirtyDevice{"uuid-4.2", {}},
+                     TDirtyDevice{"uuid-4.3", {}}})
+                .Build();
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
