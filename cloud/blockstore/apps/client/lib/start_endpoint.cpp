@@ -111,6 +111,7 @@ private:
     TString EncryptionKeyHash;
     bool Persistent = false;
     TString NbdDeviceFile;
+    THashSet<TString> CGroups;
 
 public:
     TStartEndpointCommand(IBlockStorePtr client)
@@ -186,6 +187,10 @@ public:
         Opts.AddLongOption("nbd-device", "nbd device file which nbd-client connected to")
             .RequiredArgument("STR")
             .StoreResult(&NbdDeviceFile);
+
+        Opts.AddLongOption("cgroup", "cgroup to place into")
+            .RequiredArgument("STR")
+            .InsertTo(&CGroups);
     }
 
 protected:
@@ -232,6 +237,7 @@ protected:
                     EncryptionKeyHash));
             request->SetPersistent(Persistent);
             request->SetNbdDeviceFile(NbdDeviceFile);
+            request->MutableClientCGroups()->Assign(CGroups.begin(), CGroups.end());
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");
