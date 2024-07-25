@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
+#include <cloud/storage/core/protos/ydb_config_dispatcher_settings.pb.h>
 
 #include <contrib/ydb/core/config/init/init.h>
 
@@ -11,7 +14,7 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<NKikimr::NConfig::TAllowList> ParseConfigDispatcherItems(
-    const TVector<TString>& items);
+void SetupConfigDispatcher(
+    const NProto::TConfigDispatcherSettings& settings);
 
 }   // namespace NCloud::NStorage

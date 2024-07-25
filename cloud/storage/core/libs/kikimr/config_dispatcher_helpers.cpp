@@ -8,23 +8,29 @@ using namespace NKikimr::NConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<TAllowList> ParseConfigDispatcherItems(
-    const TVector<TString>& items)
+TResultOrError<std::set<ui32>> SetupConfigDispatcher(
+    const NProto::TConfigDispatcherSettings& settings)
 {
-    TAllowList result;
-    for (const auto& item: items) {
+    const auto& names = settings.HasAllowList()
+        ? settings.GetAllowList().GetNames()
+        : settings.GetDenyList().GetNames();
+
+    std::set<ui32>
+
+    for (const auto& name: names) {
         NKikimrConsole::TConfigItem::EKind value;
-        if (!NKikimrConsole::TConfigItem::EKind_Parse(item, &value)) {
+        if (!NKikimrConsole::TConfigItem::EKind_Parse(name, &value)) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "Failed to parse "
-                    << item
+                    << name
                     << " as NKikimrConsole::TConfigItem::EKind value");
         }
         result.Items.emplace(value);
     }
-    return result;
+
+    return MakeError(S_OK);
 }
 
 }   // namespace NCloud::NStorage
