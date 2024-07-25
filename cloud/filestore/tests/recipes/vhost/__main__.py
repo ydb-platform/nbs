@@ -63,7 +63,7 @@ def start(argv):
     if service_type == "local":
         service_endpoint.ClientConfig.Host = "localhost"
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
-    elif service_type == "local-no-server":
+    elif service_type == "local-noserver":
         config.VhostServiceConfig.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
 
         fs_root_path = common.ram_drive_path()
@@ -85,7 +85,7 @@ def start(argv):
     vhost_configurator = NfsVhostConfigGenerator(
         binary_path=vhost_binary_path,
         app_config=config,
-        service_type="local" if service_type == "local-no-server" else service_type,
+        service_type="local" if service_type == "local-noserver" else service_type,
         verbose=args.verbose,
         kikimr_port=kikimr_port,
         domain=domain,
@@ -108,7 +108,7 @@ def start(argv):
             set_env("QEMU_SET_READY_FLAG", restart_flag)
 
     set_env("NFS_VHOST_PORT", str(vhost_configurator.port))
-    if service_type == "local-no-server":
+    if service_type == "local-noserver":
         set_env("NFS_SERVER_PORT", str(vhost_configurator.local_service_port))
 
 

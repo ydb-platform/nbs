@@ -132,6 +132,7 @@ public:
 
             case NDaemon::EServiceKind::Kikimr: {
                 fileStore = CreateKikimrFileStore(ActorSystem);
+                break;
             }
 
             default: {

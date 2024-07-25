@@ -10,7 +10,7 @@ IF (VHOST_RESTART_INTERVAL)
 ENDIF()
 
 SET(RECIPE_ARGS
-    --service local-no-server
+    --service local-noserver
     --restart-interval $VHOST_RESTART_INTERVAL
     --restart-flag $VHOST_RESTART_FLAG
 )
