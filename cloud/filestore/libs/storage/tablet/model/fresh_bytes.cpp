@@ -1,6 +1,6 @@
 #include "fresh_bytes.h"
+#include "verify.h"
 
-#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -45,14 +45,14 @@ void TFreshBytes::DeleteBytes(
 
         if (lo->second.Offset < offset) {
             // cutting lo from the right side
-            Y_DEBUG_ABORT_UNLESS(lo->second.CommitId < commitId);
+            TABLET_VERIFY(lo->second.CommitId < commitId);
             auto& loRef = c.Refs[{nodeId, offset}];
             loRef = lo->second;
             loRef.Buf = loRef.Buf.substr(0, offset - loRef.Offset);
 
             if (lo->first.End <= end) {
                 // blockRange is not contained strictly inside lo
-                Y_DEBUG_ABORT_UNLESS(lo != hi);
+                TABLET_VERIFY(lo != hi);
                 c.Refs.erase(lo++);
             }
         }
@@ -63,7 +63,7 @@ void TFreshBytes::DeleteBytes(
         {
             // cutting hi from the left side
             // hi might be equal to lo - it's not a problem
-            Y_DEBUG_ABORT_UNLESS(hi->second.CommitId < commitId);
+            TABLET_VERIFY(hi->second.CommitId < commitId);
             const auto shift = end - hi->second.Offset;
             hi->second.Buf = hi->second.Buf.substr(
                 shift,
@@ -89,7 +89,7 @@ void TFreshBytes::AddBytes(
     if (c.FirstCommitId == InvalidCommitId) {
         c.FirstCommitId = commitId;
     } else {
-        Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
+        TABLET_VERIFY(commitId >= c.FirstCommitId);
     }
 
     TByteVector buffer(Reserve(data.size()), Allocator);
@@ -117,7 +117,7 @@ void TFreshBytes::AddDeletionMarker(
 {
     auto& c = Chunks.back();
     if (c.FirstCommitId != InvalidCommitId) {
-        Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
+        TABLET_VERIFY(commitId >= c.FirstCommitId);
     }
 
     c.TotalDeletedBytes += len;
@@ -133,15 +133,15 @@ void TFreshBytes::AddDeletionMarker(
 
 void TFreshBytes::Barrier(ui64 commitId)
 {
-    Y_ABORT_UNLESS(!Chunks.empty());
+    TABLET_VERIFY(!Chunks.empty());
     auto& c = Chunks.back();
 
     if (!c.Data.empty() || !c.DeletionMarkers.empty()) {
         if (!c.Data.empty()) {
-            Y_ABORT_UNLESS(c.Data.back().Descriptor.MinCommitId <= commitId);
+            TABLET_VERIFY(c.Data.back().Descriptor.MinCommitId <= commitId);
         }
         if (!c.DeletionMarkers.empty()) {
-            Y_ABORT_UNLESS(c.DeletionMarkers.back().MinCommitId <= commitId);
+            TABLET_VERIFY(c.DeletionMarkers.back().MinCommitId <= commitId);
         }
         Chunks.back().ClosingCommitId = commitId;
         Chunks.emplace_back(Allocator);
@@ -199,8 +199,8 @@ bool TFreshBytes::FinishCleanup(
     ui64 dataItemCount,
     ui64 deletionMarkerCount)
 {
-    Y_ABORT_UNLESS(Chunks.size() > 1);
-    Y_ABORT_UNLESS(Chunks.front().Id == chunkId);
+    TABLET_VERIFY(Chunks.size() > 1);
+    TABLET_VERIFY(Chunks.front().Id == chunkId);
 
     auto& chunk = Chunks.front();
 
@@ -213,7 +213,7 @@ bool TFreshBytes::FinishCleanup(
 
     const auto check =
         dataItemCount <= dataSize && deletionMarkerCount <= deletionSize;
-    STORAGE_VERIFY(check, TWellKnownEntityTypes::FILESYSTEM, chunkId);
+    TABLET_VERIFY(check);
 
     chunk.Data.erase(
         chunk.Data.begin(),

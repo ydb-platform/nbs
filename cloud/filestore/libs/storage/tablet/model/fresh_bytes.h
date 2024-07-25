@@ -78,6 +78,7 @@ private:
     IAllocator* Allocator;
     TDeque<TChunk, TStlAllocator> Chunks;
     ui64 LastChunkId = 0;
+    TString LogTag;
 
 public:
     TFreshBytes(IAllocator* allocator);
@@ -92,6 +93,11 @@ public:
             deletedBytes += c.TotalDeletedBytes;
         }
         return std::make_pair(bytes, deletedBytes);
+    }
+
+    void UpdateLogTag(TString logTag)
+    {
+        LogTag = std::move(logTag);
     }
 
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);
