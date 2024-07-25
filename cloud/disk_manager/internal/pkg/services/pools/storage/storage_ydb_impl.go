@@ -3032,6 +3032,7 @@ func (s *storageYDB) getNonRetiringBaseDisks(
 		pragma TablePathPrefix = "%v";
 		declare $image_id as Utf8;
 		declare $zone_id as Utf8;
+		declare $status as Int64;
 
 		select *
 		from base_disks
@@ -3042,7 +3043,7 @@ func (s *storageYDB) getNonRetiringBaseDisks(
 	`, s.tablesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-		persistence.ValueParam("$status", persistence.Uint32Value(uint32(baseDiskStatusReady))),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(baseDiskStatusReady))),
 	)
 	if err != nil {
 		return nil, err
