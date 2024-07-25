@@ -192,7 +192,7 @@ NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed() const
         );
         if (!allowed) {
             return MakeError(
-                E_REJECTED,
+                E_ARGUMENT,
                 TStringBuilder() << "DiskId: " << DiskId
                 << ", only disks with specific id prefixes are allowed to be"
                 << " deleted");
