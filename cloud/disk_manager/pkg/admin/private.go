@@ -19,6 +19,7 @@ type rebaseOverlayDisk struct {
 	zoneID           string
 	diskID           string
 	targetBaseDiskID string
+	async            bool
 }
 
 func (c *rebaseOverlayDisk) run() error {
@@ -45,7 +46,11 @@ func (c *rebaseOverlayDisk) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -85,6 +90,13 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 		log.Fatalf("Error setting flag target-base-disk-id as required: %v", err)
 	}
 
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
 	return cmd
 }
 
@@ -95,6 +107,7 @@ type retireBaseDisk struct {
 	baseDiskID    string
 	srcDiskZoneID string
 	srcDiskID     string
+	async         bool
 }
 
 func (c *retireBaseDisk) run() error {
@@ -121,7 +134,11 @@ func (c *retireBaseDisk) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -154,6 +171,13 @@ func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	)
 	cmd.Flags().StringVar(&c.srcDiskID, "src-disk-id", "", "id of source disk")
 
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
 	return cmd
 }
 
@@ -164,6 +188,7 @@ type retireBaseDisks struct {
 	imageID          string
 	zoneID           string
 	useBaseDiskAsSrc bool
+	async            bool
 }
 
 func (c *retireBaseDisks) run() error {
@@ -188,7 +213,11 @@ func (c *retireBaseDisks) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -228,6 +257,13 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 		"enables feature that uses base disk as src when doing retire",
 	)
 
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
 	return cmd
 }
 
@@ -235,6 +271,7 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 
 type optimizeBaseDisks struct {
 	config *client_config.ClientConfig
+	async  bool
 }
 
 func (c *optimizeBaseDisks) run() error {
@@ -253,7 +290,11 @@ func (c *optimizeBaseDisks) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newOptimizeBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -267,6 +308,13 @@ func newOptimizeBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command 
 			return c.run()
 		},
 	}
+
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
 
 	return cmd
 }
@@ -305,7 +353,7 @@ func (c *configurePool) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newConfigurePoolCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -390,7 +438,7 @@ func (c *deletePool) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return nil
+	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
 func newDeletePoolCmd(config *client_config.ClientConfig) *cobra.Command {
