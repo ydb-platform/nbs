@@ -49,8 +49,8 @@ DISK_SIZE=$DISK_SIZE
 ITERATIONS=$ITERATIONS
 "
 
-read -p "Start execution? yes or no: " response
-if [ "$response" != "yes" ]; then
+read -p "WARNING $DISK will be erased. Write $DISK to approve: " response
+if [ "$response" != "$DISK" ]; then
     echo "Execution aborted"
     exit 1
 fi
