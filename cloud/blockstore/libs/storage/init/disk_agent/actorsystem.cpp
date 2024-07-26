@@ -140,9 +140,9 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             daArgs));
 
-        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+        if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
             SetupConfigDispatcher(
-                sArgs.StorageConfig->GetYdbConfigDispatcherSettings(),
+                daArgs.StorageConfig->GetYdbConfigDispatcherSettings(),
                 &runConfig.ConfigsDispatcherInitInfo);
         }
     };
