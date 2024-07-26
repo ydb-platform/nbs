@@ -235,6 +235,7 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
+    NCloud::NProto::TYdbConfigDispatcherSettings GetYdbConfigDispatcherSettings() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

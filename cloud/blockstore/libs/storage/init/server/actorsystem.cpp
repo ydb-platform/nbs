@@ -506,12 +506,10 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.EndpointEventHandler,
             sArgs.IsDiskRegistrySpareNode));
 
-        auto result = ParseConfigDispatcherItems(
-            sArgs.StorageConfig->GetConfigDispatcherTrackedConfigs());
-
-        if (!HasError(result) && !result.GetResult().Items.empty()) {
-            auto& rules = runConfig.ConfigsDispatcherInitInfo.ItemsServeRules;
-            rules.emplace<NKikimr::NConfig::TAllowList>(result.ExtractResult());
+        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                sArgs.StorageConfig->GetYdbConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
         }
     };
 

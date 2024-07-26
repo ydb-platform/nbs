@@ -207,6 +207,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
     xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+    xxx(YdbConfigDispatcherSettings,                                           \
+        NCloud::NProto::TYdbConfigDispatcherSettings,                          \
+        {}                                                                    )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -239,6 +242,11 @@ template <>
 bool IsEmpty(const TAliases& value)
 {
     return value.GetEntries().empty();
+}
+
+bool IsEmpty(const NCloud::NProto::TYdbConfigDispatcherSettings& value)
+{
+    return value.HasAllowList() || value.HasDenyList();
 }
 
 template <typename TTarget, typename TSource>

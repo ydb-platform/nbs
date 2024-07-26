@@ -3,7 +3,11 @@ syntax = "proto2";
 package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+<<<<<<< HEAD
 import "cloud/storage/core/protos/certificate.proto";
+=======
+import "cloud/storage/core/protos/ydb_config_dispatcher_settings.proto";
+>>>>>>> update
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
@@ -1028,5 +1032,6 @@ message TStorageServiceConfig
     // Node type
     optional string NodeType = 384;
 
-    repeated string ConfigDispatcherTrackedConfigs = 377;
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 377;
 }

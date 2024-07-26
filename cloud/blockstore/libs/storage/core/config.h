@@ -605,7 +605,7 @@ public:
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
 
-    TVector<TString> GetConfigDispatcherTrackedConfigs() const;
+    NCloud::NProto::TYdbConfigDispatcherSettings GetYdbConfigDispatcherSettings() const;
 };
 
 ui64 GetAllocationUnit(

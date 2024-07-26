@@ -3,7 +3,11 @@ syntax = "proto2";
 package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+<<<<<<< HEAD
 import "cloud/storage/core/protos/certificate.proto";
+=======
+import "cloud/storage/core/protos/ydb_config_dispatcher_settings.proto";
+>>>>>>> update
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
@@ -402,4 +406,6 @@ message TStorageConfig
     // uncontrollable behaviour change for production systems. TODO: gradually
     // enable this flag everywhere and make this behaviour the new default.
     optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 391;
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 360;
 }

@@ -15,6 +15,7 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 void SetupConfigDispatcher(
-    const NProto::TConfigDispatcherSettings& settings);
+    const NProto::TYdbConfigDispatcherSettings& settings,
+    NKikimr::NConfig::TConfigsDispatcherInitInfo* config);
 
 }   // namespace NCloud::NStorage

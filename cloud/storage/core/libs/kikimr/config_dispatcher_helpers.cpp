@@ -8,29 +8,35 @@ using namespace NKikimr::NConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<std::set<ui32>> SetupConfigDispatcher(
-    const NProto::TConfigDispatcherSettings& settings)
+void SetupConfigDispatcher(
+    const NProto::TYdbConfigDispatcherSettings& settings,
+    NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
     const auto& names = settings.HasAllowList()
         ? settings.GetAllowList().GetNames()
         : settings.GetDenyList().GetNames();
 
-    std::set<ui32>
+    std::set<ui32> items;
 
     for (const auto& name: names) {
-        NKikimrConsole::TConfigItem::EKind value;
+        NKikimrConsole::TConfigItem::EKind value {};
         if (!NKikimrConsole::TConfigItem::EKind_Parse(name, &value)) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "Failed to parse "
-                    << name
-                    << " as NKikimrConsole::TConfigItem::EKind value");
+            ReportConfigDispatcherItemParseError(TStringBuilder()
+                << "Failed to parse "
+                << name
+                << " as NKikimrConsole::TConfigItem::EKind value");
+            return;
         }
-        result.Items.emplace(value);
+        items.emplace(value);
     }
 
-    return MakeError(S_OK);
+    auto& rules = config->ItemsServeRules;
+
+    if (settings.HasAllowList()) {
+        rules.emplace<TAllowList>(items);
+    } else {
+        rules.emplace<TDenyList>(items);
+    }
 }
 
 }   // namespace NCloud::NStorage
