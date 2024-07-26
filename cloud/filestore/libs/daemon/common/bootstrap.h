@@ -44,7 +44,8 @@ namespace NCloud::NFileStore::NDaemon {
 
 using IUserCounterSupplier = NCloud::NStorage::NUserStats::IUserCounterSupplier;
 
-class TBootstrapCommon {
+class TBootstrapCommon
+{
 private:
     const TString MetricsComponent;
 
