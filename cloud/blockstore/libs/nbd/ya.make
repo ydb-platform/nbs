@@ -1,5 +1,10 @@
 LIBRARY()
 
+LICENSE_RESTRICTION_EXCEPTIONS(
+    contrib/restricted/libnl/lib/nl-3
+    contrib/restricted/libnl/lib/nl-genl-3
+)
+
 SRCS(
     binary_reader.cpp
     binary_writer.cpp
