@@ -15,6 +15,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/generic/connector/api/common
     contrib/ydb/library/yql/providers/generic/connector/api/service
+    ydb/library/yql/providers/generic/connector/api/service/protos
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/utils
 )

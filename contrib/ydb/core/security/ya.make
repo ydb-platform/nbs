@@ -35,11 +35,12 @@ PEERDIR(
     library/cpp/openssl/io
     contrib/ydb/core/base
     contrib/ydb/core/protos
-    contrib/ydb/library/ycloud/api
-    contrib/ydb/library/ycloud/impl
     contrib/ydb/library/aclib
     contrib/ydb/library/aclib/protos
     contrib/ydb/library/login
+    contrib/ydb/library/ncloud/impl
+    contrib/ydb/library/ycloud/api
+    contrib/ydb/library/ycloud/impl
     contrib/ydb/library/security
 )
 
