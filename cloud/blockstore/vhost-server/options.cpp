@@ -181,4 +181,17 @@ void TOptions::Parse(int argc, char** argv)
     }
 }
 
+NProto::TEncryptionSpec TOptions::GetEncryptionSpec() const
+{
+    NProto::TEncryptionSpec result;
+    result.SetMode(EncryptionMode);
+    if (EncryptionKeyPath) {
+        result.MutableKeyPath()->SetFilePath(EncryptionKeyPath);
+    }
+    if (EncryptionKeyringId) {
+        result.MutableKeyPath()->SetKeyringId(EncryptionKeyringId);
+    }
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NVHostServer

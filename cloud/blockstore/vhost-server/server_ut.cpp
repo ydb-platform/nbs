@@ -16,7 +16,7 @@
 
 #include <span>
 
-using namespace NCloud::NBlockStore::NVHostServer;
+namespace NCloud::NBlockStore::NVHostServer {
 
 using NVHost::TMonotonicBufferResource;
 
@@ -59,7 +59,11 @@ struct TFixture
 public:
     void StartServer()
     {
-        Server = CreateServer(Logging, CreateAioBackend(Logging));
+        Server = CreateServer(
+            Logging,
+            CreateAioBackend(
+                NThreading::MakeFuture<IEncryptorPtr>(nullptr),
+                Logging));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -85,7 +89,11 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        Server = CreateServer(Logging, CreateAioBackend(Logging));
+        Server = CreateServer(
+            Logging,
+            CreateAioBackend(
+                NThreading::MakeFuture<IEncryptorPtr>(nullptr),
+                Logging));
 
         // H - header
         // D - device
@@ -458,3 +466,5 @@ Y_UNIT_TEST_SUITE(TServerTest)
         }
     }
 }
+
+}   // namespace NCloud::NBlockStore::NVHostServer
