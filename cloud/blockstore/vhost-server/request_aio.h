@@ -63,8 +63,10 @@ struct TAioRequest
     bool BounceBuf = false;
     iovec Data[ /* Bio->sglist.nbuffers */ ];
 
-    static TAioRequestHolder
-    CreateNew(size_t bufferCount, vhd_io* io, TCpuCycles submitTs);
+    static TAioRequestHolder CreateNew(
+        size_t bufferCount,
+        vhd_io* io,
+        TCpuCycles submitTs);
     static TAioRequestHolder FromIocb(iocb* cb);
 
 private:
@@ -79,6 +81,7 @@ struct TAioSubRequest: public iocb
     static TAioSubRequestHolder FromIocb(iocb* cb);
 
     [[nodiscard]] TAioCompoundRequest* GetParentRequest() const;
+    [[nodiscard]] TAioCompoundRequestHolder TakeParentRequest();
 
 private:
     TAioSubRequest() = default;;
@@ -104,8 +107,6 @@ struct TAioCompoundRequest
         vhd_io* io,
         size_t bufferSize,
         TCpuCycles submitTs);
-
-    static TAioCompoundRequestHolder FromIocb(iocb* cb);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

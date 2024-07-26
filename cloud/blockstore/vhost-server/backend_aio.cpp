@@ -63,7 +63,7 @@ void CompleteCompoundRequest(
     if (req->Inflight.fetch_sub(1) == 1) {
         // This is the last subrequest. Take ownership of the parent request and
         // release it when leave the scope.
-        auto holder = TAioCompoundRequest::FromIocb(sub.get());
+        auto holder = sub->TakeParentRequest();
 
         auto* bio = vhd_get_bdev_io(req->Io);
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;

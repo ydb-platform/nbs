@@ -24,7 +24,7 @@ void PrepareCompoundIO(
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
     i64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    const auto *it = std::lower_bound(
+    auto it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
@@ -32,7 +32,7 @@ void PrepareCompoundIO(
             return device.EndOffset <= offset;
         });
 
-    const auto *end = std::lower_bound(
+    const auto end = std::lower_bound(
         it,
         devices.end(),
         logicalOffset + totalBytes,
@@ -264,6 +264,15 @@ TAioCompoundRequest* TAioSubRequest::GetParentRequest() const
     return static_cast<TAioCompoundRequest*>(data);
 }
 
+TAioCompoundRequestHolder TAioSubRequest::TakeParentRequest()
+{
+    Y_ABORT_UNLESS(data != nullptr);
+    auto result =
+        TAioCompoundRequestHolder{static_cast<TAioCompoundRequest*>(data)};
+    data = nullptr;
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioCompoundRequest::TAioCompoundRequest(
@@ -291,14 +300,6 @@ std::unique_ptr<TAioCompoundRequest> TAioCompoundRequest::CreateNew(
         io,
         bufferSize,
         submitTs);
-}
-
-// static
-TAioCompoundRequestHolder TAioCompoundRequest::FromIocb(iocb* cb)
-{
-    Y_ABORT_UNLESS(cb->data != nullptr);
-    return TAioCompoundRequestHolder{
-        static_cast<TAioCompoundRequest*>(cb->data)};
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer
