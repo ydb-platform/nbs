@@ -30,7 +30,8 @@ struct TSessionHandle
     {}
 };
 
-using TSessionHandleList = TIntrusiveListWithAutoDelete<TSessionHandle, TDelete>;
+using TSessionHandleList =
+    TIntrusiveListWithAutoDelete<TSessionHandle, TDelete>;
 using TSessionHandleMap = THashMap<ui64, TSessionHandle*>;
 
 using TNodeRefsByHandle = THashMap<ui64, ui64>;
@@ -101,7 +102,7 @@ private:
     TDupCacheEntryMap DupCache;
 
 public:
-    TSession(const NProto::TSession& proto)
+    explicit TSession(const NProto::TSession& proto)
         : NProto::TSession(proto)
         , SubSessions(GetMaxSeqNo(), GetMaxRwSeqNo())
     {}
@@ -122,7 +123,10 @@ public:
         SetMaxRwSeqNo(SubSessions.GetMaxSeenRwSeqNo());
     }
 
-    NActors::TActorId UpdateSubSession(ui64 seqNo, bool readOnly, const NActors::TActorId& owner)
+    NActors::TActorId UpdateSubSession(
+        ui64 seqNo,
+        bool readOnly,
+        const NActors::TActorId& owner)
     {
         auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner);
         UpdateSeqNo();
@@ -230,7 +234,6 @@ public:
     }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TSessionHistoryEntry
@@ -243,7 +246,7 @@ struct TSessionHistoryEntry
         DELETE = 2
     };
 
-    TSessionHistoryEntry(const NProto::TSessionHistoryEntry& proto)
+    explicit TSessionHistoryEntry(const NProto::TSessionHistoryEntry& proto)
         : NProto::TSessionHistoryEntry(proto)
     {}
 
@@ -253,9 +256,13 @@ struct TSessionHistoryEntry
      * current system time. Type of an entry is set from `type`. EntryId (key)
      * is set as a first unused integer.
      */
-    TSessionHistoryEntry(const NProto::TSession& proto, EUpdateType type)
+
+    TSessionHistoryEntry(
+        const NProto::TSession& proto,
+        ui64 entryId,
+        EUpdateType type)
     {
-        SetEntryId(GetMaxEntryId());
+        SetEntryId(entryId);
         SetClientId(proto.GetClientId());
         SetSessionId(proto.GetSessionId());
         SetOriginFqdn(proto.GetOriginFqdn());
@@ -266,21 +273,6 @@ struct TSessionHistoryEntry
     TString GetEntryTypeString() const
     {
         return ToString(static_cast<EUpdateType>(GetType()));
-    }
-
-private:
-    // Incrementing counter for producing unique `EntryId`s
-    inline static ui64 UnusedSessionId = 1;
-
-    static ui64 GetMaxEntryId()
-    {
-        return UnusedSessionId++;
-    }
-
-public:
-    static void UpdateMaxEntryId(ui64 value)
-    {
-        UnusedSessionId = Max(UnusedSessionId, value + 1);
     }
 };
 

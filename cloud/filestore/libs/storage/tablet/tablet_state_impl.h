@@ -41,6 +41,7 @@ struct TIndexTabletState::TImpl
     TSessionHandleMap HandleById;
     TSessionLockMap LockById;
     TSessionLockMultiMap LocksByHandle;
+    ui64 MaxSessionHistoryEntryId = 1;
 
     TWriteRequestList WriteBatch;
 
