@@ -114,8 +114,9 @@ void TIndexTabletState::LoadSessions(
     }
 
     for (const auto& entry: sessionsHistory) {
-        Impl->SessionHistoryList.push_back(entry);
-        TSessionHistoryEntry::UpdateMaxEntryId(entry.GetEntryId());
+        Impl->SessionHistoryList.emplace_back(entry);
+        Impl->MaxSessionHistoryEntryId =
+            Max(Impl->MaxSessionHistoryEntryId, entry.GetEntryId());
     }
 }
 
@@ -148,7 +149,10 @@ TSession* TIndexTabletState::CreateSession(
     db.WriteSession(proto);
     AddSessionHistoryEntry(
         db,
-        TSessionHistoryEntry(proto, TSessionHistoryEntry::CREATE),
+        TSessionHistoryEntry(
+            proto,
+            ++Impl->MaxSessionHistoryEntryId,
+            TSessionHistoryEntry::CREATE),
         SessionHistoryEntryCount);
     IncrementUsedSessionsCount(db);
 
@@ -307,7 +311,10 @@ void TIndexTabletState::ResetSession(
         db.WriteSession(*session);
         AddSessionHistoryEntry(
             db,
-            TSessionHistoryEntry(*session, TSessionHistoryEntry::RESET),
+            TSessionHistoryEntry(
+                *session,
+                ++Impl->MaxSessionHistoryEntryId,
+                TSessionHistoryEntry::RESET),
             SessionHistoryEntryCount);
     }
 }
@@ -325,7 +332,10 @@ void TIndexTabletState::RemoveSession(
     db.DeleteSession(sessionId);
     AddSessionHistoryEntry(
         db,
-        TSessionHistoryEntry(*session, TSessionHistoryEntry::DELETE),
+        TSessionHistoryEntry(
+            *session,
+            ++Impl->MaxSessionHistoryEntryId,
+            TSessionHistoryEntry::DELETE),
         SessionHistoryEntryCount);
 
     DecrementUsedSessionsCount(db);
