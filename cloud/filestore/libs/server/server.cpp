@@ -706,9 +706,19 @@ private:
                 CallContext,
                 std::move(Request));
         } catch (const TServiceError& e) {
+            STORAGE_WARN(
+                TMethod::RequestName
+                << " #" << RequestId
+                << " request error: " << e);
+
             Response = MakeFuture(
                 ErrorResponse<TResponse>(e.GetCode(), TString(e.GetMessage())));
         } catch (...) {
+            STORAGE_ERROR(
+                TMethod::RequestName
+                << " #" << RequestId
+                << " unexpected error: " << CurrentExceptionMessage());
+
             Response = MakeFuture(
                 ErrorResponse<TResponse>(E_FAIL, CurrentExceptionMessage()));
         }

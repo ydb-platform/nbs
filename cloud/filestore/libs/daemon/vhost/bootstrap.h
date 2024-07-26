@@ -40,14 +40,17 @@ private:
     IEndpointListenerPtr EndpointListener;
     IEndpointStoragePtr EndpointStorage;
     IEndpointManagerPtr EndpointManager;
+    IFileStoreServicePtr LocalService;
+    ITaskQueuePtr ThreadPool;
 
     NServer::IServerPtr Server;
+    NServer::IServerPtr LocalServiceServer;
 
 public:
     TBootstrapVhost(
         std::shared_ptr<NKikimr::TModuleFactories> kikimrFactories,
         TVhostModuleFactoriesPtr vhostFactories);
-    ~TBootstrapVhost();
+    ~TBootstrapVhost() override;
 
 private:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
@@ -65,4 +68,4 @@ private:
     void RestoreKeyringEndpoints();
 };
 
-}   // namespace NCloud::NFileStore::NServer
+}   // namespace NCloud::NFileStore::NDaemon

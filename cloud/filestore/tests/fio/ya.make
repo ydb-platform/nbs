@@ -3,5 +3,6 @@ RECURSE_FOR_TESTS(
     mount-local-test
     qemu-kikimr-nemesis-test
     qemu-kikimr-test
+    qemu-local-noserver-test
     qemu-local-test
 )

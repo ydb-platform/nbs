@@ -335,7 +335,7 @@ void TLocalFileStore::Stop()
 NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     const NProto::TCreateFileStoreRequest& request)
 {
-    STORAGE_TRACE("CreateFileStore " << DumpMessage(request));
+    STORAGE_INFO("CreateFileStore " << DumpMessage(request));
 
     const auto& id = GetFileSystemId(request);
     if (!id) {
