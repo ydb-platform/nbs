@@ -8,7 +8,6 @@
 namespace NCloud::NFileStore::NDaemon {
 
 using namespace NCloud::NFileStore::NVhost;
-using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,8 +37,7 @@ void TConfigInitializerVhost::InitAppConfig()
         AppConfig.GetVhostServiceConfig());
 }
 
-void TConfigInitializerVhost::ApplyCustomCMSConfigs(
-    const NKikimrConfig::TAppConfig&)
+void TConfigInitializerVhost::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&)
 {
     // nothing to do
 }

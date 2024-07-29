@@ -154,24 +154,4 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetCertFileFromConfig(const TServerConfigPtr& serverConfig)
-{
-    const auto& certs = serverConfig->GetCerts();
-    if (certs.empty()) {
-        return {};
-    }
-    return certs.front().CertFile;
-}
-
-TString GetCertPrivateKeyFileFromConfig(const TServerConfigPtr& serverConfig)
-{
-    const auto& certs = serverConfig->GetCerts();
-    if (certs.empty()) {
-        return {};
-    }
-    return certs.front().CertPrivateKeyFile;
-}
-
 }   // namespace NCloud::NFileStore::NServer

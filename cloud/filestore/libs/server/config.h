@@ -64,9 +64,4 @@ public:
     void DumpHtml(IOutputStream& out) const;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetCertFileFromConfig(const TServerConfigPtr& serverConfig);
-TString GetCertPrivateKeyFileFromConfig(const TServerConfigPtr& serverConfig);
-
 }   // namespace NCloud::NFileStore::NServer

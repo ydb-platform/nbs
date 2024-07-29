@@ -7,8 +7,6 @@
 
 namespace NCloud::NFileStore::NDaemon {
 
-using namespace NCloud::NStorage;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerServer::TConfigInitializerServer(TOptionsServerPtr options)
@@ -34,8 +32,7 @@ void TConfigInitializerServer::InitAppConfig()
     ServerConfig = std::make_shared<NServer::TServerConfig>(serverConfig);
 }
 
-void TConfigInitializerServer::ApplyCustomCMSConfigs(
-    const NKikimrConfig::TAppConfig&)
+void TConfigInitializerServer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&)
 {
     // nothing to do
 }
