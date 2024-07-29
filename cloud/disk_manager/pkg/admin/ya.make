@@ -5,6 +5,7 @@ SRCS(
     disks.go
     filesystem.go
     images.go
+    nbs.go
     operations.go
     placement_group.go
     pools.go

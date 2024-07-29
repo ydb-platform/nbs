@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	internal_auth "a.yandex-team.ru/cloud/disk_manager/internal/pkg/auth"
 	"github.com/spf13/cobra"
+	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
@@ -66,8 +66,9 @@ func (c *getCheckpointSizeCmd) run() error {
 
 func newGetCheckpointSizeCmd(
 	clientConfig *client_config.ClientConfig,
-	serverConfig *client_config.ServerConfig,
+	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
+
 	c := &getCheckpointSizeCmd{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
@@ -91,6 +92,9 @@ func newGetCheckpointSizeCmd(
 	}
 
 	cmd.Flags().StringVar(&c.checkpointID, "checkpoint-id", "", "checkpoint id")
+	if err := cmd.MarkFlagRequired("checkpoint-id"); err != nil {
+		log.Fatalf("Error setting flag checkpoint-id as required: %v", err)
+	}
 
 	return cmd
 }
