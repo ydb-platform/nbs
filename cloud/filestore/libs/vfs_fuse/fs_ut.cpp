@@ -1340,7 +1340,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     RootNodeId);
             UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
 
-            // Let completion queue to complete all pending requests.
+            // Let completion queue complete all pending requests.
             promise.SetValue(NProto::TAcquireLockResponse{});
         });
 
