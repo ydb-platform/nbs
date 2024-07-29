@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
-#include <cloud/filestore/libs/server/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
