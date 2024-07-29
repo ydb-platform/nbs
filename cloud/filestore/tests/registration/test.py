@@ -9,7 +9,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 import yatest.common as yatest_common
 
 
-def setup_and_run_test(is_secure):
+def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -17,7 +17,7 @@ def setup_and_run_test(is_secure):
         binary_path=kikimr_binary_path,
         has_cluster_uuid=False,
         use_in_memory_pdisks=True,
-        grpc_ssl_enable=is_secure,
+        grpc_ssl_enable=is_secure_kikimr,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
@@ -34,28 +34,31 @@ def setup_and_run_test(is_secure):
     server_config = TServerAppConfig()
     server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    if is_secure:
-        server_config.ServerConfig.RootCertsFile = configurator.grpc_tls_ca_path
-        cert = server_config.ServerConfig.Certs.add()
+    storage_config = TStorageConfig()
+
+    if is_secure_filestore and is_secure_kikimr:
+        storage_config.NodeRegistrationRootCertsFile = configurator.grpc_tls_ca_path
+        cert = storage_config.NodeRegistrationCerts.add()
         cert.CertFile = configurator.grpc_tls_cert_path
         cert.CertPrivateKeyFile = configurator.grpc_tls_key_path
 
-    server_config.ServerConfig.NodeType = "nfs_control"
-
-    storage_config = TStorageConfig()
+    storage_config.NodeType = "filestore_server"
 
     domain = configurator.domains_txt.Domain[0].Name
+
+    port = kikimr_port
+    if is_secure_filestore and kikimr_ssl_port is not None:
+        port = kikimr_ssl_port
 
     nfs_configurator = NfsServerConfigGenerator(
         binary_path=nfs_binary_path,
         app_config=server_config,
         service_type="kikimr",
         verbose=True,
-        kikimr_port=kikimr_port,
+        kikimr_port=port,
         domain=domain,
         storage_config=storage_config,
-        use_secure_registration=is_secure,
-        grpc_ssl_port=kikimr_ssl_port if is_secure else None
+        use_secure_registration=is_secure_filestore
     )
     nfs_configurator.generate_configs(configurator.domains_txt, configurator.names_txt)
 
@@ -63,14 +66,23 @@ def setup_and_run_test(is_secure):
 
     nfs_server.start()
 
-    wait_for_nfs_server(nfs_server, nfs_configurator.port)
+    try:
+        wait_for_nfs_server(nfs_server, nfs_configurator.port)
+    except RuntimeError as ex:
+        return False
 
     nfs_server.stop()
 
-
-def test_node_type_nonsecure():
-    setup_and_run_test(False)
+    return True
 
 
-def test_node_type_secure():
-    setup_and_run_test(True)
+def test_registration_non_secure():
+    assert setup_and_run_test(False, False) == True
+
+
+def test_registration_secure():
+    assert setup_and_run_test(True, True) == True
+
+
+def test_fail_registration_at_wrong_port():
+    assert setup_and_run_test(False, True) == False

@@ -36,8 +36,6 @@ constexpr TDuration Seconds(int s)
     xxx(Certs,                       TVector<TCertificate>,     {}            )\
     xxx(UnixSocketPath,              TString,                   {}            )\
     xxx(UnixSocketBacklog,           ui32,                      16            )\
-    xxx(NodeRegistrationToken,       TString,                   "root@builtin")\
-    xxx(NodeType,                    TString,                   {}            )\
 // FILESTORE_SERVER_CONFIG
 
 #define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \

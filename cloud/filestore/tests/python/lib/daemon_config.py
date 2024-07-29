@@ -55,7 +55,6 @@ class NfsDaemonConfigGenerator:
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
-        grpc_ssl_port=None
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -81,7 +80,6 @@ class NfsDaemonConfigGenerator:
         self.__access_service_port = access_service_port
 
         self.__use_secure_registration = use_secure_registration
-        self.__grpc_ssl_port = grpc_ssl_port
 
         if access_service_port:
             self.__app_config.ServerConfig.SecurePort = self._port_manager.get_port()
@@ -330,13 +328,13 @@ class NfsDaemonConfigGenerator:
                 "--load-configs-from-cms",
             ]
 
-            if not self.__use_secure_registration or self.__grpc_ssl_port is None:
+            if not self.__use_secure_registration:
                 command += [
                     "--node-broker", "localhost:" + str(self.__kikimr_port),
                 ]
             else:
                 command += [
-                    "--node-broker", "localhost:" + str(self.__grpc_ssl_port),
+                    "--node-broker", "localhost:" + str(self.__kikimr_port),
                     "--use-secure-registration",
                 ]
 
@@ -379,7 +377,6 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
-        grpc_ssl_port=None
     ):
         super().__init__(
             binary_path,
@@ -396,7 +393,6 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
-            grpc_ssl_port=grpc_ssl_port
         )
 
 
@@ -414,7 +410,6 @@ class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
-        grpc_ssl_port=None
     ):
         super().__init__(
             binary_path,
@@ -431,7 +426,6 @@ class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
-            grpc_ssl_port=grpc_ssl_port
         )
 
         self.__local_service_port = self._port_manager.get_port()

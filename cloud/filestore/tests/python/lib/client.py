@@ -206,7 +206,7 @@ class NfsCliClient:
     def get_storage_service_config(self, fs_id=None):
         req = {"FileSystemId": "" if fs_id is None else fs_id}
 
-        resp = self.execute_action('getstorageconfig', req)
+        resp = self.execute_action("getstorageconfig", req)
 
         return json.loads(resp)
 

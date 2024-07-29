@@ -18,10 +18,6 @@ TConfigInitializerServer::TConfigInitializerServer(TOptionsServerPtr options)
 
 void TConfigInitializerServer::InitAppConfig()
 {
-    if (ServerConfig) {
-        return;
-    }
-
     if (Options->AppConfig) {
         ParseProtoTextFromFileRobust(Options->AppConfig, AppConfig);
     }
@@ -42,23 +38,6 @@ void TConfigInitializerServer::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig&)
 {
     // nothing to do
-}
-
-TNodeRegistrationSettings
-    TConfigInitializerServer::GetNodeRegistrationSettings()
-{
-    InitAppConfig();
-
-    TNodeRegistrationSettings settings;
-    settings.MaxAttempts = Options->NodeRegistrationMaxAttempts;
-    settings.RegistrationTimeout = Options->NodeRegistrationTimeout;
-    settings.ErrorTimeout = Options->NodeRegistrationErrorTimeout;
-    settings.PathToGrpcCaFile = ServerConfig->GetRootCertsFile();
-    settings.PathToGrpcCertFile = GetCertFileFromConfig(ServerConfig);
-    settings.PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(ServerConfig);
-    settings.NodeRegistrationToken = ServerConfig->GetNodeRegistrationToken();
-    settings.NodeType = ServerConfig->GetNodeType();
-    return settings;
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

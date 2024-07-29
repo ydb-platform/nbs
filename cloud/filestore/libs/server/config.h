@@ -55,9 +55,6 @@ public:
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
 
-    TString GetNodeRegistrationToken() const;
-    TString GetNodeType() const;
-
     const NProto::TServerConfig& GetProto() const
     {
         return ProtoConfig;
