@@ -59,6 +59,14 @@ struct TPartitionsInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChannelCounts
+{
+    ui32 ExistingChannelCount = 0;
+    int* WantToAdd = nullptr;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 ComputeBlocksCountPerPartition(
     const ui64 newBlocksCountPerVolume,
     const ui32 blocksPerStripe,
@@ -98,13 +106,10 @@ ui64 ComputeMaxBlocks(
     const NCloud::NProto::EStorageMediaKind mediaKind,
     ui32 currentPartitions);
 
-void FairComputeLimitNumberOfChannels(
+void ComputeChannelCountLimits(
     int freeChannelCount,
-    ui32 haveMerged,
-    int& wantAddMerged,
-    ui32 haveMixed,
-    int& wantAddMixed,
-    ui32 haveFresh,
-    int& wantAddFresh);
+    TChannelCounts merged,
+    TChannelCounts mixed,
+    TChannelCounts fresh);
 
 }   // namespace NCloud::NBlockStore::NStorage

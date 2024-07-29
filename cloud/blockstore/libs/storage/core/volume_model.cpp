@@ -60,11 +60,13 @@ THROTTLING_PARAM(MaxWriteIops);
 //    of channels to be created
 // 4. select the channel kind that will suffer least and reduce it wants
 // 5. repeat until the number of channels that we can create matches
-struct TChannelKindDeterioration
+struct TChannelKindDeterioration: public TChannelCounts
 {
-    const ui32 ExistingChannelCount = 0;
-    int* WantToAdd = nullptr;
     double DesiredProportion = 0.0;
+
+    explicit TChannelKindDeterioration(TChannelCounts counts)
+        : TChannelCounts(counts)
+    {}
 
     void CalcDesiredProportion(int totalChannelCount)
     {
@@ -412,14 +414,11 @@ void SetExplicitChannelProfiles(
             { return profile.GetDataKind() == static_cast<ui32>(dataKind); });
     };
 
-    FairComputeLimitNumberOfChannels(
+    ComputeChannelCountLimits(
         255 - c,
-        countChannels(EChannelDataKind::Merged),
-        mergedChannels,
-        countChannels(EChannelDataKind::Mixed),
-        mixedChannels,
-        countChannels(EChannelDataKind::Fresh),
-        freshChannels);
+        {countChannels(EChannelDataKind::Merged), &mergedChannels},
+        {countChannels(EChannelDataKind::Mixed), &mixedChannels},
+        {countChannels(EChannelDataKind::Fresh), &freshChannels});
 
     Y_DEBUG_ABORT_UNLESS(
         c + mergedChannels + mixedChannels + freshChannels <= 255);
@@ -867,19 +866,16 @@ ui64 ComputeMaxBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FairComputeLimitNumberOfChannels(
+void ComputeChannelCountLimits(
     int freeChannelCount,
-    ui32 existingChannelCountMerged,
-    int& wantAddMerged,
-    ui32 existingChannelCountMixed,
-    int& wantAddMixed,
-    ui32 existingChannelCountFresh,
-    int& wantAddFresh)
+    TChannelCounts merged,
+    TChannelCounts mixed,
+    TChannelCounts fresh)
 {
-    TChannelKindDeterioration channelKinds[3] = {
-        {existingChannelCountMerged, &wantAddMerged},
-        {existingChannelCountMixed, &wantAddMixed},
-        {existingChannelCountFresh, &wantAddFresh},
+    TChannelKindDeterioration channelKinds[] = {
+        TChannelKindDeterioration{merged},
+        TChannelKindDeterioration{mixed},
+        TChannelKindDeterioration{fresh},
     };
     TVector<TChannelKindDeterioration*> kindPtrs;
     for (auto& channelKind: channelKinds) {
@@ -923,10 +919,10 @@ void FairComputeLimitNumberOfChannels(
     {
         Sort(
             kindPtrs,
-            [&](TChannelKindDeterioration* lh, TChannelKindDeterioration* rh)
+            [&](TChannelKindDeterioration* lhs, TChannelKindDeterioration* rhs)
             {
-                return lh->GetDeteriorationOfTheProportion(totalChannelCount) <
-                       rh->GetDeteriorationOfTheProportion(totalChannelCount);
+                return lhs->GetDeteriorationOfTheProportion(totalChannelCount) <
+                       rhs->GetDeteriorationOfTheProportion(totalChannelCount);
             });
         return kindPtrs[0];
     };

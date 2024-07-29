@@ -1963,14 +1963,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 35;
         int wantAddFresh = 15;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             100,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
 
         UNIT_ASSERT_VALUES_EQUAL(50, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(35, wantAddMixed);
@@ -1987,14 +1984,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 35;
         int wantAddFresh = 15;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             0,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
 
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
@@ -2011,15 +2005,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 1;
         int wantAddFresh = 1;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             2,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
-
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
@@ -2035,15 +2025,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 100;
         int wantAddFresh = 1;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             101,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
-
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
         UNIT_ASSERT_VALUES_EQUAL(5, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(95, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
@@ -2059,14 +2045,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 2;
         int wantAddFresh = 1;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             11,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
 
         UNIT_ASSERT_VALUES_EQUAL(10, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
@@ -2083,14 +2066,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 2;
         int wantAddFresh = 1;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             5,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
 
         UNIT_ASSERT_VALUES_EQUAL(3, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
@@ -2107,15 +2087,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         int wantAddMixed = 2000;
         int wantAddFresh = 1;
 
-        FairComputeLimitNumberOfChannels(
+        ComputeChannelCountLimits(
             1,
-            haveMerged,
-            wantAddMerged,
-            haveMixed,
-            wantAddMixed,
-            haveFresh,
-            wantAddFresh);
-
+            {haveMerged, &wantAddMerged},
+            {haveMixed, &wantAddMixed},
+            {haveFresh, &wantAddFresh});
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
