@@ -1,5 +1,6 @@
 #include "request_aio.h"
 
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
@@ -14,6 +15,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 void DoEncryption(
+    TLog& Log,
     IEncryptor* encryptor,
     TBlockDataRef src,
     TBlockDataRef dst,
@@ -29,11 +31,18 @@ void DoEncryption(
             dst.Data() + sector * VHD_SECTOR_SIZE,
             VHD_SECTOR_SIZE);
 
-        encryptor->Encrypt(srcRef, dstRef, startSector + sector);
+        bool succ = encryptor->Encrypt(srcRef, dstRef, startSector + sector);
+        if (!succ) {
+            STORAGE_ERROR(
+                "Encryption error. Start sector %lu, size=%zu.",
+                startSector,
+                src.Size());
+        }
     }
 }
 
 void DoDecryption(
+    TLog& Log,
     IEncryptor* encryptor,
     TBlockDataRef src,
     TBlockDataRef dst,
@@ -49,7 +58,20 @@ void DoDecryption(
             dst.Data() + sector * VHD_SECTOR_SIZE,
             VHD_SECTOR_SIZE);
 
-        encryptor->Decrypt(srcRef, dstRef, startSector + sector);
+        if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
+            if (srcRef.Data() != dstRef.Data()) {
+                memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
+            }
+        } else {
+            bool succ =
+                encryptor->Decrypt(srcRef, dstRef, startSector + sector);
+            if (!succ) {
+                STORAGE_ERROR(
+                    "Decryption error. Start sector %lu, size=%zu.",
+                    startSector + sector,
+                    srcRef.Size());
+            }
+        }
     }
 }
 
@@ -96,6 +118,7 @@ void PrepareCompoundIO(
 
     if (bio->type == VHD_BDEV_WRITE) {
         SgListCopyWithOptionalEncryption(
+            Log,
             bio->sglist,
             req->Buffer.get(),
             encryptor,
@@ -149,6 +172,7 @@ void PrepareCompoundIO(
 ////////////////////////////////////////////////////////////////////////////////
 
 void SgListCopyWithOptionalDecryption(
+    TLog& log,
     const char* src,
     const vhd_sglist& dst,
     IEncryptor* encryptor,
@@ -162,7 +186,7 @@ void SgListCopyWithOptionalDecryption(
             TBlockDataRef dstRef{
                 static_cast<const char*>(buffer.base),
                 buffer.len};
-            DoDecryption(encryptor, srcRef, dstRef, startSector);
+            DoDecryption(log, encryptor, srcRef, dstRef, startSector);
         } else {
             std::memcpy(buffer.base, src, buffer.len);
         }
@@ -171,6 +195,7 @@ void SgListCopyWithOptionalDecryption(
 }
 
 void SgListCopyWithOptionalEncryption(
+    TLog& log,
     const vhd_sglist& src,
     char* dst,
     IEncryptor* encryptor,
@@ -184,7 +209,7 @@ void SgListCopyWithOptionalEncryption(
                 static_cast<const char*>(buffer.base),
                 buffer.len};
             TBlockDataRef dstRef{dst, buffer.len};
-            DoEncryption(encryptor, srcRef, dstRef, startSector);
+            DoEncryption(log, encryptor, srcRef, dstRef, startSector);
         } else {
             std::memcpy(dst, buffer.base, buffer.len);
         }
@@ -266,7 +291,7 @@ void PrepareIO(
                         static_cast<char*>(buffer.base),
                         buffer.len);
                     TBlockDataRef dstRef(dst, buffer.len);
-                    DoEncryption(encryptor, srcRef, dstRef, sectorIndex);
+                    DoEncryption(Log, encryptor, srcRef, dstRef, sectorIndex);
                 } else {
                     std::memcpy(dst, buffer.base, buffer.len);
                 }

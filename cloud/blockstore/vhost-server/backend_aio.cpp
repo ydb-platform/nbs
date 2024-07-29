@@ -22,6 +22,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 void CompleteRequest(
+    TLog& log,
     IEncryptor* encryptor,
     TAioRequestHolder req,
     vhd_bdev_io_result status,
@@ -41,9 +42,10 @@ void CompleteRequest(
         stats.Sizes[bio->type].Increment(bytes);
     }
 
-    if (req->BufferAllocated) {
+    if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             SgListCopyWithOptionalDecryption(
+                log,
                 static_cast<const char*>(req->Data[0].iov_base),
                 bio->sglist,
                 encryptor,
@@ -54,6 +56,7 @@ void CompleteRequest(
 }
 
 void CompleteCompoundRequest(
+    TLog& log,
     IEncryptor* encryptor,
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
@@ -83,6 +86,7 @@ void CompleteCompoundRequest(
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             SgListCopyWithOptionalDecryption(
+                log,
                 req->Buffer.get(),
                 bio->sglist,
                 encryptor,
@@ -303,6 +307,7 @@ void TAioBackend::ProcessQueue(
 
             if (batch[0]->data) {
                 CompleteCompoundRequest(
+                    Log,
                     Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
@@ -310,6 +315,7 @@ void TAioBackend::ProcessQueue(
                     now);
             } else {
                 CompleteRequest(
+                    Log,
                     Encryptor.get(),
                     TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
@@ -406,6 +412,7 @@ void TAioBackend::CompletionThreadFunc()
                 }
 
                 CompleteCompoundRequest(
+                    Log,
                     Encryptor.get(),
                     std::move(sub),
                     result,
@@ -437,6 +444,7 @@ void TAioBackend::CompletionThreadFunc()
             }
 
             CompleteRequest(
+                Log,
                 Encryptor.get(),
                 std::move(req),
                 result,
