@@ -1319,20 +1319,40 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
     {
         TBootstrap bootstrap;
+        auto promise = NewPromise<NProto::TAcquireLockResponse>();
+        auto handlerCalled = NewPromise<void>();
+
+        bootstrap.Service->AcquireLockHandler = [&] (auto, auto) {
+            handlerCalled.TrySetValue();
+            return promise.GetFuture();
+        };
 
         bootstrap.Service->CreateHandleHandler = [&] (auto , auto) {
             UNIT_ASSERT_C(false, "Handler should not be called");
             return MakeFuture(NProto::TCreateHandleResponse{});
         };
 
-        bootstrap.Start();
-
         bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            // Make synchronous call. Since Stop is triggered we expect
+            // that request will be cancelled and future will contain exception
             auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
                     "/file1",
                     RootNodeId);
             UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
+
+            // Let completion queue complete all pending requests.
+            promise.SetValue(NProto::TAcquireLockResponse{});
         });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
+
+        // Wait for lock request to reach lock handler in service.
+        // Now StopAsync in bootstrap cannot complete immediately.
+        // All new requests (CreateHandle) should be rejected immediately.
+        handlerCalled.GetFuture().Wait();
 
         bootstrap.Stop();
 
