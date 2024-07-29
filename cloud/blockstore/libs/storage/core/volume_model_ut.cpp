@@ -2030,8 +2030,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             {haveMerged, &wantAddMerged},
             {haveMixed, &wantAddMixed},
             {haveFresh, &wantAddFresh});
-        UNIT_ASSERT_VALUES_EQUAL(5, wantAddMerged);
-        UNIT_ASSERT_VALUES_EQUAL(95, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(91, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
     }
 
@@ -2051,8 +2051,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             {haveMixed, &wantAddMixed},
             {haveFresh, &wantAddFresh});
 
-        UNIT_ASSERT_VALUES_EQUAL(10, wantAddMerged);
-        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
     }
 

@@ -52,43 +52,6 @@ THROTTLING_PARAM(MaxWriteIops);
 
 #undef THROTTLING_PARAM
 
-// Calculates the deterioration when desired channel count reduced.
-// 1. calculate the total number of channels that should be obtained after
-//    completion.
-// 2. calculate the proportion for each kind
-// 3. calculate how much the proportion deteriorates after reducing the number
-//    of channels to be created
-// 4. select the channel kind that will suffer least and reduce it wants
-// 5. repeat until the number of channels that we can create matches
-struct TChannelKindDeterioration: public TChannelCounts
-{
-    double DesiredProportion = 0.0;
-
-    explicit TChannelKindDeterioration(TChannelCounts counts)
-        : TChannelCounts(counts)
-    {}
-
-    void CalcDesiredProportion(int totalChannelCount)
-    {
-        DesiredProportion =
-            1.0 * (ExistingChannelCount + *WantToAdd) / totalChannelCount;
-    }
-
-    // 0.0f - the proportion has not changed
-    // 1.0f - the proportion has changed completely
-    [[nodiscard]] double GetDeteriorationOfTheProportion(int totalChannelCount) const
-    {
-        if (*WantToAdd == 0) {
-            // We return the biggest deterioration for the kind that is not
-            // going to increase the number of channels.
-            return 1.0;
-        }
-        double newProportion =
-            1.0 * (ExistingChannelCount + *WantToAdd - 1) / totalChannelCount;
-        return Abs(newProportion / DesiredProportion - 1.0);
-    }
-};
-
 ui32 ReadBandwidth(
     const TStorageConfig& config,
     const ui32 unitCount,
@@ -872,15 +835,11 @@ void ComputeChannelCountLimits(
     TChannelCounts mixed,
     TChannelCounts fresh)
 {
-    TChannelKindDeterioration channelKinds[] = {
-        TChannelKindDeterioration{merged},
-        TChannelKindDeterioration{mixed},
-        TChannelKindDeterioration{fresh},
+    TChannelCounts channelKinds[] = {
+        merged,
+        mixed,
+        fresh,
     };
-    TVector<TChannelKindDeterioration*> kindPtrs;
-    for (auto& channelKind: channelKinds) {
-        kindPtrs.push_back(&channelKind);
-    }
 
     if (!freeChannelCount) {
         // There are no free channels.
@@ -890,48 +849,42 @@ void ComputeChannelCountLimits(
         return;
     }
 
-    auto totalWantToAdd = [&]() -> int
+    auto totalWantToAddCalculator = [&]() -> int
     {
         return Accumulate(
             channelKinds,
             int{},
-            [](int acc, const TChannelKindDeterioration& channel)
+            [](int acc, const TChannelCounts& channel)
             { return acc + *channel.WantToAdd; });
     };
 
-    if (totalWantToAdd() < freeChannelCount) {
+    auto totalWantToAdd = totalWantToAddCalculator();
+    if (totalWantToAdd <= freeChannelCount) {
         // There are enough free channels to satisfy everyone.
         return;
     }
 
-    int totalChannelCount = Accumulate(
-            channelKinds,
-            int{},
-            [](int acc, const TChannelKindDeterioration& channel)
-            { return acc + channel.ExistingChannelCount + *channel.WantToAdd; });
-
-    // Fill desired proportion.
+    // Distribute free channels among all channel kinds.
     for (auto& channelKind: channelKinds) {
-        channelKind.CalcDesiredProportion(totalChannelCount);
+        double trimmedWantToAdd = static_cast<double>(*channelKind.WantToAdd) *
+                                  freeChannelCount / totalWantToAdd;
+        if (trimmedWantToAdd > 0.0 && trimmedWantToAdd < 1.0) {
+            *channelKind.WantToAdd = 1;
+        } else {
+            *channelKind.WantToAdd = std::round(trimmedWantToAdd);
+        }
     }
 
-    auto findTheLeastAffectedChannelKind = [&]() -> TChannelKindDeterioration*
-    {
+    // If there are still more channels being created than there are free ones,
+    // then we take them away from the most greedy channel kind.
+    while(totalWantToAddCalculator() > freeChannelCount) {
         Sort(
-            kindPtrs,
-            [&](TChannelKindDeterioration* lhs, TChannelKindDeterioration* rhs)
-            {
-                return lhs->GetDeteriorationOfTheProportion(totalChannelCount) <
-                       rhs->GetDeteriorationOfTheProportion(totalChannelCount);
-            });
-        return kindPtrs[0];
-    };
-
-    while (freeChannelCount < totalWantToAdd()) {
-        auto* leastAffected = findTheLeastAffectedChannelKind();
-        Y_DEBUG_ABORT_UNLESS(*leastAffected->WantToAdd > 0);
-        --(*leastAffected->WantToAdd);
-        --totalChannelCount;
+            std::begin(channelKinds),
+            std::end(channelKinds),
+            [](const TChannelCounts& lhs, const TChannelCounts& rhs)
+            { return *lhs.WantToAdd > *rhs.WantToAdd; });
+        --(*channelKinds[0].WantToAdd);
+        Y_DEBUG_ABORT_UNLESS(*channelKinds[0].WantToAdd >= 0);
     }
 }
 
