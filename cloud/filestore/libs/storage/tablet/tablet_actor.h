@@ -357,7 +357,7 @@ private:
 
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
-        if (TryExecuteTx(ctx, GetInMemoryIndexState(), tx)) {
+        if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
             return;
         }
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);

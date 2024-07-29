@@ -1124,7 +1124,7 @@ public:
         const NProto::TNodeAttr& result);
     TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
-    IIndexTabletDatabase& GetInMemoryIndexState();
+    IIndexTabletDatabase& AccessInMemoryIndexState();
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -290,7 +290,6 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             Args&& ...args)                                                    \
         {                                                                      \
-            Y_UNUSED(tx);                                                      \
             if (target.ValidateTx_##name(ctx, std::forward<Args>(args)...)) {  \
                 dbType db(tx.DB);                                              \
                 return target.PrepareTx_##name(                                \
