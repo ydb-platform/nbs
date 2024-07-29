@@ -30,11 +30,6 @@ struct TConfigInitializerCommon
     void InitStorageConfig();
     void InitFeaturesConfig();
 
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
-    void ApplyDiagnosticsConfig(const TString& text);
-    void ApplyStorageConfig(const TString& text);
-    void ApplyFeaturesConfig(const TString& text);
-
     virtual NCloud::NStorage::TNodeRegistrationSettings
         GetNodeRegistrationSettings() = 0;
 };

@@ -44,28 +44,9 @@ void TConfigInitializerVhost::InitAppConfig()
 }
 
 void TConfigInitializerVhost::ApplyCustomCMSConfigs(
-    const NKikimrConfig::TAppConfig& config)
+    const NKikimrConfig::TAppConfig&)
 {
-    TConfigInitializerCommon::ApplyCustomCMSConfigs(config);
-
-    using TSelf = TConfigInitializerVhost;
-    using TApplyFn = void (TSelf::*)(const TString&);
-
-    const THashMap<TString, TApplyFn> map {
-        { "VHostAppConfig",    &TSelf::ApplyVHostAppConfig},
-    };
-
-    for (auto& item : config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.NFS.")) {
-            continue;
-        }
-
-        auto it = map.find(name);
-        if (it != map.end()) {
-            std::invoke(it->second, this, item.GetConfig());
-        }
-    }
+    // nothing to do
 }
 
 void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)

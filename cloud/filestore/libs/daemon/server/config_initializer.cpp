@@ -39,37 +39,9 @@ void TConfigInitializerServer::InitAppConfig()
 }
 
 void TConfigInitializerServer::ApplyCustomCMSConfigs(
-    const NKikimrConfig::TAppConfig& config)
+    const NKikimrConfig::TAppConfig&)
 {
-    TConfigInitializerCommon::ApplyCustomCMSConfigs(config);
-
-    using TSelf = TConfigInitializerServer;
-    using TApplyFn = void (TSelf::*)(const TString&);
-
-    const THashMap<TString, TApplyFn> map {
-        { "ServerAppConfig",    &TSelf::ApplyServerAppConfig},
-    };
-
-    for (auto& item : config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.NFS.")) {
-            continue;
-        }
-
-        auto it = map.find(name);
-        if (it != map.end()) {
-            std::invoke(it->second, this, item.GetConfig());
-        }
-    }
-}
-
-void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
-{
-    AppConfig.Clear();
-    ParseProtoTextFromStringRobust(text, AppConfig);
-
-    ServerConfig = std::make_shared<NServer::TServerConfig>(
-        AppConfig.GetServerConfig());
+    // nothing to do
 }
 
 TNodeRegistrationSettings
