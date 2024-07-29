@@ -2,7 +2,6 @@
 #include "options.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
-#include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>

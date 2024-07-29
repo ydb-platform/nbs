@@ -2,7 +2,6 @@
 #include "options.h"
 
 #include <cloud/filestore/libs/endpoint_vhost/config.h>
-#include <cloud/filestore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
@@ -47,18 +46,6 @@ void TConfigInitializerVhost::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig&)
 {
     // nothing to do
-}
-
-void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)
-{
-    AppConfig.Clear();
-    ParseProtoTextFromStringRobust(text, AppConfig);
-
-    ServerConfig = std::make_shared<NServer::TServerConfig>(
-        AppConfig.GetServerConfig());
-
-    VhostServiceConfig = std::make_shared<TVhostServiceConfig>(
-        AppConfig.GetVhostServiceConfig());
 }
 
 TNodeRegistrationSettings
