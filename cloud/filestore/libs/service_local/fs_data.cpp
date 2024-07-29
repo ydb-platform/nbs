@@ -8,6 +8,10 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using namespace NThreading;
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     const NProto::TCreateHandleRequest& request)
 {
@@ -22,7 +26,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     }
 
     const int flags = HandleFlagsToSystem(request.GetFlags());
-    const int mode = request.GetMode() ? request.GetMode() : Config->GetDefaultPermissions();
+    const int mode = request.GetMode()
+        ? request.GetMode() : Config->GetDefaultPermissions();
 
     TFile handle;
     TFileStat stat;
@@ -58,7 +63,7 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     return {};
 }
 
-NProto::TReadDataResponse TLocalFileSystem::ReadData(
+TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     const NProto::TReadDataRequest& request)
 {
     STORAGE_TRACE("ReadData " << DumpMessage(request));
@@ -66,7 +71,8 @@ NProto::TReadDataResponse TLocalFileSystem::ReadData(
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
     if (!handle.IsOpen()) {
-        return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
+        return MakeFuture<NProto::TReadDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
     auto buffer = TString::Uninitialized(request.GetLength());
@@ -79,10 +85,10 @@ NProto::TReadDataResponse TLocalFileSystem::ReadData(
     NProto::TReadDataResponse response;
     response.SetBuffer(std::move(buffer));
 
-    return response;
+    return MakeFuture(response);
 }
 
-NProto::TWriteDataResponse TLocalFileSystem::WriteData(
+TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     const NProto::TWriteDataRequest& request)
 {
     STORAGE_TRACE("WriteData " << DumpMessage(request));
@@ -90,7 +96,8 @@ NProto::TWriteDataResponse TLocalFileSystem::WriteData(
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
     if (!handle.IsOpen()) {
-        return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
+        return MakeFuture<NProto::TWriteDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
     const auto& buffer = request.GetBuffer();

@@ -87,22 +87,50 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+#define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
     struct T##name##Method                                                     \
     {                                                                          \
         using TRequest = NProto::T##name##Request;                             \
         using TResponse = NProto::T##name##Response;                           \
+        using TResult = TResponse;                                             \
                                                                                \
-        static TResponse Execute(TLocalFileSystem& fs, const TRequest& request)\
+        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
         {                                                                      \
             return fs.name(request);                                           \
         }                                                                      \
+                                                                               \
+        static TResult ErrorResponse(ui32 code, TString message)               \
+        {                                                                      \
+            return NCloud::ErrorResponse<TResponse>(code, std::move(message)); \
+        }                                                                      \
     };                                                                         \
-// FILESTORE_DECLARE_METHOD
+// FILESTORE_DECLARE_METHOD_SYNC
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+        using TResult = TFuture<TResponse>;                                    \
+                                                                               \
+        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
+        {                                                                      \
+            return fs.name##Async(request);                                    \
+        }                                                                      \
+                                                                               \
+        static TResult ErrorResponse(ui32 code, TString message)               \
+        {                                                                      \
+            return MakeFuture(                                                 \
+                NCloud::ErrorResponse<TResponse>(code, std::move(message)));   \
+        }                                                                      \
+    };                                                                         \
+// FILESTORE_DECLARE_METHOD_SYNC
 
-#undef FILESTORE_DECLARE_METHOD
+FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
+FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
+
+#undef FILESTORE_DECLARE_METHOD_SYNC
+#undef FILESTORE_DECLARE_METHOD_ASYNC
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -143,7 +171,7 @@ public:
     void Start() override;
     void Stop() override;
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+#define FILESTORE_IMPLEMENT_METHOD_SYNC(name, ...)                             \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
@@ -153,9 +181,20 @@ public:
             return Execute<T##name##Method>(*request);                         \
         });                                                                    \
     }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+// FILESTORE_IMPLEMENT_METHOD_SYNC
 
-FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
+#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                             \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        Y_UNUSED(callContext);                                                 \
+        return Execute<T##name##Method>(*request);                             \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD_ASYNC
+
+FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_IMPLEMENT_METHOD_SYNC)
+FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -171,25 +210,25 @@ FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
 private:
     template <typename T>
-    typename T::TResponse Execute(const typename T::TRequest& request)
+    typename T::TResult Execute(const typename T::TRequest& request)
     {
         const auto& id = GetFileSystemId(request);
         if (!id) {
-            return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
+            return T::ErrorResponse(E_ARGUMENT, "invalid file system identifier");
         }
 
         auto fs = FindFileSystem(id);
         if (!fs) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            return T::ErrorResponse(E_ARGUMENT, TStringBuilder()
                 << "invalid file system: " << id.Quote());
         }
 
         try {
             return T::Execute(*fs, request);
         } catch (const TServiceError& e) {
-            return TErrorResponse(e.GetCode(), TString(e.GetMessage()));
+            return T::ErrorResponse(e.GetCode(), TString(e.GetMessage()));
         } catch (...) {
-            return TErrorResponse(E_FAIL, CurrentExceptionMessage());
+            return T::ErrorResponse(E_FAIL, CurrentExceptionMessage());
         }
     }
 
