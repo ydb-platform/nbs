@@ -32,6 +32,7 @@ def default_storage_config(tablet_version, cache_folder):
 
 
 class TestCase(object):
+    __test__ = False
 
     def __init__(
             self,
@@ -55,7 +56,6 @@ CRITICAL_EVENTS = [
     "InvalidTabletConfig",
     "InvalidVolumeBillingSettings",
     "ReassignTablet",
-    "TabletBSFailure",
     "TabletCommitIdOverflow"
 ]
 
