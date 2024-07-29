@@ -125,6 +125,7 @@ void PrepareCompoundIO(
         // ownership among all subrequests.
         subRequest->data = req.get();
 
+        NSan::Release(subRequest.get());
         batch.push_back(subRequest.release());
 
         ptr += count;
@@ -133,6 +134,7 @@ void PrepareCompoundIO(
     }
 
     // Ownership transferred to subrequests.
+    NSan::Release(req.get());
     req.release();
 }
 
@@ -314,6 +316,7 @@ void PrepareIO(
 
     STORAGE_DEBUG("Prepared IO request with addr: %p", req.get());
 
+    NSan::Release(req.get());
     batch.push_back(req.release());
 }
 
@@ -364,6 +367,7 @@ TAioRequestHolder TAioRequest::CreateNew(
 // static
 TAioRequestHolder TAioRequest::FromIocb(iocb* cb)
 {
+    NSan::Acquire(cb);
     Y_ABORT_UNLESS(cb->data == nullptr);
     return TAioRequestHolder{static_cast<TAioRequest*>(cb)};
 }
@@ -377,18 +381,21 @@ TAioSubRequestHolder TAioSubRequest::CreateNew()
 
 // static
 TAioSubRequestHolder TAioSubRequest::FromIocb(iocb* cb) {
+    NSan::Acquire(cb);
     Y_ABORT_UNLESS(cb->data != nullptr);
     return TAioSubRequestHolder{static_cast<TAioSubRequest*>(cb)};
 }
 
 TAioCompoundRequest* TAioSubRequest::GetParentRequest() const
 {
+    NSan::Acquire(data);
     Y_ABORT_UNLESS(data != nullptr);
     return static_cast<TAioCompoundRequest*>(data);
 }
 
 TAioCompoundRequestHolder TAioSubRequest::TakeParentRequest()
 {
+    NSan::Acquire(data);
     Y_ABORT_UNLESS(data != nullptr);
     auto result =
         TAioCompoundRequestHolder{static_cast<TAioCompoundRequest*>(data)};
