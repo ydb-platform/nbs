@@ -1955,19 +1955,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldNotCapWhenEnoughChannels)
     {
-        const ui32 haveMerged = 50;
-        const ui32 haveMixed = 25;
-        const ui32 haveFresh = 25;
-
         int wantAddMerged = 50;
         int wantAddMixed = 35;
         int wantAddFresh = 15;
 
         ComputeChannelCountLimits(
             100,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
 
         UNIT_ASSERT_VALUES_EQUAL(50, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(35, wantAddMixed);
@@ -1976,19 +1972,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldCapAllWhenNoFreeChannels)
     {
-        const ui32 haveMerged = 50;
-        const ui32 haveMixed = 25;
-        const ui32 haveFresh = 25;
-
         int wantAddMerged = 50;
         int wantAddMixed = 35;
         int wantAddFresh = 15;
 
         ComputeChannelCountLimits(
             0,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
 
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
@@ -1997,19 +1989,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldCapLessAffectedChannel)
     {
-        const ui32 haveMerged = 500;
-        const ui32 haveMixed = 25;
-        const ui32 haveFresh = 2;
-
         int wantAddMerged = 10;
         int wantAddMixed = 1;
         int wantAddFresh = 1;
 
         ComputeChannelCountLimits(
             2,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
@@ -2017,19 +2005,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldDoFairCapping)
     {
-        const ui32 haveMerged = 100;
-        const ui32 haveMixed = 10;
-        const ui32 haveFresh = 1;
-
         int wantAddMerged = 10;
         int wantAddMixed = 100;
         int wantAddFresh = 1;
 
         ComputeChannelCountLimits(
             101,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
         UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(91, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
@@ -2037,19 +2021,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldGiveMoreToThoseWhoAskForMore)
     {
-        const ui32 haveMerged = 100;
-        const ui32 haveMixed = 100;
-        const ui32 haveFresh = 1;
-
         int wantAddMerged = 20;
         int wantAddMixed = 2;
         int wantAddFresh = 1;
 
         ComputeChannelCountLimits(
             11,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
 
         UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
@@ -2058,19 +2038,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldGiveAtLeastOneChannel)
     {
-        const ui32 haveMerged = 0;
-        const ui32 haveMixed = 0;
-        const ui32 haveFresh = 0;
-
         int wantAddMerged = 2000;
         int wantAddMixed = 2;
         int wantAddFresh = 1;
 
         ComputeChannelCountLimits(
             5,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
 
         UNIT_ASSERT_VALUES_EQUAL(3, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
@@ -2079,19 +2055,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldGiveTheChannelWhereItIsMostNeeded)
     {
-        const ui32 haveMerged = 100;
-        const ui32 haveMixed = 100;
-        const ui32 haveFresh = 0;
-
         int wantAddMerged = 2000;
         int wantAddMixed = 2000;
         int wantAddFresh = 1;
 
         ComputeChannelCountLimits(
             1,
-            {haveMerged, &wantAddMerged},
-            {haveMixed, &wantAddMixed},
-            {haveFresh, &wantAddFresh});
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);

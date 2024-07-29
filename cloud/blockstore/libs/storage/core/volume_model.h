@@ -59,14 +59,6 @@ struct TPartitionsInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TChannelCounts
-{
-    ui32 ExistingChannelCount = 0;
-    int* WantToAdd = nullptr;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 ui64 ComputeBlocksCountPerPartition(
     const ui64 newBlocksCountPerVolume,
     const ui32 blocksPerStripe,
@@ -108,8 +100,8 @@ ui64 ComputeMaxBlocks(
 
 void ComputeChannelCountLimits(
     int freeChannelCount,
-    TChannelCounts merged,
-    TChannelCounts mixed,
-    TChannelCounts fresh);
+    int* wantToAddMerged,
+    int* wantToAddMixed,
+    int* wantToAddFresh);
 
 }   // namespace NCloud::NBlockStore::NStorage

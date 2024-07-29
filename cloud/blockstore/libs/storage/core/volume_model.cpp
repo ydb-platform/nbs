@@ -369,19 +369,11 @@ void SetExplicitChannelProfiles(
         ++c;
     }
 
-    auto countChannels = [&](EChannelDataKind dataKind) -> ui32
-    {
-        return CountIf(
-            volumeConfig.GetExplicitChannelProfiles(),
-            [&](const auto& profile)
-            { return profile.GetDataKind() == static_cast<ui32>(dataKind); });
-    };
-
     ComputeChannelCountLimits(
         255 - c,
-        {countChannels(EChannelDataKind::Merged), &mergedChannels},
-        {countChannels(EChannelDataKind::Mixed), &mixedChannels},
-        {countChannels(EChannelDataKind::Fresh), &freshChannels});
+        &mergedChannels,
+        &mixedChannels,
+        &freshChannels);
 
     Y_DEBUG_ABORT_UNLESS(
         c + mergedChannels + mixedChannels + freshChannels <= 255);
@@ -831,20 +823,20 @@ ui64 ComputeMaxBlocks(
 
 void ComputeChannelCountLimits(
     int freeChannelCount,
-    TChannelCounts merged,
-    TChannelCounts mixed,
-    TChannelCounts fresh)
+    int* wantToAddMerged,
+    int* wantToAddMixed,
+    int* wantToAddFresh)
 {
-    TChannelCounts channelKinds[] = {
-        merged,
-        mixed,
-        fresh,
+    int* wantToAddByKind[] = {
+        wantToAddMerged,
+        wantToAddMixed,
+        wantToAddFresh,
     };
 
     if (!freeChannelCount) {
         // There are no free channels.
-        for (auto& channelKind: channelKinds) {
-            *channelKind.WantToAdd = 0;
+        for (auto& wantToAdd: wantToAddByKind) {
+            *wantToAdd = 0;
         }
         return;
     }
@@ -852,10 +844,9 @@ void ComputeChannelCountLimits(
     auto totalWantToAddCalculator = [&]() -> int
     {
         return Accumulate(
-            channelKinds,
+            wantToAddByKind,
             int{},
-            [](int acc, const TChannelCounts& channel)
-            { return acc + *channel.WantToAdd; });
+            [](int acc, const int* wantToAdd) { return acc + *wantToAdd; });
     };
 
     auto totalWantToAdd = totalWantToAddCalculator();
@@ -865,26 +856,25 @@ void ComputeChannelCountLimits(
     }
 
     // Distribute free channels among all channel kinds.
-    for (auto& channelKind: channelKinds) {
-        double trimmedWantToAdd = static_cast<double>(*channelKind.WantToAdd) *
-                                  freeChannelCount / totalWantToAdd;
+    for (auto& wantToAdd: wantToAddByKind) {
+        double trimmedWantToAdd =
+            static_cast<double>(*wantToAdd) * freeChannelCount / totalWantToAdd;
         if (trimmedWantToAdd > 0.0 && trimmedWantToAdd < 1.0) {
-            *channelKind.WantToAdd = 1;
+            *wantToAdd = 1;
         } else {
-            *channelKind.WantToAdd = std::round(trimmedWantToAdd);
+            *wantToAdd = std::round(trimmedWantToAdd);
         }
     }
 
     // If there are still more channels being created than there are free ones,
     // then we take them away from the most greedy channel kind.
-    while(totalWantToAddCalculator() > freeChannelCount) {
+    while (totalWantToAddCalculator() > freeChannelCount) {
         Sort(
-            std::begin(channelKinds),
-            std::end(channelKinds),
-            [](const TChannelCounts& lhs, const TChannelCounts& rhs)
-            { return *lhs.WantToAdd > *rhs.WantToAdd; });
-        --(*channelKinds[0].WantToAdd);
-        Y_DEBUG_ABORT_UNLESS(*channelKinds[0].WantToAdd >= 0);
+            std::begin(wantToAddByKind),
+            std::end(wantToAddByKind),
+            [](const int* lhs, const int* rhs) { return *lhs > *rhs; });
+        --(*wantToAddByKind[0]);
+        Y_DEBUG_ABORT_UNLESS(*wantToAddByKind[0] >= 0);
     }
 }
 
