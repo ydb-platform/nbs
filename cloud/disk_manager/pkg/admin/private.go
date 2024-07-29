@@ -188,6 +188,7 @@ type retireBaseDisks struct {
 	imageID          string
 	zoneID           string
 	useBaseDiskAsSrc bool
+	useImageSize     uint64
 	async            bool
 }
 
@@ -204,6 +205,7 @@ func (c *retireBaseDisks) run() error {
 		ImageId:          c.imageID,
 		ZoneId:           c.zoneID,
 		UseBaseDiskAsSrc: c.useBaseDiskAsSrc,
+		UseImageSize:     c.useImageSize,
 	}
 
 	resp, err := client.RetireBaseDisks(getRequestContext(ctx), req)
@@ -255,6 +257,13 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 		"use-base-disk-as-src",
 		false,
 		"enables feature that uses base disk as src when doing retire",
+	)
+
+	cmd.Flags().Uint64Var(
+		&c.useImageSize,
+		"use-image-size",
+		0,
+		"image size which should be used for new base disks creation",
 	)
 
 	cmd.Flags().BoolVar(

@@ -99,6 +99,7 @@ func (s *privateService) RetireBaseDisks(
 			ImageId:          req.ImageId,
 			ZoneId:           req.ZoneId,
 			UseBaseDiskAsSrc: req.UseBaseDiskAsSrc,
+			UseImageSize:     req.UseImageSize,
 		},
 	)
 	if err != nil {
