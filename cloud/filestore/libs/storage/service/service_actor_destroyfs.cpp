@@ -97,6 +97,16 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
 {
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
+        if (msg->GetStatus() ==
+            MAKE_SCHEMESHARD_ERROR(
+                NKikimrScheme::EStatus::StatusPathDoesNotExist))
+        {
+            ReplyAndDie(
+                ctx,
+                MakeError(S_FALSE, FileSystemId.Quote() + " does not exist"));
+            return;
+        }
+
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
