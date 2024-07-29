@@ -6,8 +6,10 @@
 
 #include <ydb/core/protos/blockstore_config.pb.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/ymath.h>
 
 #include <cmath>
 
@@ -366,6 +368,15 @@ void SetExplicitChannelProfiles(
 
         ++c;
     }
+
+    ComputeChannelCountLimits(
+        255 - c,
+        &mergedChannels,
+        &mixedChannels,
+        &freshChannels);
+
+    Y_DEBUG_ABORT_UNLESS(
+        c + mergedChannels + mixedChannels + freshChannels <= 255);
 
     while (mergedChannels > 0) {
         AddOrModifyChannel(
@@ -806,6 +817,65 @@ ui64 ComputeMaxBlocks(
     }
 
     return MaxPartitionBlocksCount;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ComputeChannelCountLimits(
+    int freeChannelCount,
+    int* wantToAddMerged,
+    int* wantToAddMixed,
+    int* wantToAddFresh)
+{
+    int* wantToAddByKind[] = {
+        wantToAddMerged,
+        wantToAddMixed,
+        wantToAddFresh,
+    };
+
+    if (!freeChannelCount) {
+        // There are no free channels.
+        for (auto& wantToAdd: wantToAddByKind) {
+            *wantToAdd = 0;
+        }
+        return;
+    }
+
+    auto totalWantToAddCalculator = [&]() -> int
+    {
+        return Accumulate(
+            wantToAddByKind,
+            int{},
+            [](int acc, const int* wantToAdd) { return acc + *wantToAdd; });
+    };
+
+    auto totalWantToAdd = totalWantToAddCalculator();
+    if (totalWantToAdd <= freeChannelCount) {
+        // There are enough free channels to satisfy everyone.
+        return;
+    }
+
+    // Distribute free channels among all channel kinds.
+    for (auto& wantToAdd: wantToAddByKind) {
+        double trimmedWantToAdd =
+            static_cast<double>(*wantToAdd) * freeChannelCount / totalWantToAdd;
+        if (trimmedWantToAdd > 0.0 && trimmedWantToAdd < 1.0) {
+            *wantToAdd = 1;
+        } else {
+            *wantToAdd = std::round(trimmedWantToAdd);
+        }
+    }
+
+    // If there are still more channels being created than there are free ones,
+    // then we take them away from the most greedy channel kind.
+    while (totalWantToAddCalculator() > freeChannelCount) {
+        Sort(
+            std::begin(wantToAddByKind),
+            std::end(wantToAddByKind),
+            [](const int* lhs, const int* rhs) { return *lhs > *rhs; });
+        --(*wantToAddByKind[0]);
+        Y_DEBUG_ABORT_UNLESS(*wantToAddByKind[0] >= 0);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
