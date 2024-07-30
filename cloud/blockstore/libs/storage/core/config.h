@@ -586,6 +586,8 @@ public:
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
     TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefixes() const;
+
+    NCloud::NProto::TYdbConfigDispatcherSettings GetYdbConfigDispatcherSettings() const;
 };
 
 ui64 GetAllocationUnit(

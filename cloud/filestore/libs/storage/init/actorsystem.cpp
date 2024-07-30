@@ -25,6 +25,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
@@ -365,6 +366,12 @@ void TActorSystem::Init()
         new TStorageServicesInitializer(Args, std::move(statsRegistry)));
     services->AddServiceInitializer(
         new TCustomLocalServiceInitializer(Args, Args.Metrics->GetRegistry()));
+
+    if (Args.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+        SetupConfigDispatcher(
+            Args.StorageConfig->GetYdbConfigDispatcherSettings(),
+            &runConfig.ConfigsDispatcherInitInfo);
+    }
 
     InitializeActorSystem(runConfig, services, servicesMask);
 }

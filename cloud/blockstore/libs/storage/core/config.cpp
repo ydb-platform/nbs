@@ -114,6 +114,9 @@ TDuration MSeconds(ui32 value)
     xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
                                                                                \
     xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
+    xxx(YdbConfigDispatcherSettings,                                           \
+        NCloud::NProto::TYdbConfigDispatcherSettings,                          \
+        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -578,6 +581,12 @@ template <typename T>
 bool IsEmpty(const T& t)
 {
     return !t;
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TYdbConfigDispatcherSettings& value)
+{
+    return value.HasAllowList() || value.HasDenyList();
 }
 
 template <typename T>

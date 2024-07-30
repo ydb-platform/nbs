@@ -166,6 +166,9 @@ namespace {
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
+    xxx(YdbConfigDispatcherSettings,                                           \
+        NCloud::NProto::TYdbConfigDispatcherSettings,                          \
+        {}                                                                    )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -182,6 +185,12 @@ template <typename T>
 bool IsEmpty(const T& t)
 {
     return !t;
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TYdbConfigDispatcherSettings& value)
+{
+    return value.HasAllowList() || value.HasDenyList();
 }
 
 template <typename TTarget, typename TSource>

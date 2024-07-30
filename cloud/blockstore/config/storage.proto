@@ -3,6 +3,7 @@ syntax = "proto2";
 package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+import "cloud/storage/core/protos/ydb_config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
@@ -1007,4 +1008,7 @@ message TStorageServiceConfig
 
     // Resync range, if scrubbing found a mismatch.
     optional bool ResyncRangeAfterScrubbing = 376;
+
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 377;
 }

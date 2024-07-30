@@ -3,6 +3,7 @@ syntax = "proto2";
 package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+import "cloud/storage/core/protos/ydb_config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
@@ -308,4 +309,7 @@ message TStorageConfig
 
     // Max number of items to delete during TrimBytes.
     optional uint64 TrimBytesItemCount = 359;
+
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 360;
 }
