@@ -53,6 +53,7 @@ protected:
     ui32 SecurePort = 0;
     bool SkipCertVerification = false;
     TString IamTokenFile;
+    TString ConfigFile;
 
     TClientConfigPtr ClientConfig;
 

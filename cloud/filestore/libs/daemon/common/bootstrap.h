@@ -13,6 +13,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
@@ -43,7 +44,8 @@ namespace NCloud::NFileStore::NDaemon {
 
 using IUserCounterSupplier = NCloud::NStorage::NUserStats::IUserCounterSupplier;
 
-class TBootstrapCommon {
+class TBootstrapCommon
+{
 private:
     const TString MetricsComponent;
 

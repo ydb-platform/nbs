@@ -306,13 +306,17 @@ message TStorageConfig
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
 
+    // Max number of items to delete during TrimBytes.
+    optional uint64 TrimBytesItemCount = 359;
+
+
     // Enables in-memory index cache for all index-related requests
-    optional bool InMemoryIndexCacheEnabled = 359;
+    optional bool InMemoryIndexCacheEnabled = 360;
     // Capacity of in-memory index cache, in number of entries per each table
-    optional uint64 NodesCapacity = 360;
-    optional uint64 NodesVerCapacity = 361;
-    optional uint64 NodeAttrsCapacity = 362;
-    optional uint64 NodeAttrsVerCapacity = 363;
-    optional uint64 NodeRefsCapacity = 364;
-    optional uint64 NodeRefsVerCapacity = 365;
+    optional uint64 NodesCapacity = 361;
+    optional uint64 NodesVerCapacity = 362;
+    optional uint64 NodeAttrsCapacity = 363;
+    optional uint64 NodeAttrsVerCapacity = 364;
+    optional uint64 NodeRefsCapacity = 365;
+    optional uint64 NodeRefsVerCapacity = 366;
 }

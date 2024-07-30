@@ -72,14 +72,14 @@ class NfsDaemonConfigGenerator:
         self.__restart_interval = restart_interval
         self.__restart_flag = restart_flag
 
-        self.__port_manager = yatest_common.PortManager()
-        self.__port = self.__port_manager.get_port()
-        self.__mon_port = self.__port_manager.get_port()
-        self.__ic_port = self.__port_manager.get_port()
+        self._port_manager = yatest_common.PortManager()
+        self.__port = self._port_manager.get_port()
+        self.__mon_port = self._port_manager.get_port()
+        self.__ic_port = self._port_manager.get_port()
         self.__access_service_port = access_service_port
 
         if access_service_port:
-            self.__app_config.ServerConfig.SecurePort = self.__port_manager.get_port()
+            self.__app_config.ServerConfig.SecurePort = self._port_manager.get_port()
 
         with open(self.__app_config_file_path, "w") as config_file:
             if self.__app_config:
@@ -283,6 +283,9 @@ class NfsDaemonConfigGenerator:
             )
         self.__write_configs()
 
+    def generate_aux_params(self):
+        return []
+
     def generate_command(self):
         command = [
             self.__binary_path,
@@ -296,7 +299,7 @@ class NfsDaemonConfigGenerator:
             str(self.__mon_port),
             "--profile-file",
             self.__profile_log_path,
-        ]
+        ] + self.generate_aux_params()
 
         if self.__service_type == "kikimr":
             command += [
@@ -408,3 +411,12 @@ class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
         )
+
+        self.__local_service_port = self._port_manager.get_port()
+
+    def generate_aux_params(self):
+        return ["--local-service-port", str(self.__local_service_port)]
+
+    @property
+    def local_service_port(self):
+        return self.__local_service_port

@@ -213,6 +213,8 @@ public:
 
     bool GetAllowFileStoreForceDestroy() const;
 
+    ui64 GetTrimBytesItemCount() const;
+
     bool GetInMemoryIndexCacheEnabled() const;
     ui64 GetNodesCapacity() const;
     ui64 GetNodesVerCapacity() const;

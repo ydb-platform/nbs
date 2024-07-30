@@ -1,8 +1,8 @@
 import yatest.common as common
 
 
-tests_bin = "cloud-storage-core-libs-keyring-ut-bin"
-tests_bin_path = "cloud/storage/core/libs/keyring/ut/bin/" + tests_bin
+tests_bin = "cloud-storage-core-libs-endpoints-keyring-ut-bin"
+tests_bin_path = "cloud/storage/core/libs/endpoints/keyring/ut/bin/" + tests_bin
 
 
 def test_qemu_keyring_ut():

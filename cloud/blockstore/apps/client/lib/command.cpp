@@ -122,6 +122,7 @@ TCommand::TCommand(IBlockStorePtr client)
             << "config file name. Default is "
             << DefaultConfigFile)
         .RequiredArgument("STR")
+        .DefaultValue(DefaultConfigFile)
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("iam-config")
@@ -610,10 +611,8 @@ TString TCommand::GetIamTokenFromClient()
 void TCommand::InitClientConfig()
 {
     NProto::TClientAppConfig appConfig;
-    if (ConfigFile) {
+    if (NFs::Exists(ConfigFile)) {
         ParseFromTextFormat(ConfigFile, appConfig);
-    } else if (NFs::Exists(DefaultConfigFile)) {
-        ParseFromTextFormat(DefaultConfigFile, appConfig);
     }
 
     auto& clientConfig = *appConfig.MutableClientConfig();

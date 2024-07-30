@@ -165,6 +165,7 @@ namespace {
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
+    xxx(TrimBytesItemCount,                             ui64,      100'000    )\
                                                                                \
     xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
     xxx(NodesCapacity,                                  ui64,       0         )\

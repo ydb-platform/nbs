@@ -3539,6 +3539,51 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(DestroyDestroyedFileStoreShouldFail)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const TString fsId2 = "test2";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+        service.CreateFileStore(fsId2, initialBlockCount);
+
+        {
+            auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                destroyFileStoreResponse->GetStatus(),
+                destroyFileStoreResponse->GetErrorReason());
+
+            auto alreadyDestroyedFileStoreResponse =
+                service.DestroyFileStore(fsId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_FALSE,
+                alreadyDestroyedFileStoreResponse->GetStatus(),
+                alreadyDestroyedFileStoreResponse->GetErrorReason());
+        }
+
+        {
+            auto destroyFileStoreResponse = service.DestroyFileStore(fsId2);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                destroyFileStoreResponse->GetStatus(),
+                destroyFileStoreResponse->GetErrorReason());
+
+            auto alreadyDestroyedFileStoreResponse =
+                service.DestroyFileStore(fsId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_FALSE,
+                alreadyDestroyedFileStoreResponse->GetStatus(),
+                alreadyDestroyedFileStoreResponse->GetErrorReason());
+        }
+    }
+
     Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
     {
         TTestEnv env;

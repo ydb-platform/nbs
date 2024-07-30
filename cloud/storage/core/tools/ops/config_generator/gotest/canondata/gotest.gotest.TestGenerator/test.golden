@@ -5,7 +5,7 @@ config:
     UseBlackBox: true
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: true
@@ -14,7 +14,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
   file.cfg: |+
     cfg file override for test
@@ -55,7 +55,7 @@ config:
     UseBlackBox: true
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: true
@@ -64,7 +64,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
   file.cfg: |+
     cfg file override for test
@@ -96,7 +96,7 @@ config:
     UseBlackBox: true
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: true
@@ -105,7 +105,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
 
 /generated-configs/cluster1/zone2/seed/values.yaml:
@@ -115,7 +115,7 @@ config:
     UseBlackBox: false
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: false
@@ -124,7 +124,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
   file.cfg: |+
     cfg file override for test
@@ -165,7 +165,7 @@ config:
     UseBlackBox: false
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: false
@@ -174,7 +174,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
   file.cfg: |+
     cfg file override for test
@@ -206,7 +206,7 @@ config:
     UseBlackBox: false
     UseAccessService: true
     UseStaff: false
-    
+
 
   nbs-ic.txt: |+
     StartTcp: false
@@ -215,7 +215,7 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
-    
+
 
 
 /generated-configs/cluster2/zoneA/target1/file.cfg:

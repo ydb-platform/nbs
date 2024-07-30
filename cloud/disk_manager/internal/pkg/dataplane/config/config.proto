@@ -31,5 +31,5 @@ message DataplaneConfig {
     // Abort replication if SecondsRemaining degrades in X iterations.
     optional uint32 UselessReplicationIterationsBeforeAbort = 15 [default = 100];
 
-    optional string ProxyOverlayDiskIdPrefix = 16 [default = "proxy_"];
+    optional string ProxyOverlayDiskIdPrefix = 16 [default = "proxy-"];
 }

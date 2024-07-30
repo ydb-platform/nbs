@@ -374,13 +374,18 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
         requestStats->UpdateStats(true);
 
+        auto us2ms = [](const ui64 us)
+        {
+            return TDuration::MicroSeconds(us).MilliSeconds();
+        };
+
         {
             auto percentiles = totalCounters->GetSubgroup("percentiles", "Time");
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(600063, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(200063, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(600, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(200, us2ms(p50->Val()));
         }
 
         {
@@ -388,8 +393,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(300031, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(200063, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(300, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(200, us2ms(p50->Val()));
         }
 
         {
@@ -397,8 +402,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(600063, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(500223, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(600, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(500, us2ms(p50->Val()));
         }
 
         {
@@ -407,8 +412,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(30015, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(20015, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(30, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(20, us2ms(p50->Val()));
         }
     }
 

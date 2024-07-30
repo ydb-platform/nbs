@@ -25,6 +25,9 @@
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
+#include <cloud/filestore/libs/service_local/config.h>
+#include <cloud/filestore/libs/service_local/service.h>
+#include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
@@ -75,6 +78,7 @@ private:
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
+    IFileStoreServicePtr LocalService;
     IActorSystemPtr ActorSystem;
 
     TEndpointsMap Endpoints;
@@ -84,10 +88,12 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
+            IFileStoreServicePtr localService,
             IActorSystemPtr actorSystem)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
+        , LocalService(std::move(localService))
         , ActorSystem(std::move(actorSystem))
     {}
 
@@ -117,9 +123,29 @@ public:
         NDaemon::EServiceKind kind)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
-        auto fileStore = (kind == NDaemon::EServiceKind::Kikimr) ?
-            CreateKikimrFileStore(ActorSystem) :
-            NClient::CreateFileStoreClient(clientConfig, Logging);
+        IFileStoreServicePtr fileStore;
+        switch (kind) {
+            case NDaemon::EServiceKind::Null: {
+                fileStore = CreateNullFileStore();
+                break;
+            }
+
+            case NDaemon::EServiceKind::Kikimr: {
+                fileStore = CreateKikimrFileStore(ActorSystem);
+                break;
+            }
+
+            default: {
+                if (LocalService) {
+                    fileStore = LocalService;
+                } else {
+                    fileStore = NClient::CreateFileStoreClient(
+                        clientConfig,
+                        Logging);
+                }
+                break;
+            }
+        }
 
         return AddEndpoint(
             name,
@@ -230,6 +256,21 @@ void TBootstrapVhost::InitComponents()
         EndpointManager);
     RegisterServer(Server);
 
+    if (LocalService) {
+        auto serverConfigProto = Configs->ServerConfig->GetProto();
+        serverConfigProto.ClearSecurePort();
+        serverConfigProto.SetPort(Configs->Options->LocalServicePort);
+        LocalServiceServer = CreateServer(
+            std::make_shared<NServer::TServerConfig>(serverConfigProto),
+            Logging,
+            StatsRegistry->GetRequestStats(),
+            ProfileLog,
+            LocalService);
+
+        STORAGE_INFO("initialized LocalServiceServer: %s",
+            serverConfigProto.Utf8DebugString().Quote().c_str());
+    }
+
     InitLWTrace();
 }
 
@@ -240,10 +281,28 @@ void TBootstrapVhost::InitConfig()
 
 void TBootstrapVhost::InitEndpoints()
 {
+    const auto* localServiceConfig =
+        Configs->VhostServiceConfig->GetLocalServiceConfig();
+    if (localServiceConfig) {
+        auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
+            *localServiceConfig);
+        ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
+        LocalService = CreateLocalFileStore(
+            std::move(serviceConfig),
+            Timer,
+            Scheduler,
+            Logging,
+            ThreadPool);
+
+        STORAGE_INFO("initialized LocalService: %s",
+            localServiceConfig->Utf8DebugString().Quote().c_str());
+    }
+
     auto endpoints = std::make_shared<TFileStoreEndpoints>(
         Timer,
         Scheduler,
         Logging,
+        LocalService,
         ActorSystem);
 
     for (const auto& endpoint: Configs->VhostServiceConfig->GetServiceEndpoints()) {
@@ -315,18 +374,24 @@ void TBootstrapVhost::StartComponents()
 {
     NVhost::StartServer();
 
+    FILESTORE_LOG_START_COMPONENT(ThreadPool);
+    FILESTORE_LOG_START_COMPONENT(LocalService);
     FILESTORE_LOG_START_COMPONENT(FileStoreEndpoints);
     FILESTORE_LOG_START_COMPONENT(EndpointManager);
     FILESTORE_LOG_START_COMPONENT(Server);
+    FILESTORE_LOG_START_COMPONENT(LocalServiceServer);
 
     RestoreKeyringEndpoints();
 }
 
 void TBootstrapVhost::StopComponents()
 {
+    FILESTORE_LOG_STOP_COMPONENT(LocalServiceServer);
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(EndpointManager);
     FILESTORE_LOG_STOP_COMPONENT(FileStoreEndpoints);
+    FILESTORE_LOG_STOP_COMPONENT(LocalService);
+    FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
 
     NVhost::StopServer();
 }

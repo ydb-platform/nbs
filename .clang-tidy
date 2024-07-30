@@ -29,7 +29,11 @@ CheckOptions:
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
   - key: readability-identifier-naming.ClassPrefix
-    value: "T"   
+    value: "T"
+  - key: readability-identifier-naming.ClassConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstantMemberCase
+    value: CamelCase
   - key: readability-identifier-naming.MemberCase
     value: CamelCase
   - key: readability-identifier-naming.MemberSuffix
@@ -41,10 +45,11 @@ CheckOptions:
   - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
     value: true
 
+  # abstract class
   - key: readability-identifier-naming.AbstractClassCase
     value: CamelCase
   - key: readability-identifier-naming.AbstractClassPrefix
-    value: "I"   
+    value: "I"
 
   # struct
   - key: readability-identifier-naming.StructCase
@@ -82,10 +87,15 @@ CheckOptions:
   # param
   - key: readability-identifier-naming.ParameterCase
     value: camelBack
+  - key: readability-identifier-naming.ConstantParameterCase
+    value: camelBack
 
   # variable and constant
+  - key: readability-identifier-naming.ConstantCase
+    value: camelBack
+
   - key: readability-identifier-naming.VariableCase
-    value: camelBack  
+    value: camelBack
 
   - key: readability-identifier-naming.StaticVariableCase
     value: CamelCase
@@ -103,20 +113,20 @@ CheckOptions:
     value: "T"
   - key: readability-identifier-naming.TemplateParameterIgnoredRegexp
     value: "T|U|F"
-     
+
   # union
   - key: readability-identifier-naming.UnionCase
-    value: CamelCase  
+    value: CamelCase
   - key: readability-identifier-naming.UnionPrefix
-    value: "T"  
+    value: "T"
 
   # using
   - key: readability-identifier-naming.TypeAliasCase
-    value: CamelCase 
+    value: CamelCase
 
   # macro
   - key: readability-identifier-naming.MacroDefinitionCase
-    value: UPPER_CASE   
+    value: UPPER_CASE
 
   # misc
   - key: bugprone-easily-swappable-parameters.MinimumLength
@@ -125,4 +135,3 @@ CheckOptions:
     value: true
   - key: readability-function-cognitive-complexity.IgnoreMacros
     value: true
-

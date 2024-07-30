@@ -9,6 +9,8 @@ namespace NCloud::NFileStore::NDaemon {
 struct TOptionsVhost final
     : public TOptionsCommon
 {
+    ui32 LocalServicePort = 0;
+
     TOptionsVhost();
 };
 
