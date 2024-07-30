@@ -1,6 +1,7 @@
 package configurator
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -385,6 +387,52 @@ func (g *ConfigGenerator) dumpTxtConfigs(
 	return nil
 }
 
+func trimWhiteSpaceLines(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	tmpFile, err := os.OpenFile(
+		filePath+".tmp",
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+		0755)
+	if err != nil {
+		return err
+	}
+	defer tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	whiteSpaceLineRe := regexp.MustCompile(`^\s*$`)
+
+	scanner := bufio.NewScanner(file)
+	writer := bufio.NewWriter(tmpFile)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !whiteSpaceLineRe.MatchString(line) {
+			_, err = writer.WriteString(line + "\n")
+		} else {
+			_, err = writer.WriteString("\n")
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+	tmpFile.Close()
+
+	return os.Rename(tmpFile.Name(), filePath)
+}
+
 func (g *ConfigGenerator) dumpValues(
 	ctx context.Context,
 	configs []ResultConfig,
@@ -420,8 +468,10 @@ func (g *ConfigGenerator) dumpValues(
 			err,
 		)
 	}
+
+	filePath := path.Join(dumpPath, fileName)
 	file, err := os.OpenFile(
-		path.Join(dumpPath, fileName),
+		filePath,
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 		0755)
 	if err != nil {
@@ -446,6 +496,14 @@ func (g *ConfigGenerator) dumpValues(
 		return fmt.Errorf(
 			"cannot close file %v: %w",
 			file,
+			err,
+		)
+	}
+
+	err = trimWhiteSpaceLines(filePath)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to trim white space lines from file: %w",
 			err,
 		)
 	}
