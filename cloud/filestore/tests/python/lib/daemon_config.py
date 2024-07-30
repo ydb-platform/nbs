@@ -54,6 +54,7 @@ class NfsDaemonConfigGenerator:
         restart_flag=None,
         access_service_port=0,
         storage_config=None,
+        use_secure_registration=False,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -77,6 +78,8 @@ class NfsDaemonConfigGenerator:
         self.__mon_port = self._port_manager.get_port()
         self.__ic_port = self._port_manager.get_port()
         self.__access_service_port = access_service_port
+
+        self.__use_secure_registration = use_secure_registration
 
         if access_service_port:
             self.__app_config.ServerConfig.SecurePort = self._port_manager.get_port()
@@ -307,8 +310,6 @@ class NfsDaemonConfigGenerator:
                 self.__domain,
                 "--ic-port",
                 str(self.__ic_port),
-                "--node-broker",
-                "localhost:" + str(self.__kikimr_port),
                 "--diag-file",
                 self.__config_file_path("diag.txt"),
                 "--domains-file",
@@ -325,7 +326,13 @@ class NfsDaemonConfigGenerator:
                 self.__config_file_path("dyn_ns.txt"),
                 "--suppress-version-check",
                 "--load-configs-from-cms",
+                "--node-broker",
+                "localhost:{}".format(self.__kikimr_port),
             ]
+
+            if self.__use_secure_registration:
+                command += ["--use-secure-registration"]
+
             if self.__access_service_port:
                 command += [
                     "--auth-file",
@@ -364,6 +371,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         restart_interval=None,
         access_service_port=0,
         storage_config=None,
+        use_secure_registration=False,
     ):
         super().__init__(
             binary_path,
@@ -379,6 +387,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
             restart_flag=None,
             access_service_port=access_service_port,
             storage_config=storage_config,
+            use_secure_registration=use_secure_registration,
         )
 
 
@@ -395,6 +404,7 @@ class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
         restart_flag,
         access_service_port=0,
         storage_config=None,
+        use_secure_registration=False,
     ):
         super().__init__(
             binary_path,
@@ -410,6 +420,7 @@ class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
             restart_flag=restart_flag,
             access_service_port=access_service_port,
             storage_config=storage_config,
+            use_secure_registration=use_secure_registration,
         )
 
         self.__local_service_port = self._port_manager.get_port()
