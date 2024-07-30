@@ -110,6 +110,7 @@ TCommand::TCommand()
             << "config file name. Default is "
             << DefaultConfigFile)
         .RequiredArgument("STR")
+        .DefaultValue(DefaultConfigFile)
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("json")
@@ -183,10 +184,8 @@ void TCommand::Init()
     Scheduler = CreateScheduler();
 
     NProto::TClientConfig config;
-    if (ConfigFile) {
+    if (ConfigFile && NFs::Exists(ConfigFile)) {
         ParseFromTextFormat(ConfigFile, config);
-    } else if (NFs::Exists(DefaultConfigFile)) {
-        ParseFromTextFormat(DefaultConfigFile, config);
     }
 
     if (ServerAddress) {
