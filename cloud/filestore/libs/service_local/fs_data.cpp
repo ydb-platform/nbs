@@ -104,7 +104,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     handle.Pwrite(buffer.data(), buffer.size(), request.GetOffset());
     handle.Flush(); // TODO
 
-    return {};
+    return MakeFuture<NProto::TWriteDataResponse>();
 }
 
 NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(

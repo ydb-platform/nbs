@@ -371,6 +371,7 @@ TString GetXAttr(const TFile& handle, const TString& name)
             0);
 
         if (res < 0) {
+            // TODO MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
             ythrow TServiceError(E_NOT_FOUND)
                 << "failed to get attribute (" << name.Quote() << "): "
                 << LastSystemErrorText();
