@@ -194,7 +194,6 @@ bool IsEmpty(const T& t)
 template <>
 bool IsEmpty(const NCloud::NProto::TCertificate& value)
 {
-
     return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
 

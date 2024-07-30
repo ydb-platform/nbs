@@ -67,7 +67,7 @@ def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
 
     try:
         wait_for_nfs_server(nfs_server, nfs_configurator.port)
-    except RuntimeError as ex:
+    except RuntimeError:
         return False
 
     nfs_server.stop()
@@ -76,12 +76,12 @@ def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
 
 
 def test_registration_non_secure():
-    assert setup_and_run_test(False, False) == True
+    assert setup_and_run_test(False, False)
 
 
 def test_registration_secure():
-    assert setup_and_run_test(True, True) == True
+    assert setup_and_run_test(True, True)
 
 
 def test_fail_registration_at_wrong_port():
-    assert setup_and_run_test(False, True) == False
+    assert not setup_and_run_test(False, True)
