@@ -1242,7 +1242,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteReplica(1, range3, 'B');
 
         iterations = 0;
-        while (fullCyclesCount < 3 && iterations++ < 100) {
+        while (fullCyclesCount < 4 && iterations++ < 100) {
             if (prevScrubbingProgress != 0 &&
                 counters.Simple.ScrubbingProgress.Value == 0)
             {
@@ -1257,7 +1257,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // check that all ranges was resynced and there is no more mismatches
         iterations = 0;
-        while (fullCyclesCount < 4 && iterations++ < 100) {
+        while (fullCyclesCount < 6 && iterations++ < 100) {
             if (prevScrubbingProgress != 0 &&
                 counters.Simple.ScrubbingProgress.Value == 0)
             {
