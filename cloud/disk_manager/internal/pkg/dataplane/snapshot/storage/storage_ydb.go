@@ -52,6 +52,7 @@ func (s *storageYDB) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	incrementalInfo *IncrementalInfo,
 ) error {
 
 	return s.db.Execute(
@@ -65,6 +66,7 @@ func (s *storageYDB) SnapshotCreated(
 				storageSize,
 				chunkCount,
 				encryption,
+				incrementalInfo,
 			)
 		},
 	)
@@ -159,4 +161,23 @@ func (s *storageYDB) ReadChunkMap(
 	}
 
 	return entries, errors
+}
+
+func (s *storageYDB) DeleteDiskFromIncremental(
+	ctx context.Context,
+	diskID string,
+	zoneID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.deleteDiskFromIncremental(
+				ctx,
+				session,
+				diskID,
+				zoneID,
+			)
+		},
+	)
 }

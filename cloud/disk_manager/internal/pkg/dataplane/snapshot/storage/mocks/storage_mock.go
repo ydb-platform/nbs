@@ -33,9 +33,18 @@ func (s *StorageMock) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	incrementalInfo *storage.IncrementalInfo,
 ) error {
 
-	args := s.Called(ctx, snapshotID, size, storageSize, chunkCount, encryption)
+	args := s.Called(
+		ctx,
+		snapshotID,
+		size,
+		storageSize,
+		chunkCount,
+		encryption,
+		incrementalInfo,
+	)
 	return args.Error(0)
 }
 
@@ -192,6 +201,15 @@ func (s *StorageMock) GetTotalSnapshotSize(ctx context.Context) (size uint64, er
 func (s *StorageMock) GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error) {
 	args := s.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) DeleteDiskFromIncremental(
+	ctx context.Context,
+	diskID string,
+	zoneID string,
+) error {
+	args := s.Called(ctx, diskID, zoneID)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

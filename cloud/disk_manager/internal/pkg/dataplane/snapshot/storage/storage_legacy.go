@@ -130,6 +130,7 @@ func (s *legacyStorage) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	incrementalInfo *IncrementalInfo,
 ) error {
 
 	return task_errors.NewNonRetriableErrorf("not implemented")
@@ -240,4 +241,13 @@ func (s *legacyStorage) GetTotalSnapshotSize(ctx context.Context) (size uint64, 
 
 func (s *legacyStorage) GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error) {
 	return 0, task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) DeleteDiskFromIncremental(
+	ctx context.Context,
+	diskID string,
+	zoneID string,
+) error {
+
+	return task_errors.NewNonRetriableErrorf("not implemented")
 }

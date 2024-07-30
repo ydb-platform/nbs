@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteDiskFromIncrementalRequest {
+    types.Disk Disk = 1;
+}
+
+message DeleteDiskFromIncrementalState {}

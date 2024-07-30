@@ -162,7 +162,8 @@ func (t *createSnapshotFromURLTask) Run(
 		size,
 		storageSize,
 		t.state.ChunkCount,
-		nil,
+		nil, // encryption
+		nil, // incrementalInfo
 	)
 }
 

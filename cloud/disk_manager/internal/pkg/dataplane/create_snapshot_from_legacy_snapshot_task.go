@@ -142,6 +142,7 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 		storageSize,
 		t.state.ChunkCount,
 		srcMeta.Encryption,
+		nil, // incrementalInfo
 	)
 }
 

@@ -44,6 +44,7 @@ type Storage interface {
 		storageSize uint64,
 		chunkCount uint32,
 		encryption *types.EncryptionDesc,
+		incrementalInfo *IncrementalInfo,
 	) error
 
 	DeletingSnapshot(ctx context.Context, snapshotID string) error
@@ -108,4 +109,10 @@ type Storage interface {
 	GetTotalSnapshotSize(ctx context.Context) (size uint64, err error)
 
 	GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error)
+
+	DeleteDiskFromIncremental(
+		ctx context.Context,
+		diskID string,
+		zoneID string,
+	) error
 }

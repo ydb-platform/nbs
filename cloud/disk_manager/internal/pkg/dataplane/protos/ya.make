@@ -8,6 +8,7 @@ SRCS(
     create_snapshot_from_legacy_snapshot_task.proto
     create_snapshot_from_snapshot_task.proto
     create_snapshot_from_url_task.proto
+    delete_disk_from_incremental.proto
     delete_snapshot_data_task.proto
     delete_snapshot_task.proto
     replicate_disk_task.proto

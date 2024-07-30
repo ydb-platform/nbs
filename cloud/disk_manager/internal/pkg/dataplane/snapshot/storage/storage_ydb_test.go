@@ -430,11 +430,27 @@ func TestCreateSnapshot(t *testing.T) {
 			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx,
+				"snapshot",
+				0,
+				0,
+				0,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			// Check idempotency.
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx,
+				"snapshot",
+				0,
+				0,
+				0,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			// Check idempotency.
@@ -457,7 +473,15 @@ func TestDeletingSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx,
+				"snapshot",
+				0,
+				0,
+				0,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -477,7 +501,15 @@ func TestDeletingSnapshot(t *testing.T) {
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx,
+				"snapshot",
+				0,
+				0,
+				0,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
@@ -493,7 +525,15 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			err := f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx,
+				"snapshot",
+				0,
+				0,
+				0,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -1076,7 +1116,14 @@ func TestCheckSnapshotReady(t *testing.T) {
 			diskSize := uint64(2 * 1024 * 1024)
 			chunkCount := uint32(2)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", diskSize, diskSize, chunkCount, nil)
+			err = f.storage.SnapshotCreated(
+				f.ctx, "snapshot",
+				diskSize,
+				diskSize,
+				chunkCount,
+				nil, // encryption
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			resource, err := f.storage.CheckSnapshotReady(f.ctx, "snapshot")
