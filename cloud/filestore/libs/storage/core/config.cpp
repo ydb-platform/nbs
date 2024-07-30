@@ -206,7 +206,6 @@ TTarget ConvertValue(const TSource& value)
 template <>
 TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
 {
-
     return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
@@ -239,8 +238,7 @@ void DumpImpl(const T& t, IOutputStream& os)
 template <>
 void DumpImpl(const TCertificate& value, IOutputStream& os)
 {
-    os
-        << "{ "
+    os << "{ "
         << value.CertFile
         << ", "
         << value.CertPrivateKeyFile
