@@ -67,10 +67,11 @@ void TIndexTabletActor::HandleChangeStorageConfig(
     AddTransaction<TEvIndexTablet::TChangeStorageConfigMethod>(*requestInfo);
 
     const auto* msg = ev->Get();
-    ExecuteTx(ctx, CreateTx<TChangeStorageConfig>(
-        requestInfo,
+    ExecuteTx<TChangeStorageConfig>(
+        ctx,
+        std::move(requestInfo),
         msg->Record.GetStorageConfig(),
-        msg->Record.GetMergeWithStorageConfigFromTabletDB()));
+        msg->Record.GetMergeWithStorageConfigFromTabletDB());
 }
 
 }   // namespace NCloud::NFileStore::NStorage
