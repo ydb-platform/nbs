@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
+#include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
@@ -32,6 +33,7 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(1);
 
+const TString DefaultConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
 const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,6 +104,14 @@ TCommand::TCommand()
     Opts.AddLongOption("iam-token-file", "path to iam token")
         .RequiredArgument("STR")
         .StoreResult(&IamTokenFile);
+
+    Opts.AddLongOption("config")
+        .Help(TStringBuilder()
+            << "config file name. Default is "
+            << DefaultConfigFile)
+        .RequiredArgument("STR")
+        .DefaultValue(DefaultConfigFile)
+        .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("json")
         .StoreTrue(&JsonOutput);
@@ -174,6 +184,10 @@ void TCommand::Init()
     Scheduler = CreateScheduler();
 
     NProto::TClientConfig config;
+    if (NFs::Exists(ConfigFile)) {
+        ParseFromTextFormat(ConfigFile, config);
+    }
+
     if (ServerAddress) {
         config.SetHost(ServerAddress);
     }
