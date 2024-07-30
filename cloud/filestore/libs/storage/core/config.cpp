@@ -1,9 +1,12 @@
 #include "config.h"
 
+#include <cloud/storage/core/protos/certificate.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -172,6 +175,10 @@ using TAliasMap = THashMap<TString, TString>;
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
+    xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
+    xxx(NodeRegistrationCert,            TCertificate,          {}            )\
+    xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \

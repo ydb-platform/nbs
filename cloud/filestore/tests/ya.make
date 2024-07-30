@@ -13,6 +13,7 @@ RECURSE_FOR_TESTS(
     fs_posix_compliance
     loadtest
     profile_log
+    registration
     service
     xfs_suite
 )
