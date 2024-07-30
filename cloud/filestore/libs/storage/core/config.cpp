@@ -163,6 +163,7 @@ namespace {
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
+    xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
@@ -318,6 +319,11 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
         &value);
 
     return TValueByName(value);
+}
+
+const NProto::TStorageConfig& TStorageConfig::GetStorageConfigProto() const
+{
+    return ProtoConfig;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

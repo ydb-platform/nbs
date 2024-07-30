@@ -141,10 +141,11 @@ private:
         const NActors::TActorContext& ctx,
         const TString& sessionId,
         const ui64 seqNo,
+        const bool disableMultiTabletForwarding,
         const TString& methodName,
         const ui64 requestId,
         const NProto::TFileStore& filestore,
-        ui32 shardNo) const;
+        const ui32 shardNo) const;
 
 private:
     // actions
@@ -153,6 +154,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateGetStorageConfigFieldsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateGetStorageConfigActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

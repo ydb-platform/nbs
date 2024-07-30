@@ -18,6 +18,7 @@ namespace NCloud::NFileStore{
     xxx(CreateSessionError)                                                    \
     xxx(DescribeFileStoreError)                                                \
     xxx(NodeNotFoundInFollower)                                                \
+    xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
@@ -31,6 +32,7 @@ namespace NCloud::NFileStore{
     xxx(FailedToCreateHandle)                                                  \
     xxx(ChildRefIsNull)                                                        \
     xxx(NewChildNodeIsNull)                                                    \
+    xxx(IndexOutOfBounds)                                                      \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

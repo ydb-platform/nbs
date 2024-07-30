@@ -632,6 +632,7 @@ void TStorageServiceActor::HandleReadData(
         ctx,
         sessionId,
         seqNo,
+        msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
         TEvService::TReadDataMethod::Name,
         msg->CallContext->RequestId,
         filestore,

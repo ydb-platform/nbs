@@ -265,6 +265,19 @@ public:
         return request;
     }
 
+    auto CreateGetStorageConfigRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvGetStorageConfigRequest>();
+    }
+
+    auto CreateChangeStorageConfigRequest(NProto::TStorageConfig patch)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvChangeStorageConfigRequest>();
+        *request->Record.MutableStorageConfig() = std::move(patch);
+        return request;
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
@@ -440,7 +453,7 @@ public:
         return request;
     }
 
-    auto CreateGetNodeAttrRequest(ui64 node, const TString& name)
+    auto CreateGetNodeAttrRequest(ui64 node, const TString& name = "")
     {
         auto request = CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
         request->Record.SetNodeId(node);
@@ -448,10 +461,14 @@ public:
         return request;
     }
 
-    auto CreateGetNodeAttrRequest(ui64 node)
+    auto CreateGetNodeAttrBatchRequest(ui64 node, const TVector<TString>& names)
     {
-        auto request = CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvGetNodeAttrBatchRequest>();
         request->Record.SetNodeId(node);
+        for (const auto& name: names) {
+            *request->Record.AddNames() = name;
+        }
         return request;
     }
 

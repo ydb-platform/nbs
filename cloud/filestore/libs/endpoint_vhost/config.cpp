@@ -48,10 +48,10 @@ TTarget ConvertValue(
     const google::protobuf::RepeatedPtrField<TSource>& value)
 {
     TTarget v(Reserve(value.size()));
-    for (const auto& x : value) {
-          v.push_back(x);
-        }
-        return v;
+    for (const auto& x: value) {
+        v.push_back(x);
+    }
+    return v;
 }
 
 template <typename T>
@@ -150,6 +150,13 @@ void TVhostServiceConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef VHOST_CONFIG_DUMP
+}
+
+const NProto::TLocalServiceConfig* TVhostServiceConfig::GetLocalServiceConfig() const
+{
+    return ProtoConfig.HasLocalServiceConfig()
+        ? &ProtoConfig.GetLocalServiceConfig()
+        : nullptr;
 }
 
 #undef VHOST_SERVICE_CONFIG

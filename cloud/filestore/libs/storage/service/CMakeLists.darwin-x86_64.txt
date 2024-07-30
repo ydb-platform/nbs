@@ -37,6 +37,7 @@ target_sources(filestore-libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_describe_sessions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_drain_tablets.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_forced_operation.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config_fields.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_reassign_tablet.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions.cpp

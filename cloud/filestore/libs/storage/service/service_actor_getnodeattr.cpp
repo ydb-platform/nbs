@@ -263,13 +263,16 @@ void TStorageServiceActor::HandleGetNodeAttr(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+    const bool multiTabletForwardingEnabled =
+        StorageConfig->GetMultiTabletForwardingEnabled()
+        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TGetNodeAttrActor>(
         std::move(requestInfo),
         std::move(msg->Record),
         msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        StorageConfig->GetMultiTabletForwardingEnabled());
+        multiTabletForwardingEnabled);
 
     NCloud::Register(ctx, std::move(actor));
 }

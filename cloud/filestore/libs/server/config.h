@@ -55,6 +55,11 @@ public:
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
 
+    const NProto::TServerConfig& GetProto() const
+    {
+        return ProtoConfig;
+    }
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

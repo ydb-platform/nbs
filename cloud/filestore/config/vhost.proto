@@ -35,6 +35,9 @@ message TVhostServiceConfig
 
     // Causes E_NOT_IMPLEMENTED errors in endpoint storages to be logged.
     optional bool EndpointStorageNotImplementedErrorIsFatal = 8;
+
+    // Causes LocalService to be used if service != null and service != kikimr.
+    optional TLocalServiceConfig LocalServiceConfig = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

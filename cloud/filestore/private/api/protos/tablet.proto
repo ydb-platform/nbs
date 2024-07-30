@@ -4,6 +4,7 @@ import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/filestore/config/storage.proto";
 
 import "ydb/core/protos/base.proto";
@@ -524,4 +525,53 @@ message TConfigureAsFollowerResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetStorageConfig request/response.
+
+message TGetStorageConfigRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier to query its storage config. Or empty to
+    // query server storage config.
+    string FileSystemId = 2;
+}
+
+message TGetStorageConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Result Storage config.
+    NProto.TStorageConfig StorageConfig = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetNodeAttrBatch request/response.
+
+message TGetNodeAttrBatchRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent.
+    uint64 NodeId = 3;
+
+    // Nodes.
+    repeated bytes Names = 4;
+}
+
+message TGetNodeAttrBatchResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Individual node responses.
+    repeated NProto.TGetNodeAttrResponse Responses = 2;
 }

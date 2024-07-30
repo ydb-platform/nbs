@@ -207,6 +207,7 @@ public:
     bool GetNewLocalDBCompactionPolicyEnabled() const;
 
     bool GetMultiTabletForwardingEnabled() const;
+    bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
 
@@ -215,6 +216,8 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
+
+    const NProto::TStorageConfig& GetStorageConfigProto() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

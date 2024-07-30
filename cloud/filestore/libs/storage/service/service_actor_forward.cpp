@@ -19,12 +19,16 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const NActors::TActorContext& ctx,
     const TString& sessionId,
     const ui64 seqNo,
+    const bool disableMultiTabletForwarding,
     const TString& methodName,
     const ui64 requestId,
     const NProto::TFileStore& filestore,
-    ui32 shardNo) const
+    const ui32 shardNo) const
 {
-    if (StorageConfig->GetMultiTabletForwardingEnabled() && shardNo) {
+    const bool multiTabletForwardingEnabled =
+        StorageConfig->GetMultiTabletForwardingEnabled()
+        && !disableMultiTabletForwarding;
+    if (multiTabletForwardingEnabled && shardNo) {
         const auto& followerIds = filestore.GetFollowerFileSystemIds();
         if (followerIds.size() < static_cast<int>(shardNo)) {
             LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
@@ -140,6 +144,7 @@ void TStorageServiceActor::ForwardRequestToFollower(
         ctx,
         sessionId,
         seqNo,
+        msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
         TMethod::Name,
         msg->CallContext->RequestId,
         filestore,
