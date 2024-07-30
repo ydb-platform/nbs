@@ -147,7 +147,6 @@ private:
     {
         ui64 NodeId;
         TNodeRow Row;
-    };
 
     struct TDeleteNodeRequest
     {
@@ -157,8 +156,6 @@ private:
     //
     // Nodes_Ver
     //
-
-    struct TNodesVerKey
     {
         TNodesVerKey(ui64 nodeId, ui64 minCommitId)
             : NodeId(nodeId)
