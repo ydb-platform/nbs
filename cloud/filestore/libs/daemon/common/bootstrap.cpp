@@ -278,13 +278,6 @@ void TBootstrapCommon::InitActorSystem()
     Y_ABORT_UNLESS(Configs->KikimrConfig);
     Y_ABORT_UNLESS(Configs->StorageConfig);
 
-    NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts =
-            Configs->Options->NodeRegistrationMaxAttempts,
-        .ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout,
-        .RegistrationTimeout = Configs->Options->NodeRegistrationTimeout,
-    };
-
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts;
     registerOpts.Domain = Configs->Options->Domain;
     registerOpts.SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir();
@@ -292,7 +285,8 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.Settings = std::move(settings);
+    registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+    registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,

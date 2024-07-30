@@ -11,6 +11,14 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCertificate
+{
+    TString CertFile;
+    TString CertPrivateKeyFile;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
@@ -222,6 +230,10 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    TString GetNodeRegistrationToken() const;
+    TString GetNodeType() const;
+    TString GetNodeRegistrationRootCertsFile() const;
+    TCertificate GetNodeRegistrationCert() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 
