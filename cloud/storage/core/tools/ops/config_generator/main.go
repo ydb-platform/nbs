@@ -68,6 +68,7 @@ func getNfsConfigMap() configurator.ConfigMap {
 		"nfs-storage.txt":  {Proto: &nfsProto.TStorageConfig{}, FileName: "storage.txt"},
 		"nfs-diag.txt":     {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
 		"nfs-vhost.txt":    {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
+		"nfs-client.txt":   {Proto: &nfsProto.TClientAppConfig{}, FileName: "client.txt"},
 		"nfs-features.txt": {Proto: &coreProto.TFeaturesConfig{}, FileName: "features.txt"},
 
 		// for kikimr initializer configs used custom protobuf files
