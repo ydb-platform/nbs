@@ -31,12 +31,17 @@ void DoEncryption(
             dst.Data() + sector * VHD_SECTOR_SIZE,
             VHD_SECTOR_SIZE);
 
-        bool succ = encryptor->Encrypt(srcRef, dstRef, startSector + sector);
-        if (!succ) {
-            STORAGE_ERROR(
-                "Encryption error. Start sector %lu, size=%zu.",
-                startSector,
-                src.Size());
+        if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
+            memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
+        } else {
+            bool succ =
+                encryptor->Encrypt(srcRef, dstRef, startSector + sector);
+            if (!succ) {
+                STORAGE_ERROR(
+                    "Encryption error. Start sector %lu, size=%zu.",
+                    startSector,
+                    src.Size());
+            }
         }
     }
 }
