@@ -187,6 +187,7 @@ void SgListCopyWithOptionalDecryption(
                 static_cast<const char*>(buffer.base),
                 buffer.len};
             DoDecryption(log, encryptor, srcRef, dstRef, startSector);
+            startSector += buffer.len / VHD_SECTOR_SIZE;
         } else {
             std::memcpy(buffer.base, src, buffer.len);
         }
@@ -210,6 +211,7 @@ void SgListCopyWithOptionalEncryption(
                 buffer.len};
             TBlockDataRef dstRef{dst, buffer.len};
             DoEncryption(log, encryptor, srcRef, dstRef, startSector);
+            startSector += buffer.len / VHD_SECTOR_SIZE;
         } else {
             std::memcpy(dst, buffer.base, buffer.len);
         }
