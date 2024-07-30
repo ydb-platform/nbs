@@ -48,9 +48,8 @@ void TIndexTabletActor::HandleListNodeXAttr(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
+bool TIndexTabletActor::ValidateTx_ListNodeXAttr(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TListNodeXAttr& args)
 {
     Y_UNUSED(ctx);
@@ -64,16 +63,24 @@ bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return true;
+        return false;
     }
 
     args.CommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.CommitId == InvalidCommitId) {
         args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
-        return true;
+        return false;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
+
+bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
+    const TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TListNodeXAttr& args)
+{
+    Y_UNUSED(ctx);
 
     // validate target node exists
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
@@ -92,16 +99,6 @@ bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
     }
 
     return true;
-}
-
-void TIndexTabletActor::ExecuteTx_ListNodeXAttr(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TListNodeXAttr& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_ListNodeXAttr(

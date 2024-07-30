@@ -64,7 +64,20 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
+// read-only transactions can be executed atop of an in-memory cache
+#define FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, ...)                       \
+    xxx(ResolvePath,                        __VA_ARGS__)                       \
+    xxx(AccessNode,                         __VA_ARGS__)                       \
+    xxx(ListNodes,                          __VA_ARGS__)                       \
+    xxx(ReadLink,                           __VA_ARGS__)                       \
+                                                                               \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
+    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+// FILESTORE_TABLET_RO_TRANSACTIONS
+
+#define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
     xxx(InitSchema,                         __VA_ARGS__)                       \
     xxx(LoadState,                          __VA_ARGS__)                       \
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
@@ -79,20 +92,12 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
                                                                                \
-    xxx(ResolvePath,                        __VA_ARGS__)                       \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(AccessNode,                         __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
-    xxx(ReadLink,                           __VA_ARGS__)                       \
                                                                                \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
                                                                                \
     xxx(CreateHandle,                       __VA_ARGS__)                       \
@@ -126,6 +131,11 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
     xxx(CommitNodeCreationInFollower,       __VA_ARGS__)                       \
+// FILESTORE_TABLET_RW_TRANSACTIONS
+
+#define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
+    FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, __VA_ARGS__)                   \
+    FILESTORE_TABLET_RW_TRANSACTIONS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
