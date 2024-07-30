@@ -213,6 +213,14 @@ public:
 
     bool GetAllowFileStoreForceDestroy() const;
 
+    bool GetInMemoryIndexCacheEnabled() const;
+    ui64 GetNodesCapacity() const;
+    ui64 GetNodesVerCapacity() const;
+    ui64 GetNodeAttrsCapacity() const;
+    ui64 GetNodeAttrsVerCapacity() const;
+    ui64 GetNodeRefsCapacity() const;
+    ui64 GetNodeRefsVerCapacity() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

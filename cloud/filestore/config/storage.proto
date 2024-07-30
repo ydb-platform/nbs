@@ -305,4 +305,14 @@ message TStorageConfig
     // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
+
+    // Enables in-memory index cache for all index-related requests
+    optional bool InMemoryIndexCacheEnabled = 359;
+    // Capacity of in-memory index cache, in number of entries per each table
+    optional uint64 NodesCapacity = 360;
+    optional uint64 NodesVerCapacity = 361;
+    optional uint64 NodeAttrsCapacity = 362;
+    optional uint64 NodeAttrsVerCapacity = 363;
+    optional uint64 NodeRefsCapacity = 364;
+    optional uint64 NodeRefsVerCapacity = 365;
 }
