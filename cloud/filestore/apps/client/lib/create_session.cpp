@@ -8,8 +8,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void Print(const NProto::TCreateSessionResponse& response, bool jsonOutput)
+void Print(
+    const TString& clientId,
+    const NProto::TCreateSessionResponse& response,
+    bool jsonOutput)
 {
+    Cout << "Client ID: " << clientId << Endl;
     if (jsonOutput) {
         Cout << response.AsJSON() << Endl;
     } else {
@@ -53,7 +57,7 @@ public:
         TCallContextPtr ctx = MakeIntrusive<TCallContext>();
         auto response = WaitFor(Client->CreateSession(ctx, std::move(request)));
         CheckResponse(response);
-        Print(response, JsonOutput);
+        Print(ClientId, response, JsonOutput);
 
         return true;
     }

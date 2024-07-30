@@ -30,10 +30,12 @@ public:
     TDestroySessionCommand()
     {
         Opts.AddLongOption("session-id")
+            .Required()
             .RequiredArgument("SESSION_ID")
             .StoreResult(&SessionId);
 
         Opts.AddLongOption("client-id")
+            .Required()
             .RequiredArgument("CLIENT_ID")
             .StoreResult(&ClientId);
 
