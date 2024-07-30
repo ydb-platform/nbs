@@ -216,12 +216,12 @@ public:
     ui64 GetTrimBytesItemCount() const;
 
     bool GetInMemoryIndexCacheEnabled() const;
-    ui64 GetNodesCapacity() const;
-    ui64 GetNodesVerCapacity() const;
-    ui64 GetNodeAttrsCapacity() const;
-    ui64 GetNodeAttrsVerCapacity() const;
-    ui64 GetNodeRefsCapacity() const;
-    ui64 GetNodeRefsVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

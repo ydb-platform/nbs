@@ -168,12 +168,12 @@ namespace {
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
                                                                                \
     xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
-    xxx(NodesCapacity,                                  ui64,       0         )\
-    xxx(NodesVerCapacity,                               ui64,       0         )\
-    xxx(NodeAttrsCapacity,                              ui64,       0         )\
-    xxx(NodeAttrsVerCapacity,                           ui64,       0         )\
-    xxx(NodeRefsCapacity,                               ui64,       0         )\
-    xxx(NodeRefsVerCapacity,                            ui64,       0         )\
+    xxx(InMemoryIndexCacheNodesCapacity,                ui64,       0         )\
+    xxx(InMemoryIndexCacheNodesVerCapacity,             ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeAttrsCapacity,            ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeAttrsVerCapacity,         ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeRefsVerCapacity,          ui64,       0         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
