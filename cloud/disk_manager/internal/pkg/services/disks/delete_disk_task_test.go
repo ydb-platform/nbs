@@ -59,6 +59,16 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
 	}
 
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, nbsFactory, nbsClient, execCtx)
 	require.NoError(t, err)
