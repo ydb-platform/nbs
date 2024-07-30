@@ -11,6 +11,14 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCertificate
+{
+    TString CertFile;
+    TString CertPrivateKeyFile;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
@@ -218,6 +226,11 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
+
+    TString GetNodeRegistrationToken() const;
+    TString GetNodeType() const;
+    TString GetNodeRegistrationRootCertsFile() const;
+    TCertificate GetNodeRegistrationCert() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 };

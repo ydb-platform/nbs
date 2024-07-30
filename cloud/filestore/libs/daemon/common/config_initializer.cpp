@@ -8,6 +8,8 @@
 
 namespace NCloud::NFileStore::NDaemon {
 
+using namespace NCloud::NStorage;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerCommon::TConfigInitializerCommon(TOptionsCommonPtr options)
@@ -54,6 +56,24 @@ void TConfigInitializerCommon::InitFeaturesConfig()
 
     FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
         std::move(featuresConfig));
+}
+
+TNodeRegistrationSettings
+    TConfigInitializerCommon::GetNodeRegistrationSettings()
+{
+    TNodeRegistrationSettings settings;
+    settings.MaxAttempts = Options->NodeRegistrationMaxAttempts;
+    settings.RegistrationTimeout = Options->NodeRegistrationTimeout;
+    settings.ErrorTimeout = Options->NodeRegistrationErrorTimeout;
+    settings.PathToGrpcCaFile = StorageConfig->GetNodeRegistrationRootCertsFile();
+    settings.NodeRegistrationToken = StorageConfig->GetNodeRegistrationToken();
+    settings.NodeType = StorageConfig->GetNodeType();
+
+    const auto& cert = StorageConfig->GetNodeRegistrationCert();
+    settings.PathToGrpcCertFile = cert.CertFile;
+    settings.PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile;
+
+    return settings;
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

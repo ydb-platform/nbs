@@ -1,8 +1,11 @@
 #include "config.h"
 
+#include <cloud/storage/core/protos/certificate.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -166,6 +169,10 @@ namespace {
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
+    xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
+    xxx(NodeRegistrationCert,            TCertificate,          {}            )\
+    xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeType,                        TString,               {}            )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -184,10 +191,22 @@ bool IsEmpty(const T& t)
     return !t;
 }
 
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
 template <>
@@ -214,6 +233,16 @@ template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
+}
+
+template <>
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
 }
 
 }   // namespace
