@@ -611,7 +611,7 @@ TString TCommand::GetIamTokenFromClient()
 void TCommand::InitClientConfig()
 {
     NProto::TClientAppConfig appConfig;
-    if (ConfigFile && NFs::Exists(ConfigFile)) {
+    if (NFs::Exists(ConfigFile)) {
         ParseFromTextFormat(ConfigFile, appConfig);
     }
 

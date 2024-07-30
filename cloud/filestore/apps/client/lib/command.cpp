@@ -184,7 +184,7 @@ void TCommand::Init()
     Scheduler = CreateScheduler();
 
     NProto::TClientConfig config;
-    if (ConfigFile && NFs::Exists(ConfigFile)) {
+    if (NFs::Exists(ConfigFile)) {
         ParseFromTextFormat(ConfigFile, config);
     }
 
