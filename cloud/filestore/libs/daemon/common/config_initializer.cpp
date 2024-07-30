@@ -69,12 +69,9 @@ TNodeRegistrationSettings
     settings.NodeRegistrationToken = StorageConfig->GetNodeRegistrationToken();
     settings.NodeType = StorageConfig->GetNodeType();
 
-    const auto& certs = StorageConfig->GetNodeRegistrationCerts();
-    if (!certs.empty()) {
-        const auto& cert = certs.front();
-        settings.PathToGrpcCertFile = cert.CertFile;
-        settings.PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile;
-    }
+    const auto& cert = StorageConfig->GetNodeRegistrationCert();
+    settings.PathToGrpcCertFile = cert.CertFile;
+    settings.PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile;
 
     return settings;
 }

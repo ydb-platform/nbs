@@ -230,7 +230,7 @@ public:
     TString GetNodeRegistrationToken() const;
     TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
-    TVector<TCertificate> GetNodeRegistrationCerts() const;
+    TCertificate GetNodeRegistrationCert() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 };

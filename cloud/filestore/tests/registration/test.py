@@ -38,9 +38,8 @@ def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
 
     if is_secure_filestore and is_secure_kikimr:
         storage_config.NodeRegistrationRootCertsFile = configurator.grpc_tls_ca_path
-        cert = storage_config.NodeRegistrationCerts.add()
-        cert.CertFile = configurator.grpc_tls_cert_path
-        cert.CertPrivateKeyFile = configurator.grpc_tls_key_path
+        storage_config.NodeRegistrationCert.CertFile = configurator.grpc_tls_cert_path
+        storage_config.NodeRegistrationCert.CertPrivateKeyFile = configurator.grpc_tls_key_path
 
     storage_config.NodeType = "filestore_server"
 

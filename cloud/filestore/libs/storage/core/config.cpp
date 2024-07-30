@@ -170,7 +170,7 @@ namespace {
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
-    xxx(NodeRegistrationCerts,           TVector<TCertificate>, {}            )\
+    xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\
     xxx(NodeType,                        TString,               {}            )\
 // FILESTORE_STORAGE_CONFIG
@@ -191,11 +191,13 @@ bool IsEmpty(const T& t)
     return !t;
 }
 
-template <typename T>
-bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
 {
-    return value.empty();
+
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
+
 
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
@@ -204,14 +206,10 @@ TTarget ConvertValue(const TSource& value)
 }
 
 template <>
-TVector<TCertificate> ConvertValue(
-    const google::protobuf::RepeatedPtrField<NCloud::NProto::TCertificate>& value)
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
 {
-    TVector<TCertificate> v;
-    for (const auto& x : value) {
-        v.push_back({x.GetCertFile(), x.GetCertPrivateKeyFile()});
-    }
-    return v;
+
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
 template <>
@@ -241,19 +239,14 @@ void DumpImpl(const T& t, IOutputStream& os)
 }
 
 template <>
-void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
+void DumpImpl(const TCertificate& value, IOutputStream& os)
 {
-    for (size_t i = 0; i < value.size(); ++i) {
-        if (i) {
-            os << ",";
-        }
-        os
-          << "{ "
-          << value[i].CertFile
-          << ", "
-          << value[i].CertPrivateKeyFile
-          << " }";
-    }
+    os
+        << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
 }
 
 }   // namespace

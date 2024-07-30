@@ -318,5 +318,5 @@ message TStorageConfig
 
     // TLS node registration details.
     optional string NodeRegistrationRootCertsFile = 362;
-    repeated NCloud.NProto.TCertificate NodeRegistrationCerts = 363;
+    optional NCloud.NProto.TCertificate NodeRegistrationCert = 363;
 }
