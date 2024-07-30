@@ -973,6 +973,7 @@ public:
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
+    TVector<ui32> GetZeroScoreRanges() const;
     TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
     TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
 

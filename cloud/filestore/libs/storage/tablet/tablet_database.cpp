@@ -1615,6 +1615,33 @@ void TIndexTabletDatabase::WriteCompactionMap(
     }
 }
 
+void TIndexTabletDatabase::WriteCompactionMap(
+    const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
+{
+    using TTable = TIndexTabletSchema::CompactionMap;
+
+    for (const auto& range: ranges) {
+        Table<TTable>()
+            .Key(range.GetRangeId())
+            .Update(
+                NIceDb::TUpdate<TTable::BlobsCount>(
+                    range.GetBlobCount()))
+            .Update(
+                NIceDb::TUpdate<TTable::DeletionsCount>(
+                    range.GetDeletionCount()));
+    }
+}
+
+void TIndexTabletDatabase::DeleteCompactionRanges(
+    const TVector<ui32>& ranges)
+{
+    using TTable = TIndexTabletSchema::CompactionMap;
+
+    for (const auto& rangeId: ranges) {
+        Table<TTable>().Key(rangeId).Delete();
+    }
+}
+
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {

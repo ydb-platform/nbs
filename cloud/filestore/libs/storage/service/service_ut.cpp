@@ -5212,6 +5212,70 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             createHandleResponse->Record.GetNodeAttr().GetId());
     }
+
+    Y_UNIT_TEST(ShouldWriteCompactionMap)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        ui64 tabletId = -1;
+        ui32 lastCompactionMapRangeId = 0;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        tabletId = desc.GetIndexTabletId();
+                        break;
+                    }
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkCompleted: {
+                        lastCompactionMapRangeId = Max(
+                            event
+                                ->Get<TEvIndexTabletPrivate::
+                                        TEvLoadCompactionMapChunkCompleted>()
+                                ->LastRangeId,
+                            lastCompactionMapRangeId);
+                        break;
+                    }
+                }
+
+                return false;
+        });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+
+        NProtoPrivate::TWriteCompactionMapRequest request;
+        request.SetFileSystemId("test");
+        for (ui32 i = 4; i < 30; ++i) {
+            NProtoPrivate::TCompactionRangeStats range;
+            range.SetRangeId(i);
+            range.SetBlobCount(1);
+            range.SetDeletionCount(2);
+            *request.AddRanges() = range;
+        }
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        auto jsonResponse = service.ExecuteAction("writecompactionmap", buf);
+        NProtoPrivate::TWriteCompactionMapResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response).ok());
+
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+
+        UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 29);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

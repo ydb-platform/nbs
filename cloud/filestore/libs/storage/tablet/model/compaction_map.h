@@ -68,6 +68,7 @@ public:
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
+    TVector<ui32> GetEmptyCompactionRanges() const;
 
     TCompactionMapStats GetStats(ui32 topSize) const;
 };

@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -41,6 +42,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
     xxx(AddBlob,                                __VA_ARGS__)                   \
     xxx(Cleanup,                                __VA_ARGS__)                   \
+    xxx(DeleteZeroCompactionRanges,             __VA_ARGS__)                   \
     xxx(DeleteGarbage,                          __VA_ARGS__)                   \
     xxx(TruncateRange,                          __VA_ARGS__)                   \
     xxx(ZeroRange,                              __VA_ARGS__)                   \
@@ -431,6 +433,25 @@ struct TEvIndexTabletPrivate
     using TCompactionCompleted = TOperationCompleted;
 
     //
+    // DeletZeroCompactionRanges
+    //
+
+    struct TDeleteZeroCompactionRangesRequest
+    {
+        const ui32 RangeId;
+
+        TDeleteZeroCompactionRangesRequest(ui32 rangeId)
+            : RangeId(rangeId)
+        {}
+    };
+
+    struct TDeleteZeroCompactionRangesResponse
+    {
+    };
+
+    using TDeleteZeroCompactionRangesCompleted = TOperationCompleted;
+
+    //
     // LoadCompactionMapChunk
     //
 
@@ -475,6 +496,7 @@ struct TEvIndexTabletPrivate
     {
         Compaction = 0,
         Cleanup = 1,
+        DeleteZeroCompactionRanges = 2,
     };
 
     struct TForcedRangeOperationRequest

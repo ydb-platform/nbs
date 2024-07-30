@@ -68,6 +68,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "getstorageconfig",
             &TStorageServiceActor::CreateGetStorageConfigActionActor
         },
+        {
+            "writecompactionmap",
+            &TStorageServiceActor::CreateWriteCompactionMapActionActor
+        },
     };
 
     auto it = actions.find(action);

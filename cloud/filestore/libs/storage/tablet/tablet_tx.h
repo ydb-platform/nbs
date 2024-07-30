@@ -115,6 +115,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddBlob,                            __VA_ARGS__)                       \
     xxx(Cleanup,                            __VA_ARGS__)                       \
     xxx(Compaction,                         __VA_ARGS__)                       \
+    xxx(DeleteZeroCompactionRanges,         __VA_ARGS__)                       \
+    xxx(WriteCompactionMap,                 __VA_ARGS__)                       \
     xxx(DeleteGarbage,                      __VA_ARGS__)                       \
     xxx(DumpCompactionRange,                __VA_ARGS__)                       \
     xxx(FlushBytes,                         __VA_ARGS__)                       \
@@ -1651,6 +1653,50 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             ProcessedDeletionMarkerCount = 0;
+        }
+    };
+
+    //
+    // DeleteZeroCompactionRanges
+    //
+
+    struct TDeleteZeroCompactionRanges : TProfileAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        ui32 StartIndex;
+
+        TDeleteZeroCompactionRanges(TRequestInfoPtr requestInfo, ui32 startIndex)
+            : TProfileAware(EFileStoreSystemRequest::DeleteZeroCompactionRanges)
+            , RequestInfo(std::move(requestInfo))
+            , StartIndex(startIndex)
+        {}
+
+        void Clear()
+        {
+            TProfileAware::Clear();
+        }
+    };
+
+    //
+    // WriteCompactionMap
+    //
+
+    struct TWriteCompactionMap : TProfileAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
+
+        TWriteCompactionMap(
+                TRequestInfoPtr requestInfo,
+                const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
+            : TProfileAware(EFileStoreSystemRequest::WriteCompactionMap)
+            , RequestInfo(std::move(requestInfo))
+            , Ranges(std::move(ranges))
+        {}
+
+        void Clear()
+        {
+            TProfileAware::Clear();
         }
     };
 
