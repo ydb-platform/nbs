@@ -375,7 +375,7 @@ void TBootstrapVhost::StartComponents()
     NVhost::StartServer();
 
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
-    FILESTORE_LOG_START_COMPONENT(LocalService);
+    // LocalService is started inside FileStoreEndpoints
     FILESTORE_LOG_START_COMPONENT(FileStoreEndpoints);
     FILESTORE_LOG_START_COMPONENT(EndpointManager);
     FILESTORE_LOG_START_COMPONENT(Server);
@@ -390,7 +390,7 @@ void TBootstrapVhost::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(EndpointManager);
     FILESTORE_LOG_STOP_COMPONENT(FileStoreEndpoints);
-    FILESTORE_LOG_STOP_COMPONENT(LocalService);
+    // LocalService is stopped inside FileStoreEndpoints
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
 
     NVhost::StopServer();

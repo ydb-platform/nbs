@@ -357,6 +357,8 @@ void TLocalFileStore::Start()
                 continue;
             }
 
+            STORAGE_INFO("restoring local store " << id.Quote());
+
             NProto::TFileStore store;
             LoadFileStoreProto(path, store);
             InitFileSystem(id, child, store);
@@ -456,7 +458,7 @@ NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
     auto it = FileSystems.find(id);
     if (it == FileSystems.end()) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "file store doesn't exists: " << id.Quote());
+            << "file store doesn't exist: " << id.Quote());
     }
 
     NProto::TFileStore store = it->second->GetConfig();
