@@ -27,6 +27,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddBlob,                            __VA_ARGS__)                       \
     xxx(TruncateRange,                      __VA_ARGS__)                       \
     xxx(ZeroRange,                          __VA_ARGS__)                       \
+    xxx(DeleteZeroCompactionRanges,         __VA_ARGS__)                       \
+    xxx(WriteCompactionMap,                 __VA_ARGS__)                       \
 // FILESTORE_SYSTEM_REQUESTS
 
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) name,

@@ -323,4 +323,7 @@ message TStorageConfig
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
+
+    // Number of ranges with zero compaction stats to delete per tx.
+    optional uint32 MaxDeleteZeroCompactionRangesPerTx = 366;
 }

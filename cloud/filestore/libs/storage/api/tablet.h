@@ -31,6 +31,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ConfigureAsFollower,        __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+    xxx(WriteCompactionMap,         __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,6 +93,9 @@ struct TEvIndexTablet
 
         EvGetNodeAttrBatchRequest = EvBegin + 31,
         EvGetNodeAttrBatchResponse,
+
+        EvWriteCompactionMapRequest = EvBegin + 33,
+        EvWriteCompactionMapResponse,
 
         EvEnd
     };

@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -465,6 +466,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     //
 
     void WriteCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void WriteCompactionMap(const TVector<NProtoPrivate::TCompactionRangeStats>& ranges);
+    void DeleteCompactionRanges(const TVector<ui32>& ranges);
     bool ReadCompactionMap(TVector<TCompactionRangeInfo>& compactionMap);
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,

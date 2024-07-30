@@ -29,6 +29,7 @@ SRCS(
     tablet_actor_createhandle.cpp
     tablet_actor_createnode.cpp
     tablet_actor_createsession.cpp
+    tablet_actor_delete_zero_compaction_ranges.cpp
     tablet_actor_deletecheckpoint.cpp
     tablet_actor_deletegarbage.cpp
     tablet_actor_destroycheckpoint.cpp
@@ -68,6 +69,7 @@ SRCS(
     tablet_actor_writebatch.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
+    tablet_actor_write_compactionmap.cpp
     tablet_actor_zerorange.cpp
     tablet_counters.cpp
     tablet_database.cpp

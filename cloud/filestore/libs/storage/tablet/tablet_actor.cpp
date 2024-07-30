@@ -611,6 +611,11 @@ void TIndexTabletActor::HandleForcedOperation(
             break;
         }
 
+        case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES: {
+            mode = EMode::DeleteZeroCompactionRanges;
+            break;
+        }
+
         default: {
             e = MakeError(E_ARGUMENT, "unsupported mode");
         }
@@ -630,9 +635,19 @@ void TIndexTabletActor::HandleForcedOperation(
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
     auto response = std::make_unique<TResponse>(std::move(e));
     if (e.GetCode() == S_OK) {
-        TVector<ui32> ranges = request.GetProcessAllRanges()
-            ? GetAllCompactionRanges()
-            : GetNonEmptyCompactionRanges();
+        TVector<ui32> ranges;
+        if (mode == EMode::DeleteZeroCompactionRanges) {
+            const auto zeroRanges = GetZeroScoreRanges();
+            ui32 i = 0;
+            while (i < zeroRanges.size()) {
+                ranges.push_back(i);
+                i += Config->GetMaxDeleteZeroCompactionRangesPerTx();
+            }
+        } else {
+            ranges = request.GetProcessAllRanges()
+                ? GetAllCompactionRanges()
+                : GetNonEmptyCompactionRanges();
+        }
         response->Record.SetRangeCount(ranges.size());
         EnqueueForcedRangeOperation(mode, std::move(ranges));
         EnqueueForcedRangeOperationIfNeeded(ctx);

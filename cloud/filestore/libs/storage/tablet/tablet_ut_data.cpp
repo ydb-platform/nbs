@@ -3294,6 +3294,84 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldDoForcedDeletionOfZeroCompactionRanges)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteZeroCompactionRangesPerTx(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 requests = 0;
+        ui32 lastCompactionMapRangeId = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvDeleteZeroCompactionRangesRequest: {
+                    requests++;
+                    break;
+                }
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkCompleted: {
+                    lastCompactionMapRangeId = Max(
+                        event->Get<TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted>()->LastRangeId,
+                        lastCompactionMapRangeId);
+                    break;
+                }
+            }
+            return false;
+        });
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        tablet.RebootTablet();
+
+        TVector<NProtoPrivate::TCompactionRangeStats> ranges;
+        for (ui32 i = 0; i < 50; ++i) {
+            NProtoPrivate::TCompactionRangeStats range;
+            range.SetRangeId(i);
+            range.SetBlobCount(0);
+            range.SetDeletionCount(0);
+            ranges.push_back(range);
+        }
+        for (ui32 i = 100; i < 200; ++i) {
+            NProtoPrivate::TCompactionRangeStats range;
+            range.SetRangeId(i);
+            range.SetBlobCount(0);
+            range.SetDeletionCount(0);
+            ranges.push_back(range);
+        }
+        for (ui32 i = 60; i < 80; ++i) {
+            NProtoPrivate::TCompactionRangeStats range;
+            range.SetRangeId(i);
+            range.SetBlobCount(1);
+            range.SetDeletionCount(2);
+            ranges.push_back(range);
+        }
+        tablet.WriteCompactionMap(ranges);
+        tablet.RebootTablet();
+
+        tablet.ForcedOperation(NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES);
+
+        UNIT_ASSERT_VALUES_EQUAL(requests, 15);
+        UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 199);
+        tablet.AssertForcedRangeOperationFailed(
+            TVector<ui32>{},
+            TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges);
+
+        lastCompactionMapRangeId = 0;
+        tablet.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 79);
+    }
+
+
     TABLET_TEST(ShouldDumpCompactionRangeBlobs)
     {
         TTestEnv env;
