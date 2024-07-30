@@ -284,7 +284,6 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
     registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
-
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,

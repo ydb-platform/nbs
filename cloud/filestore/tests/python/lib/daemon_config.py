@@ -326,17 +326,12 @@ class NfsDaemonConfigGenerator:
                 self.__config_file_path("dyn_ns.txt"),
                 "--suppress-version-check",
                 "--load-configs-from-cms",
+                "--node-broker",
+                "localhost:{}".format(self.__kikimr_port),
             ]
 
-            if not self.__use_secure_registration:
-                command += [
-                    "--node-broker", "localhost:" + str(self.__kikimr_port),
-                ]
-            else:
-                command += [
-                    "--node-broker", "localhost:" + str(self.__kikimr_port),
-                    "--use-secure-registration",
-                ]
+            if self.__use_secure_registration:
+                command += ["--use-secure-registration"]
 
             if self.__access_service_port:
                 command += [

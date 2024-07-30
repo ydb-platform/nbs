@@ -197,7 +197,6 @@ bool IsEmpty(const NCloud::NProto::TCertificate& value)
     return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
 
-
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
