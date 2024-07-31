@@ -22,6 +22,7 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/services/pools/config
     cloud/disk_manager/internal/pkg/services/snapshots/config
     cloud/tasks/config
+    cloud/tasks/tracing/config
 )
 
 END()

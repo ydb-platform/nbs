@@ -186,6 +186,10 @@ PlacementGroupConfig: <
     DeletedPlacementGroupExpirationTimeout: "1s"
     ClearDeletedPlacementGroupsTaskScheduleInterval: "2s"
 >
+TracingConfig: <
+    ServiceName: "yc-disk-manager"
+    ExporterPort: 7881
+>
 """
 
 
@@ -290,6 +294,10 @@ DataplaneConfig: <
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
+>
+TracingConfig: <
+    ServiceName: "yc-disk-manager"
+    ExporterPort: 7881
 >
 """
 

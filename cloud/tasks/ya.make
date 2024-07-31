@@ -33,6 +33,7 @@ RECURSE(
     operation
     persistence
     storage
+    tracing
 )
 
 RECURSE_FOR_TESTS(
