@@ -60,6 +60,11 @@ constexpr ui64 ReadFirstStatRetryCount = 10;
 // COMPLETION_STATS_WAIT_DURATION.
 constexpr auto StatReadDuration = TDuration::Seconds(1);
 
+// Backoff delays for external-vhost server restart.
+constexpr auto RestartMinDelay = TDuration::MilliSeconds(100);
+constexpr auto RestartMaxDelay = TDuration::Seconds(30);
+constexpr auto RestartWasTooLongAgo = TDuration::Seconds(60);
+
 enum class EEndpointType
 {
     Local,
@@ -549,9 +554,7 @@ private:
     TIntrusivePtr<TEndpointProcess> Process;
     std::atomic_bool ShouldStop = false;
     TInstant LastRestartAt;
-    TBackoffDelayProvider RestartBackoff{
-        TDuration::MilliSeconds(100),
-        TDuration::Seconds(30)};
+    TBackoffDelayProvider RestartBackoff{RestartMinDelay, RestartMaxDelay};
 
     TPromise<NProto::TError> StopPromise = NewPromise<NProto::TError>();
 
@@ -689,7 +692,7 @@ private:
 
     TIntrusivePtr<TEndpointProcess> RestartProcess()
     {
-        if (TInstant::Now() - LastRestartAt > TDuration::Seconds(60)) {
+        if (TInstant::Now() - LastRestartAt > RestartWasTooLongAgo) {
             // The last restart happened a long time ago, restart immediately.
             RestartBackoff.Reset();
         } else {
