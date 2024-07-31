@@ -194,6 +194,17 @@ func (client *Client) DescribeFileStoreModel(
 	return model.FileStoreModel, nil
 }
 
+func (client *Client) StatFileStore(ctx context.Context, fileSystemID string) (*protos.TStatFileStoreResponse, error) {
+
+	req := &protos.TStatFileStoreRequest{FileSystemId: fileSystemID}
+	stat, err := client.Impl.StatFileStore(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return stat, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type StartEndpointOpts struct {

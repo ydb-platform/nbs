@@ -299,6 +299,24 @@ func (client *grpcClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *grpcClient) StatFileStore(
+	ctx context.Context,
+	req *protos.TStatFileStoreRequest,
+) (*protos.TStatFileStoreResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.StatFileStore(ctx, req)
+		})
+
+	return resp.(*protos.TStatFileStoreResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {

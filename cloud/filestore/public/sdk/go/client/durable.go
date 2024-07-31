@@ -240,6 +240,22 @@ func (client *durableClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *durableClient) StatFileStore(
+	ctx context.Context,
+	req *protos.TStatFileStoreRequest,
+) (*protos.TStatFileStoreResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.StatFileStore(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TStatFileStoreResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

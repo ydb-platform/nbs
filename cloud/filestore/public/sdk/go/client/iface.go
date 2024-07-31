@@ -62,6 +62,11 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TDescribeFileStoreModelRequest,
 	) (*protos.TDescribeFileStoreModelResponse, error)
+
+	StatFileStore(
+		ctx context.Context,
+		req *protos.TStatFileStoreRequest,
+	) (*protos.TStatFileStoreResponse, error)
 }
 
 type EndpointClientIface interface {

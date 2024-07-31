@@ -17,6 +17,7 @@ type getFileStoreInfoHandlerFunc func(ctx context.Context, req *protos.TGetFileS
 type createCheckpointHandlerFunc func(ctx context.Context, req *protos.TCreateCheckpointRequest) (*protos.TCreateCheckpointResponse, error)
 type destroyCheckpointHandlerFunc func(ctx context.Context, req *protos.TDestroyCheckpointRequest) (*protos.TDestroyCheckpointResponse, error)
 type describeFileStoreModelHandlerFunc func(ctx context.Context, req *protos.TDescribeFileStoreModelRequest) (*protos.TDescribeFileStoreModelResponse, error)
+type statFileStoreHandlerFunc func(ctx context.Context, req *protos.TStatFileStoreRequest) (*protos.TStatFileStoreResponse, error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,7 @@ type testClient struct {
 	CreateCheckpointHandler       createCheckpointHandlerFunc
 	DestroyCheckpointHandler      destroyCheckpointHandlerFunc
 	DescribeFileStoreModelHandler describeFileStoreModelHandlerFunc
+	StatFileStoreHandler          statFileStoreHandlerFunc
 }
 
 func (client *testClient) Close() error {
@@ -147,4 +149,16 @@ func (client *testClient) DescribeFileStoreModel(
 	}
 
 	return &protos.TDescribeFileStoreModelResponse{}, nil
+}
+
+func (client *testClient) StatFileStore(
+	ctx context.Context,
+	req *protos.TStatFileStoreRequest,
+) (*protos.TStatFileStoreResponse, error) {
+
+	if client.StatFileStoreHandler != nil {
+		return client.StatFileStoreHandler(ctx, req)
+	}
+
+	return &protos.TStatFileStoreResponse{}, nil
 }
