@@ -25,6 +25,7 @@ struct TConfigInitializerVhost final
     void InitAppConfig();
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+    void ApplyVHostAppConfig(const TString& text);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

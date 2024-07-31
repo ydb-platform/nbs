@@ -9,6 +9,8 @@
 #include <cloud/storage/core/libs/kikimr/config_initializer.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,8 @@ namespace NCloud::NFileStore::NDaemon {
 struct TConfigInitializerCommon
     : public NCloud::NStorage::TConfigInitializerYdbBase
 {
+    using TApplyConfigFn = std::function<void(const TString&)>;
+
     TOptionsCommonPtr Options;
 
     TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -28,7 +32,16 @@ struct TConfigInitializerCommon
     void InitStorageConfig();
     void InitFeaturesConfig();
 
+    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+    void ApplyDiagnosticsConfig(const TString& text);
+    void ApplyStorageConfig(const TString& text);
+    void ApplyFeaturesConfig(const TString& text);
+
     NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
+
+    static void RunConfigHandlers(
+        const NKikimrConfig::TAppConfig& config,
+        const THashMap<TString, TApplyConfigFn>& handlers);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon
