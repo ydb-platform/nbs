@@ -47,6 +47,13 @@ var capabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+			},
+		},
+	},
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -642,4 +649,20 @@ func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}
 func logVolume(volumeId string, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
 	log.Printf("[v=%s]: %s", volumeId, msg)
+}
+
+func (s *nodeService) NodeGetVolumeStats(
+	ctx context.Context,
+	req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+
+	if s.nfsClient == nil {
+		return &csi.NodeGetVolumeStatsResponse{}, nil
+	}
+
+	_, err := s.nfsClient.StatFileStore(ctx, &nfsapi.TStatFileStoreRequest{FileSystemId: req.VolumeId})
+	if err != nil {
+		return nil, fmt.Errorf("failed to request volume stats: %w", err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{usage: []*csi.VolumeUsage{}}, nil
 }
