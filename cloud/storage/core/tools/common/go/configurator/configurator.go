@@ -428,7 +428,10 @@ func trimWhiteSpaceLines(filePath string) error {
 	if err != nil {
 		return err
 	}
-	tmpFile.Close()
+	err = tmpFile.Close()
+	if err != nil {
+		return err
+	}
 
 	return os.Rename(tmpFile.Name(), filePath)
 }
