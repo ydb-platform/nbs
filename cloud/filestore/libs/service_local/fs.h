@@ -28,6 +28,56 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx, ...)                            \
+    xxx(StatFileStore,                      __VA_ARGS__)                       \
+                                                                               \
+    xxx(SubscribeSession,                   __VA_ARGS__)                       \
+    xxx(GetSessionEvents,                   __VA_ARGS__)                       \
+    xxx(ResetSession,                       __VA_ARGS__)                       \
+                                                                               \
+    xxx(ResolvePath,                        __VA_ARGS__)                       \
+    xxx(CreateNode,                         __VA_ARGS__)                       \
+    xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(RenameNode,                         __VA_ARGS__)                       \
+    xxx(AccessNode,                         __VA_ARGS__)                       \
+    xxx(ListNodes,                          __VA_ARGS__)                       \
+    xxx(ReadLink,                           __VA_ARGS__)                       \
+                                                                               \
+    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+                                                                               \
+    xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(DestroyHandle,                      __VA_ARGS__)                       \
+                                                                               \
+    xxx(AcquireLock,                        __VA_ARGS__)                       \
+    xxx(ReleaseLock,                        __VA_ARGS__)                       \
+    xxx(TestLock,                           __VA_ARGS__)                       \
+                                                                               \
+    xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_DATA_METHODS_LOCAL_SYNC
+
+#define FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx, ...)                           \
+    xxx(ReadData,                           __VA_ARGS__)                       \
+    xxx(WriteData,                          __VA_ARGS__)                       \
+// FILESTORE_DATA_METHODS_LOCAL_ASYNC
+
+#define FILESTORE_SERVICE_LOCAL_SYNC(xxx, ...)                                 \
+    xxx(Ping,                               __VA_ARGS__)                       \
+    xxx(PingSession,                        __VA_ARGS__)                       \
+    FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
+    FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx,  __VA_ARGS__)                       \
+// FILESTORE_SERVICE_LOCAL_SYNC
+
+#define FILESTORE_SERVICE_LOCAL_ASYNC(xxx, ...)                                \
+    FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx,  __VA_ARGS__)                      \
+// FILESTORE_SERVICE_LOCAL_SYNC
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLocalFileSystem final
     : public std::enable_shared_from_this<TLocalFileSystem>
 {
@@ -38,6 +88,7 @@ private:
     const TFsPath Root;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const IFileIOServicePtr FileIOService;
 
     NProto::TFileStore Store;
     TLog Log;
@@ -59,16 +110,24 @@ public:
         TFsPath root,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging);
+        ILoggingServicePtr logging,
+        IFileIOServicePtr fileIOService);
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+#define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
     NProto::T##name##Response name(                                            \
         const NProto::T##name##Request& request);                              \
-// FILESTORE_DECLARE_METHOD
+// FILESTORE_DECLARE_METHOD_SYNC
 
-    FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
+    NThreading::TFuture<NProto::T##name##Response> name##Async(                \
+        NProto::T##name##Request& request);                                    \
+// FILESTORE_DECLARE_METHOD_SYNC
 
-#undef FILESTORE_DECLARE_METHOD
+    FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
+    FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
+
+#undef FILESTORE_DECLARE_METHOD_SYNC
+#undef FILESTORE_DECLARE_METHOD_ASYNC
 
     NProto::TFileStore GetConfig() const
     {

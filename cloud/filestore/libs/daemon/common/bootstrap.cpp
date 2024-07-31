@@ -11,6 +11,8 @@
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
+#include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -118,6 +120,7 @@ void TBootstrapCommon::Start()
 {
     FILESTORE_LOG_START_COMPONENT(Logging);
     FILESTORE_LOG_START_COMPONENT(Monitoring);
+    FILESTORE_LOG_START_COMPONENT(FileIOService);
     FILESTORE_LOG_START_COMPONENT(Metrics);
     FILESTORE_LOG_START_COMPONENT(TraceProcessor);
     FILESTORE_LOG_START_COMPONENT(TraceSerializer);
@@ -162,6 +165,7 @@ void TBootstrapCommon::Stop()
     FILESTORE_LOG_STOP_COMPONENT(TraceSerializer);
     FILESTORE_LOG_STOP_COMPONENT(TraceProcessor);
     FILESTORE_LOG_STOP_COMPONENT(Metrics);
+    FILESTORE_LOG_STOP_COMPONENT(FileIOService);
     FILESTORE_LOG_STOP_COMPONENT(Monitoring);
     FILESTORE_LOG_STOP_COMPONENT(Logging);
 }
@@ -217,6 +221,8 @@ void TBootstrapCommon::Init()
     if (Configs->Options->Service == EServiceKind::Kikimr) {
         InitActorSystem();
     }
+
+    FileIOService = CreateAIOService();
 
     InitDiagnostics();
     InitComponents();

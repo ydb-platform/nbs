@@ -87,22 +87,50 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+#define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
     struct T##name##Method                                                     \
     {                                                                          \
         using TRequest = NProto::T##name##Request;                             \
         using TResponse = NProto::T##name##Response;                           \
+        using TResult = TResponse;                                             \
                                                                                \
-        static TResponse Execute(TLocalFileSystem& fs, const TRequest& request)\
+        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
         {                                                                      \
             return fs.name(request);                                           \
         }                                                                      \
+                                                                               \
+        static TResult ErrorResponse(ui32 code, TString message)               \
+        {                                                                      \
+            return NCloud::ErrorResponse<TResponse>(code, std::move(message)); \
+        }                                                                      \
     };                                                                         \
-// FILESTORE_DECLARE_METHOD
+// FILESTORE_DECLARE_METHOD_SYNC
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+        using TResult = TFuture<TResponse>;                                    \
+                                                                               \
+        static TResult Execute(TLocalFileSystem& fs, TRequest& request)        \
+        {                                                                      \
+            return fs.name##Async(request);                                    \
+        }                                                                      \
+                                                                               \
+        static TResult ErrorResponse(ui32 code, TString message)               \
+        {                                                                      \
+            return MakeFuture(                                                 \
+                NCloud::ErrorResponse<TResponse>(code, std::move(message)));   \
+        }                                                                      \
+    };                                                                         \
+// FILESTORE_DECLARE_METHOD_SYNC
 
-#undef FILESTORE_DECLARE_METHOD
+FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
+FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
+
+#undef FILESTORE_DECLARE_METHOD_SYNC
+#undef FILESTORE_DECLARE_METHOD_ASYNC
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -114,6 +142,7 @@ private:
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
+    const IFileIOServicePtr FileIOService;
     const ITaskQueuePtr TaskQueue;
     const TFsPath Root;
 
@@ -128,11 +157,13 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
+            IFileIOServicePtr fileIOService,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
+        , FileIOService(std::move(fileIOService))
         , TaskQueue(std::move(taskQueue))
         , Root(Config->GetRootPath())
     {
@@ -143,7 +174,7 @@ public:
     void Start() override;
     void Stop() override;
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+#define FILESTORE_IMPLEMENT_METHOD_SYNC(name, ...)                             \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
@@ -153,9 +184,20 @@ public:
             return Execute<T##name##Method>(*request);                         \
         });                                                                    \
     }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+// FILESTORE_IMPLEMENT_METHOD_SYNC
 
-FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
+#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                             \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        Y_UNUSED(callContext);                                                 \
+        return Execute<T##name##Method>(*request);                             \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD_ASYNC
+
+FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_IMPLEMENT_METHOD_SYNC)
+FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -171,31 +213,30 @@ FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
 private:
     template <typename T>
-    typename T::TResponse Execute(const typename T::TRequest& request)
+    typename T::TResult Execute(typename T::TRequest& request)
     {
         const auto& id = GetFileSystemId(request);
         if (!id) {
-            return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
+            return T::ErrorResponse(E_ARGUMENT, "invalid file system identifier");
         }
 
         auto fs = FindFileSystem(id);
         if (!fs) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            return T::ErrorResponse(E_ARGUMENT, TStringBuilder()
                 << "invalid file system: " << id.Quote());
         }
 
         try {
             return T::Execute(*fs, request);
         } catch (const TServiceError& e) {
-            return TErrorResponse(e.GetCode(), TString(e.GetMessage()));
+            return T::ErrorResponse(e.GetCode(), TString(e.GetMessage()));
         } catch (...) {
-            return TErrorResponse(E_FAIL, CurrentExceptionMessage());
+            return T::ErrorResponse(E_FAIL, CurrentExceptionMessage());
         }
     }
 
     template <>
-    NProto::TPingResponse Execute<TPingMethod>(
-        const NProto::TPingRequest& request)
+    NProto::TPingResponse Execute<TPingMethod>(NProto::TPingRequest& request)
     {
         Y_UNUSED(request);
         return {};
@@ -203,35 +244,35 @@ private:
 
     template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
-        const NProto::TCreateFileStoreRequest& request)
+        NProto::TCreateFileStoreRequest& request)
     {
         return CreateFileStore(request);
     }
 
     template <>
     NProto::TDestroyFileStoreResponse Execute<TDestroyFileStoreMethod>(
-        const NProto::TDestroyFileStoreRequest& request)
+        NProto::TDestroyFileStoreRequest& request)
     {
         return DestroyFileStore(request);
     }
 
     template <>
     NProto::TAlterFileStoreResponse Execute<TAlterFileStoreMethod>(
-        const NProto::TAlterFileStoreRequest& request)
+        NProto::TAlterFileStoreRequest& request)
     {
         return AlterFileStore(request);
     }
 
     template <>
     NProto::TListFileStoresResponse Execute<TListFileStoresMethod>(
-        const NProto::TListFileStoresRequest& request)
+        NProto::TListFileStoresRequest& request)
     {
         return ListFileStores(request);
     }
 
     template <>
     NProto::TDescribeFileStoreModelResponse Execute<TDescribeFileStoreModelMethod>(
-        const NProto::TDescribeFileStoreModelRequest&)
+        NProto::TDescribeFileStoreModelRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -240,7 +281,7 @@ private:
 
     template <>
     NProto::TResizeFileStoreResponse Execute<TResizeFileStoreMethod>(
-        const NProto::TResizeFileStoreRequest&)
+        NProto::TResizeFileStoreRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -249,7 +290,7 @@ private:
 
     template <>
     NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        const NProto::TSubscribeSessionRequest&)
+        NProto::TSubscribeSessionRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -258,7 +299,7 @@ private:
 
     template <>
     NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        const NProto::TGetSessionEventsRequest&)
+        NProto::TGetSessionEventsRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -267,7 +308,7 @@ private:
 
     template <>
     NProto::TExecuteActionResponse Execute<TExecuteActionMethod>(
-        const NProto::TExecuteActionRequest&)
+        NProto::TExecuteActionRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -317,6 +358,8 @@ void TLocalFileStore::Start()
                 STORAGE_WARN("skipped suspicious " << id.Quote());
                 continue;
             }
+
+            STORAGE_INFO("restoring local store " << id.Quote());
 
             NProto::TFileStore store;
             LoadFileStoreProto(path, store);
@@ -417,7 +460,7 @@ NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
     auto it = FileSystems.find(id);
     if (it == FileSystems.end()) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "file store doesn't exists: " << id.Quote());
+            << "file store doesn't exist: " << id.Quote());
     }
 
     NProto::TFileStore store = it->second->GetConfig();
@@ -457,7 +500,8 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
         root,
         Timer,
         Scheduler,
-        Logging);
+        Logging,
+        FileIOService);
 
     auto [it, inserted] = FileSystems.emplace(id, fs);
     Y_ABORT_UNLESS(inserted);
@@ -486,6 +530,7 @@ IFileStoreServicePtr CreateLocalFileStore(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
+    IFileIOServicePtr fileIOService,
     ITaskQueuePtr taskQueue)
 {
     return std::make_shared<TLocalFileStore>(
@@ -493,6 +538,7 @@ IFileStoreServicePtr CreateLocalFileStore(
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
+        std::move(fileIOService),
         std::move(taskQueue));
 }
 

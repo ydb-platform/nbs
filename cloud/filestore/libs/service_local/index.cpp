@@ -34,12 +34,12 @@ TIndexNodePtr TIndexNode::CreateDirectory(const TString& name, int mode)
 
 TIndexNodePtr TIndexNode::CreateFile(const TString& name, int mode)
 {
-    auto node = NLowLevel::OpenAt(NodeFd, name, O_CREAT | O_EXCL | O_WRONLY, mode);
+    auto node =
+        NLowLevel::OpenAt(NodeFd, name, O_CREAT | O_EXCL | O_WRONLY, mode);
+    auto resolved = NLowLevel::Open(node, O_PATH, 0);
+    auto stat = NLowLevel::Stat(resolved);
 
-    node = NLowLevel::Open(node, O_PATH, 0);
-    auto stat = NLowLevel::Stat(node);
-
-    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+    return std::make_shared<TIndexNode>(stat.INode, std::move(resolved));
 }
 
 TIndexNodePtr TIndexNode::CreateSocket(const TString& name, int mode)
@@ -107,12 +107,12 @@ TFileStat TIndexNode::Stat(const TString& name)
     return NLowLevel::StatAt(NodeFd, name);
 }
 
-TFile TIndexNode::OpenHandle(int flags)
+TFileHandle TIndexNode::OpenHandle(int flags)
 {
     return NLowLevel::Open(NodeFd, flags, 0);
 }
 
-TFile TIndexNode::OpenHandle(const TString& name, int flags, int mode)
+TFileHandle TIndexNode::OpenHandle(const TString& name, int flags, int mode)
 {
     return NLowLevel::OpenAt(NodeFd, name.data(), flags, mode);
 }

@@ -5,7 +5,9 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -275,6 +277,7 @@ struct TTestBootstrap
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
+    IFileIOServicePtr AIOService = CreateAIOService();
 
     TTempDirectoryPtr Cwd;
     IFileStoreServicePtr Store;
@@ -286,11 +289,13 @@ struct TTestBootstrap
     TTestBootstrap(const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>())
         : Cwd(cwd)
     {
+        AIOService->Start();
         Store = CreateLocalFileStore(
             CreateConfig(),
             Timer,
             Scheduler,
             Logging,
+            AIOService,
             TaskQueue);
         Store->Start();
     }
@@ -298,11 +303,13 @@ struct TTestBootstrap
     TTestBootstrap(const TString& id, const TString& client = "client", const TString& session = {})
         : Cwd(std::make_shared<TTempDirectory>())
     {
+        AIOService->Start();
         Store = CreateLocalFileStore(
             CreateConfig(),
             Timer,
             Scheduler,
             Logging,
+            AIOService,
             TaskQueue);
         Store->Start();
 
@@ -310,6 +317,11 @@ struct TTestBootstrap
         if (client) {
             Headers.SessionId = CreateSession(id, client, session).GetSession().GetSessionId();
         }
+    }
+
+    ~TTestBootstrap()
+    {
+        AIOService->Stop();
     }
 
     TLocalFileStoreConfigPtr CreateConfig()
