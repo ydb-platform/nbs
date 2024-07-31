@@ -135,9 +135,9 @@ NThreading::TFuture<IEncryptorPtr> CreateEncryptor(
         {
             auto response = f.ExtractValue();
             if (HasError(response)) {
-                STORAGE_ERROR(
-                    "Error getting encription key " << response.GetError());
-                return NThreading::MakeFuture<IEncryptorPtr>();
+                Y_ABORT(
+                    "Error getting encryption key: %s",
+                    ToString(response.GetError()).c_str());
             }
 
             auto key = response.ExtractResult();
