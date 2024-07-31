@@ -115,7 +115,7 @@ NCloud::ILoggingServicePtr CreateLogService(const TOptions& options)
     return std::make_shared<TDefaultLoggingService>(logLevel);
 }
 
-NThreading::TFuture<IEncryptorPtr> CreateEncryptionKey(
+NThreading::TFuture<IEncryptorPtr> CreateEncryptor(
     const TOptions& options,
     NCloud::ILoggingServicePtr logging)
 {
@@ -151,7 +151,7 @@ IBackendPtr CreateBackend(
     const TOptions& options,
     NCloud::ILoggingServicePtr logging)
 {
-    auto key = CreateEncryptionKey(options, logging);
+    auto key = CreateEncryptor(options, logging);
 
     if (options.DeviceBackend == "aio") {
         return CreateAioBackend(std::move(key), logging);

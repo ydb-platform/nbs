@@ -122,15 +122,15 @@ void PrepareIO(
     TVector<iocb*>& batch,
     TCpuCycles now);
 
-void SgListCopyWithOptionalEncryption(
-    TLog& log,
+[[nodiscard]] bool SgListCopyWithOptionalEncryption(
+    TLog& Log,
     const vhd_sglist& src,
     char* dst,
     IEncryptor* encryptor,
     ui64 startSector);
 
-void SgListCopyWithOptionalDecryption(
-    TLog& log,
+[[nodiscard]] bool SgListCopyWithOptionalDecryption(
+    TLog& Log,
     const char* src,
     const vhd_sglist& dst,
     IEncryptor* encryptor,

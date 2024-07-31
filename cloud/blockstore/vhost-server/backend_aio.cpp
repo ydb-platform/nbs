@@ -17,6 +17,8 @@
 
 namespace NCloud::NBlockStore::NVHostServer {
 
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,12 +46,15 @@ void CompleteRequest(
 
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            SgListCopyWithOptionalDecryption(
+            const bool succ = SgListCopyWithOptionalDecryption(
                 log,
                 static_cast<const char*>(req->Data[0].iov_base),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
+            if (!succ) {
+                status = VHD_BDEV_IOERR;
+            }
         }
     }
     vhd_complete_bio(req->Io, status);
@@ -85,12 +90,15 @@ void CompleteCompoundRequest(
         }
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            SgListCopyWithOptionalDecryption(
+            bool succ = SgListCopyWithOptionalDecryption(
                 log,
                 req->Buffer.get(),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
+            if (!succ) {
+                status = VHD_BDEV_IOERR;
+            }
         }
         vhd_complete_bio(req->Io, status);
     }
@@ -104,7 +112,7 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
-    NThreading::TFuture<IEncryptorPtr> EncryptorFuture;
+    TFuture<IEncryptorPtr> EncryptorFuture;
     IEncryptorPtr Encryptor;
     TVector<TAioDevice> Devices;
 
@@ -118,9 +126,7 @@ private:
     ICompletionStatsPtr CompletionStats;
 
 public:
-    TAioBackend(
-        NThreading::TFuture<IEncryptorPtr> encryptor,
-        ILoggingServicePtr logging);
+    TAioBackend(TFuture<IEncryptorPtr> encryptor, ILoggingServicePtr logging);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -147,7 +153,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioBackend::TAioBackend(
-        NThreading::TFuture<IEncryptorPtr> encryptor,
+        TFuture<IEncryptorPtr> encryptor,
         ILoggingServicePtr logging)
     : Logging{std::move(logging)}
     , EncryptorFuture(std::move(encryptor))
@@ -461,7 +467,7 @@ void TAioBackend::CompletionThreadFunc()
 ////////////////////////////////////////////////////////////////////////////////
 
 IBackendPtr CreateAioBackend(
-    NThreading::TFuture<IEncryptorPtr> encryptor,
+    TFuture<IEncryptorPtr> encryptor,
     ILoggingServicePtr logging)
 {
     return std::make_shared<TAioBackend>(

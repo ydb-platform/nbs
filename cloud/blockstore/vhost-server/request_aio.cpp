@@ -14,70 +14,32 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DoEncryption(
-    TLog& Log,
-    IEncryptor* encryptor,
+template <bool (IEncryptor::*CryptoOperation)(
+    const TBlockDataRef& src,
+    const TBlockDataRef& dst,
+    ui64 blockIndex)>
+[[nodiscard]] bool DoCryptoOperation(
+    IEncryptor& encryptor,
     TBlockDataRef src,
     TBlockDataRef dst,
     ui64 startSector)
 {
     const size_t sectorCount = src.Size() / VHD_SECTOR_SIZE;
 
-    for (size_t sector = 0; sector < sectorCount; ++sector) {
-        TBlockDataRef srcRef(
-            src.Data() + sector * VHD_SECTOR_SIZE,
-            VHD_SECTOR_SIZE);
-        TBlockDataRef dstRef(
-            dst.Data() + sector * VHD_SECTOR_SIZE,
-            VHD_SECTOR_SIZE);
+    for (size_t i = 0; i < sectorCount; ++i) {
+        TBlockDataRef srcRef(src.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
+        TBlockDataRef dstRef(dst.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
 
         if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
             memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
         } else {
-            bool succ =
-                encryptor->Encrypt(srcRef, dstRef, startSector + sector);
-            if (!succ) {
-                STORAGE_ERROR(
-                    "Encryption error. Start sector %lu, size=%zu.",
-                    startSector,
-                    src.Size());
+            if (!(encryptor.*CryptoOperation)(srcRef, dstRef, startSector + i))
+            {
+                return false;
             }
         }
     }
-}
-
-void DoDecryption(
-    TLog& Log,
-    IEncryptor* encryptor,
-    TBlockDataRef src,
-    TBlockDataRef dst,
-    ui64 startSector)
-{
-    const size_t sectorCount = src.Size() / VHD_SECTOR_SIZE;
-
-    for (size_t sector = 0; sector < sectorCount; ++sector) {
-        TBlockDataRef srcRef(
-            src.Data() + sector * VHD_SECTOR_SIZE,
-            VHD_SECTOR_SIZE);
-        TBlockDataRef dstRef(
-            dst.Data() + sector * VHD_SECTOR_SIZE,
-            VHD_SECTOR_SIZE);
-
-        if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
-            if (srcRef.Data() != dstRef.Data()) {
-                memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
-            }
-        } else {
-            bool succ =
-                encryptor->Decrypt(srcRef, dstRef, startSector + sector);
-            if (!succ) {
-                STORAGE_ERROR(
-                    "Decryption error. Start sector %lu, size=%zu.",
-                    startSector + sector,
-                    srcRef.Size());
-            }
-        }
-    }
+    return true;
 }
 
 void PrepareCompoundIO(
@@ -122,12 +84,16 @@ void PrepareCompoundIO(
     auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
 
     if (bio->type == VHD_BDEV_WRITE) {
-        SgListCopyWithOptionalEncryption(
+        const bool succ = SgListCopyWithOptionalEncryption(
             Log,
             bio->sglist,
             req->Buffer.get(),
             encryptor,
             bio->first_sector);
+        if (!succ) {
+            vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+            return;
+        }
     }
 
     ui64 deviceOffset = logicalOffset - it->StartOffset;
@@ -176,8 +142,8 @@ void PrepareCompoundIO(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SgListCopyWithOptionalDecryption(
-    TLog& log,
+bool SgListCopyWithOptionalDecryption(
+    TLog& Log,
     const char* src,
     const vhd_sglist& dst,
     IEncryptor* encryptor,
@@ -191,17 +157,30 @@ void SgListCopyWithOptionalDecryption(
             TBlockDataRef dstRef{
                 static_cast<const char*>(buffer.base),
                 buffer.len};
-            DoDecryption(log, encryptor, srcRef, dstRef, startSector);
+            if (!DoCryptoOperation<&IEncryptor::Decrypt>(
+                    *encryptor,
+                    srcRef,
+                    dstRef,
+                    startSector))
+            {
+                STORAGE_ERROR(
+                    "Decryption error. Start block %" PRIu64
+                    ", blocks count %" PRIu64,
+                    startSector,
+                    buffers.size());
+                return false;
+            }
             startSector += buffer.len / VHD_SECTOR_SIZE;
         } else {
             std::memcpy(buffer.base, src, buffer.len);
         }
         src += buffer.len;
     }
+    return true;
 }
 
-void SgListCopyWithOptionalEncryption(
-    TLog& log,
+bool SgListCopyWithOptionalEncryption(
+    TLog& Log,
     const vhd_sglist& src,
     char* dst,
     IEncryptor* encryptor,
@@ -215,13 +194,26 @@ void SgListCopyWithOptionalEncryption(
                 static_cast<const char*>(buffer.base),
                 buffer.len};
             TBlockDataRef dstRef{dst, buffer.len};
-            DoEncryption(log, encryptor, srcRef, dstRef, startSector);
+            if (!DoCryptoOperation<&IEncryptor::Encrypt>(
+                    *encryptor,
+                    srcRef,
+                    dstRef,
+                    startSector))
+            {
+                STORAGE_ERROR(
+                    "Encryption error. Start block %" PRIu64
+                    ", blocks count %" PRIu64,
+                    startSector,
+                    buffers.size());
+                return false;
+            }
             startSector += buffer.len / VHD_SECTOR_SIZE;
         } else {
             std::memcpy(dst, buffer.base, buffer.len);
         }
         dst += buffer.len;
     }
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -290,19 +282,15 @@ void PrepareIO(
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
         if (bio->type == VHD_BDEV_WRITE) {
-            char* dst = static_cast<char*>(req->Data[0].iov_base);
-            size_t sectorIndex = bio->first_sector;
-            for (const auto& buffer: buffers) {
-                if (encryptor) {
-                    TBlockDataRef srcRef(
-                        static_cast<char*>(buffer.base),
-                        buffer.len);
-                    TBlockDataRef dstRef(dst, buffer.len);
-                    DoEncryption(Log, encryptor, srcRef, dstRef, sectorIndex);
-                } else {
-                    std::memcpy(dst, buffer.base, buffer.len);
-                }
-                dst += buffer.len;
+            const bool succ = SgListCopyWithOptionalEncryption(
+                Log,
+                bio->sglist,
+                static_cast<char*>(req->Data[0].iov_base),
+                encryptor,
+                bio->first_sector);
+            if (!succ) {
+                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                return;
             }
         }
         // Instead of multiple buffers, we have allocated one large buffer.
