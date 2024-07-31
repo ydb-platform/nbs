@@ -68,9 +68,10 @@ type nodeService struct {
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
 
-	nbsClient nbsclient.ClientIface
-	nfsClient nfsclient.EndpointClientIface
-	mounter   mounter.Interface
+	nbsClient         nbsclient.ClientIface
+	nfsClient         nfsclient.ClientIface
+	nfsEndpointClient nfsclient.EndpointClientIface
+	mounter           mounter.Interface
 }
 
 func newNodeService(
@@ -81,7 +82,8 @@ func newNodeService(
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.EndpointClientIface,
+	nfsClient nfsclient.ClientIface,
+	nfsEndpointClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
@@ -91,6 +93,7 @@ func newNodeService(
 		socketsDir:          socketsDir,
 		nbsClient:           nbsClient,
 		nfsClient:           nfsClient,
+		nfsEndpointClient:   nfsEndpointClient,
 		mounter:             mounter,
 		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
@@ -402,11 +405,11 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return err
 	}
 
-	if s.nfsClient == nil {
+	if s.nfsEndpointClient == nil {
 		return fmt.Errorf("NFS client wasn't created")
 	}
 
-	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+	_, err := s.nfsEndpointClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     req.VolumeId,
@@ -454,8 +457,8 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	if s.nfsClient != nil {
-		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+	if s.nfsEndpointClient != nil {
+		_, err := s.nfsEndpointClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 			SocketPath: filepath.Join(socketDir, nfsSocketName),
 		})
 		if err != nil {
@@ -659,10 +662,20 @@ func (s *nodeService) NodeGetVolumeStats(
 		return &csi.NodeGetVolumeStatsResponse{}, nil
 	}
 
-	_, err := s.nfsClient.StatFileStore(ctx, &nfsapi.TStatFileStoreRequest{FileSystemId: req.VolumeId})
+	resp, err := s.nfsClient.StatFileStore(ctx, &nfsapi.TStatFileStoreRequest{FileSystemId: req.VolumeId})
 	if err != nil {
 		return nil, fmt.Errorf("failed to request volume stats: %w", err)
 	}
 
-	return &csi.NodeGetVolumeStatsResponse{usage: []*csi.VolumeUsage{}}, nil
+	usedBytes := int64(resp.Stats.UsedBlocksCount) * int64(resp.FileStore.BlockSize)
+	totalBytes := int64(resp.FileStore.BlocksCount) * int64(resp.FileStore.BlockSize)
+	availableBytes := totalBytes - usedBytes
+
+	usedNodes := int64(resp.Stats.UsedNodesCount)
+	totalNodes := int64(resp.FileStore.NodesCount)
+	availableNodes := totalNodes - usedNodes
+
+	return &csi.NodeGetVolumeStatsResponse{Usage: []*csi.VolumeUsage{
+		{Available: availableBytes, Used: usedBytes, Total: totalBytes, Unit: csi.VolumeUsage_BYTES},
+		{Available: availableNodes, Used: usedNodes, Total: totalNodes, Unit: csi.VolumeUsage_INODES}}}, nil
 }
