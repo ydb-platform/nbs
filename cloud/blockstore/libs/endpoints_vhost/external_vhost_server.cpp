@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/vhost-server/options.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -547,6 +548,10 @@ private:
 
     TIntrusivePtr<TEndpointProcess> Process;
     std::atomic_bool ShouldStop = false;
+    TInstant LastRestartAt;
+    TBackoffDelayProvider RestartBackoff{
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(30)};
 
     TPromise<NProto::TError> StopPromise = NewPromise<NProto::TError>();
 
@@ -684,10 +689,24 @@ private:
 
     TIntrusivePtr<TEndpointProcess> RestartProcess()
     {
+        if (TInstant::Now() - LastRestartAt > TDuration::Seconds(60)) {
+            // The last restart happened a long time ago, restart immediately.
+            RestartBackoff.Reset();
+        } else {
+            auto delay = RestartBackoff.GetDelayAndIncrease();
+            STORAGE_WARN(
+                "[" << ClientId << "] Will restart external endpoint after "
+                    << delay.ToString());
+            Sleep(delay);
+        }
+
         STORAGE_WARN("[" << ClientId << "] Restart external endpoint");
 
         try {
-            return StartProcess();
+            if (!ShouldStop) {
+                LastRestartAt = TInstant::Now();
+                return StartProcess();
+            }
         } catch (...) {
             STORAGE_ERROR("[" << ClientId << "] Can't restart external endpoint: "
                 << CurrentExceptionMessage());
