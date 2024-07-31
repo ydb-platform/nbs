@@ -703,13 +703,15 @@ private:
             Sleep(delay);
         }
 
+        if (ShouldStop) {
+            return nullptr;
+        }
+
         STORAGE_WARN("[" << ClientId << "] Restart external endpoint");
 
         try {
-            if (!ShouldStop) {
-                LastRestartAt = TInstant::Now();
-                return StartProcess();
-            }
+            LastRestartAt = TInstant::Now();
+            return StartProcess();
         } catch (...) {
             STORAGE_ERROR("[" << ClientId << "] Can't restart external endpoint: "
                 << CurrentExceptionMessage());
