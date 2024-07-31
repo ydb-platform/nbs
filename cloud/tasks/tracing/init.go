@@ -40,11 +40,12 @@ func newTraceExporter(
 	ctx context.Context,
 	config *tracing_config.TracingConfig,
 ) (*otlptrace.Exporter, error) {
+
 	return otlptracegrpc.New(
 		ctx,
 		otlptracegrpc.WithEndpoint(fmt.Sprintf(
 			"localhost:%v",
-			config.ExporterPort)),
+			*config.ExporterPort)),
 		otlptracegrpc.WithInsecure(),
 	)
 }
@@ -61,11 +62,9 @@ func InitOpentelemetryTracing(
 		return nil, errors.NewNonRetriableErrorf("Failed to create exporter: %w", err)
 	}
 
-	serviceName := *config.ServiceName
-	fmt.Printf("InitOpentelemetryTracing config.ServiceName: %v\n", serviceName)
 	resource := otel_resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String(serviceName),
+		semconv.ServiceNameKey.String(*config.ServiceName),
 	)
 
 	tracerProvider := sdktrace.NewTracerProvider(
