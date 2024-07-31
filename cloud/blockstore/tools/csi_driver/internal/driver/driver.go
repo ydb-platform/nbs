@@ -76,9 +76,29 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	var nfsClient nfsclient.ClientIface = nil
+	var nfsClient nfsclient.ClientIface
+	if cfg.NfsServerPort != 0 {
+		nfsClient, err = nfsclient.NewGrpcClient(
+			&nfsclient.GrpcClientOpts{
+				Endpoint: getEndpoint(cfg.NfsServerSocket, cfg.NfsServerPort),
+			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	var nfsEndpointClient nfsclient.EndpointClientIface = nil
+	var nfsEndpointClient nfsclient.EndpointClientIface
+	if cfg.NfsVhostPort != 0 {
+		nfsEndpointClient, err = nfsclient.NewGrpcEndpointClient(
+			&nfsclient.GrpcClientOpts{
+				Endpoint: getEndpoint(cfg.NfsVhostSocket, cfg.NfsVhostPort),
+			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	monintoringCfg := monitoring.MonitoringConfig{
 		Port:      cfg.MonPort,
