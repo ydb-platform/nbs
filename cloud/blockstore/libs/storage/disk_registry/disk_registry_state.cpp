@@ -5646,30 +5646,38 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 shouldResume,
                 dryRun,
                 result.Timeout);
+
+            if (HasError(result.Error)) {
+                STORAGE_WARN(
+                    "UpdateCmsDeviceState stopped after processing %u devices"
+                    ", current deviceId: %s, error: %s",
+                    processed,
+                    device->GetDeviceUUID().c_str(),
+                    FormatError(result.Error).c_str());
+
+                break;
+            }
         } else {
             TString affectedDisk;
-            result.Error = CmsRemoveDevice(
+            TDuration timeout;
+            auto error = CmsRemoveDevice(
                 db,
                 *agent,
                 *device,
                 now,
                 dryRun,
                 affectedDisk,
-                result.Timeout);
+                timeout);
+
             if (!affectedDisk.empty()) {
                 result.AffectedDisks.push_back(std::move(affectedDisk));
             }
-        }
 
-        if (HasError(result.Error)) {
-            STORAGE_WARN(
-                "UpdateCmsDeviceState stopped after processing %u devices"
-                ", current deviceId: %s, error: %s",
-                processed,
-                device->GetDeviceUUID().c_str(),
-                FormatError(result.Error).c_str());
+            result.Timeout = Max(result.Timeout, timeout);
 
-            break;
+            if (HasError(error)) {
+                result.Error = std::move(error);
+            }
         }
 
         ++processed;

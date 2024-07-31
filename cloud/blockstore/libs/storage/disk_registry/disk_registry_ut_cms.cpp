@@ -1354,6 +1354,61 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
     }
+
+    Y_UNIT_TEST_F(ShouldUpdateAllLogicalDevices, TFixture)
+    {
+        // two devices on the same path
+        const auto agent = CreateAgentConfig("agent-1", {
+            Device("path", "uuid-1", "rack-1", 10_GB),
+            Device("path", "uuid-2", "rack-1", 10_GB)
+        });
+
+        auto config = CreateDefaultStorageConfig();
+
+        SetUpRuntime(TTestRuntimeBuilder()
+            .WithAgents({agent})
+            .With(config)
+            .Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAndWaitForAgents(*Runtime, {agent});
+
+        {
+            auto response = DiskRegistry->AllocateDisk("vol0", 10_GB);
+            const auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
+        }
+
+        {
+            auto [error, timeout] = RemoveDevice(agent.GetAgentId(), "path");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                config.GetNonReplicatedInfraTimeout(),
+                timeout * 1000);
+        }
+
+        Runtime->AdvanceCurrentTime(
+            TDuration::MilliSeconds(config.GetNonReplicatedInfraTimeout() / 2));
+
+        {
+            auto [error, timeout] = RemoveDevice(agent.GetAgentId(), "path");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+        }
+
+        {
+            auto response = DiskRegistry->AllocateDisk("vol0", 10_GB);
+            const auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
