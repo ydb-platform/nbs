@@ -48,7 +48,7 @@ void TConfigInitializerVhost::ApplyCustomCMSConfigs(
         { "VHostAppConfig",    bind_front(&TSelf::ApplyVHostAppConfig, this)  },
     };
 
-    RunConfigHandlers(config, map);
+    ApplyConfigs(config, map);
 }
 
 void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)

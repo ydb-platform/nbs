@@ -87,7 +87,7 @@ void TConfigInitializerCommon::ApplyCustomCMSConfigs(
         { "StorageConfig",     bind_front(&TSelf::ApplyStorageConfig, this)    },
     };
 
-    RunConfigHandlers(config, map);
+    ApplyConfigs(config, map);
 }
 
 void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
@@ -117,7 +117,7 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
         std::move(config));
 }
 
-void TConfigInitializerCommon::RunConfigHandlers(
+void TConfigInitializerCommon::ApplyConfigs(
     const NKikimrConfig::TAppConfig& config,
     const THashMap<TString, TApplyConfigFn>& handlers)
 {

@@ -43,7 +43,7 @@ void TConfigInitializerServer::ApplyCustomCMSConfigs(
         { "ServerAppConfig",   bind_front(&TSelf::ApplyServerAppConfig, this) },
     };
 
-    RunConfigHandlers(config, map);
+    ApplyConfigs(config, map);
 }
 
 void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)

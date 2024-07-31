@@ -39,7 +39,7 @@ struct TConfigInitializerCommon
 
     NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
 
-    static void RunConfigHandlers(
+    static void ApplyConfigs(
         const NKikimrConfig::TAppConfig& config,
         const THashMap<TString, TApplyConfigFn>& handlers);
 };
