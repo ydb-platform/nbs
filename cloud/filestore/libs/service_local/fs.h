@@ -88,6 +88,7 @@ private:
     const TFsPath Root;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const IFileIOServicePtr FileIOService;
 
     NProto::TFileStore Store;
     TLog Log;
@@ -109,7 +110,8 @@ public:
         TFsPath root,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging);
+        ILoggingServicePtr logging,
+        IFileIOServicePtr fileIOService);
 
 #define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
     NProto::T##name##Response name(                                            \
@@ -118,7 +120,7 @@ public:
 
 #define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
     NThreading::TFuture<NProto::T##name##Response> name##Async(                \
-        const NProto::T##name##Request& request);                              \
+        NProto::T##name##Request& request);                                    \
 // FILESTORE_DECLARE_METHOD_SYNC
 
     FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)

@@ -16,6 +16,7 @@ PEERDIR(
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/init
 
+    cloud/storage/core/libs/aio
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics

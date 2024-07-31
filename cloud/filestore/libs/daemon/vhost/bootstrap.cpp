@@ -292,6 +292,7 @@ void TBootstrapVhost::InitEndpoints()
             Timer,
             Scheduler,
             Logging,
+            FileIOService,
             ThreadPool);
 
         STORAGE_INFO("initialized LocalService: %s",

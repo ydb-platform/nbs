@@ -19,10 +19,10 @@ class TIndexNode
 {
 private:
     const ui64 NodeId;
-    const TFile NodeFd;
+    const TFileHandle NodeFd;
 
 public:
-    TIndexNode(ui64 nodeId, TFile node)
+    TIndexNode(ui64 nodeId, TFileHandle node)
         : NodeId(nodeId)
         , NodeFd(std::move(node))
     {}
@@ -55,8 +55,8 @@ public:
     TFileStat Stat();
     TFileStat Stat(const TString& name);
 
-    TFile OpenHandle(int flags);
-    TFile OpenHandle(const TString& name, int flags, int mode);
+    TFileHandle OpenHandle(int flags);
+    TFileHandle OpenHandle(const TString& name, int flags, int mode);
 
     //
     // Attrs

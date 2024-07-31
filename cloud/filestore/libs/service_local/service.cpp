@@ -113,7 +113,7 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
         using TResponse = NProto::T##name##Response;                           \
         using TResult = TFuture<TResponse>;                                    \
                                                                                \
-        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
+        static TResult Execute(TLocalFileSystem& fs, TRequest& request)        \
         {                                                                      \
             return fs.name##Async(request);                                    \
         }                                                                      \
@@ -142,6 +142,7 @@ private:
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
+    const IFileIOServicePtr FileIOService;
     const ITaskQueuePtr TaskQueue;
     const TFsPath Root;
 
@@ -156,11 +157,13 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
+            IFileIOServicePtr fileIOService,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
+        , FileIOService(std::move(fileIOService))
         , TaskQueue(std::move(taskQueue))
         , Root(Config->GetRootPath())
     {
@@ -210,7 +213,7 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
 
 private:
     template <typename T>
-    typename T::TResult Execute(const typename T::TRequest& request)
+    typename T::TResult Execute(typename T::TRequest& request)
     {
         const auto& id = GetFileSystemId(request);
         if (!id) {
@@ -233,8 +236,7 @@ private:
     }
 
     template <>
-    NProto::TPingResponse Execute<TPingMethod>(
-        const NProto::TPingRequest& request)
+    NProto::TPingResponse Execute<TPingMethod>(NProto::TPingRequest& request)
     {
         Y_UNUSED(request);
         return {};
@@ -242,35 +244,35 @@ private:
 
     template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
-        const NProto::TCreateFileStoreRequest& request)
+        NProto::TCreateFileStoreRequest& request)
     {
         return CreateFileStore(request);
     }
 
     template <>
     NProto::TDestroyFileStoreResponse Execute<TDestroyFileStoreMethod>(
-        const NProto::TDestroyFileStoreRequest& request)
+        NProto::TDestroyFileStoreRequest& request)
     {
         return DestroyFileStore(request);
     }
 
     template <>
     NProto::TAlterFileStoreResponse Execute<TAlterFileStoreMethod>(
-        const NProto::TAlterFileStoreRequest& request)
+        NProto::TAlterFileStoreRequest& request)
     {
         return AlterFileStore(request);
     }
 
     template <>
     NProto::TListFileStoresResponse Execute<TListFileStoresMethod>(
-        const NProto::TListFileStoresRequest& request)
+        NProto::TListFileStoresRequest& request)
     {
         return ListFileStores(request);
     }
 
     template <>
     NProto::TDescribeFileStoreModelResponse Execute<TDescribeFileStoreModelMethod>(
-        const NProto::TDescribeFileStoreModelRequest&)
+        NProto::TDescribeFileStoreModelRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -279,7 +281,7 @@ private:
 
     template <>
     NProto::TResizeFileStoreResponse Execute<TResizeFileStoreMethod>(
-        const NProto::TResizeFileStoreRequest&)
+        NProto::TResizeFileStoreRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -288,7 +290,7 @@ private:
 
     template <>
     NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        const NProto::TSubscribeSessionRequest&)
+        NProto::TSubscribeSessionRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -297,7 +299,7 @@ private:
 
     template <>
     NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        const NProto::TGetSessionEventsRequest&)
+        NProto::TGetSessionEventsRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -306,7 +308,7 @@ private:
 
     template <>
     NProto::TExecuteActionResponse Execute<TExecuteActionMethod>(
-        const NProto::TExecuteActionRequest&)
+        NProto::TExecuteActionRequest&)
     {
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
@@ -498,7 +500,8 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
         root,
         Timer,
         Scheduler,
-        Logging);
+        Logging,
+        FileIOService);
 
     auto [it, inserted] = FileSystems.emplace(id, fs);
     Y_ABORT_UNLESS(inserted);
@@ -527,6 +530,7 @@ IFileStoreServicePtr CreateLocalFileStore(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
+    IFileIOServicePtr fileIOService,
     ITaskQueuePtr taskQueue)
 {
     return std::make_shared<TLocalFileStore>(
@@ -534,6 +538,7 @@ IFileStoreServicePtr CreateLocalFileStore(
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
+        std::move(fileIOService),
         std::move(taskQueue));
 }
 
