@@ -13,59 +13,78 @@ namespace NLowLevel {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFile Open(const TString& path, int flags, int mode);
-TFile Open(const TFile& handle, int flags, int mode);
-TFile OpenAt(const TFile& handle, const TString& name, int flags, int mode);
+TFileHandle Open(const TString& path, int flags, int mode);
+TFileHandle Open(const TFileHandle& handle, int flags, int mode);
+TFileHandle OpenAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int flags,
+    int mode);
 
-void MkDirAt(const TFile& handle, const TString& name, int mode);
-void MkSockAt(const TFile& handle, const TString& name, int mode);
+void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
+void MkSockAt(const TFileHandle& handle, const TString& name, int mode);
 
 void RenameAt(
-    const TFile& handle,
+    const TFileHandle& handle,
     const TString& name,
-    const TFile& newhandle,
+    const TFileHandle& newhandle,
     const TString& newname,
     unsigned int flags);
 
-void LinkAt(const TFile& node, const TFile& parent, const TString& name);
-void SymLinkAt(const TString target, const TFile& handle, const TString& name);
-void UnlinkAt(const TFile& handle, const TString& name, bool directory);
+void LinkAt(
+    const TFileHandle& node,
+    const TFileHandle& parent,
+    const TString& name);
+void SymLinkAt(
+    const TString& target,
+    const TFileHandle& handle,
+    const TString& name);
+void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory);
 
-TString ReadLink(const TFile& handle);
+TString ReadLink(const TFileHandle& handle);
 
-TFileStat Stat(const TFile& handle);
-TFileStat StatAt(const TFile& handle, const TString& name);
+TFileStat Stat(const TFileHandle& handle);
+TFileStat StatAt(const TFileHandle& handle, const TString& name);
 
-TVector<std::pair<TString, TFileStat>> ListDirAt(const TFile& handle, bool ignoreErrors);
+TVector<std::pair<TString, TFileStat>> ListDirAt(
+    const TFileHandle& handle,
+    bool ignoreErrors);
 
 //
 // Attrs
 //
 
-void Access(const TFile& handle, int mode);
-void Chmod(const TFile& handle, int mode);
-void Chown(const TFile& handle, unsigned int uid, unsigned int gid);
-void Utimes(const TFile& handle, TInstant atime, TInstant mtime);
-void Truncate(const TFile& handle, size_t size);
-void Allocate(const TFile& handle, int flags, off_t offset, off_t length);
+void Access(const TFileHandle& handle, int mode);
+void Chmod(const TFileHandle& handle, int mode);
+void Chown(const TFileHandle& handle, unsigned int uid, unsigned int gid);
+void Utimes(const TFileHandle& handle, TInstant atime, TInstant mtime);
+void Truncate(const TFileHandle& handle, size_t size);
+void Allocate(const TFileHandle& handle, int flags, off_t offset, off_t length);
 
 //
 // X Attrs
 //
 
-TString GetXAttr(const TFile& handle, const TString& name);
-TVector<TString> ListXAttrs(const TFile& handle);
-void RemoveXAttr(const TFile& handle, const TString& name);
-void SetXAttr(const TFile& handle, const TString& name, const TString& value);
+TString GetXAttr(const TFileHandle& handle, const TString& name);
+TVector<TString> ListXAttrs(const TFileHandle& handle);
+void RemoveXAttr(const TFileHandle& handle, const TString& name);
+void SetXAttr(
+    const TFileHandle& handle,
+    const TString& name,
+    const TString& value);
 
 //
 // Locks
 //
 
-bool AcquireLock(const TFile& handle, int offset, int len, bool shared);
-bool TestLock(const TFile& handle, int offset, int len, bool shared);
-void ReleaseLock(const TFile& handle, int offset, int len);
-bool Flock(const TFile& handle, int operation);
+bool AcquireLock(
+    const TFileHandle& handle,
+    off_t offset,
+    off_t len,
+    bool shared);
+bool TestLock(const TFileHandle& handle, off_t offset, off_t len, bool shared);
+void ReleaseLock(const TFileHandle& handle, off_t offset, off_t len);
+bool Flock(const TFileHandle& handle, int operation);
 
 }   // namespace NLowLevel
 }   // namespace NCloud::NFileStore

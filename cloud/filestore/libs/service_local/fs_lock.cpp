@@ -15,22 +15,22 @@ NProto::TAcquireLockResponse TLocalFileSystem::AcquireLock(
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
+    if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
     if (request.GetLockOrigin() == NProto::E_FLOCK) {
         auto lockType = LockTypeToFlockMode(request.GetLockType()) | LOCK_NB;
-        if (!NLowLevel::Flock(handle, lockType)) {
+        if (!NLowLevel::Flock(*handle, lockType)) {
             return TErrorResponse(
                 E_FS_WOULDBLOCK,
                 TStringBuilder()
-                    << "flock denied for " << handle.GetName().Quote());
+                    << "flock denied for " << static_cast<FHANDLE>(*handle));
         }
     } else {
         bool shared = request.GetLockType() == NProto::E_SHARED;
         bool wouldBlock = !NLowLevel::AcquireLock(
-            handle,
+            *handle,
             request.GetOffset(),
             request.GetLength(),
             shared);
@@ -38,9 +38,9 @@ NProto::TAcquireLockResponse TLocalFileSystem::AcquireLock(
             return TErrorResponse(
                 E_FS_WOULDBLOCK,
                 TStringBuilder()
-                    << "lock denied for " << handle.GetName().Quote() << " at ("
-                    << request.GetOffset() << ", " << request.GetLength()
-                    << ")");
+                    << "lock denied for " << static_cast<FHANDLE>(*handle)
+                    << " at (" << request.GetOffset() << ", "
+                    << request.GetLength() << ")");
         }
     }
 
@@ -54,20 +54,20 @@ NProto::TReleaseLockResponse TLocalFileSystem::ReleaseLock(
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
+    if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
     if (request.GetLockOrigin() == NProto::E_FLOCK) {
-        if (!NLowLevel::Flock(handle, LOCK_UN)) {
+        if (!NLowLevel::Flock(*handle, LOCK_UN)) {
             return TErrorResponse(
                 E_FS_WOULDBLOCK,
                 TStringBuilder()
-                    << "flock denied for " << handle.GetName().Quote());
+                    << "flock denied for " << static_cast<FHANDLE>(*handle));
         }
     } else {
         NLowLevel::ReleaseLock(
-            handle,
+            *handle,
             request.GetOffset(),
             request.GetLength());
     }
@@ -82,14 +82,19 @@ NProto::TTestLockResponse TLocalFileSystem::TestLock(
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
+    if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
     bool shared = request.GetLockType() == NProto::E_SHARED;
-    if (!NLowLevel::TestLock(handle, request.GetOffset(), request.GetLength(), shared)) {
+    const bool tested = NLowLevel::TestLock(
+        *handle,
+        request.GetOffset(),
+        request.GetLength(),
+        shared);
+    if (!tested) {
         return TErrorResponse(E_UNAUTHORIZED, TStringBuilder()
-            << "lock denied for " << handle.GetName().Quote()
+            << "lock denied for " << static_cast<FHANDLE>(*handle)
             << " at (" << request.GetOffset()
             << ", " << request.GetLength() << ")");
     }

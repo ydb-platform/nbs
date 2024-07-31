@@ -16,6 +16,7 @@ IFileStoreServicePtr CreateLocalFileStore(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
+    IFileIOServicePtr fileIOService,
     ITaskQueuePtr taskQueue);
 
 }   // namespace NCloud::NFileStore

@@ -157,6 +157,7 @@ void TBootstrapServer::InitLocalService()
         Timer,
         Scheduler,
         Logging,
+        FileIOService,
         ThreadPool);
 }
 
