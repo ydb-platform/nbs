@@ -85,7 +85,7 @@ func Run(
 
 	rootCmd.AddCommand(
 		newOperationsCmd(clientConfig),
-		newPrivateCmd(clientConfig),
+		newPrivateCmd(clientConfig, serverConfig),
 	)
 
 	additionalCommands := []*cobra.Command{
@@ -96,7 +96,6 @@ func Run(
 		newFilesystemCmd(clientConfig, serverConfig),
 		newPlacementGroupCmd(clientConfig, serverConfig),
 		newPoolsCmd(clientConfig, serverConfig),
-		newNbsCmd(clientConfig, serverConfig),
 	}
 
 	parseClientAndServerConfig := func(cmd *cobra.Command, args []string) error {
