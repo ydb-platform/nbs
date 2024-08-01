@@ -6,36 +6,33 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"log"
+	"net"
 	"os"
 	"time"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func dialGrpcContext(ctx context.Context, endpoint, certificateFile string) (*grpc.ClientConn, error) {
-	var err error
-	grpcTlsCredentials := credentials.NewClientTLSFromCert(nil, "")
-	if certificateFile != "" {
-		grpcTlsCredentials, err = credentials.NewClientTLSFromFile(certificateFile, "")
-		if err != nil {
-			return nil, err
-		}
-	}
+func dialGrpcContext(ctx context.Context, endpoint string) (*grpc.ClientConn, error) {
 	conn, err := grpc.DialContext(
 		ctx,
 		endpoint,
-		grpc.WithTransportCredentials(grpcTlsCredentials),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(ctx context.Context, address string) (net.Conn, error) {
+			return net.Dial("unix", address)
+		}),
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	return conn, err
 }
 
-func newNodeClient(ctx context.Context, endpoint, certificateFile string) (csi.NodeClient, error) {
-	conn, err := dialGrpcContext(ctx, endpoint, certificateFile)
+func newNodeClient(ctx context.Context, endpoint string) (csi.NodeClient, error) {
+	conn, err := dialGrpcContext(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +40,8 @@ func newNodeClient(ctx context.Context, endpoint, certificateFile string) (csi.N
 	return csi.NewNodeClient(conn), nil
 }
 
-func newControllerClient(ctx context.Context, endpoint, certificateFile string) (csi.ControllerClient, error) {
-	conn, err := dialGrpcContext(ctx, endpoint, certificateFile)
+func newControllerClient(ctx context.Context, endpoint string) (csi.ControllerClient, error) {
+	conn, err := dialGrpcContext(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +51,7 @@ func newControllerClient(ctx context.Context, endpoint, certificateFile string) 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newCreateVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
+func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 	var name string
 	var size int64
 	cmd := cobra.Command{
@@ -63,7 +60,7 @@ func newCreateVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancelFunc()
-			client, err := newControllerClient(ctx, *endpoint, *certificateFile)
+			client, err := newControllerClient(ctx, *endpoint)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -127,7 +124,7 @@ func newCreateVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 	return &cmd
 }
 
-func newDeleteVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
+func newDeleteVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId string
 	cmd := cobra.Command{
 		Use:   "deletevolume",
@@ -135,7 +132,7 @@ func newDeleteVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancelFunc()
-			client, err := newControllerClient(ctx, *endpoint, *certificateFile)
+			client, err := newControllerClient(ctx, *endpoint)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -161,7 +158,7 @@ func newDeleteVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 	return &cmd
 }
 
-func newPublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
+func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId, stagingTargetPath, podName string
 	var readOnly bool
 	cmd := cobra.Command{
@@ -170,14 +167,14 @@ func newPublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancelFunc()
-			client, err := newNodeClient(ctx, *endpoint, *certificateFile)
+			client, err := newNodeClient(ctx, *endpoint)
 
 			response, err := client.NodePublishVolume(
 				ctx,
 				&csi.NodePublishVolumeRequest{
 					VolumeId:          volumeId,
 					PublishContext:    nil,
-					StagingTargetPath: "",
+					StagingTargetPath: stagingTargetPath,
 					TargetPath: fmt.Sprintf(
 						"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount",
 						podId,
@@ -231,7 +228,7 @@ func newPublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
 	return &cmd
 }
 
-func newUnpublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command {
+func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId string
 	cmd := cobra.Command{
 		Use:   "unpublishvolume",
@@ -239,7 +236,7 @@ func newUnpublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancelFunc()
-			client, err := newNodeClient(ctx, *endpoint, *certificateFile)
+			client, err := newNodeClient(ctx, *endpoint)
 
 			response, err := client.NodeUnpublishVolume(
 				ctx,
@@ -275,26 +272,26 @@ func newUnpublishVolumeCommand(endpoint, certificateFile *string) *cobra.Command
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newCsiNodeCommand(endpoint, certificateFile *string) *cobra.Command {
+func newCsiNodeCommand(endpoint *string) *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "node",
 		Short: "CSI Driver node commands",
 	}
 	cmd.AddCommand(
-		newPublishVolumeCommand(endpoint, certificateFile),
-		newUnpublishVolumeCommand(endpoint, certificateFile),
+		newPublishVolumeCommand(endpoint),
+		newUnpublishVolumeCommand(endpoint),
 	)
 	return &cmd
 }
 
-func newCsiControllerCommand(endpoint, certificateFile *string) *cobra.Command {
+func newCsiControllerCommand(endpoint *string) *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "controller",
 		Short: "CSI Driver controller command",
 	}
 	cmd.AddCommand(
-		newCreateVolumeCommand(endpoint, certificateFile),
-		newDeleteVolumeCommand(endpoint, certificateFile),
+		newCreateVolumeCommand(endpoint),
+		newDeleteVolumeCommand(endpoint),
 	)
 	return &cmd
 }
@@ -302,7 +299,7 @@ func newCsiControllerCommand(endpoint, certificateFile *string) *cobra.Command {
 ////////////////////////////////////////////////////////////////////////////////
 
 func main() {
-	var grpcEndpoint, certificateFile string
+	var grpcEndpoint string
 	rootCmd := &cobra.Command{
 		Use:   "csi-client",
 		Short: "CSI driver console client for debug",
@@ -310,18 +307,13 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(
 		&grpcEndpoint,
 		"endpoint",
-		"grpc://localhost:8774",
+		"csi.sock",
 		"Path to the client config file",
 	)
-	rootCmd.PersistentFlags().StringVar(
-		&certificateFile,
-		"certificate-path",
-		"",
-		"Path to the server config file",
-	)
+	rootCmd.MarkFlagRequired("endpoint")
 	rootCmd.AddCommand(
-		newCsiNodeCommand(&grpcEndpoint, &certificateFile),
-		newCsiControllerCommand(&grpcEndpoint, &certificateFile),
+		newCsiNodeCommand(&grpcEndpoint),
+		newCsiControllerCommand(&grpcEndpoint),
 	)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
