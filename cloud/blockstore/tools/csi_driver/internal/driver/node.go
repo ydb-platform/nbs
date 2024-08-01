@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -44,6 +45,32 @@ var capabilities = []*csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
+			},
+		},
+	},
+}
+
+// CSI driver provides RPC_GET_VOLUME_STATS capability only in vmMode
+// when volume is mounted to the pod as a local directory.
+var vmModeCapabilities = []*csi.NodeServiceCapability{
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 			},
 		},
 	},
@@ -241,6 +268,12 @@ func (s *nodeService) NodeGetCapabilities(
 	ctx context.Context,
 	req *csi.NodeGetCapabilitiesRequest,
 ) (*csi.NodeGetCapabilitiesResponse, error) {
+
+	if s.vmMode {
+		return &csi.NodeGetCapabilitiesResponse{
+			Capabilities: vmModeCapabilities,
+		}, nil
+	}
 
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: capabilities,
@@ -642,4 +675,31 @@ func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}
 func logVolume(volumeId string, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
 	log.Printf("[v=%s]: %s", volumeId, msg)
+}
+
+func (s *nodeService) NodeGetVolumeStats(
+	ctx context.Context,
+	req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+
+	if !s.vmMode {
+		return nil, fmt.Errorf("NodeGetVolumeStats is supported only in vmMode")
+	}
+
+	var stat unix.Statfs_t
+	err := unix.Statfs(req.VolumePath, &stat)
+	if err != nil {
+		return nil, err
+	}
+
+	totalBytes := int64(stat.Blocks) * int64(stat.Bsize)
+	availableBytes := int64(stat.Bavail) * int64(stat.Bsize)
+	usedBytes := totalBytes - availableBytes
+
+	totalNodes := int64(stat.Files)
+	availableNodes := int64(stat.Ffree)
+	usedNodes := totalNodes - availableNodes
+
+	return &csi.NodeGetVolumeStatsResponse{Usage: []*csi.VolumeUsage{
+		{Available: availableBytes, Used: usedBytes, Total: totalBytes, Unit: csi.VolumeUsage_BYTES},
+		{Available: availableNodes, Used: usedNodes, Total: totalNodes, Unit: csi.VolumeUsage_INODES}}}, nil
 }
