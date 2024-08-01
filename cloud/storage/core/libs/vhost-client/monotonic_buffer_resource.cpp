@@ -35,6 +35,14 @@ std::span<char> TMonotonicBufferResource::Allocate(size_t bytes, size_t alignmen
     const size_t offset = Capacity - Size;
     void* ptr = Ptr + offset;
 
+    const bool isAligned512 = reinterpret_cast<std::uintptr_t>(ptr) % 512 == 0;
+    if (alignment == 1 && isAligned512) {
+        // If we got alignment to 512 byte boundary, but it was not required,
+        // then we allocate an unaligned block.
+        ++Size;
+        ptr = Ptr + offset + 1;
+    }
+
     if (std::align(alignment, bytes, ptr, Size)) {
         Size -= bytes;
 
