@@ -232,11 +232,7 @@ func RegisterForExecution(
 			}
 		},
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {

@@ -208,6 +208,7 @@ func (s *StorageMock) DeleteDiskFromIncremental(
 	diskID string,
 	zoneID string,
 ) error {
+
 	args := s.Called(ctx, diskID, zoneID)
 	return args.Error(0)
 }

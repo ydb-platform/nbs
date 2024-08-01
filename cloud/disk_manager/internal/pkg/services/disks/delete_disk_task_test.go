@@ -116,6 +116,16 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
 
@@ -168,6 +178,16 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
 
 	poolService.On(
 		"ReleaseBaseDisk",
