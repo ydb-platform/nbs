@@ -116,12 +116,16 @@ void TIndexTabletState::RemoveNode(
         AddCheckpointNode(db, checkpointId, node.NodeId);
     }
 
-    Truncate(
-        db,
-        node.NodeId,
-        maxCommitId,
-        node.Attrs.GetSize(),
-        0);
+    // SymLinks have size (equal to TargetPath) but store no real data so there
+    // is no need to write deletion markers upon SymLink removal
+    if (!node.Attrs.GetSymLink()) {
+        Truncate(
+            db,
+            node.NodeId,
+            maxCommitId,
+            node.Attrs.GetSize(),
+            0);
+    }
 
     InvalidateNodeIndexCache(node.NodeId);
 }
