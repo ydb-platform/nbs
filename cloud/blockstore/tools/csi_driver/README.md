@@ -26,9 +26,11 @@ sudo usermod -aG docker $USER && newgrp docker
 ```
 
 \# Start a local k8s cluster
+\# Use --driver=docker to avoid blkUtil.AttachFileDevice failed error
+\# https://github.com/kubernetes/minikube/issues/8284
 
 ```bash
-minikube start
+minikube start --driver=docker
 ```
 
 \# Check k8s cluster
@@ -50,38 +52,60 @@ minikube stop
 minikube start
 ```
 
-# Pull docker image with csi-driver on the node
+# Build csi-driver
+```bash
+./ya make -r cloud/blockstore/tools/csi_driver
+
+```
+
+# Replace symlink with binary
 
 ```bash
-minikube ssh
-docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-exit
+DRIVER_PATH=$(readlink -f "./cloud/blockstore/tools/csi_driver/cmd/nbs-csi-driver/nbs-csi-driver")
+rm ./cloud/blockstore/tools/csi_driver/cmd/nbs-csi-driver/nbs-csi-driver
+cp ${DRIVER_PATH} ./cloud/blockstore/tools/csi_driver/cmd/nbs-csi-driver/nbs-csi-driver
+```
+
+# Build docker container with csi-driver
+
+```bash
+eval $(minikube docker-env)
+docker build -t nbs-csi-driver:latest cloud/blockstore/tools/csi_driver
 ```
 
 # Setup k8s cluster
 
 ```bash
+cd cloud/blockstore/tools/csi_driver
 kubectl apply -f ./deploy/manifests/0-ns.yaml
 kubectl apply -f ./deploy/manifests/1-priorityclass.yaml
 kubectl apply -f ./deploy/manifests/2-rbac.yaml
 kubectl apply -f ./deploy/manifests/3-csidriver.yaml
 kubectl apply -f ./deploy/manifests/4-storageclass.yaml
-# Download docker-config.json from the lockbox under the name docker-config.json
-export DOCKER_CONFIG=$(cat docker-config.json)
-kubectl create secret generic nbs-puller-secret \
-    --namespace nbs \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-literal=.dockerconfigjson="$DOCKER_CONFIG"
-kubectl apply -f ./deploy/manifests/5-nbs-configmap.yaml
-kubectl apply -f ./deploy/manifests/6-nbs-daemonset.yaml
-kubectl apply -f ./deploy/manifests/7-csi-deployment.yaml
-kubectl apply -f ./deploy/manifests/8-csi-daemonset.yaml
+kubectl apply -f ./deploy/manifests/5-csi-deployment.yaml
+kubectl apply -f ./deploy/manifests/6-csi-daemonset.yaml
 ```
 
-# copy nbsd and blockstore-nbd to minikube and run them
+# copy nbsd-lightweight, blockstore-nbd and blockstore-client to minikube and run them
 ```bash
-sudo ./nbsd-lightweight --service local --server-file ./server/server.txt --verbose
-sudo ./blockstore-nbd --device-mode endpoint --disk-id my-disk --access-mode rw --mount-mode local --connect-device /dev/nbd0 --listen-path /tmp/nbd.sock
+./ya make -r cloud/blockstore/apps/server_lightweight
+minikube cp cloud/blockstore/apps/server_lightweight/libiconv.so /home/libiconv.so
+minikube cp cloud/blockstore/apps/server_lightweight/liblibaio-dynamic.so /home/liblibaio-dynamic.so
+minikube cp cloud/blockstore/apps/server_lightweight/liblibidn-dynamic.so /home/liblibidn-dynamic.so
+minikube cp cloud/blockstore/apps/server_lightweight/nbsd-lightweight /home/nbsd-lightweight
+minikube cp cloud/blockstore/tools/csi_driver/deploy/server.txt /home/server.txt
+
+./ya make -r cloud/blockstore/apps/client
+minikube cp cloud/blockstore/apps/client/blockstore-client /home/blockstore-client
+```
+
+```bash
+minikube ssh
+cd /home
+sudo mkdir -p /Berkanavt/nbs-server/endpoints
+sudo chmod +x nbsd-lightweight
+sudo chmod +x blockstore-client
+sudo ./nbsd-lightweight --service local --server-file server.txt --verbose
 ```
 
 # Create test pods (1st way)
@@ -103,31 +127,18 @@ kubectl apply -f ./deploy/example/pod-blk.yaml
 # Also Compute-API can pass any arguments to volumeAttributes of pv.yaml.
 
 ```bash
+minikube ssh
+cd /home
+./blockstore-client createvolume --storage-media-kind ssd --blocks-count 262144 --block-size 4096 --disk-id my-nbs-volume-id
+```
+
+```bash
 kubectl apply -f ./deploy/example_pv/pvc.yaml
 kubectl apply -f ./deploy/example_pv/pv.yaml
 kubectl apply -f ./deploy/example_pv/pod.yaml
 ```
 
 ===========================================
-
-# Update driver in docker image.
-
-```bash
-# Build docker image
-ya make -r ./cmd/nbs-csi-driver
-docker build -t cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1 .
-docker push cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-
-# Check docker image
-docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-mkdir /tmp/csi
-docker run --net host -v /tmp/csi:/csi cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-
-# Update docker image on the node
-minikube ssh
-docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-exit
-```
 
 # Useful commands
 
@@ -137,7 +148,9 @@ kubectl -n nbs get all
 kubectl -n nbs get pods
 kubectl -n nbs describe node
 kubectl -n nbs describe pod/nbs-csi-driver-node-xxxxx
-kubectl -n nbs logs     pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs logs pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs logs pod/nbs-csi-driver-node-xxxxx -c csi-nbs-driver
+kubectl -n nbs logs pod/nbs-csi-driver-controller-xxxxx -c csi-nbs-driver
 kubectl -n nbs delete deployment.apps/nbs-csi-driver-controller
 kubectl get CSIDriver
 minikube ssh

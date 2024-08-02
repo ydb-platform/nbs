@@ -45,20 +45,20 @@ spec:
         - name: csi-nbs-driver
           securityContext:
             privileged: true
-          image: cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-          imagePullPolicy: Always
+          image: nbs-csi-driver:latest
+          imagePullPolicy: IfNotPresent
           args:
             - "--name=nbs.csi.nebius.ai"
             - "--version=$(DRIVER_VERSION)"
             - "--node-id=$(KUBE_NODE_NAME)"
             - "--endpoint=/csi/csi.sock"
             - "--vm-mode=true"
-            - "--nbs-sockets-dir=/run/nbsd/sockets"
-            - "--pod-sockets-dir=/nbsd-sockets"
+            - "--sockets-dir=/run/nbsd/sockets"
             - "--nfs-vhost-port=0"
+            - "--nfs-server-port=0"
           env:
             - name: DRIVER_VERSION
-              value: "v0.1"
+              value: "latest"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -78,7 +78,7 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: sockets-dir
-              mountPath: /nbsd-sockets
+              mountPath: /run/nbsd/sockets
             - name: dev
               mountPath: /mnt/dev
       volumes:
@@ -102,5 +102,3 @@ spec:
           hostPath:
             path: /dev
             type: DirectoryOrCreate
-      imagePullSecrets:
-        - name: nbs-puller-secret

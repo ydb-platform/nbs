@@ -11,7 +11,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nbs-csi-sc
   claimRef:
-    namespace: nbs
+    namespace: default
     name: my-pvc
   csi:
     driver: nbs.csi.nebius.ai
