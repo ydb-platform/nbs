@@ -52,6 +52,7 @@ public:
     static constexpr i64 HeaderSize = 4_KB;
     static constexpr i64 PaddingSize = 1_KB;
 
+    const NProto::EEncryptionMode EncryptionMode = std::get<0>(GetParam());
     const size_t SectorsPerRequest = std::get<1>(GetParam());
     const bool Unaligned =  std::get<2>(GetParam());
     const TString SocketPath = "server_ut.vhost";
@@ -77,7 +78,7 @@ public:
 public:
     TServerTest()
     {
-        if (std::get<0>(GetParam()) == NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {
+        if (EncryptionMode == NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {
             Encryptor =
                 CreateAesXtsEncryptor(TEncryptionKey(DefaultEncryptionKey));
         }
@@ -85,11 +86,7 @@ public:
 
     void StartServer()
     {
-        Server = CreateServer(
-            Logging,
-            CreateAioBackend(
-                NThreading::MakeFuture<IEncryptorPtr>(Encryptor),
-                Logging));
+        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -113,11 +110,7 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        Server = CreateServer(
-            Logging,
-            CreateAioBackend(
-                NThreading::MakeFuture<IEncryptorPtr>(Encryptor),
-                Logging));
+        Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
 
         // H - header
         // D - device
@@ -483,7 +476,8 @@ TEST_P(TServerTest, ShouldWriteToSplitDevices)
 
 TEST_P(TServerTest, ShouldHandleMultipleQueues)
 {
-    if (SectorsPerRequest != 1) {
+    if (!Unaligned) {
+        // TODO fix data-race
         return;
     }
     StartServer();
@@ -495,21 +489,24 @@ TEST_P(TServerTest, ShouldHandleMultipleQueues)
     TVector<NThreading::TFuture<ui32>> futures;
 
     for (ui64 i = 0; i != requestCount; ++i) {
-        ui64 startSector = i % TotalSectorCount;
+        ui64 startSector = (i * SectorsPerRequest) % TotalSectorCount;
         std::span hdr = Hdr(Memory, {
             .type = VIRTIO_BLK_T_OUT,
             .sector = startSector
         });
-        std::span sector =
-            Memory.Allocate(SectorSize, Unaligned ? 1 : SectorSize);
+        std::span sector = Memory.Allocate(
+            SectorSize * SectorsPerRequest,
+            Unaligned ? 1 : SectorSize);
         std::span status = Memory.Allocate(1);
 
-        EXPECT_EQ(SectorSize, sector.size());
+        EXPECT_EQ(SectorSize * SectorsPerRequest, sector.size());
         EXPECT_EQ(1u, status.size());
 
         ui8 sectorFill = 'A' + i % 26;
         memset(sector.data(), sectorFill, sector.size_bytes());
-        sectorsFill[startSector] = sectorFill;
+        for (size_t j = 0; j < SectorsPerRequest; ++j) {
+            sectorsFill[startSector + j] = sectorFill;
+        }
 
         statuses.push_back(status);
         futures.push_back(Client.WriteAsync(

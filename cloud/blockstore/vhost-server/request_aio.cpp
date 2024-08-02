@@ -151,29 +151,31 @@ bool SgListCopyWithOptionalDecryption(
 {
     auto buffers = std::span<vhd_buffer>{dst.buffers, dst.nbuffers};
 
-    for (auto& buffer: buffers) {
-        if (encryptor) {
-            TBlockDataRef srcRef{src, buffer.len};
-            TBlockDataRef dstRef{
-                static_cast<const char*>(buffer.base),
-                buffer.len};
-            if (!DoCryptoOperation<&IEncryptor::Decrypt>(
-                    *encryptor,
-                    srcRef,
-                    dstRef,
-                    startSector))
-            {
-                STORAGE_ERROR(
-                    "Decryption error. Start block %" PRIu64
-                    ", blocks count %" PRIu64,
-                    startSector,
-                    buffers.size());
-                return false;
-            }
-            startSector += buffer.len / VHD_SECTOR_SIZE;
-        } else {
+    if (!encryptor) {
+        for (auto& buffer: buffers) {
             std::memcpy(buffer.base, src, buffer.len);
+            src += buffer.len;
         }
+        return true;
+    }
+
+    for (auto& buffer: buffers) {
+        TBlockDataRef srcRef{src, buffer.len};
+        TBlockDataRef dstRef{static_cast<const char*>(buffer.base), buffer.len};
+        if (!DoCryptoOperation<&IEncryptor::Decrypt>(
+                *encryptor,
+                srcRef,
+                dstRef,
+                startSector))
+        {
+            STORAGE_ERROR(
+                "Decryption error. Start block %" PRIu64
+                ", blocks count %" PRIu64,
+                startSector,
+                buffers.size());
+            return false;
+        }
+        startSector += buffer.len / VHD_SECTOR_SIZE;
         src += buffer.len;
     }
     return true;
@@ -188,29 +190,31 @@ bool SgListCopyWithOptionalEncryption(
 {
     auto buffers = std::span<vhd_buffer>{src.buffers, src.nbuffers};
 
-    for (auto& buffer: buffers) {
-        if (encryptor) {
-            TBlockDataRef srcRef{
-                static_cast<const char*>(buffer.base),
-                buffer.len};
-            TBlockDataRef dstRef{dst, buffer.len};
-            if (!DoCryptoOperation<&IEncryptor::Encrypt>(
-                    *encryptor,
-                    srcRef,
-                    dstRef,
-                    startSector))
-            {
-                STORAGE_ERROR(
-                    "Encryption error. Start block %" PRIu64
-                    ", blocks count %" PRIu64,
-                    startSector,
-                    buffers.size());
-                return false;
-            }
-            startSector += buffer.len / VHD_SECTOR_SIZE;
-        } else {
+    if (!encryptor) {
+        for (auto& buffer: buffers) {
             std::memcpy(dst, buffer.base, buffer.len);
+            dst += buffer.len;
         }
+        return true;
+    }
+
+    for (auto& buffer: buffers) {
+        TBlockDataRef srcRef{static_cast<const char*>(buffer.base), buffer.len};
+        TBlockDataRef dstRef{dst, buffer.len};
+        if (!DoCryptoOperation<&IEncryptor::Encrypt>(
+                *encryptor,
+                srcRef,
+                dstRef,
+                startSector))
+        {
+            STORAGE_ERROR(
+                "Encryption error. Start block %" PRIu64
+                ", blocks count %" PRIu64,
+                startSector,
+                buffers.size());
+            return false;
+        }
+        startSector += buffer.len / VHD_SECTOR_SIZE;
         dst += buffer.len;
     }
     return true;

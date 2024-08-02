@@ -112,7 +112,6 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
-    TFuture<IEncryptorPtr> EncryptorFuture;
     IEncryptorPtr Encryptor;
     TVector<TAioDevice> Devices;
 
@@ -126,7 +125,7 @@ private:
     ICompletionStatsPtr CompletionStats;
 
 public:
-    TAioBackend(TFuture<IEncryptorPtr> encryptor, ILoggingServicePtr logging);
+    TAioBackend(IEncryptorPtr encryptor, ILoggingServicePtr logging);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -153,10 +152,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioBackend::TAioBackend(
-        TFuture<IEncryptorPtr> encryptor,
+        IEncryptorPtr encryptor,
         ILoggingServicePtr logging)
     : Logging{std::move(logging)}
-    , EncryptorFuture(std::move(encryptor))
+    , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
 {
     Log = Logging->CreateLog("AIO");
@@ -165,15 +164,12 @@ TAioBackend::TAioBackend(
 vhd_bdev_info TAioBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing AIO backend");
-
-    BatchSize = options.BatchSize;
-
-    Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
-
-    Encryptor = EncryptorFuture.GetValueSync();
     if (Encryptor) {
         STORAGE_INFO("Encryption enabled");
     }
+    BatchSize = options.BatchSize;
+
+    Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
 
     for (ui32 i = 0; i < options.QueueCount; i++) {
         Batches.emplace_back();
@@ -467,7 +463,7 @@ void TAioBackend::CompletionThreadFunc()
 ////////////////////////////////////////////////////////////////////////////////
 
 IBackendPtr CreateAioBackend(
-    TFuture<IEncryptorPtr> encryptor,
+    IEncryptorPtr encryptor,
     ILoggingServicePtr logging)
 {
     return std::make_shared<TAioBackend>(

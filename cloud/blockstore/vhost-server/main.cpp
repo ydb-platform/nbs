@@ -115,13 +115,13 @@ NCloud::ILoggingServicePtr CreateLogService(const TOptions& options)
     return std::make_shared<TDefaultLoggingService>(logLevel);
 }
 
-NThreading::TFuture<IEncryptorPtr> CreateEncryptor(
+IEncryptorPtr CreateEncryptor(
     const TOptions& options,
     NCloud::ILoggingServicePtr logging)
 {
     auto encryptionSpec = options.GetEncryptionSpec();
     if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
-        return NThreading::MakeFuture<IEncryptorPtr>();
+        return {};
     }
 
     auto Log = logging->CreateLog("SERVER");
@@ -129,32 +129,27 @@ NThreading::TFuture<IEncryptorPtr> CreateEncryptor(
     STORAGE_INFO("Encryption. Get key " << encryptionSpec.AsJSON());
 
     auto keyProvider = CreateDefaultEncryptionKeyProvider();
-    auto key = keyProvider->GetKey(options.GetEncryptionSpec(), options.DiskId);
-    return key.Apply(
-        [Log](auto f) mutable
-        {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                Y_ABORT(
-                    "Error getting encryption key: %s",
-                    ToString(response.GetError()).c_str());
-            }
-
-            auto key = response.ExtractResult();
-            STORAGE_ERROR("Got encryption key with hash " << key.GetHash());
-            return NThreading::MakeFuture<IEncryptorPtr>(
-                CreateAesXtsEncryptor(std::move(key)));
-        });
+    auto keyFuture =
+        keyProvider->GetKey(options.GetEncryptionSpec(), options.DiskId);
+    auto keyOrError = std::move(keyFuture).ExtractValue();
+    if (HasError(keyOrError)) {
+        Y_ABORT(
+            "Error getting encryption key: %s",
+            ToString(keyOrError.GetError()).c_str());
+    }
+    auto key = keyOrError.ExtractResult();
+    STORAGE_ERROR("Got encryption key with hash " << key.GetHash());
+    return CreateAesXtsEncryptor(std::move(key));
 }
 
 IBackendPtr CreateBackend(
     const TOptions& options,
     NCloud::ILoggingServicePtr logging)
 {
-    auto key = CreateEncryptor(options, logging);
+    auto encryptor = CreateEncryptor(options, logging);
 
     if (options.DeviceBackend == "aio") {
-        return CreateAioBackend(std::move(key), logging);
+        return CreateAioBackend(std::move(encryptor), logging);
     } else if (options.DeviceBackend == "rdma") {
         return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
