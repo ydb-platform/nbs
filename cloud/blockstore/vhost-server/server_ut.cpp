@@ -633,7 +633,8 @@ TEST_P(TServerTest, ShouldWriteByOneAndReadMultiple)
     size_t writeCount = 0;
 
     for (ui64 i = 0; i <= TotalSectorCount - SectorsPerRequest; ++i) {
-        const TString pattern = MakeRandomPattern(writeBuffer.size_bytes());
+        const TString pattern =
+            MakeRandomPattern(SectorSize * SectorsPerRequest);
 
         // write one sectors at a time
         for (size_t j = 0; j < SectorsPerRequest; ++j) {
