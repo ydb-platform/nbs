@@ -413,7 +413,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
+func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -423,7 +423,8 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 	diskID := "test-disk-id-42"
 	socketsDir := filepath.Join(tempDir, "sockets")
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
-	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	targetFsPathPattern := filepath.Join(tempDir,
+		"pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -443,13 +444,14 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 		&csi.NodeGetCapabilitiesRequest{})
 	require.NoError(t, err)
 
-	capabilityIndex := slices.IndexFunc(resp.GetCapabilities(), func(capability *csi.NodeServiceCapability) bool {
-		rpc := capability.GetRpc()
-		if rpc == nil {
-			return false
-		}
-		return rpc.GetType() == csi.NodeServiceCapability_RPC_GET_VOLUME_STATS
-	})
+	capabilityIndex := slices.IndexFunc(resp.GetCapabilities(),
+		func(capability *csi.NodeServiceCapability) bool {
+			rpc := capability.GetRpc()
+			if rpc == nil {
+				return false
+			}
+			return rpc.GetType() == csi.NodeServiceCapability_RPC_GET_VOLUME_STATS
+		})
 	assert.NotEqual(t, -1, capabilityIndex)
 
 	stat, err := nodeService.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
@@ -470,7 +472,7 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 	assert.Equal(t, nodesUsage.Used+nodesUsage.Available, nodesUsage.Total)
 }
 
-func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
+func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -484,7 +486,8 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
 	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
-	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
+	targetBlkPathPattern := filepath.Join(tempDir,
+		"volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
 
 	nodeService := newNodeService(
