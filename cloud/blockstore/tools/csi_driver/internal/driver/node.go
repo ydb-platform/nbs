@@ -679,7 +679,8 @@ func logVolume(volumeId string, format string, v ...any) {
 
 func (s *nodeService) NodeGetVolumeStats(
 	ctx context.Context,
-	req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	req *csi.NodeGetVolumeStatsRequest) (
+	*csi.NodeGetVolumeStatsResponse, error) {
 
 	if !s.vmMode {
 		return nil, fmt.Errorf("NodeGetVolumeStats is supported only in vmMode")
@@ -700,6 +701,17 @@ func (s *nodeService) NodeGetVolumeStats(
 	usedNodes := totalNodes - availableNodes
 
 	return &csi.NodeGetVolumeStatsResponse{Usage: []*csi.VolumeUsage{
-		{Available: availableBytes, Used: usedBytes, Total: totalBytes, Unit: csi.VolumeUsage_BYTES},
-		{Available: availableNodes, Used: usedNodes, Total: totalNodes, Unit: csi.VolumeUsage_INODES}}}, nil
+		{
+			Available: availableBytes,
+			Used:      usedBytes,
+			Total:     totalBytes,
+			Unit:      csi.VolumeUsage_BYTES,
+		},
+		{
+			Available: availableNodes,
+			Used:      usedNodes,
+			Total:     totalNodes,
+			Unit:      csi.VolumeUsage_INODES,
+		},
+	}}, nil
 }
