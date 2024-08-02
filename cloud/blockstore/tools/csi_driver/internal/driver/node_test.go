@@ -428,12 +428,12 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 	nodeService := newNodeService(
 		"testNodeId",
 		"testClientId",
-		true, // vmMode
+		true,
 		socketsDir,
 		targetFsPathPattern,
-		"", // targetBlkPathPattern
+		"",
 		nbsClient,
-		nil, // nfsClient
+		nil,
 		mounter,
 	)
 
@@ -441,7 +441,7 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 	resp, err := nodeService.NodeGetCapabilities(
 		ctx,
 		&csi.NodeGetCapabilitiesRequest{})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	capabilityIndex := slices.IndexFunc(resp.GetCapabilities(), func(capability *csi.NodeServiceCapability) bool {
 		rpc := capability.GetRpc()
@@ -461,10 +461,12 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 
 	bytesUsage := stat.GetUsage()[0]
 	assert.Equal(t, bytesUsage.Unit, csi.VolumeUsage_BYTES)
+	assert.NotEqual(t, 0, bytesUsage.Total)
 	assert.Equal(t, bytesUsage.Used+bytesUsage.Available, bytesUsage.Total)
 
 	nodesUsage := stat.GetUsage()[1]
 	assert.Equal(t, nodesUsage.Unit, csi.VolumeUsage_INODES)
+	assert.NotEqual(t, 0, nodesUsage.Total)
 	assert.Equal(t, nodesUsage.Used+nodesUsage.Available, nodesUsage.Total)
 }
 
@@ -488,9 +490,9 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	nodeService := newNodeService(
 		"testNodeId",
 		clientID,
-		false, // vmMode
+		false,
 		socketsDir,
-		"", // targetFsPathPattern
+		"",
 		targetBlkPathPattern,
 		nbsClient,
 		nil,
