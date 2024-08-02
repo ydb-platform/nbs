@@ -428,7 +428,7 @@ func TestGetVolumeStatCapabilitiesInVmMode(t *testing.T) {
 	nodeService := newNodeService(
 		"testNodeId",
 		"testClientId",
-		true,
+		false,
 		socketsDir,
 		targetFsPathPattern,
 		"",
@@ -490,7 +490,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	nodeService := newNodeService(
 		"testNodeId",
 		clientID,
-		false,
+		true,
 		socketsDir,
 		"",
 		targetBlkPathPattern,

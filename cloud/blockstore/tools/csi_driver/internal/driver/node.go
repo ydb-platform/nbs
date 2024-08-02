@@ -33,7 +33,7 @@ const nfsSocketName = "nfs.sock"
 const vhostIpc = nbsapi.EClientIpcType_IPC_VHOST
 const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
-var capabilities = []*csi.NodeServiceCapability{
+var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
@@ -50,9 +50,9 @@ var capabilities = []*csi.NodeServiceCapability{
 	},
 }
 
-// CSI driver provides RPC_GET_VOLUME_STATS capability only in vmMode
+// CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
 // when volume is mounted to the pod as a local directory.
-var vmModeCapabilities = []*csi.NodeServiceCapability{
+var podModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
@@ -276,7 +276,7 @@ func (s *nodeService) NodeGetCapabilities(
 	}
 
 	return &csi.NodeGetCapabilitiesResponse{
-		Capabilities: capabilities,
+		Capabilities: podModeCapabilities,
 	}, nil
 }
 
@@ -682,7 +682,7 @@ func (s *nodeService) NodeGetVolumeStats(
 	req *csi.NodeGetVolumeStatsRequest) (
 	*csi.NodeGetVolumeStatsResponse, error) {
 
-	if !s.vmMode {
+	if s.vmMode {
 		return nil, fmt.Errorf("NodeGetVolumeStats is supported only in vmMode")
 	}
 
