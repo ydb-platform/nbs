@@ -505,6 +505,9 @@ class EternalTestHelper:
         instance = self.find_instance()
         self.copy_load_to_instance(instance.ip)
         for _, load_config in self.test_config.all_tests():
+            if load_config.use_requests_with_different_sizes:
+                self.copy_load_config_to_instance(instance.ip, load_config)
+
             if load_config.run_in_systemd:
                 cmd = f'systemctl start {load_config.service_name}'
             else:
