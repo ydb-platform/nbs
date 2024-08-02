@@ -85,7 +85,7 @@ func Run(
 
 	rootCmd.AddCommand(
 		newOperationsCmd(clientConfig),
-		newPrivateCmd(clientConfig),
+		newPrivateCmd(clientConfig, serverConfig),
 	)
 
 	additionalCommands := []*cobra.Command{

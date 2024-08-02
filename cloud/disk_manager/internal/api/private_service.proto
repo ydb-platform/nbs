@@ -68,6 +68,7 @@ message RetireBaseDisksRequest {
     string image_id = 1;
     string zone_id = 2;
     bool use_base_disk_as_src = 3;
+    uint64 use_image_size = 4;
 }
 
 message ConfigurePoolRequest {
