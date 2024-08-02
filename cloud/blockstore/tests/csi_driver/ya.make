@@ -7,6 +7,7 @@ ELSE()
 ENDIF()
 
 
+SPLIT_FACTOR(1)
 TEST_SRCS(
     test.py
 )

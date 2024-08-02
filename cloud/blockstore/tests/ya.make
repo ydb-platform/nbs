@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     cms
+    csi_driver
     external_endpoint
     fio
     functional
