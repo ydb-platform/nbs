@@ -8,6 +8,7 @@ import yatest.common as common
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
+from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import (
     thread_count
@@ -16,16 +17,19 @@ from cloud.storage.core.protos.endpoints_pb2 import (
     EEndpointStorageType,
 )
 
+from google.protobuf.text_format import MessageToString
+
+
 BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 
 
 class CsiLoadTest(LocalLoadTest):
     def __init__(
-        self,
-        sockets_dir: str,
-        grpc_unix_socket_path: str,
-        *args,
-        **kwargs,
+            self,
+            sockets_dir: str,
+            grpc_unix_socket_path: str,
+            *args,
+            **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
         self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path)
@@ -63,27 +67,30 @@ def setup():
         storage_config_patches=None,
         use_in_memory_pdisks=True)
 
-    env.results_path = yatest_common.output_path() + "/results.txt"
-    env.results_file = open(env.results_path, "w")
+    client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
+    client_config = TClientAppConfig()
+    client_config.ClientConfig.CopyFrom(TClientConfig())
+    client_config.ClientConfig.RetryTimeout = 1
+    client_config.ClientConfig.Host = "localhost"
+    client_config.ClientConfig.InsecurePort = env.nbs_port
+    client_config_path.write_text(MessageToString(client_config))
 
     def run(*args, **kwargs):
-        args = [BINARY_PATH] + list(args) + [
-            "--host", "localhost",
-            "--port", str(env.nbs_port)]
-        input = kwargs.get("input")
-        if input is not None:
-            input = (input + "\n").encode("utf8")
+        args = [BINARY_PATH, *args, "--config", str(client_config_path)]
+        script_input = kwargs.get("input")
+        if script_input is not None:
+            script_input = script_input + "\n"
 
         logging.info("running command: %s" % args)
-        process = subprocess.Popen(
+        result = subprocess.run(
             args,
-            stdout=env.results_file,
-            stdin=subprocess.PIPE,
-            cwd=kwargs.get("cwd")
+            cwd=kwargs.get("cwd"),
+            check=False,
+            capture_output=True,
+            input=script_input,
+            text=True,
         )
-        process.communicate(input=input)
-
-        assert process.returncode == kwargs.get("code", 0)
+        return result
     return env, run
 
 
@@ -116,14 +123,19 @@ class NbsCsiDriverRunner:
         )
 
     def _client_run(self, *args):
-        subprocess.check_call(
+        result = subprocess.run(
             [
                 self._client_binary_path,
                 *args,
                 "--endpoint",
                 self._endpoint,
-            ]
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
         )
+        logging.info("Stdout: %s", result.stdout)
+        logging.info("Stderr: %s", result.stderr)
 
     def _node_run(self, *args):
         return self._client_run("node", *args)
@@ -135,7 +147,7 @@ class NbsCsiDriverRunner:
         return self._controller_run("createvolume", "--name", name, "--size", str(size))
 
     def delete_volume(self, name: str):
-        return self._controller_run("deletevolume", "--name", name)
+        return self._controller_run("deletevolume", "--id", name)
 
     def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
         return self._node_run(
@@ -162,12 +174,21 @@ class NbsCsiDriverRunner:
         self._log_file.close()
 
 
-def tear_down(env):
+def tear_down(env: CsiLoadTest):
     if env is None:
         return
-    env.results_file.close()
-    env.csi_driver.stop()
+    env.csi.stop()
     env.tear_down()
+
+
+def log_called_process_error(exc):
+    logging.error(
+        "Failed %s, stdout: %s, stderr: %s",
+        str(exc.args),
+        exc.stderr,
+        exc.stdout,
+        exc_info=exc,
+    )
 
 
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
@@ -179,14 +200,28 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
-        run(
+        result = run(
             "destroyvolume",
             "--disk-id",
             volume_name,
             input=volume_name,
             code=1,
         )
-        env.csi.unpublish_volume(pod_id, volume_name)
-        env.csi.delete_volume(volume_name)
+        logging.info("Stdout: %s", result.stdout)
+        logging.info("Stderr: %s", result.stderr)
+        if result.returncode != 1:
+            raise AssertionError("Destroyvolume must return exit code 1")
+        assert "E_REJECTED" in result.stdout
+        try:
+            env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.delete_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
     finally:
         tear_down(env)
