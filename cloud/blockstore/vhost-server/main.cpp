@@ -3,6 +3,8 @@
 #include "backend_rdma.h"
 #include "server.h"
 
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
+#include <cloud/blockstore/libs/encryption/encryptor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -14,7 +16,7 @@
 #include <signal.h>
 #include <sys/prctl.h>
 
-using namespace NCloud::NBlockStore::NVHostServer;
+namespace NCloud::NBlockStore::NVHostServer {
 
 namespace {
 
@@ -113,12 +115,41 @@ NCloud::ILoggingServicePtr CreateLogService(const TOptions& options)
     return std::make_shared<TDefaultLoggingService>(logLevel);
 }
 
+IEncryptorPtr CreateEncryptor(
+    const TOptions& options,
+    NCloud::ILoggingServicePtr logging)
+{
+    auto encryptionSpec = options.GetEncryptionSpec();
+    if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
+        return {};
+    }
+
+    auto Log = logging->CreateLog("SERVER");
+
+    STORAGE_INFO("Encryption. Get key " << encryptionSpec.AsJSON());
+
+    auto keyProvider = CreateDefaultEncryptionKeyProvider();
+    auto keyFuture =
+        keyProvider->GetKey(options.GetEncryptionSpec(), options.DiskId);
+    auto keyOrError = std::move(keyFuture).ExtractValue();
+    if (HasError(keyOrError)) {
+        Y_ABORT(
+            "Error getting encryption key: %s",
+            ToString(keyOrError.GetError()).c_str());
+    }
+    auto key = keyOrError.ExtractResult();
+    STORAGE_ERROR("Got encryption key with hash " << key.GetHash());
+    return CreateAesXtsEncryptor(std::move(key));
+}
+
 IBackendPtr CreateBackend(
     const TOptions& options,
     NCloud::ILoggingServicePtr logging)
 {
+    auto encryptor = CreateEncryptor(options, logging);
+
     if (options.DeviceBackend == "aio") {
-        return CreateAioBackend(logging);
+        return CreateAioBackend(std::move(encryptor), logging);
     } else if (options.DeviceBackend == "rdma") {
         return CreateRdmaBackend(logging);
     } else if (options.DeviceBackend == "null") {
@@ -153,7 +184,11 @@ void SetProcessMark(const TString& diskId)
 
 }   // namespace
 
+} // namespace NCloud::NBlockStore::NVHostServer
+
 ////////////////////////////////////////////////////////////////////////////////
+
+using namespace NCloud::NBlockStore::NVHostServer;
 
 int main(int argc, char** argv)
 {

@@ -45,6 +45,8 @@ struct TOptions
     TString EncryptionKeyPath;
     ui32 EncryptionKeyringId = 0;
 
+    NProto::TEncryptionSpec GetEncryptionSpec() const;
+
     struct
     {
         ui32 QueueSize = 256;
