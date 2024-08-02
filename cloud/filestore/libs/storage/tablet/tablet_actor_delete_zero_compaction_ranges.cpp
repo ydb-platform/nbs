@@ -45,33 +45,32 @@ void TIndexTabletActor::ExecuteTx_DeleteZeroCompactionRanges(
     TTransactionContext& tx,
     TTxIndexTablet::TDeleteZeroCompactionRanges& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
 
     TVector<ui32> ranges(
-        Reserve(Config->GetMaxDeleteZeroCompactionRangesPerTx()));
-    ui32 rangesCount = GetZeroScoreRanges().size();
-    ui32 rangesPerTx = Config->GetMaxDeleteZeroCompactionRangesPerTx();
+        Reserve(Config->GetMaxZeroCompactionRangesToDeletePerTx()));
+    ui32 rangesCount = RangesWithEmptyCompactionScore.size();
+    ui32 rangesPerTx = Config->GetMaxZeroCompactionRangesToDeletePerTx();
     for (ui32 i = args.StartIndex;
             i < Min<ui32>(args.StartIndex + rangesPerTx, rangesCount); i++)
     {
-        ui32 range = GetZeroScoreRanges()[i];
-        if (!GetCompactionStats(range).BlobsCount &&
-            !GetCompactionStats(range).DeletionsCount)
-        {
-            ranges.push_back(GetZeroScoreRanges()[i]);
-        }
+        ui32 range = RangesWithEmptyCompactionScore[i];
+        db.WriteCompactionMap(
+            range,
+            GetCompactionStats(range).BlobsCount,
+            GetCompactionStats(range).DeletionsCount);
     }
 
-    db.DeleteCompactionRanges(std::move(ranges));
 }
 
 void TIndexTabletActor::CompleteTx_DeleteZeroCompactionRanges(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteZeroCompactionRanges& args)
 {
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesResponse>();
+    auto response = std::make_unique<
+        TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

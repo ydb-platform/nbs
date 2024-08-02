@@ -51,10 +51,15 @@ void TIndexTabletActor::ExecuteTx_WriteCompactionMap(
     TTransactionContext& tx,
     TTxIndexTablet::TWriteCompactionMap& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    db.WriteCompactionMap(std::move(args.Ranges));
+    for (auto range: args.Ranges) {
+        db.ForceWriteCompactionMap(
+            range.GetRangeId(),
+            range.GetBlobCount(),
+            range.GetDeletionCount());
+    }
 }
 
 void TIndexTabletActor::CompleteTx_WriteCompactionMap(

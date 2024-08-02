@@ -787,7 +787,7 @@ void GenerateActionsJS(IOutputStream& out)
     out << R"___(
         <script type='text/javascript'>
         function forceDeleteZeroCompactionRanges() {
-            document.forms['ForceCleanup'].submit();
+            document.forms['ForceDeleteZeroCompactionRanges'].submit();
         }
         </script>
     )___";
@@ -1210,9 +1210,12 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup;
     } else if (params.Get("mode") == "compaction") {
         mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
-    } else {
+    } else if (params.Get("mode") == "deleteZeroCompactionRanges") {
         mode = TEvIndexTabletPrivate::EForcedRangeOperationMode
             ::DeleteZeroCompactionRanges;
+    } else {
+        RejectHttpRequest(ctx, TabletID(), *requestInfo, "Invalid mode");
+        return;
     }
 
     TVector<ui32> ranges;
@@ -1237,7 +1240,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     } else {
         if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
                 ::DeleteZeroCompactionRanges) {
-            ranges = GetZeroScoreRanges();
+            ranges = RangesWithEmptyCompactionScore;
         } else {
             ranges = GetNonEmptyCompactionRanges();
         }

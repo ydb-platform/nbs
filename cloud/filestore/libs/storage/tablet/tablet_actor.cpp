@@ -637,11 +637,11 @@ void TIndexTabletActor::HandleForcedOperation(
     if (e.GetCode() == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
-            const auto zeroRanges = GetZeroScoreRanges();
+            const auto& zeroRanges = RangesWithEmptyCompactionScore;
             ui32 i = 0;
             while (i < zeroRanges.size()) {
                 ranges.push_back(i);
-                i += Config->GetMaxDeleteZeroCompactionRangesPerTx();
+                i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
             }
         } else {
             ranges = request.GetProcessAllRanges()

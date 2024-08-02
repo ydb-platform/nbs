@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(72, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(70, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -179,8 +179,6 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(10010, AddBlob);
         TEST_REQUEST_TYPE(10011, TruncateRange);
         TEST_REQUEST_TYPE(10012, ZeroRange);
-        TEST_REQUEST_TYPE(10013, DeleteZeroCompactionRanges);
-        TEST_REQUEST_TYPE(10014, WriteCompactionMap);
 
 #undef TEST_REQUEST_TYPE
     }

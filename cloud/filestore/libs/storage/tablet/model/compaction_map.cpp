@@ -222,8 +222,6 @@ struct TCompactionMap::TImpl
     ui64 TotalBlobsCount = 0;
     ui64 TotalDeletionsCount = 0;
 
-    TVector<ui32> RangesWithEmptyScore;
-
     TImpl(IAllocator* alloc)
         : Alloc(alloc)
     {}
@@ -279,9 +277,6 @@ struct TCompactionMap::TImpl
         }
 
         for (ui32 i = startIndex; i < endIndex; ++i) {
-            if (!ranges[i].Stats.BlobsCount && !ranges[i].Stats.DeletionsCount) {
-                RangesWithEmptyScore.push_back(ranges[i].RangeId);
-            }
 
             TotalBlobsCount -= group->Get(ranges[i].RangeId).BlobsCount;
             TotalDeletionsCount -= group->Get(ranges[i].RangeId).DeletionsCount;
@@ -504,11 +499,6 @@ TVector<ui32> TCompactionMap::GetNonEmptyCompactionRanges() const
     }
 
     return result;
-}
-
-TVector<ui32> TCompactionMap::GetEmptyCompactionRanges() const
-{
-    return Impl->RangesWithEmptyScore;
 }
 
 TVector<ui32> TCompactionMap::GetAllCompactionRanges() const

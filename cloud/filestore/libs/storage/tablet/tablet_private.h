@@ -432,7 +432,7 @@ struct TEvIndexTabletPrivate
     using TCompactionCompleted = TOperationCompleted;
 
     //
-    // DeletZeroCompactionRanges
+    // DeleteZeroCompactionRanges
     //
 
     struct TDeleteZeroCompactionRangesRequest

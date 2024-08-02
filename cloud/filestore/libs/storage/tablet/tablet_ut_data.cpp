@@ -3297,7 +3297,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST(ShouldDoForcedDeletionOfZeroCompactionRanges)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetMaxDeleteZeroCompactionRangesPerTx(10);
+        storageConfig.SetMaxZeroCompactionRangesToDeletePerTx(10);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -3314,7 +3314,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 }
                 case TEvIndexTabletPrivate::EvLoadCompactionMapChunkCompleted: {
                     lastCompactionMapRangeId = Max(
-                        event->Get<TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted>()->LastRangeId,
+                        event->Get<
+                            TEvIndexTabletPrivate
+                            ::TEvLoadCompactionMapChunkCompleted>()->LastRangeId,
                         lastCompactionMapRangeId);
                     break;
                 }
