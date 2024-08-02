@@ -1128,11 +1128,6 @@ TVector<ui32> TIndexTabletState::GetAllCompactionRanges() const
     return Impl->CompactionMap.GetAllCompactionRanges();
 }
 
-TVector<ui32> TIndexTabletState::GetZeroScoreRanges() const
-{
-    return Impl->CompactionMap.GetEmptyCompactionRanges();
-}
-
 TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCompactionScore(ui32 topSize) const
 {
     return Impl->CompactionMap.GetTopRangesByCompactionScore(topSize);

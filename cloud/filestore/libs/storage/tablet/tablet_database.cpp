@@ -1598,6 +1598,19 @@ bool TIndexTabletDatabase::ReadCheckpointBlobs(
 ////////////////////////////////////////////////////////////////////////////////
 // CompactionMap
 
+void TIndexTabletDatabase::ForceWriteCompactionMap(
+    ui32 rangeId,
+    ui32 blobsCount,
+    ui32 deletionsCount)
+{
+    using TTable = TIndexTabletSchema::CompactionMap;
+
+    Table<TTable>()
+        .Key(rangeId)
+        .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
+        .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount));
+}
+
 void TIndexTabletDatabase::WriteCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
@@ -1606,38 +1619,8 @@ void TIndexTabletDatabase::WriteCompactionMap(
     using TTable = TIndexTabletSchema::CompactionMap;
 
     if (blobsCount || deletionsCount) {
-        Table<TTable>()
-            .Key(rangeId)
-            .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
-            .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount));
+        ForceWriteCompactionMap(rangeId, blobsCount, deletionsCount);
     } else {
-        Table<TTable>().Key(rangeId).Delete();
-    }
-}
-
-void TIndexTabletDatabase::WriteCompactionMap(
-    const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
-{
-    using TTable = TIndexTabletSchema::CompactionMap;
-
-    for (const auto& range: ranges) {
-        Table<TTable>()
-            .Key(range.GetRangeId())
-            .Update(
-                NIceDb::TUpdate<TTable::BlobsCount>(
-                    range.GetBlobCount()))
-            .Update(
-                NIceDb::TUpdate<TTable::DeletionsCount>(
-                    range.GetDeletionCount()));
-    }
-}
-
-void TIndexTabletDatabase::DeleteCompactionRanges(
-    const TVector<ui32>& ranges)
-{
-    using TTable = TIndexTabletSchema::CompactionMap;
-
-    for (const auto& rangeId: ranges) {
         Table<TTable>().Key(rangeId).Delete();
     }
 }

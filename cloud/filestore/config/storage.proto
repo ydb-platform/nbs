@@ -328,5 +328,5 @@ message TStorageConfig
     optional bool UnalignedThreeStageWriteEnabled = 366;
 
     // Number of ranges with zero compaction stats to delete per tx.
-    optional uint32 MaxDeleteZeroCompactionRangesPerTx = 367;
+    optional uint32 MaxZeroCompactionRangesToDeletePerTx = 367;
 }

@@ -1660,20 +1660,18 @@ struct TTxIndexTablet
     // DeleteZeroCompactionRanges
     //
 
-    struct TDeleteZeroCompactionRanges : TProfileAware
+    struct TDeleteZeroCompactionRanges
     {
         const TRequestInfoPtr RequestInfo;
         ui32 StartIndex;
 
         TDeleteZeroCompactionRanges(TRequestInfoPtr requestInfo, ui32 startIndex)
-            : TProfileAware(EFileStoreSystemRequest::DeleteZeroCompactionRanges)
-            , RequestInfo(std::move(requestInfo))
+            : RequestInfo(std::move(requestInfo))
             , StartIndex(startIndex)
         {}
 
         void Clear()
         {
-            TProfileAware::Clear();
         }
     };
 
@@ -1681,7 +1679,7 @@ struct TTxIndexTablet
     // WriteCompactionMap
     //
 
-    struct TWriteCompactionMap : TProfileAware
+    struct TWriteCompactionMap
     {
         const TRequestInfoPtr RequestInfo;
         TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
@@ -1689,14 +1687,12 @@ struct TTxIndexTablet
         TWriteCompactionMap(
                 TRequestInfoPtr requestInfo,
                 const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
-            : TProfileAware(EFileStoreSystemRequest::WriteCompactionMap)
-            , RequestInfo(std::move(requestInfo))
+            : RequestInfo(std::move(requestInfo))
             , Ranges(std::move(ranges))
         {}
 
         void Clear()
         {
-            TProfileAware::Clear();
         }
     };
 

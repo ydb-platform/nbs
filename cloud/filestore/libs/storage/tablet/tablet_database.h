@@ -465,9 +465,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // CompactionMap
     //
 
+    void ForceWriteCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
     void WriteCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
-    void WriteCompactionMap(const TVector<NProtoPrivate::TCompactionRangeStats>& ranges);
-    void DeleteCompactionRanges(const TVector<ui32>& ranges);
     bool ReadCompactionMap(TVector<TCompactionRangeInfo>& compactionMap);
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,
