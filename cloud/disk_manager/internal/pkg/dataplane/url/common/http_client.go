@@ -112,6 +112,35 @@ func (l *loggerWithURLReplaced) Error(msg string, keysAndValues ...interface{}) 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func checkFor4xxOr5xxStatusCode(statusCode int) error {
+	if statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusLocked ||
+		statusCode == http.StatusRequestTimeout {
+
+		return errors.NewRetriableErrorf("http code %d", statusCode)
+	}
+
+	if statusCode == http.StatusRequestedRangeNotSatisfiable {
+		return errors.NewNonRetriableErrorf("http code %d", statusCode)
+	}
+
+	if statusCode == http.StatusForbidden {
+		return NewSourceForbiddenError("http code %d", statusCode)
+	}
+
+	if statusCode >= 400 && statusCode <= 499 {
+		return NewSourceNotFoundError("http code %d", statusCode)
+	}
+
+	if statusCode >= 500 && statusCode <= 599 {
+		return errors.NewRetriableErrorf("http code %d", statusCode)
+	}
+
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type httpClientInterface interface {
 	Head(ctx context.Context) (*http.Response, error)
 	Body(
@@ -174,19 +203,16 @@ func (c *httpClient) head(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	if resp.StatusCode == 403 {
-		return nil, NewSourceForbiddenError("http code %d", resp.StatusCode)
+	err = checkFor4xxOr5xxStatusCode(resp.StatusCode)
+	if err != nil {
+		return nil, err
 	}
 
-	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		return nil, NewSourceNotFoundError("http code %d", resp.StatusCode)
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return resp, nil
 	}
 
-	if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
-		return nil, errors.NewRetriableErrorf("http code %d", resp.StatusCode)
-	}
-
-	return resp, nil
+	return nil, errors.NewNonRetriableErrorf("http code %d", resp.StatusCode)
 }
 
 func (c *httpClient) body(
@@ -234,45 +260,9 @@ func (c *httpClient) body(
 		)
 	}
 
-	if resp.StatusCode == http.StatusTooManyRequests ||
-		resp.StatusCode == http.StatusLocked ||
-		resp.StatusCode == http.StatusRequestTimeout {
-		return nil, errors.NewRetriableErrorf(
-			"range [%v:%v), http code %v",
-			start,
-			end,
-			resp.StatusCode,
-		)
-	}
-
-	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
-		return nil, errors.NewNonRetriableErrorf(
-			"range [%v:%v) is not satisfiable",
-			start,
-			end,
-		)
-	}
-
-	if resp.StatusCode == 403 {
-		return nil, NewSourceForbiddenError("http code %d", resp.StatusCode)
-	}
-
-	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		return nil, NewSourceNotFoundError(
-			"range [%v:%v), http code %v",
-			start,
-			end,
-			resp.StatusCode,
-		)
-	}
-
-	if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
-		return nil, errors.NewRetriableErrorf(
-			"range [%v:%v), http code %v",
-			start,
-			end,
-			resp.StatusCode,
-		)
+	err = checkFor4xxOr5xxStatusCode(resp.StatusCode)
+	if err != nil {
+		return nil, err
 	}
 
 	if resp.Header.Get("Etag") != etag {
@@ -293,10 +283,14 @@ func (c *httpClient) body(
 		)
 	}
 
-	return httpReadCloser{
-		cancel:     cancelReqCtx,
-		readCloser: resp.Body,
-	}, nil
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return httpReadCloser{
+			cancel:     cancelReqCtx,
+			readCloser: resp.Body,
+		}, nil
+	}
+
+	return nil, errors.NewNonRetriableErrorf("http code %d", resp.StatusCode)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
