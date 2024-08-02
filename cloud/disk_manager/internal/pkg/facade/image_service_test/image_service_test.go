@@ -698,6 +698,14 @@ func TestImageServiceShouldFailCreateQCOW2ImageFromInvalidFile(t *testing.T) {
 	)
 }
 
+func TestImageServiceShouldFailCreateQCOW2ImageFromURLWithInvalidScheme(t *testing.T) {
+	testShouldFailCreateImageFromImageFileURL(
+		t,
+		"xxx://url",
+		"url source invalid",
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestImageServiceFuzzCreateQCOW2ImageFromURL(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	net_url "net/url"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
@@ -53,6 +54,18 @@ func NewURLReader(
 	httpClientMaxRetries uint32,
 	url string,
 ) (Reader, error) {
+
+	parsed, err := net_url.Parse(url)
+	if err != nil {
+		return nil, NewSourceInvalidError("parse url: %w", err)
+	}
+
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return nil, NewSourceInvalidError(
+			"invalid protocol scheme %q",
+			parsed.Scheme,
+		)
+	}
 
 	httpClient := newHTTPClient(
 		ctx,
