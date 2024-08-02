@@ -1357,7 +1357,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldUpdateAllLogicalDevices, TFixture)
     {
-        // two devices on the same path
+        // two logical devices on the same path
         const auto agent = CreateAgentConfig("agent-1", {
             Device("path", "uuid-1", "rack-1", 10_GB),
             Device("path", "uuid-2", "rack-1", 10_GB)
@@ -1371,11 +1371,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             .Build());
 
         DiskRegistry->SetWritableState(true);
-
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
-
         RegisterAndWaitForAgents(*Runtime, {agent});
 
+        // allocate vol0 on one of the two logical devices
         {
             auto response = DiskRegistry->AllocateDisk("vol0", 10_GB);
             const auto& msg = response->Record;
@@ -1392,21 +1391,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 timeout * 1000);
         }
 
-        Runtime->AdvanceCurrentTime(
-            TDuration::MilliSeconds(config.GetNonReplicatedInfraTimeout() / 2));
-
-        {
-            auto [error, timeout] = RemoveDevice(agent.GetAgentId(), "path");
-
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
-        }
-
+        // check that vol0 hasn't started migration to a logical device with the
+        // same path
         {
             auto response = DiskRegistry->AllocateDisk("vol0", 10_GB);
             const auto& msg = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
+        }
+
+        // check that the second logical device is not available for allocation
+        {
+            DiskRegistry->SendAllocateDiskRequest("vol1", 10_GB);
+            auto response = DiskRegistry->RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
         }
     }
 }

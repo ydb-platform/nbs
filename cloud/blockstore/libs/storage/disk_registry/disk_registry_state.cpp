@@ -5636,51 +5636,60 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
 
     // not transactional actually but it's not a big problem
     ui32 processed = 0;
-    for (auto* device: devices) {
+    for (; processed != devices.size(); ++processed) {
+        auto& device = *devices[processed];
+
         if (newState == NProto::DEVICE_STATE_ONLINE) {
             result.Error = CmsAddDevice(
                 db,
                 *agent,
-                *device,
+                device,
                 now,
                 shouldResume,
                 dryRun,
                 result.Timeout);
 
             if (HasError(result.Error)) {
-                STORAGE_WARN(
-                    "UpdateCmsDeviceState stopped after processing %u devices"
-                    ", current deviceId: %s, error: %s",
-                    processed,
-                    device->GetDeviceUUID().c_str(),
-                    FormatError(result.Error).c_str());
-
                 break;
             }
-        } else {
-            TString affectedDisk;
-            TDuration timeout;
-            auto error = CmsRemoveDevice(
-                db,
-                *agent,
-                *device,
-                now,
-                dryRun,
-                affectedDisk,
-                timeout);
 
-            if (!affectedDisk.empty()) {
-                result.AffectedDisks.push_back(std::move(affectedDisk));
-            }
-
-            result.Timeout = Max(result.Timeout, timeout);
-
-            if (HasError(error)) {
-                result.Error = std::move(error);
-            }
+            continue;
         }
 
-        ++processed;
+        TDuration timeout;
+        TString affectedDisk;
+        auto error = CmsRemoveDevice(
+            db,
+            *agent,
+            device,
+            now,
+            dryRun,
+            affectedDisk,
+            timeout);
+
+        if (!affectedDisk.empty()) {
+            result.AffectedDisks.push_back(std::move(affectedDisk));
+        }
+
+        result.Timeout = Max(result.Timeout, timeout);
+
+        if (HasError(error)) {
+            result.Error = std::move(error);
+            // ignoring E_TRY_AGAIN error, we touch each logical device to
+            // start migrations
+            if (result.Error.GetCode() != E_TRY_AGAIN) {
+                break;
+            }
+        }
+    }
+
+    if (processed != devices.size()) {
+        STORAGE_WARN(
+            "UpdateCmsDeviceState stopped after processing %u devices"
+            ", current deviceId: %s, error: %s",
+            processed,
+            devices[processed]->GetDeviceUUID().c_str(),
+            FormatError(result.Error).c_str());
     }
 
     SortUnique(result.AffectedDisks);
