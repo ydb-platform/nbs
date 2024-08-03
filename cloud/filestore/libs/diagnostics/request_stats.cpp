@@ -38,9 +38,14 @@ bool IsReadWriteRequest(EFileStoreRequest rt)
         || rt == EFileStoreRequest::ReadData;
 }
 
+const auto REQUEST_COUNTERS_OPTIONS =
+    TRequestCounters::EOption::ReportDataPlaneHistogram |
+    TRequestCounters::EOption::ReportControlPlaneHistogram;
+
 TRequestCountersPtr MakeRequestCounters(
     ITimerPtr timer,
-    TDynamicCounters& counters)
+    TDynamicCounters& counters,
+    TRequestCounters::EOptions options)
 {
     auto requestCounters = std::make_shared<TRequestCounters>(
         std::move(timer),
@@ -51,8 +56,7 @@ TRequestCountersPtr MakeRequestCounters(
         [] (TRequestCounters::TRequestType t) {
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
-        TRequestCounters::EOption::ReportDataPlaneHistogram |
-        TRequestCounters::EOption::ReportControlPlaneHistogram
+        options
     );
     requestCounters->Register(counters);
     return requestCounters;
@@ -157,13 +161,18 @@ public:
             TDuration totalTimeThreshold)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
-        , TotalCounters(MakeRequestCounters(timer, *RootCounters))
+        , TotalCounters(MakeRequestCounters(
+            timer,
+            *RootCounters,
+            REQUEST_COUNTERS_OPTIONS))
         , SsdCounters(MakeRequestCounters(
             timer,
-            *RootCounters->GetSubgroup("type", "ssd")))
+            *RootCounters->GetSubgroup("type", "ssd"),
+            REQUEST_COUNTERS_OPTIONS))
         , HddCounters(MakeRequestCounters(
             timer,
-            *RootCounters->GetSubgroup("type", "hdd")))
+            *RootCounters->GetSubgroup("type", "hdd"),
+            REQUEST_COUNTERS_OPTIONS))
     {
         auto revisionGroup =
             RootCounters->GetSubgroup("revision", GetFullVersionString());
@@ -420,7 +429,11 @@ public:
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
-        , Counters{MakeRequestCounters(timer, *counters)}
+        , Counters{MakeRequestCounters(
+            timer,
+            *counters,
+            REQUEST_COUNTERS_OPTIONS
+            | TRequestCounters::EOption::LazyRequestInitialization)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
     {}

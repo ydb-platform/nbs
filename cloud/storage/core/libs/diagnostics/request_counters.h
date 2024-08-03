@@ -33,6 +33,7 @@ public:
         ReportDataPlaneHistogram    = (1 << 1),
         ReportControlPlaneHistogram = (1 << 2),
         AddSpecialCounters          = (1 << 3),
+        LazyRequestInitialization   = (1 << 4),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -129,6 +130,8 @@ private:
 
     template<typename TMethod, typename... TArgs>
     void NotifySubscribers(TMethod&& m, TArgs&&... args);
+
+    TStatCounters& AccessRequestStats(TRequestType t);
 };
 
 Y_DECLARE_OPERATORS_FOR_FLAGS(TRequestCounters::EOptions);
