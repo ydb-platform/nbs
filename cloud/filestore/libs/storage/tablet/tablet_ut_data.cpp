@@ -4032,7 +4032,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
-        UNIT_ASSERT_VALUES_EQUAL(3, blobId0.Step());
+        UNIT_ASSERT_VALUES_EQUAL(4, blobId0.Step());
         UNIT_ASSERT_VALUES_EQUAL(3, blobId0.Channel());
         UNIT_ASSERT_VALUES_EQUAL(0, blobId0.Cookie());
         UNIT_ASSERT_VALUES_EQUAL(0, blobId0.PartId());
@@ -4066,7 +4066,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[1].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId1.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId1.Generation());
-        UNIT_ASSERT_VALUES_EQUAL(10, blobId1.Step());
+        UNIT_ASSERT_VALUES_EQUAL(11, blobId1.Step());
         // 4_KB block leads to 4 blobs, 16_KB block leads to 2 blobs => this
         // blob becomes blob #4 => we start from channel #3, write our 1st blob
         // to it, next blob goes to channel #4, then #5 and the 4th blob goes
@@ -4150,7 +4150,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
-        UNIT_ASSERT_VALUES_EQUAL(5, blobId0.Step());
+        UNIT_ASSERT_VALUES_EQUAL(6, blobId0.Step());
         UNIT_ASSERT_VALUES_EQUAL(4, blobId0.Channel());
         UNIT_ASSERT_VALUES_EQUAL(0, blobId0.Cookie());
         UNIT_ASSERT_VALUES_EQUAL(0, blobId0.PartId());
