@@ -133,7 +133,8 @@ private:
     std::unique_ptr<TImpl> Impl;
 
     ui32 Generation = 0;
-    ui32 LastStep = 0;
+    // https://github.com/ydb-platform/nbs/issues/1714
+    ui32 LastStep = 1;
     ui32 LastCollectCounter = 0;
     bool StartupGcExecuted = false;
 

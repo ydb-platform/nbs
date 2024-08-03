@@ -5586,6 +5586,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldNotCollectGarbageWithPreviousGeneration)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCollectGarbageThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        ui32 barrierGen = 0;
+        ui32 perGenerationCounter = 0;
+        ui32 recordGeneration = 0;
+        ui32 collectStep = 0;
+        bool firstMessageSeen = false;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvCollectGarbage: {
+                    const auto* msg =
+                        event->template Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (msg->TabletId == tabletId && !firstMessageSeen) {
+                        barrierGen = msg->CollectGeneration;
+                        perGenerationCounter = msg->PerGenerationCounter;
+                        recordGeneration = msg->RecordGeneration;
+                        collectStep = msg->CollectStep;
+                        firstMessageSeen = true;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // directly written blob
+        tablet.WriteData(handle, 0, block, 'c');
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return barrierGen;
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(recordGeneration, barrierGen);
+
+        auto oldBarrierGen = barrierGen;
+        barrierGen = 0;
+        perGenerationCounter = 0;
+        recordGeneration = 0;
+        collectStep = 0;
+        firstMessageSeen = false;
+
+        tablet.RebootTablet();
+
+        env.GetRuntime().DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, collectStep);
+        UNIT_ASSERT_VALUES_EQUAL(oldBarrierGen + 1, barrierGen);
+        UNIT_ASSERT_VALUES_EQUAL(1, perGenerationCounter);
+    }
+
 #undef TABLET_TEST
 }
 
