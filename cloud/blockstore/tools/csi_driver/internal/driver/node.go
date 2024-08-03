@@ -683,7 +683,7 @@ func (s *nodeService) NodeGetVolumeStats(
 	*csi.NodeGetVolumeStatsResponse, error) {
 
 	if s.vmMode {
-		return nil, fmt.Errorf("NodeGetVolumeStats is supported only in vmMode")
+		return nil, fmt.Errorf("NodeGetVolumeStats is not supported in vmMode")
 	}
 
 	var stat unix.Statfs_t
