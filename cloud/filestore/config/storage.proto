@@ -319,4 +319,8 @@ message TStorageConfig
     // TLS node registration details.
     optional string NodeRegistrationRootCertsFile = 362;
     optional NCloud.NProto.TCertificate NodeRegistrationCert = 363;
+
+    // Blob compression experiment params.
+    optional uint32 BlobCompressionRate = 364;
+    optional string BlobCompressionCodec = 365;
 }

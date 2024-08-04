@@ -232,6 +232,9 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
 
+    ui32 GetBlobCompressionRate() const;
+    TString GetBlobCompressionCodec() const;
+
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 };
 
