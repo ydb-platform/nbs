@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -651,6 +651,68 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         UNIT_ASSERT_SUCCEEDED(response.GetValue());
 
         validatePattern(0x0);
+    }
+
+    Y_UNIT_TEST(ShouldDeallocate1GBChunkInEraseDeviceUsingDeallocate)
+    {
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 3_GB / blockSize + 10;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+        fileData.Resize(blockSize * blockCount);
+
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        auto deallocateHistory = std::make_shared<NvmeDeallocateHistory>();
+        auto provider = CreateAioStorageProvider(
+            service,
+            CreateNvmeManagerStub(true, deallocateHistory),
+            true,   // directIO
+            EAioSubmitQueueOpt::DontUse);
+
+        NProto::TVolume volume;
+        volume.SetDiskId(filePath);
+        volume.SetBlockSize(blockSize);
+        volume.SetBlocksCount(blockCount);
+
+        auto future = provider->CreateStorage(
+            volume,
+            "",
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        auto storage = future.GetValue();
+
+        auto fillWithPattern = [&] (char p) {
+            fileData.Seek(0, sSet);
+            TVector<char> buffer(blockSize, p);
+            for (ui32 i = 0; i != blockCount; ++i) {
+                fileData.Write(buffer.data(), blockSize);
+            }
+
+            fileData.Flush();
+        };
+
+
+        // disk filled with 0x0 validates ok
+        fillWithPattern(0x0);
+        auto response =
+            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        UNIT_ASSERT_SUCCEEDED(response.GetValue());
+
+        UNIT_ASSERT_EQUAL(4, deallocateHistory->size());
+        UNIT_ASSERT_EQUAL(std::make_tuple(0, 1_GB), deallocateHistory->at(0));
+        UNIT_ASSERT_EQUAL(
+            std::make_tuple(1_GB, 1_GB),
+            deallocateHistory->at(1));
+        UNIT_ASSERT_EQUAL(
+            std::make_tuple(2_GB, 1_GB),
+            deallocateHistory->at(2));
+        UNIT_ASSERT_EQUAL(
+            std::make_tuple(3_GB, 10 * 4_KB),
+            deallocateHistory->at(3));
     }
 }
 

@@ -740,10 +740,12 @@ class TSafeDeallocator
 {
 private:
     const ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
+    const ui64 MaxDeallocateChunkSize = 1 << 30;
     std::shared_ptr<TStorageContext> StorageContext;
     TPromise<NProto::TError> Response;
-    ui64 RemainingBlockCount;
+    ui64 ValidateRemainingBlockCount;
     ui64 ValidatedBlockIndex = 0;
+    ui64 DeallocateNextBlockIndex = 0;
     TAlignedBuffer Buffer;
     TAlignedBuffer ZeroBuffer;
     TAlignedBuffer FFBuffer;
@@ -757,8 +759,9 @@ public:
         : TFileIOCompletion{.Func = &TSafeDeallocator::ReadBlockCompleteCb}
         , StorageContext(std::move(storageContext))
         , Response(std::move(response))
-        , RemainingBlockCount(
+        , ValidateRemainingBlockCount(
             StorageContext->StorageBlockCount / ValidatedBlocksRatio)
+        , DeallocateNextBlockIndex(StorageContext->StorageStartIndex)
         , Buffer(AllocateZero(StorageContext->BlockSize))
         , ZeroBuffer(AllocateZero(StorageContext->BlockSize))
         , FFBuffer(AllocateZero(StorageContext->BlockSize))
@@ -770,10 +773,30 @@ public:
 
     void Deallocate()
     {
+        DeallocateNextChunk();
+    }
+
+private:
+    void DeallocateNextChunk()
+    {
+        if (DeallocateNextBlockIndex >= (StorageContext->StorageStartIndex +
+                                         StorageContext->StorageBlockCount))
+        {
+            ValidateNextBlock();
+            return;
+        }
+
+        auto deallocateBlockCount = std::min(
+            StorageContext->StorageStartIndex +
+                StorageContext->StorageBlockCount - DeallocateNextBlockIndex,
+            MaxDeallocateChunkSize / StorageContext->BlockSize);
+
         auto future = StorageContext->NvmeManager->Deallocate(
             StorageContext->File.GetName(),
-            StorageContext->StorageStartIndex * StorageContext->BlockSize,
-            StorageContext->StorageBlockCount * StorageContext->BlockSize);
+            DeallocateNextBlockIndex * StorageContext->BlockSize,
+            deallocateBlockCount * StorageContext->BlockSize);
+
+        DeallocateNextBlockIndex += deallocateBlockCount;
 
         future.Subscribe([this] (auto& future) {
             const auto& error = future.GetValue();
@@ -782,19 +805,18 @@ public:
                 return;
             }
 
-            ValidateNextBlock();
+            DeallocateNextChunk();
         });
     }
 
-private:
     void ValidateNextBlock()
     {
-        if (RemainingBlockCount == 0) {
+        if (ValidateRemainingBlockCount == 0) {
             Response.SetValue(NProto::TError());
             return;
         }
 
-        RemainingBlockCount--;
+        ValidateRemainingBlockCount--;
 
         ValidatedBlockIndex = StorageContext->StorageStartIndex +
             Rand.Uniform(StorageContext->StorageBlockCount);
