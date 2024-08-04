@@ -112,31 +112,33 @@ func (l *loggerWithURLReplaced) Error(msg string, keysAndValues ...interface{}) 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func checkFor4xxOr5xxStatusCode(statusCode int) error {
+func checkHttpStatus(statusCode int) error {
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return resp, nil
+	}
+
+	errorMessage := fmt.Sprintf("http code %d", statusCode)
+
 	if statusCode == http.StatusTooManyRequests ||
 		statusCode == http.StatusLocked ||
 		statusCode == http.StatusRequestTimeout {
-
-		return errors.NewRetriableErrorf("http code %d", statusCode)
+		return errors.NewRetriableError(errorMessage)
 	}
-
 	if statusCode == http.StatusRequestedRangeNotSatisfiable {
-		return errors.NewNonRetriableErrorf("http code %d", statusCode)
+		return errors.NewNonRetriableErrorf(errorMessage)
 	}
-
 	if statusCode == http.StatusForbidden {
-		return NewSourceForbiddenError("http code %d", statusCode)
+		return NewSourceForbiddenError(errorMessage)
 	}
-
 	if statusCode >= 400 && statusCode <= 499 {
-		return NewSourceNotFoundError("http code %d", statusCode)
+		return NewSourceNotFoundError(errorMessage)
 	}
 
 	if statusCode >= 500 && statusCode <= 599 {
-		return errors.NewRetriableErrorf("http code %d", statusCode)
+		return errors.NewRetriableErrorf(errorMessage)
 	}
 
-	return nil
+	return nil, errors.NewNonRetriableErrorf("http code %d", statusCode)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,16 +205,7 @@ func (c *httpClient) head(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	err = checkFor4xxOr5xxStatusCode(resp.StatusCode)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return resp, nil
-	}
-
-	return nil, errors.NewNonRetriableErrorf("http code %d", resp.StatusCode)
+	return checkHttpStatus(resp.StatusCode)
 }
 
 func (c *httpClient) body(
@@ -260,7 +253,7 @@ func (c *httpClient) body(
 		)
 	}
 
-	err = checkFor4xxOr5xxStatusCode(resp.StatusCode)
+	err = checkHttpStatus(resp.StatusCode)
 	if err != nil {
 		return nil, err
 	}
@@ -283,14 +276,10 @@ func (c *httpClient) body(
 		)
 	}
 
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return httpReadCloser{
-			cancel:     cancelReqCtx,
-			readCloser: resp.Body,
-		}, nil
-	}
-
-	return nil, errors.NewNonRetriableErrorf("http code %d", resp.StatusCode)
+	return httpReadCloser{
+		cancel:     cancelReqCtx,
+		readCloser: resp.Body,
+	}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
