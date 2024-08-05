@@ -715,14 +715,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"sensor", "UncompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                4_KB
+                4_KB // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                34
+                34 // expected
             },
         });
     }
@@ -757,14 +757,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"sensor", "UncompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                [](i64 val) { return val > 0 && val < 40960 };
+                [](i64 val) { return val > 0 && val < 40960 }; // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"},
                 }
-                [](i64 val) { return val > 0 && val < 370; }
+                [](i64 val) { return val > 0 && val < 370; } // expected
             },
         });
     }
