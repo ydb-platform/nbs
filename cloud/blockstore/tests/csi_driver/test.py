@@ -24,6 +24,7 @@ BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client
 
 
 class CsiLoadTest(LocalLoadTest):
+
     def __init__(
             self,
             sockets_dir: str,
@@ -95,9 +96,13 @@ def setup():
 
 
 class NbsCsiDriverRunner:
+
     def __init__(self, sockets_dir: str, grpc_unix_socket_path: str):
-        self._binary_path = common.binary_path("cloud/blockstore/tools/csi_driver/cmd/nbs-csi-driver/nbs-csi-driver")
-        self._client_binary_path = common.binary_path("cloud/blockstore/tools/csi_driver/client/csi-client")
+        csi_driver_dir = Path(
+            common.binary_path("cloud/blockstore/tools/csi_driver/"),
+        )
+        self._binary_path = csi_driver_dir / "cmd/nbs-csi-driver/nbs-csi-driver"
+        self._client_binary_path = csi_driver_dir / "client/csi-client"
         self._sockets_dir = sockets_dir
         self._endpoint = "csi.sock"
         self._grpc_unix_socket_path = grpc_unix_socket_path
@@ -109,7 +114,7 @@ class NbsCsiDriverRunner:
         self._log_file = open(self._csi_driver_output, "w")
         self._proc = subprocess.Popen(
             [
-                self._binary_path,
+                str(self._binary_path),
                 "--name=nbs.csi.nebius.ai",
                 "--version",
                 "v1",
@@ -125,7 +130,7 @@ class NbsCsiDriverRunner:
     def _client_run(self, *args):
         result = subprocess.run(
             [
-                self._client_binary_path,
+                str(self._client_binary_path),
                 *args,
                 "--endpoint",
                 self._endpoint,
