@@ -105,6 +105,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help='path to cmp-util binary')
 
+    # sync test type stuff
     sync_test_type_parser = subparsers.add_parser(
         'sync',
         help='will create an instance, network-ssd disk with ext4'
@@ -143,8 +144,7 @@ def parse_args() -> argparse.Namespace:
     test_arguments_group.add_argument(
         '--results-path',
         type=str,
-        help='specify path to test results',
-    )
+        help='specify path to test results')
     test_arguments_group.add_argument(
         '--conserve-snapshots',
         action='store_true',
@@ -199,8 +199,11 @@ def parse_args() -> argparse.Namespace:
         dest='cleanup_before_tests',
         action='store_true',
         default=False,
-        help='Clean up outdated resources in place'
-    )
+        help='Clean up outdated resources in place')
+    test_arguments_group.add_argument(
+        '--skip-images',
+        action='store_true',
+        help='will skip creation of images and creation of disks from images')
     args = parser.parse_args()
 
     if args.profile_name is None:

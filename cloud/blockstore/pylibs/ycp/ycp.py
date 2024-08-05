@@ -210,6 +210,7 @@ class Ycp:
             self.created_at = dateparser.parse(info['created_at'])
             self.instance_ids = info.get('instance_ids', [])
             self.folder_id = info.get('folder_id', '')
+            self.type_id = info.get('type_id', '')
             self.size = info.get('size', 0)
             self.block_size = info.get('block_size', 0)
             self.zone_id = info.get('zone_id', '')
