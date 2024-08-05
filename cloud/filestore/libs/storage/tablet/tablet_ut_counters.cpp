@@ -709,12 +709,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
-        // clang-format off
         visitor.ValidateExpectedCounters({
-            {{{"sensor", "UncompressedBytesWritten"}, {"filesystem", "test"}}, 4_KB},
-            {{{"sensor", "CompressedBytesWritten"}, {"filesystem", "test"}}, 34},
+            {
+                {
+                    {"sensor", "UncompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                4_KB
+            },
+            {
+                {
+                    {"sensor", "CompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                34
+            },
         });
-        // clang-format on
     }
 
     Y_UNIT_TEST(ShouldNotReportCompressionMetricsForAllBlobs)
@@ -741,20 +751,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
-        // clang-format off
         visitor.ValidateExpectedCountersWithPredicate({
-            {{
-                {"sensor", "UncompressedBytesWritten"},
-                {"filesystem", "test"}},
-                [](i64 val) { return val > 0 && val < 40960;
-            }},
-            {{
-                {"sensor", "CompressedBytesWritten"},
-                {"filesystem", "test"}},
-                [](i64 val) { return val > 0 && val < 370;
-            }},
+            {
+                {
+                    {"sensor", "UncompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                [](i64 val) { return val > 0 && val < 40960 };
+            },
+            {
+                {
+                    {"sensor", "CompressedBytesWritten"},
+                    {"filesystem", "test"},
+                }
+                [](i64 val) { return val > 0 && val < 370; }
+            },
         });
-        // clang-format on
     }
 }
 
