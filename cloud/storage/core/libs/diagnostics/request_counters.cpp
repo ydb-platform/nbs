@@ -15,6 +15,7 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
+#include <util/system/mutex.h>
 
 #include <utility>
 
@@ -277,7 +278,8 @@ struct TRequestCounters::TStatCounters
     TMaxPerSecondCalculator<DEFAULT_BUCKET_COUNT> MaxCountCalc;
     TMaxPerSecondCalculator<DEFAULT_BUCKET_COUNT> MaxRequestBytesCalc;
 
-    bool FullyInitialized = false;
+    TMutex FullInitLock;
+    TAtomic FullyInitialized = false;
 
     explicit TStatCounters(ITimerPtr timer)
         : MaxTimeCalc(timer)
@@ -316,8 +318,17 @@ struct TRequestCounters::TStatCounters
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
     }
 
-    void FullInit()
+    void FullInitIfNeeded()
     {
+        if (AtomicGet(FullyInitialized)) {
+            return;
+        }
+
+        auto g = Guard(FullInitLock);
+        if (AtomicGet(FullyInitialized)) {
+            return;
+        }
+
         auto& counters = *CountersGroup;
 
         Time = counters.GetCounter("Time", true);
@@ -416,7 +427,7 @@ struct TRequestCounters::TStatCounters
             }
         }
 
-        FullyInitialized = true;
+        AtomicSet(FullyInitialized, true);
     }
 
     void Started(ui32 requestBytes)
@@ -699,8 +710,8 @@ TRequestCounters::TStatCounters& TRequestCounters::AccessRequestStats(
     TRequestType t)
 {
     auto& statCounters = CountersByRequest[t];
-    if (!statCounters.FullyInitialized && statCounters.CountersGroup) {
-        statCounters.FullInit();
+    if (statCounters.CountersGroup) {
+        statCounters.FullInitIfNeeded();
     }
     return statCounters;
 }
@@ -729,7 +740,7 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 && !IsReadWriteRequestType(t);
 
             if (!lazyInit) {
-                CountersByRequest[t].FullInit();
+                CountersByRequest[t].FullInitIfNeeded();
             }
         }
     }
@@ -898,7 +909,7 @@ void TRequestCounters::BatchCompleted(
 void TRequestCounters::UpdateStats(bool updatePercentiles)
 {
     for (auto& statCounters: CountersByRequest) {
-        if (statCounters.FullyInitialized) {
+        if (AtomicGet(statCounters.FullyInitialized)) {
             statCounters.UpdateStats(updatePercentiles);
         }
     }
