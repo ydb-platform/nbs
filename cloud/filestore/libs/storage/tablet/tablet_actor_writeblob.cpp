@@ -301,7 +301,9 @@ void TIndexTabletActor::HandleWriteBlob(
             TString out;
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blob.BlobContent));
             const size_t sz = BlobCodec->Compress(blob.BlobContent, out.begin());
-            Metrics.UncompressedBytesWritten.fetch_add(blob.BlobContent.Size(), std::memory_order_relaxed);
+            Metrics.UncompressedBytesWritten.fetch_add(
+                blob.BlobContent.Size(),
+                std::memory_order_relaxed);
             Metrics.CompressedBytesWritten.fetch_add(sz, std::memory_order_relaxed);
         }
 
