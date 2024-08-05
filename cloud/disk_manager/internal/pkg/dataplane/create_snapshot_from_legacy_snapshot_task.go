@@ -55,7 +55,11 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
-	_, err = t.storage.CreateSnapshot(ctx, t.request.DstSnapshotId)
+	_, err = t.storage.CreateSnapshot(
+		ctx,
+		t.request.DstSnapshotId,
+		nil, // incrementalInfo
+	)
 	if err != nil {
 		return err
 	}
@@ -142,7 +146,6 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 		storageSize,
 		t.state.ChunkCount,
 		srcMeta.Encryption,
-		nil, // incrementalInfo
 	)
 }
 

@@ -35,6 +35,7 @@ type Storage interface {
 	CreateSnapshot(
 		ctx context.Context,
 		snapshotID string,
+		incrementalInfo *IncrementalInfo,
 	) (*SnapshotMeta, error)
 
 	SnapshotCreated(
@@ -44,7 +45,6 @@ type Storage interface {
 		storageSize uint64,
 		chunkCount uint32,
 		encryption *types.EncryptionDesc,
-		incrementalInfo *IncrementalInfo,
 	) error
 
 	DeletingSnapshot(ctx context.Context, snapshotID string) error

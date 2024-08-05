@@ -118,6 +118,7 @@ func (s *legacyStorage) CheckSnapshotReady(
 func (s *legacyStorage) CreateSnapshot(
 	ctx context.Context,
 	snapshotID string,
+	incrementalInfo *IncrementalInfo,
 ) (*SnapshotMeta, error) {
 
 	return nil, task_errors.NewNonRetriableErrorf("not implemented")
@@ -130,7 +131,6 @@ func (s *legacyStorage) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
-	incrementalInfo *IncrementalInfo,
 ) error {
 
 	return task_errors.NewNonRetriableErrorf("not implemented")

@@ -52,7 +52,11 @@ func (t *createSnapshotFromURLTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	_, err := t.storage.CreateSnapshot(ctx, t.request.DstSnapshotId)
+	_, err := t.storage.CreateSnapshot(
+		ctx,
+		t.request.DstSnapshotId,
+		nil, // incrementalInfo
+	)
 	if err != nil {
 		return err
 	}
@@ -162,8 +166,7 @@ func (t *createSnapshotFromURLTask) Run(
 		size,
 		storageSize,
 		t.state.ChunkCount,
-		nil, // encryption
-		nil, // incrementalInfo
+		nil,
 	)
 }
 

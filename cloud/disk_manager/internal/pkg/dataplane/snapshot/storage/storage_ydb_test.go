@@ -422,39 +422,35 @@ func TestCreateSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			snapshotMeta, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			snapshotMeta, err := f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 			require.False(t, snapshotMeta.Ready)
 
 			// Check idempotency.
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
-			require.NoError(t, err)
-
-			err = f.storage.SnapshotCreated(
+			_, err = f.storage.CreateSnapshot(
 				f.ctx,
 				"snapshot",
-				0,
-				0,
-				0,
-				nil, // encryption
 				nil, // incrementalInfo
 			)
 			require.NoError(t, err)
 
-			// Check idempotency.
-			err = f.storage.SnapshotCreated(
-				f.ctx,
-				"snapshot",
-				0,
-				0,
-				0,
-				nil, // encryption
-				nil, // incrementalInfo
-			)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
 			require.NoError(t, err)
 
 			// Check idempotency.
-			snapshotMeta, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			// Check idempotency.
+			snapshotMeta, err = f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 			require.True(t, snapshotMeta.Ready)
 		})
@@ -467,19 +463,27 @@ func TestDeletingSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			require.Error(t, err)
+			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+			// Check idempotency.
+			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			require.NoError(t, err)
+
+			_, err = f.storage.CreateSnapshot(
 				f.ctx,
 				"snapshot",
-				0,
-				0,
-				0,
-				nil, // encryption
 				nil, // incrementalInfo
 			)
 			require.Error(t, err)
@@ -489,27 +493,15 @@ func TestDeletingSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
-			require.Error(t, err)
-			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-
-			// Check idempotency.
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
-			require.NoError(t, err)
-
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
-			require.Error(t, err)
-			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-
-			err = f.storage.SnapshotCreated(
+			_, err = f.storage.CreateSnapshot(
 				f.ctx,
 				"snapshot",
-				0,
-				0,
-				0,
-				nil, // encryption
 				nil, // incrementalInfo
 			)
+			require.Error(t, err)
+			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
@@ -525,15 +517,7 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			err := f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(
-				f.ctx,
-				"snapshot",
-				0,
-				0,
-				0,
-				nil, // encryption
-				nil, // incrementalInfo
-			)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -544,7 +528,11 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
@@ -557,7 +545,11 @@ func TestClearDeletingSnapshots(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			deletingAt := time.Now() // not exactly precise
@@ -596,7 +588,11 @@ func TestClearDeletingSnapshots(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, toDelete)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 		})
 	}
@@ -1110,20 +1106,17 @@ func TestCheckSnapshotReady(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				"snapshot",
+				nil, // incrementalInfo
+			)
 			require.NoError(t, err)
 
 			diskSize := uint64(2 * 1024 * 1024)
 			chunkCount := uint32(2)
 
-			err = f.storage.SnapshotCreated(
-				f.ctx, "snapshot",
-				diskSize,
-				diskSize,
-				chunkCount,
-				nil, // encryption
-				nil, // incrementalInfo
-			)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", diskSize, diskSize, chunkCount, nil)
 			require.NoError(t, err)
 
 			resource, err := f.storage.CheckSnapshotReady(f.ctx, "snapshot")

@@ -40,6 +40,7 @@ func (s *storageYDB) createSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	incrementalInfo *IncrementalInfo,
 ) (created *SnapshotMeta, err error) {
 
 	defer s.metrics.StatOperation("createSnapshot")(&err)
@@ -94,6 +95,13 @@ func (s *storageYDB) createSnapshot(
 		id:         snapshotID,
 		creatingAt: time.Now(),
 		status:     snapshotStatusCreating,
+	}
+
+	if incrementalInfo != nil {
+		state.zoneID = incrementalInfo.ZoneID
+		state.diskID = incrementalInfo.DiskID
+		state.checkpointID = incrementalInfo.CheckpointID
+		state.baseSnapshotID = incrementalInfo.BaseSnapshotID
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -154,11 +162,10 @@ func (s *storageYDB) deleteDiskFromIncremental(
 func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 	ctx context.Context,
 	tx *persistence.Transaction,
-	state *snapshotState,
-	incrementalInfo IncrementalInfo,
+	state snapshotState,
 ) error {
 
-	if len(incrementalInfo.BaseSnapshotID) == 0 {
+	if len(state.baseSnapshotID) == 0 {
 		_, err := tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -171,10 +178,10 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id, created_at)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id, $created_at)
 		`, s.tablesPath),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(incrementalInfo.ZoneID)),
-			persistence.ValueParam("$disk_id", persistence.UTF8Value(incrementalInfo.DiskID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
+			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
-			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(incrementalInfo.CheckpointID)),
+			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
 			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
 		)
 		if err != nil {
@@ -198,22 +205,17 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id, created_at)
 			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id, $created_at)
 		`, s.tablesPath),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(incrementalInfo.ZoneID)),
-			persistence.ValueParam("$disk_id", persistence.UTF8Value(incrementalInfo.DiskID)),
+			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
+			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
-			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(incrementalInfo.CheckpointID)),
-			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(incrementalInfo.BaseSnapshotID)),
+			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
+			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(state.baseSnapshotID)),
 			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
 		)
 		if err != nil {
 			return err
 		}
 	}
-
-	state.zoneID = incrementalInfo.ZoneID
-	state.diskID = incrementalInfo.DiskID
-	state.checkpointID = incrementalInfo.CheckpointID
-	state.baseSnapshotID = incrementalInfo.BaseSnapshotID
 
 	return nil
 }
@@ -226,7 +228,6 @@ func (s *storageYDB) snapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
-	incrementalInfo *IncrementalInfo,
 ) (err error) {
 
 	defer s.metrics.StatOperation("snapshotCreated")(&err)
@@ -290,17 +291,6 @@ func (s *storageYDB) snapshotCreated(
 	state.size = size
 	state.storageSize = storageSize
 	state.chunkCount = chunkCount
-	if incrementalInfo != nil {
-		err = s.updateIncrementalTableAndSnapshotState(
-			ctx,
-			tx,
-			&state,
-			*incrementalInfo,
-		)
-		if err != nil {
-			return err
-		}
-	}
 
 	if encryption != nil {
 		state.encryptionMode = uint32(encryption.Mode)
@@ -329,6 +319,11 @@ func (s *storageYDB) snapshotCreated(
 	`, s.tablesPath, snapshotStateStructTypeString()),
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
+	if err != nil {
+		return err
+	}
+
+	err = s.updateIncrementalTableAndSnapshotState(ctx, tx, state)
 	if err != nil {
 		return err
 	}
