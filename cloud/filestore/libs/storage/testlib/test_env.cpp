@@ -825,7 +825,9 @@ void TTestRegistryVisitor::ValidateExpectedCounters(
 }
 
 void TTestRegistryVisitor::ValidateExpectedCountersWithPredicate(
-    const TVector<std::pair<TVector<TLabel>, std::function<bool(i64)>>>& expectedCounters)
+    const TVector<
+        std::pair<TVector<TLabel>, std::function<bool(i64)>>
+    >& expectedCounters)
 {
     for (const auto& [labels, predicate]: expectedCounters) {
         const auto labelsStr = LabelsToString(labels);

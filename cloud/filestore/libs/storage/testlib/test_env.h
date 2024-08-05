@@ -207,7 +207,9 @@ public:
     void ValidateExpectedCounters(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters);
     void ValidateExpectedCountersWithPredicate(
-        const TVector<std::pair<TVector<TLabel>, std::function<bool(i64)>>>& expectedCounters);
+        const TVector<
+            std::pair<TVector<TLabel>, std::function<bool(i64)>>
+        >& expectedCounters);
     void ValidateExpectedHistogram(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
         bool checkEqual);
