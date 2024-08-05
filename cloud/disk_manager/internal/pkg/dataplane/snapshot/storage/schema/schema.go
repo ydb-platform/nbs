@@ -59,7 +59,10 @@ func Create(
 			persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("zone_id", "disk_id", "snapshot_id"),
+			// Even if created_at timestamp is incorrect then we will just copy
+			// a little more data.
+			persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithPrimaryKeyColumn("zone_id", "disk_id", "snapshot_id", "created_at"),
 		),
 		dropUnusedColumns,
 	)

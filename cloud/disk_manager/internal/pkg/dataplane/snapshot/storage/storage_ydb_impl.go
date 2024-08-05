@@ -166,14 +166,16 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			declare $disk_id as Utf8;
 			declare $snapshot_id as Utf8;
 			declare $checkpoint_id as Utf8;
+			declare $created_at as Timestamp;
 
-			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
-			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
+			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id, created_at)
+			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id, $created_at)
 		`, s.tablesPath),
 			persistence.ValueParam("$zone_id", persistence.UTF8Value(incrementalInfo.ZoneID)),
 			persistence.ValueParam("$disk_id", persistence.UTF8Value(incrementalInfo.DiskID)),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
 			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(incrementalInfo.CheckpointID)),
+			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
 		)
 		if err != nil {
 			return err
@@ -188,18 +190,20 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			declare $snapshot_id as Utf8;
 			declare $checkpoint_id as Utf8;
 			declare $base_snapshot_id as Utf8;
+			declare $created_at as Timestamp;
 
 			delete from incremental
 			where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $base_snapshot_id;
 
-			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
-			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
+			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id, created_at)
+			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id, $created_at)
 		`, s.tablesPath),
 			persistence.ValueParam("$zone_id", persistence.UTF8Value(incrementalInfo.ZoneID)),
 			persistence.ValueParam("$disk_id", persistence.UTF8Value(incrementalInfo.DiskID)),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
 			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(incrementalInfo.CheckpointID)),
 			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(incrementalInfo.BaseSnapshotID)),
+			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
 		)
 		if err != nil {
 			return err
