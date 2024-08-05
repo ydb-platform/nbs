@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 
 from pathlib import Path
 
@@ -45,7 +46,7 @@ class CsiLoadTest(LocalLoadTest):
         self.sockets_temporary_directory.cleanup()
 
 
-def setup():
+def init():
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -111,7 +112,7 @@ class NbsCsiDriverRunner:
         self._binary_path = csi_driver_dir / "cmd/nbs-csi-driver/nbs-csi-driver"
         self._client_binary_path = csi_driver_dir / "client/csi-client"
         self._sockets_dir = sockets_dir
-        self._endpoint = "csi.sock"
+        self._endpoint = Path(sockets_dir) / "csi.sock"
         self._grpc_unix_socket_path = grpc_unix_socket_path
         self._proc = None
         self._csi_driver_output = os.path.join(common.output_path(), "driver_output.txt")
@@ -128,11 +129,12 @@ class NbsCsiDriverRunner:
                 "--node-id=localhost",
                 "--nbs-socket", self._grpc_unix_socket_path,
                 f"--sockets-dir={self._sockets_dir}",
-                f"--endpoint={self._endpoint}"
+                f"--endpoint={str(self._endpoint)}"
             ],
             stdout=self._log_file,
             stderr=self._log_file,
         )
+        self._wait_socket()
 
     def _client_run(self, *args):
         result = subprocess.run(
@@ -140,7 +142,7 @@ class NbsCsiDriverRunner:
                 str(self._client_binary_path),
                 *args,
                 "--endpoint",
-                self._endpoint,
+                str(self._endpoint),
             ],
             capture_output=True,
             text=True,
@@ -148,6 +150,15 @@ class NbsCsiDriverRunner:
         )
         logging.info("Stdout: %s", result.stdout)
         logging.info("Stderr: %s", result.stderr)
+
+    def _wait_socket(self, timeout_sec=60):
+        started_at = time.monotonic()
+        while True:
+            if self._endpoint.exists():
+                return
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError("Timeout getting socket")
+            time.sleep(0.1)
 
     def _node_run(self, *args):
         return self._client_run("node", *args)
@@ -182,14 +193,16 @@ class NbsCsiDriverRunner:
         )
 
     def stop(self):
+        if self._proc is not None:
+            logging.info("Process exit code: %s", self._proc.returncode)
+            logging.info("Process pid %d", self._proc.pid)
         self._proc.kill()
         self._log_file.close()
 
 
-def tear_down(env: CsiLoadTest):
+def cleanup_after_test(env: CsiLoadTest):
     if env is None:
         return
-    env.csi.stop()
     env.tear_down()
 
 
@@ -204,7 +217,7 @@ def log_called_process_error(exc):
 
 
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
-    env, run = setup()
+    env, run = init()
     try:
         volume_name = "example-disk"
         volume_size = 10 * 1024 ** 3
@@ -236,4 +249,4 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         log_called_process_error(e)
         raise
     finally:
-        tear_down(env)
+        cleanup_after_test(env)

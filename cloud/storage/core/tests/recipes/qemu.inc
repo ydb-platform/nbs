@@ -24,8 +24,8 @@ DEPENDS(
     cloud/storage/core/tests/recipes/qemu
 )
 
-SET(QEMU_USE_VIRTIOFS_SERVER True)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
+SET(QEMU_USE_VIRTIOFS_SERVER True)
 
 TAG(ya:dirty)
 
