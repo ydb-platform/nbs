@@ -211,7 +211,7 @@ public:
         return stats;
     }
 
-    TString LoadSectorAndDecrypt(ui64 sector)
+    TString LoadRawSector(ui64 sector)
     {
         const ui64 sectorsPerChunk = ChunkByteCount / SectorSize;
         const ui64 chunkIndex = sector/ sectorsPerChunk;
@@ -234,6 +234,12 @@ public:
         file.Seek(fileOffset, SeekDir::sSet);
         file.Load(&buffer[0], buffer.size());
 
+        return buffer;
+    }
+
+    TString LoadSectorAndDecrypt(ui64 sector)
+    {
+        TString buffer = LoadRawSector(sector);
         if (Encryptor && !IsAllZeroes(buffer.data(), buffer.size())) {
             Encryptor->Decrypt(
                 TBlockDataRef(buffer.data(), buffer.size()),
@@ -737,6 +743,38 @@ TEST_P(TServerTest, ShouldHandleWrongSectorIndex)
     EXPECT_EQ(0u, stats.Completed);
     EXPECT_EQ(0u, stats.Dequeued);
     EXPECT_EQ(0u, stats.Submitted);
+}
+
+TEST_P(TServerTest, ShouldStoreEncryptedZeroes)
+{
+    StartServer();
+
+    std::span hdr_w = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+    std::span writeBuffer = Memory.Allocate(
+        SectorSize * SectorsPerRequest,
+        Unaligned ? 1 : SectorSize);
+    std::span writeStatus = Memory.Allocate(1);
+    const auto pattern = TString(writeBuffer.size_bytes(), 0);
+
+    for (ui64 i = 0; i <= TotalSectorCount - SectorsPerRequest; ++i) {
+        // write SectorsPerRequest at once
+        reinterpret_cast<virtio_blk_req_hdr*>(hdr_w.data())->sector = i;
+        memcpy(writeBuffer.data(), pattern.data(), writeBuffer.size_bytes());
+        auto writeOp =
+            Client.WriteAsync(QueueIndex, {hdr_w, writeBuffer}, {writeStatus});
+        const ui32 len = writeOp.GetValueSync();
+        EXPECT_EQ(writeStatus.size(), len);
+        EXPECT_EQ(VIRTIO_BLK_S_OK, writeStatus[0]);
+
+        for (size_t j = 0; j < SectorsPerRequest; ++j) {
+            const auto rawSector = LoadRawSector(i + j);
+            const bool shouldReadZeroes =
+                EncryptionMode == NProto::EEncryptionMode::NO_ENCRYPTION;
+            EXPECT_EQ(
+                shouldReadZeroes,
+                IsAllZeroes(rawSector.data(), rawSector.size()));
+        }
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

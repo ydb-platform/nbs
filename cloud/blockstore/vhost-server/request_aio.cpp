@@ -14,10 +14,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <bool (IEncryptor::*CryptoOperation)(
-    const TBlockDataRef& src,
-    const TBlockDataRef& dst,
-    ui64 blockIndex)>
+template <
+    bool (IEncryptor::*CryptoOperation)(
+        const TBlockDataRef& src,
+        const TBlockDataRef& dst,
+        ui64 blockIndex),
+    bool CheckAllZeroes>
 [[nodiscard]] bool DoCryptoOperation(
     IEncryptor& encryptor,
     TBlockDataRef src,
@@ -30,7 +32,7 @@ template <bool (IEncryptor::*CryptoOperation)(
         TBlockDataRef srcRef(src.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
         TBlockDataRef dstRef(dst.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
 
-        if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
+        if (CheckAllZeroes && IsAllZeroes(srcRef.Data(), srcRef.Size())) {
             memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
         } else {
             if (!(encryptor.*CryptoOperation)(srcRef, dstRef, startSector + i))
@@ -162,7 +164,7 @@ bool SgListCopyWithOptionalDecryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{src, buffer.len};
         TBlockDataRef dstRef{static_cast<const char*>(buffer.base), buffer.len};
-        if (!DoCryptoOperation<&IEncryptor::Decrypt>(
+        if (!DoCryptoOperation<&IEncryptor::Decrypt, true>(
                 *encryptor,
                 srcRef,
                 dstRef,
@@ -201,7 +203,7 @@ bool SgListCopyWithOptionalEncryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{static_cast<const char*>(buffer.base), buffer.len};
         TBlockDataRef dstRef{dst, buffer.len};
-        if (!DoCryptoOperation<&IEncryptor::Encrypt>(
+        if (!DoCryptoOperation<&IEncryptor::Encrypt, false>(
                 *encryptor,
                 srcRef,
                 dstRef,
