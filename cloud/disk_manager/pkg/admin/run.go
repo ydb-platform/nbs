@@ -89,7 +89,7 @@ func Run(
 		newOperationsCmd(clientConfig),
 	)
 
-	commandsWhichRequiresServerConfig := []*cobra.Command{
+	commandsWhichRequireServerConfig := []*cobra.Command{
 		newPrivateCmd(clientConfig, serverConfig),
 		newDisksCmd(clientConfig, serverConfig),
 		newTasksCmd(clientConfig, serverConfig),
@@ -109,7 +109,7 @@ func Run(
 		return util.ParseProto(serverConfigFilePath, serverConfig)
 	}
 
-	for _, cmd := range commandsWhichRequiresServerConfig {
+	for _, cmd := range commandsWhichRequireServerConfig {
 		cmd.PersistentPreRunE = parseClientAndServerConfig
 		rootCmd.AddCommand(cmd)
 	}
