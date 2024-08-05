@@ -112,7 +112,7 @@ type Storage interface {
 
 	DeleteDiskFromIncremental(
 		ctx context.Context,
-		diskID string,
 		zoneID string,
+		diskID string,
 	) error
 }

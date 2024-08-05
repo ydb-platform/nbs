@@ -122,8 +122,8 @@ func (s *storageYDB) createSnapshot(
 func (s *storageYDB) deleteDiskFromIncremental(
 	ctx context.Context,
 	session *persistence.Session,
-	diskID string,
 	zoneID string,
+	diskID string,
 ) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -206,8 +206,8 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 		}
 	}
 
-	state.diskID = incrementalInfo.DiskID
 	state.zoneID = incrementalInfo.ZoneID
+	state.diskID = incrementalInfo.DiskID
 	state.checkpointID = incrementalInfo.CheckpointID
 	state.baseSnapshotID = incrementalInfo.BaseSnapshotID
 

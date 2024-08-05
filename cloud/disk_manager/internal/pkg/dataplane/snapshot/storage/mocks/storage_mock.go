@@ -205,11 +205,11 @@ func (s *StorageMock) GetTotalSnapshotStorageSize(ctx context.Context) (storageS
 
 func (s *StorageMock) DeleteDiskFromIncremental(
 	ctx context.Context,
-	diskID string,
 	zoneID string,
+	diskID string,
 ) error {
 
-	args := s.Called(ctx, diskID, zoneID)
+	args := s.Called(ctx, zoneID, diskID)
 	return args.Error(0)
 }
 

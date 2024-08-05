@@ -42,8 +42,8 @@ func (t *deleteDiskFromIncrementalTask) Run(
 
 	return t.storage.DeleteDiskFromIncremental(
 		ctx,
-		t.request.Disk.DiskId,
 		t.request.Disk.ZoneId,
+		t.request.Disk.DiskId,
 	)
 }
 
