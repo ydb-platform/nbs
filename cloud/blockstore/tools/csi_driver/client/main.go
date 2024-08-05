@@ -375,10 +375,6 @@ func main() {
 		"csi.sock",
 		"Path to the client config file",
 	)
-	err := rootCmd.MarkFlagRequired("endpoint")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	rootCmd.AddCommand(
 		newCsiNodeCommand(&grpcEndpoint),
