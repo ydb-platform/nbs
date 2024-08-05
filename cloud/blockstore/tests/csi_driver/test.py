@@ -1,7 +1,7 @@
 import logging
 import os
 import subprocess
-import uuid
+import tempfile
 
 from pathlib import Path
 
@@ -30,16 +30,19 @@ class CsiLoadTest(LocalLoadTest):
             self,
             sockets_dir: str,
             grpc_unix_socket_path: str,
+            sockets_temporary_directory: tempfile.TemporaryDirectory,
             *args,
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
+        self.sockets_temporary_directory = sockets_temporary_directory
         self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path)
         self.csi.start()
 
     def tear_down(self):
         self.csi.stop()
         super(CsiLoadTest, self).tear_down()
+        self.sockets_temporary_directory.cleanup()
 
 
 def setup():
@@ -51,7 +54,8 @@ def setup():
     server_config_patch.EndpointStorageDir = str(endpoints_dir)
     server_config_patch.AllowAllRequestsViaUDS = True
     # We run inside qemu, so do not need to cleanup
-    sockets_dir = Path("/tmp") / str(uuid.uuid4())
+    temp_dir = tempfile.TemporaryDirectory()
+    sockets_dir = Path(temp_dir.name)
     sockets_dir.mkdir(exist_ok=True)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = False
@@ -65,6 +69,7 @@ def setup():
     env = CsiLoadTest(
         sockets_dir=str(sockets_dir),
         grpc_unix_socket_path=server_config_patch.UnixSocketPath,
+        sockets_temporary_directory=temp_dir,
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
