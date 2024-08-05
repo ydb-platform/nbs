@@ -3,26 +3,32 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"net"
 	"os"
 	"time"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func dialGrpcContext(ctx context.Context, endpoint string) (*grpc.ClientConn, error) {
+func dialGrpcContext(
+	ctx context.Context,
+	endpoint string,
+) (*grpc.ClientConn, error) {
 	conn, err := grpc.DialContext(
 		ctx,
 		endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(func(ctx context.Context, address string) (net.Conn, error) {
-			return net.Dial("unix", address)
-		}),
+		grpc.WithContextDialer(
+			func(ctx context.Context, address string) (net.Conn, error) {
+				return net.Dial("unix", address)
+			},
+		),
 	)
 	if err != nil {
 		return nil, err
@@ -31,7 +37,10 @@ func dialGrpcContext(ctx context.Context, endpoint string) (*grpc.ClientConn, er
 	return conn, err
 }
 
-func newNodeClient(ctx context.Context, endpoint string) (csi.NodeClient, error) {
+func newNodeClient(
+	ctx context.Context,
+	endpoint string,
+) (csi.NodeClient, error) {
 	conn, err := dialGrpcContext(ctx, endpoint)
 	if err != nil {
 		return nil, err
@@ -40,7 +49,10 @@ func newNodeClient(ctx context.Context, endpoint string) (csi.NodeClient, error)
 	return csi.NewNodeClient(conn), nil
 }
 
-func newControllerClient(ctx context.Context, endpoint string) (csi.ControllerClient, error) {
+func newControllerClient(
+	ctx context.Context,
+	endpoint string,
+) (csi.ControllerClient, error) {
 	conn, err := dialGrpcContext(ctx, endpoint)
 	if err != nil {
 		return nil, err
@@ -58,13 +70,27 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 		Use:   "createvolume",
 		Short: "Send create volume request to the controller",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
 			defer cancelFunc()
 			client, err := newControllerClient(ctx, *endpoint)
 			if err != nil {
 				log.Fatal(err)
 			}
 
+			singleNodeCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+			capabilities := []*csi.VolumeCapability{
+				{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: nil,
+					},
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: singleNodeCap,
+					},
+				},
+			}
 			response, err := client.CreateVolume(
 				ctx,
 				&csi.CreateVolumeRequest{
@@ -73,16 +99,7 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 						RequiredBytes: size,
 						LimitBytes:    0,
 					},
-					VolumeCapabilities: []*csi.VolumeCapability{
-						{
-							AccessType: &csi.VolumeCapability_Mount{
-								Mount: nil,
-							},
-							AccessMode: &csi.VolumeCapability_AccessMode{
-								Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-							},
-						},
-					},
+					VolumeCapabilities: capabilities,
 					AccessibilityRequirements: &csi.TopologyRequirement{
 						Requisite: []*csi.Topology{
 							{
@@ -109,8 +126,18 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 			log.Printf("Response: %v", response)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "The suggested name for the storage space.")
-	cmd.Flags().Int64Var(&size, "size", 0, "The size of the disk in bytes")
+	cmd.Flags().StringVar(
+		&name,
+		"name",
+		"",
+		"The suggested name for the storage space.",
+	)
+	cmd.Flags().Int64Var(
+		&size,
+		"size",
+		0,
+		"The size of the disk in bytes",
+	)
 	err := cmd.MarkFlagRequired("name")
 	if err != nil {
 		log.Fatal(err)
@@ -130,7 +157,10 @@ func newDeleteVolumeCommand(endpoint *string) *cobra.Command {
 		Use:   "deletevolume",
 		Short: "Send delete volume request to the controller",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
 			defer cancelFunc()
 			client, err := newControllerClient(ctx, *endpoint)
 			if err != nil {
@@ -165,9 +195,28 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		Use:   "publishvolume",
 		Short: "Send publish volume request to the CSI node",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
+
+			targetPath := fmt.Sprintf(
+				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
+					"%s/mount",
+				podId,
+				volumeId,
+			)
+			volumeContext := map[string]string{
+				"csi.storage.k8s.io/pod.uid":                   podId,
+				"csi.storage.k8s.io/serviceAccount.name":       "default",
+				"csi.storage.k8s.io/ephemeral":                 "false",
+				"csi.storage.k8s.io/pod.namespace":             "default",
+				"csi.storage.k8s.io/pod.name":                  podName,
+				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
+			}
+			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 
 			response, err := client.NodePublishVolume(
 				ctx,
@@ -175,29 +224,18 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					VolumeId:          volumeId,
 					PublishContext:    nil,
 					StagingTargetPath: stagingTargetPath,
-					TargetPath: fmt.Sprintf(
-						"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount",
-						podId,
-						volumeId,
-					),
+					TargetPath:        targetPath,
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{
 							Mount: nil,
 						},
 						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+							Mode: writerCap,
 						},
 					},
-					Readonly: false,
-					Secrets:  nil,
-					VolumeContext: map[string]string{
-						"csi.storage.k8s.io/pod.uid":                   podId,
-						"csi.storage.k8s.io/serviceAccount.name":       "default",
-						"csi.storage.k8s.io/ephemeral":                 "false",
-						"csi.storage.k8s.io/pod.namespace":             "default",
-						"csi.storage.k8s.io/pod.name":                  podName,
-						"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
-					},
+					Readonly:      false,
+					Secrets:       nil,
+					VolumeContext: volumeContext,
 				},
 			)
 			if err != nil {
@@ -207,15 +245,32 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 			log.Printf("Response: %v", response)
 		},
 	}
-	cmd.Flags().StringVar(&volumeId, "volume-id", "", "volume id")
+	cmd.Flags().StringVar(
+		&volumeId,
+		"volume-id",
+		"",
+		"volume id",
+	)
 	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
 	cmd.Flags().StringVar(
 		&stagingTargetPath,
 		"staging-target-path",
-		"/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/a/globalmount",
-		"staging target path")
-	cmd.Flags().StringVar(&podName, "pod-name", "some-pod", "pod name")
-	cmd.Flags().BoolVar(&readOnly, "readonly", false, "volume is read only")
+		"/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/"+
+			"a/globalmount",
+		"staging target path",
+	)
+	cmd.Flags().StringVar(
+		&podName,
+		"pod-name",
+		"some-pod",
+		"pod name",
+	)
+	cmd.Flags().BoolVar(
+		&readOnly,
+		"readonly",
+		false,
+		"volume is read only",
+	)
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)
@@ -234,19 +289,24 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 		Use:   "unpublishvolume",
 		Short: "Send unpublish volume request to the CSI node",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 120*time.Second)
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
 
+			targetPath := fmt.Sprintf(
+				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
+					"%s/mount",
+				podId,
+				volumeId,
+			)
 			response, err := client.NodeUnpublishVolume(
 				ctx,
 				&csi.NodeUnpublishVolumeRequest{
-					VolumeId: volumeId,
-					TargetPath: fmt.Sprintf(
-						"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount",
-						podId,
-						volumeId,
-					),
+					VolumeId:   volumeId,
+					TargetPath: targetPath,
 				},
 			)
 			if err != nil {
@@ -256,7 +316,12 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 			log.Printf("Response: %v", response)
 		},
 	}
-	cmd.Flags().StringVar(&volumeId, "volume-id", "", "volume id")
+	cmd.Flags().StringVar(
+		&volumeId,
+		"volume-id",
+		"",
+		"volume id",
+	)
 	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
@@ -310,7 +375,11 @@ func main() {
 		"csi.sock",
 		"Path to the client config file",
 	)
-	rootCmd.MarkFlagRequired("endpoint")
+	err := rootCmd.MarkFlagRequired("endpoint")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	rootCmd.AddCommand(
 		newCsiNodeCommand(&grpcEndpoint),
 		newCsiControllerCommand(&grpcEndpoint),
