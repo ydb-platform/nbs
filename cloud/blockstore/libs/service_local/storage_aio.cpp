@@ -16,6 +16,7 @@
 
 #include <util/generic/array_ref.h>
 #include <util/generic/noncopyable.h>
+#include <util/generic/size_literals.h>
 #include <util/random/fast.h>
 #include <util/string/builder.h>
 #include <util/system/align.h>
@@ -739,8 +740,8 @@ class TSafeDeallocator
     : TFileIOCompletion
 {
 private:
-    const ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
-    const ui64 MaxDeallocateChunkSize = 1 << 30;
+    static constexpr ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
+    static constexpr ui64 MaxDeallocateChunkSize = 1_GB;
     std::shared_ptr<TStorageContext> StorageContext;
     TPromise<NProto::TError> Response;
     ui64 ValidateRemainingBlockCount;
@@ -779,16 +780,16 @@ public:
 private:
     void DeallocateNextChunk()
     {
-        if (DeallocateNextBlockIndex >= (StorageContext->StorageStartIndex +
-                                         StorageContext->StorageBlockCount))
-        {
+        const auto remainingBlockCount = StorageContext->StorageStartIndex +
+                                         StorageContext->StorageBlockCount -
+                                         DeallocateNextBlockIndex;
+        if (remainingBlockCount == 0) {
             ValidateNextBlock();
             return;
         }
 
-        auto deallocateBlockCount = std::min(
-            StorageContext->StorageStartIndex +
-                StorageContext->StorageBlockCount - DeallocateNextBlockIndex,
+        const auto deallocateBlockCount = std::min(
+            remainingBlockCount,
             MaxDeallocateChunkSize / StorageContext->BlockSize);
 
         auto future = StorageContext->NvmeManager->Deallocate(

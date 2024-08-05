@@ -13,14 +13,14 @@ class TNvmeManagerStub final
 {
 private:
     bool IsDeviceSsd;
-    NvmeDeallocateHistoryPtr DeallocateHistory;
+    TNvmeDeallocateHistoryPtr DeallocateHistory;
 
 public:
     TNvmeManagerStub(
             bool isDeviceSsd,
-            NvmeDeallocateHistoryPtr deallocateHistory)
+            TNvmeDeallocateHistoryPtr deallocateHistory)
         : IsDeviceSsd(isDeviceSsd)
-        , DeallocateHistory(deallocateHistory)
+        , DeallocateHistory(std::move(deallocateHistory))
     {}
 
     TFuture<NProto::TError> Format(
@@ -39,8 +39,6 @@ public:
         ui64 sizeBytes) override
     {
         Y_UNUSED(path);
-        Y_UNUSED(offsetBytes);
-        Y_UNUSED(sizeBytes);
 
         if (DeallocateHistory) {
             DeallocateHistory->emplace_back(offsetBytes, sizeBytes);
@@ -70,7 +68,7 @@ public:
 
 INvmeManagerPtr CreateNvmeManagerStub(
     bool isDeviceSsd,
-    NvmeDeallocateHistoryPtr deallocateHistory)
+    TNvmeDeallocateHistoryPtr deallocateHistory)
 {
     return std::make_shared<TNvmeManagerStub>(isDeviceSsd, std::move(deallocateHistory));
 }

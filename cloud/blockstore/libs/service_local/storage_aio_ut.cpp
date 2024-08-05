@@ -666,7 +666,7 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         service->Start();
         Y_DEFER { service->Stop(); };
 
-        auto deallocateHistory = std::make_shared<NvmeDeallocateHistory>();
+        auto deallocateHistory = std::make_shared<TNvmeDeallocateHistory>();
         auto provider = CreateAioStorageProvider(
             service,
             CreateNvmeManagerStub(true, deallocateHistory),
@@ -703,15 +703,15 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         UNIT_ASSERT_SUCCEEDED(response.GetValue());
 
         UNIT_ASSERT_EQUAL(4, deallocateHistory->size());
-        UNIT_ASSERT_EQUAL(std::make_tuple(0, 1_GB), deallocateHistory->at(0));
+        UNIT_ASSERT_EQUAL(TDeallocateReq(0, 1_GB), deallocateHistory->at(0));
         UNIT_ASSERT_EQUAL(
-            std::make_tuple(1_GB, 1_GB),
+            TDeallocateReq(1_GB, 1_GB),
             deallocateHistory->at(1));
         UNIT_ASSERT_EQUAL(
-            std::make_tuple(2_GB, 1_GB),
+            TDeallocateReq(2_GB, 1_GB),
             deallocateHistory->at(2));
         UNIT_ASSERT_EQUAL(
-            std::make_tuple(3_GB, 10 * 4_KB),
+            TDeallocateReq(3_GB, 10 * 4_KB),
             deallocateHistory->at(3));
     }
 }
