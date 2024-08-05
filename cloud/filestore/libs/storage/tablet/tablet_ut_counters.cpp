@@ -685,6 +685,89 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval), sz / 100);
     }
+
+    Y_UNIT_TEST(ShouldReportCompressionMetrics)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetBlobCompressionRate(1);
+        storageConfig.SetWriteBlobThreshold(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {
+                {
+                    {"sensor", "UncompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                4_KB // expected
+            },
+            {
+                {
+                    {"sensor", "CompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                34 // expected
+            },
+        });
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCompressionMetricsForAllBlobs)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetBlobCompressionRate(2);
+        storageConfig.SetWriteBlobThreshold(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+
+        for (int i = 0; i < 10; i++)
+            tablet.WriteData(handle, 0, 4_KB, 'a');
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCountersWithPredicate({
+            {
+                {
+                    {"sensor", "UncompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                [](i64 val) { return val > 0 && val < 40960; } // expected
+            },
+            {
+                {
+                    {"sensor", "CompressedBytesWritten"},
+                    {"filesystem", "test"},
+                },
+                [](i64 val) { return val > 0 && val < 370; } // expected
+            },
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

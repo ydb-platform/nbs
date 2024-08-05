@@ -296,6 +296,22 @@ void TIndexTabletActor::HandleWriteBlob(
             return;
         }
 
+        const auto compRate = Config->GetBlobCompressionRate();
+        if (BlobCodec && compRate && blob.BlobId.GetHash() % compRate == 0) {
+            TString out;
+            out.ReserveAndResize(
+                BlobCodec->MaxCompressedLength(blob.BlobContent));
+            const size_t sz = BlobCodec->Compress(
+                blob.BlobContent,
+                out.begin());
+            Metrics.UncompressedBytesWritten.fetch_add(
+                blob.BlobContent.Size(),
+                std::memory_order_relaxed);
+            Metrics.CompressedBytesWritten.fetch_add(
+                sz,
+                std::memory_order_relaxed);
+        }
+
         auto blobId = MakeBlobId(TabletID(), blob.BlobId);
 
         auto proxy = Info()->BSProxyIDForChannel(

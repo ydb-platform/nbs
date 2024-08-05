@@ -24,6 +24,8 @@
 
 #include <util/generic/string.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +206,10 @@ public:
     const TVector<TMetricsEntry>& GetEntries() const;
     void ValidateExpectedCounters(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters);
+    void ValidateExpectedCountersWithPredicate(
+        const TVector<
+            std::pair<TVector<TLabel>, std::function<bool(i64)>>
+        >& expectedCounters);
     void ValidateExpectedHistogram(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
         bool checkEqual);

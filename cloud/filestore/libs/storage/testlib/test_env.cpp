@@ -824,6 +824,25 @@ void TTestRegistryVisitor::ValidateExpectedCounters(
     }
 }
 
+void TTestRegistryVisitor::ValidateExpectedCountersWithPredicate(
+    const TVector<
+        std::pair<TVector<TLabel>, std::function<bool(i64)>>
+    >& expectedCounters)
+{
+    for (const auto& [labels, predicate]: expectedCounters) {
+        const auto labelsStr = LabelsToString(labels);
+
+        int matchingCountersCount = 0;
+        for (const auto& entry: MetricsEntries) {
+            if (entry.Matches(labels)) {
+                ++matchingCountersCount;
+                UNIT_ASSERT(predicate(entry.Value));
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(matchingCountersCount, 1, labelsStr);
+    }
+}
+
 void TTestRegistryVisitor::ValidateExpectedHistogram(
     const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
     bool checkEqual)
