@@ -113,8 +113,8 @@ func (l *loggerWithURLReplaced) Error(msg string, keysAndValues ...interface{}) 
 ////////////////////////////////////////////////////////////////////////////////
 
 func checkHttpStatus(statusCode int) error {
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return resp, nil
+	if statusCode >= 200 && statusCode <= 299 {
+		return nil
 	}
 
 	errorMessage := fmt.Sprintf("http code %d", statusCode)
@@ -123,7 +123,7 @@ func checkHttpStatus(statusCode int) error {
 	if statusCode == http.StatusTooManyRequests ||
 		statusCode == http.StatusLocked ||
 		statusCode == http.StatusRequestTimeout {
-		return errors.NewRetriableError(errorMessage)
+		return errors.NewRetriableErrorf(errorMessage)
 	}
 	if statusCode == http.StatusRequestedRangeNotSatisfiable {
 		return errors.NewNonRetriableErrorf(errorMessage)
@@ -139,7 +139,7 @@ func checkHttpStatus(statusCode int) error {
 		return errors.NewRetriableErrorf(errorMessage)
 	}
 
-	return nil, errors.NewNonRetriableErrorf("http code %d", statusCode)
+	return errors.NewNonRetriableErrorf("http code %d", statusCode)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +206,12 @@ func (c *httpClient) head(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	return checkHttpStatus(resp.StatusCode)
+	err = checkHttpStatus(resp.StatusCode)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (c *httpClient) body(
