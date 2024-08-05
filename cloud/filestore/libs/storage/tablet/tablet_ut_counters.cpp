@@ -757,13 +757,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"sensor", "UncompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                [](i64 val) { return val > 0 && val < 40960 }; // expected
+                [](i64 val) { return val > 0 && val < 40960; } // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"},
-                }
+                },
                 [](i64 val) { return val > 0 && val < 370; } // expected
             },
         });
