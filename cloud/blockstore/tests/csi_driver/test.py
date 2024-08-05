@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import uuid
 
 from pathlib import Path
 
@@ -49,7 +50,8 @@ def setup():
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     server_config_patch.EndpointStorageDir = str(endpoints_dir)
     server_config_patch.AllowAllRequestsViaUDS = True
-    sockets_dir = Path("/run/nbsd")
+    # We run inside qemu, so do not need to cleanup
+    sockets_dir = Path("/tmp") / str(uuid.uuid4())
     sockets_dir.mkdir(exist_ok=True)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = False
