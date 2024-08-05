@@ -1,13 +1,13 @@
 PY3TEST()
 
-IF (OPENSOURCE)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-ENDIF()
+SIZE(MEDIUM)
+TIMEOUT(600)
+REQUIREMENTS(
+    cpu:4
+    ram:16
+)
 
 
-SPLIT_FACTOR(1)
 TEST_SRCS(
     test.py
 )
@@ -31,7 +31,6 @@ PEERDIR(
 )
 SET_APPEND(QEMU_INVOKE_TEST YES)
 SET_APPEND(QEMU_VIRTIO none)
-SET_APPEND(QEMU_USE_VIRTIOFS_SERVER False)
 SET_APPEND(QEMU_ENABLE_KVM True)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 

@@ -54,9 +54,9 @@ def setup():
     server_config_patch.EndpointStorageDir = str(endpoints_dir)
     server_config_patch.AllowAllRequestsViaUDS = True
     # We run inside qemu, so do not need to cleanup
-    temp_dir = tempfile.TemporaryDirectory()
+    temp_dir = tempfile.TemporaryDirectory(dir="/tmp")
+    logging.info("Created temporary dir %s", temp_dir.name)
     sockets_dir = Path(temp_dir.name)
-    sockets_dir.mkdir(exist_ok=True)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = False
     server_config_patch.NbdDevicePrefix = "/dev/nbd"

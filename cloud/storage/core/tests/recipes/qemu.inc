@@ -24,12 +24,8 @@ DEPENDS(
     cloud/storage/core/tests/recipes/qemu
 )
 
-IF (NOT DEFINED QEMU_USE_VIRTIOFS_SERVER)
-    SET(QEMU_USE_VIRTIOFS_SERVER True)
-ENDIF()
-IF (QEMU_USE_VIRTIOFS_SERVER)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
-ENDIF()
+SET(QEMU_USE_VIRTIOFS_SERVER True)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
 
 TAG(ya:dirty)
 
