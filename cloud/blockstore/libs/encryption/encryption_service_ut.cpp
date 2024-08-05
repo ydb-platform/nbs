@@ -80,7 +80,7 @@ struct TEncryptionClientFactory
 
     TVector<std::shared_ptr<TTestCountService>> Sessions;
 
-    TEncryptionClientFactory(IBlockStorePtr service)
+    explicit TEncryptionClientFactory(IBlockStorePtr service)
         : Service(std::move(service))
     {}
 
@@ -98,6 +98,23 @@ struct TEncryptionClientFactory
         auto session = std::make_shared<TTestCountService>();
         Sessions.push_back(session);
         return MakeFuture(TResultOrError<IBlockStorePtr>(session));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TVolumeEncryptionClientFactory
+    : public IVolumeEncryptionClientFactory
+{
+    TFuture<TResultOrError<IBlockStorePtr>> CreateEncryptionClient(
+        IBlockStorePtr client,
+        const NProto::TVolume& volume) override
+    {
+        Y_UNUSED(client);
+        Y_UNUSED(volume);
+
+        return MakeFuture(TResultOrError<IBlockStorePtr>(
+            std::make_shared<TTestCountService>()));
     }
 };
 
@@ -193,32 +210,35 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             clientFactory);
 
         MountVolume(clientFactory, multipleService, clientId1, false);
-        UNIT_ASSERT_VALUES_EQUAL(0, clientFactory->Sessions.size());
-
-        MountVolume(clientFactory, multipleService, clientId2, true);
         UNIT_ASSERT_VALUES_EQUAL(1, clientFactory->Sessions.size());
 
-        MountVolume(clientFactory, multipleService, clientId3, true);
+        MountVolume(clientFactory, multipleService, clientId2, true);
         UNIT_ASSERT_VALUES_EQUAL(2, clientFactory->Sessions.size());
 
-        ReadBlocks(multipleService, clientId1);
-        UNIT_ASSERT_VALUES_EQUAL(1, service->IOCounter);
-        WriteBlocks(multipleService, clientId1);
-        UNIT_ASSERT_VALUES_EQUAL(2, service->IOCounter);
+        MountVolume(clientFactory, multipleService, clientId3, true);
+        UNIT_ASSERT_VALUES_EQUAL(3, clientFactory->Sessions.size());
 
-        auto& client2 = clientFactory->Sessions[0];
+        auto& client1 = clientFactory->Sessions[0];
+        ReadBlocks(multipleService, clientId1);
+        UNIT_ASSERT_VALUES_EQUAL(1, client1->IOCounter);
+
+        WriteBlocks(multipleService, clientId1);
+        UNIT_ASSERT_VALUES_EQUAL(2, client1->IOCounter);
+
+        auto& client2 = clientFactory->Sessions[1];
         ReadBlocks(multipleService, clientId2);
         UNIT_ASSERT_VALUES_EQUAL(1, client2->IOCounter);
         WriteBlocks(multipleService, clientId2);
         UNIT_ASSERT_VALUES_EQUAL(2, client2->IOCounter);
 
-        auto& client3 = clientFactory->Sessions[1];
+        auto& client3 = clientFactory->Sessions[2];
         ReadBlocks(multipleService, clientId3);
         UNIT_ASSERT_VALUES_EQUAL(1, client3->IOCounter);
         WriteBlocks(multipleService, clientId3);
         UNIT_ASSERT_VALUES_EQUAL(2, client3->IOCounter);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, service->IOCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, service->IOCounter);
+        UNIT_ASSERT_VALUES_EQUAL(2, client1->IOCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, client2->IOCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, client3->IOCounter);
 
@@ -247,7 +267,8 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
 
         auto clientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            std::make_shared<TVolumeEncryptionClientFactory>());
 
         auto service = std::make_shared<TTestService>();
         service->CreateVolumeHandler =

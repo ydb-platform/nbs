@@ -4,6 +4,7 @@ from cloud.blockstore.public.api.protos.client_pb2 import *         # noqa
 from cloud.blockstore.public.api.protos.cms_pb2 import *            # noqa
 from cloud.blockstore.public.api.protos.discovery_pb2 import *      # noqa
 from cloud.blockstore.public.api.protos.disk_pb2 import *           # noqa
+from cloud.blockstore.public.api.protos.encryption_pb2 import *     # noqa
 from cloud.blockstore.public.api.protos.endpoints_pb2 import *      # noqa
 from cloud.blockstore.public.api.protos.headers_pb2 import *        # noqa
 from cloud.blockstore.public.api.protos.io_pb2 import *             # noqa

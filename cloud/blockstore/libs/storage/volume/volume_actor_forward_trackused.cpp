@@ -34,7 +34,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
     const bool encryptedDiskRegistryBasedDisk =
         State->IsDiskRegistryMediaKind() &&
-        volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
+        // XXX
+        volumeConfig.GetEncryptionDesc().GetMode() == NProto::ENCRYPTION_AES_XTS;
     const bool overlayDiskRegistryBasedDisk =
         State->IsDiskRegistryMediaKind() &&
         !State->GetBaseDiskId().Empty();

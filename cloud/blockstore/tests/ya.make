@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     cms
+    default_encryption
     external_endpoint
     fio
     functional

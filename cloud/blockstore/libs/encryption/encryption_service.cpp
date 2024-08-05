@@ -113,15 +113,12 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
-        const auto& encryptionSpec = request->GetEncryptionSpec();
-        if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
-            return Service->MountVolume(std::move(ctx), std::move(request));
-        }
-
         auto session = GetSession(request->GetHeaders().GetClientId());
         if (session) {
             return session->MountVolume(std::move(ctx), std::move(request));
         }
+
+        const auto& encryptionSpec = request->GetEncryptionSpec();
 
         STORAGE_INFO(
             TRequestInfo(

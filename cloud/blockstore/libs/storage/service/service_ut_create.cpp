@@ -842,6 +842,53 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCreateVolumeWithDefaultEncryption)
+    {
+        TTestEnv env;
+        NProto::TFeaturesConfig featuresConfig;
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("DefaultEncryptionForNonReplicatedDisks");
+        feature->MutableWhitelist()->AddEntityIds()->append("vol0");
+
+        ui32 nodeIdx =
+            SetupTestEnv(env, NProto::TStorageServiceConfig(), featuresConfig);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.CreateVolume(
+                "vol0",
+                93_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),   // folderId
+                TString(),   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+            auto response = service.DescribeVolume("vol0");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto desc = response->Record.GetVolume().GetEncryptionDesc();
+            UNIT_ASSERT(
+                NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE == desc.GetMode());
+            UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetKeyHash());
+        }
+
+        {
+            service.CreateVolume(
+                "vol1",
+                93_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),   // folderId
+                TString(),   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+            auto response = service.DescribeVolume("vol1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto desc = response->Record.GetVolume().GetEncryptionDesc();
+            UNIT_ASSERT(NProto::NO_ENCRYPTION == desc.GetMode());
+            UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotCreateVolumeWithBaseDiskAndMultiplePartitions)
     {
         TTestEnv env;

@@ -193,4 +193,9 @@ bool IsAllZeroes(const char* src, size_t size)
     }
 }
 
+bool IsAllZeroes(TBlockDataRef block)
+{
+    return block.Data() == nullptr || IsAllZeroes(block.Data(), block.Size());
+}
+
 }   // namespace NCloud::NBlockStore

@@ -244,9 +244,11 @@ TPlugin::TPlugin(
     , Config(std::move(config))
     , Log(Logging->CreateLog("BLOCKSTORE_PLUGIN"))
 {
+    auto encryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        encryptionKeyProvider,
+        CreateVolumeEncryptionClientFactory(Logging, encryptionKeyProvider));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

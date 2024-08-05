@@ -245,7 +245,8 @@ void TVolumeState::Reset()
             CreatePartitionStatInfo(GetDiskId(), 0);
         }
         const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
-        if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {
+        // XXX
+        if (encryptionDesc.GetMode() == NProto::ENCRYPTION_AES_XTS) {
             TrackUsedBlocks = true;
         }
     } else {
