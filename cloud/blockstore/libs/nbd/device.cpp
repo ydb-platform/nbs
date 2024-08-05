@@ -165,6 +165,11 @@ void TDevice::ConnectDevice()
     STORAGE_DEBUG("Connect device");
 
     TFileHandle device(DeviceName, OpenExisting | RdWr);
+
+    if (!device.IsOpen()) {
+         ythrow TFileError() << "cannot open device with name " << DeviceName;
+    }
+
     ioctl(device, NBD_CLEAR_SOCK);
 
     const auto& exportInfo = Handler->GetExportInfo();
