@@ -31,6 +31,8 @@ PEERDIR(
 )
 SET_APPEND(QEMU_INVOKE_TEST YES)
 SET_APPEND(QEMU_VIRTIO none)
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/csi_driver/recipe/recipe.inc)
+SET_APPEND(QEMU_USE_VIRTIOFS_SERVER False)
+SET_APPEND(QEMU_ENABLE_KVM True)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 
 END()
