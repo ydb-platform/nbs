@@ -67,9 +67,15 @@ void BatchCompleted(
         request,
         requestStats["count"].GetUInteger(),
         requestStats["bytes"].GetUInteger(),
-        requestStats["errors"].GetUInteger(),
+        requestStats["errors"].GetUInteger() +
+            requestStats["encryptor_errors"].GetUInteger(),
         times,
         sizes);
+
+    if (requestStats["generated_zero"].GetUInteger()) {
+        // TODO(drbasic) https://github.com/ydb-platform/nbs/pull/1533
+        // ReportEncryptorGeneratedZeroBlock();
+    }
 }
 
 }   // namespace

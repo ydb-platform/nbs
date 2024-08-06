@@ -34,10 +34,11 @@ void CompleteRequest(
     auto* bio = vhd_get_bdev_io(req->Io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    stats.Requests[bio->type].Errors += status != VHD_BDEV_SUCCESS;
-    stats.Requests[bio->type].Count += status == VHD_BDEV_SUCCESS;
-    stats.Requests[bio->type].Bytes += bytes;
-    stats.Requests[bio->type].Unaligned += req->Unaligned;
+    auto& requestStat = stats.Requests[bio->type];
+    requestStat.Errors += status != VHD_BDEV_SUCCESS;
+    requestStat.Count += status == VHD_BDEV_SUCCESS;
+    requestStat.Bytes += bytes;
+    requestStat.Unaligned += req->Unaligned;
 
     if (status == VHD_BDEV_SUCCESS) {
         stats.Times[bio->type].Increment(now - req->SubmitTs);
@@ -47,14 +48,21 @@ void CompleteRequest(
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             NSan::Unpoison(req->Data[0].iov_base, req->Data[0].iov_len);
-            const bool succ = SgListCopyWithOptionalDecryption(
+            const auto result = SgListCopyWithOptionalDecryption(
                 log,
                 static_cast<const char*>(req->Data[0].iov_base),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
-            if (!succ) {
-                status = VHD_BDEV_IOERR;
+            switch (result) {
+                case ESgListDecryptionResult::Success: {
+                    break;
+                }
+                case ESgListDecryptionResult::EncryptorError: {
+                    status = VHD_BDEV_IOERR;
+                    stats.EncryptorErrors++;
+                    break;
+                }
             }
         }
     }
@@ -81,9 +89,10 @@ void CompleteCompoundRequest(
         auto* bio = vhd_get_bdev_io(req->Io);
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-        stats.Requests[bio->type].Errors += req->Errors != 0;
-        stats.Requests[bio->type].Count += 1;
-        stats.Requests[bio->type].Bytes += bytes;
+        auto& requestStat = stats.Requests[bio->type];
+        requestStat.Errors += req->Errors != 0;
+        requestStat.Count += 1;
+        requestStat.Bytes += bytes;
 
         if (status == VHD_BDEV_SUCCESS) {
             stats.Times[bio->type].Increment(now - req->SubmitTs);
@@ -92,14 +101,22 @@ void CompleteCompoundRequest(
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             NSan::Unpoison(req->Buffer.get(), bytes);
-            bool succ = SgListCopyWithOptionalDecryption(
+            const auto result = SgListCopyWithOptionalDecryption(
                 log,
                 req->Buffer.get(),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
-            if (!succ) {
-                status = VHD_BDEV_IOERR;
+
+            switch (result)     {
+                case ESgListDecryptionResult::Success: {
+                    break;
+                }
+                case ESgListDecryptionResult::EncryptorError: {
+                    status = VHD_BDEV_IOERR;
+                    stats.EncryptorErrors++;
+                    break;
+                }
             }
         }
         vhd_complete_bio(req->Io, status);
@@ -146,7 +163,8 @@ private:
     size_t PrepareBatch(
         vhd_request_queue* queue,
         TVector<iocb*>& batch,
-        TCpuCycles now);
+        TCpuCycles now,
+        TSimpleStats& queueStats);
 
     void CompletionThreadFunc();
 };
@@ -286,7 +304,7 @@ void TAioBackend::ProcessQueue(
         const TCpuCycles now = GetCycleCount();
 
         // append new requests to the tail of the batch
-        queueStats.Dequeued += PrepareBatch(queue, batch, now);
+        queueStats.Dequeued += PrepareBatch(queue, batch, now, queueStats);
 
         if (batch.empty()) {
             break;
@@ -345,7 +363,8 @@ std::optional<TSimpleStats> TAioBackend::GetCompletionStats(TDuration timeout)
 size_t TAioBackend::PrepareBatch(
     vhd_request_queue* queue,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     const size_t initialSize = batch.size();
 
@@ -353,7 +372,14 @@ size_t TAioBackend::PrepareBatch(
     while (batch.size() < BatchSize && vhd_dequeue_request(queue, &req)) {
         Y_DEBUG_ABORT_UNLESS(vhd_vdev_get_priv(req.vdev) == this);
 
-        PrepareIO(Log, Encryptor.get(), Devices, req.io, batch, now);
+        PrepareIO(
+            Log,
+            Encryptor.get(),
+            Devices,
+            req.io,
+            batch,
+            now,
+            queueStats);
     }
 
     return batch.size() - initialSize;

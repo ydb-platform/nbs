@@ -37,6 +37,53 @@ using TUnaligned = bool;
 using TTestParams =
     std::tuple<NProto::EEncryptionMode, TSectorsInRequest, TUnaligned>;
 
+class TMocEncryptor: public IEncryptor
+{
+public:
+    enum class EBehaviour
+    {
+        ReturnError,
+        EncryptToAllZeroes,
+    };
+
+private:
+    EBehaviour Behaviour;
+
+public:
+    explicit TMocEncryptor(EBehaviour behaviour)
+        : Behaviour(behaviour)
+    {}
+
+    bool Encrypt(
+        const TBlockDataRef& src,
+        const TBlockDataRef& dst,
+        ui64 blockIndex) override
+    {
+        Y_UNUSED(src);
+        Y_UNUSED(blockIndex);
+        switch (Behaviour) {
+            case EBehaviour::ReturnError: {
+                return false;
+            }
+            case EBehaviour::EncryptToAllZeroes:{
+                memset(const_cast<char*>(dst.Data()), 0, dst.Size());
+                return true;
+            }
+        }
+    }
+
+    bool Decrypt(
+        const TBlockDataRef& src,
+        const TBlockDataRef& dst,
+        ui64 blockIndex) override
+    {
+        Y_UNUSED(src);
+        Y_UNUSED(dst);
+        Y_UNUSED(blockIndex);
+        return false;
+    }
+};
+
 class TServerTest
     : public testing::TestWithParam<TTestParams>
 {
@@ -91,7 +138,7 @@ public:
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
         for (ui32 i = 0; i != ChunkCount; ++i) {
-            auto& file = Files.emplace_back("nrd_" + ToString(i));
+            auto& file = Files.emplace_back(MakeTempName());
 
             Options.Layout.push_back({
                 .DevicePath = file.GetName(),
@@ -128,7 +175,7 @@ public:
 
         std::swap(offsets.front(), offsets.back());
 
-        auto& file = Files.emplace_back("nrd_0");
+        auto& file = Files.emplace_back(MakeTempName());
 
         const size_t fileSize = HeaderSize
             + ChunkCount * ChunkByteCount
@@ -247,6 +294,33 @@ public:
                 sector);
         }
         return buffer;
+    }
+
+    bool SaveRawSector(ui64 sector, const TString& data)
+    {
+        const ui64 sectorsPerChunk = ChunkByteCount / SectorSize;
+        const ui64 chunkIndex = sector/ sectorsPerChunk;
+        const auto& chunkLayout = Options.Layout[chunkIndex];
+
+        auto it = FindIf(
+            Files,
+            [&](const TFile& f)
+            { return f.GetName() == chunkLayout.DevicePath; });
+        if (it == Files.end()) {
+            return false;
+        }
+        auto & file = *it;
+
+        const ui64 fileOffset =
+            chunkLayout.Offset + (sector % sectorsPerChunk) * SectorSize;
+
+        if (data.size() != SectorSize) {
+            return false;
+        }
+        file.Seek(fileOffset, SeekDir::sSet);
+        file.Write(&data[0], data.size());
+
+        return true;
     }
 };
 
@@ -775,6 +849,118 @@ TEST_P(TServerTest, ShouldStoreEncryptedZeroes)
                 IsAllZeroes(rawSector.data(), rawSector.size()));
         }
     }
+}
+
+TEST_P(TServerTest, ShouldStatEncryptorErrors)
+{
+    if (EncryptionMode != NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {
+        return;
+    }
+
+    Encryptor = std::make_shared<TMocEncryptor>(
+        TMocEncryptor::EBehaviour::ReturnError);
+    StartServer();
+
+    // Fill storage with random data
+    {
+        auto randomSector = MakeRandomPattern(SectorSize);
+        for (size_t i = 0; i < TotalSectorCount; ++i) {
+            SaveRawSector(i, randomSector);
+        }
+    }
+
+    std::span hdr_w = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+    std::span writeBuffer = Memory.Allocate(
+        SectorSize * SectorsPerRequest,
+        Unaligned ? 1 : SectorSize);
+    std::span writeStatus = Memory.Allocate(1);
+
+    std::span hdr_r = Hdr(Memory, {.type = VIRTIO_BLK_T_IN});
+    std::span readBuffer = Memory.Allocate(
+        SectorSize * SectorsPerRequest,
+        Unaligned ? 1 : SectorSize);
+    std::span readStatus = Memory.Allocate(1);
+
+    size_t readCount = 0;
+    size_t writeCount = 0;
+    for (ui64 i = 0; i <= TotalSectorCount - SectorsPerRequest; ++i) {
+        // check writes
+        {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr_w.data())->sector = i;
+            auto writeOp = Client.WriteAsync(
+                QueueIndex,
+                {hdr_w, writeBuffer},
+                {writeStatus});
+            const ui32 len = writeOp.GetValueSync();
+            EXPECT_EQ(1u, len);
+            EXPECT_EQ(VIRTIO_BLK_S_IOERR, writeStatus[0]);
+            ++writeCount;
+        }
+
+        // check reads
+        {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr_r.data())->sector = i;
+            auto readOp = Client.WriteAsync(
+                QueueIndex,
+                {hdr_r},
+                {readBuffer, readStatus});
+            const ui32 len = readOp.GetValueSync();
+            EXPECT_EQ(readStatus.size() + readBuffer.size(), len);
+            EXPECT_EQ(VIRTIO_BLK_S_IOERR, readStatus[0]);
+            ++readCount;
+        }
+    }
+
+    // validate stats
+    const auto splittedReads = (SectorsPerRequest - 1) * (ChunkCount - 1);
+    const auto stats = GetStats(readCount + splittedReads);
+
+    EXPECT_EQ(0u, stats.CompFailed);
+    EXPECT_EQ(0u, stats.SubFailed);
+    EXPECT_EQ(readCount + splittedReads, stats.Completed);
+    EXPECT_EQ(readCount + splittedReads, stats.Dequeued);
+    EXPECT_EQ(readCount + splittedReads, stats.Submitted);
+    EXPECT_EQ(readCount + writeCount, stats.EncryptorErrors);
+    EXPECT_EQ(0u, stats.GeneratedZeroBlocks);
+}
+
+TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
+{
+    if (EncryptionMode != NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {
+        return;
+    }
+
+    Encryptor = std::make_shared<TMocEncryptor>(
+        TMocEncryptor::EBehaviour::EncryptToAllZeroes);
+    StartServer();
+
+    std::span hdr_w = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+    std::span writeBuffer = Memory.Allocate(
+        SectorSize * SectorsPerRequest,
+        Unaligned ? 1 : SectorSize);
+    std::span writeStatus = Memory.Allocate(1);
+
+    size_t writeCount = 0;
+    for (ui64 i = 0; i <= TotalSectorCount - SectorsPerRequest; ++i) {
+        reinterpret_cast<virtio_blk_req_hdr*>(hdr_w.data())->sector = i;
+        auto writeOp =
+            Client.WriteAsync(QueueIndex, {hdr_w, writeBuffer}, {writeStatus});
+        const ui32 len = writeOp.GetValueSync();
+        EXPECT_EQ(1u, len);
+        EXPECT_EQ(VIRTIO_BLK_S_IOERR, writeStatus[0]);
+        ++writeCount;
+    }
+
+    // validate stats
+    const auto stats = GetStats(0);
+
+    EXPECT_EQ(0u, stats.CompFailed);
+    EXPECT_EQ(0u, stats.SubFailed);
+    EXPECT_EQ(0u, stats.Completed);
+    EXPECT_EQ(0u, stats.Dequeued);
+    EXPECT_EQ(0u, stats.Submitted);
+    EXPECT_EQ(0u, stats.EncryptorErrors);
+    EXPECT_EQ(writeCount, stats.GeneratedZeroBlocks);
 }
 
 INSTANTIATE_TEST_SUITE_P(

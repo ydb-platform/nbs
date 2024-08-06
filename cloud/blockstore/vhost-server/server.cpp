@@ -222,13 +222,11 @@ TSimpleStats TServer::GetStats(const TSimpleStats& prevStats)
         return prevStats;
     }
 
-    TSimpleStats stats = *std::move(completionStats);
-
     for (ui32 i = 0; i != Queues.size(); ++i) {
-        stats += QueueStats[i];
+        *completionStats += QueueStats[i];
     }
 
-    return stats;
+    return *completionStats;
 }
 
 void TServer::QueueThreadFunc(ui32 queueIndex)
@@ -262,6 +260,8 @@ void TServer::SyncQueueStats(ui32 queueIndex, const TSimpleStats& queueStats)
     stats.Dequeued = queueStats.Dequeued;
     stats.Submitted = queueStats.Submitted;
     stats.SubFailed = queueStats.SubFailed;
+    stats.EncryptorErrors = queueStats.EncryptorErrors;
+    stats.GeneratedZeroBlocks = queueStats.GeneratedZeroBlocks;
 
     stats.Requests[0] = queueStats.Requests[VHD_BDEV_READ];
     stats.Requests[1] = queueStats.Requests[VHD_BDEV_WRITE];

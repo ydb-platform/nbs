@@ -21,8 +21,6 @@ private:
     TAutoEvent CompletionStatsEvent;
 
 public:
-    virtual ~TCompletionStats() = default;
-
     std::optional<TSimpleStats> Get(TDuration timeout) override
     {
         if (!IsCompletionStatsWaitTimeout) {
@@ -49,6 +47,8 @@ public:
 
         CompletionStats.Completed = stats.Completed;
         CompletionStats.CompFailed = stats.CompFailed;
+        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
+        CompletionStats.GeneratedZeroBlocks = stats.GeneratedZeroBlocks;
 
         CompletionStats.Requests = stats.Requests;
         CompletionStats.Times = stats.Times;
@@ -162,6 +162,10 @@ void DumpStats(
     write("submission_failed", stats.SubFailed - old.SubFailed);
     write("completed", stats.Completed - old.Completed);
     write("failed", stats.CompFailed - old.CompFailed);
+    write("encryptor_errors", stats.EncryptorErrors - old.EncryptorErrors);
+    write(
+        "generated_zero",
+        stats.GeneratedZeroBlocks - old.GeneratedZeroBlocks);
 
     request(0, "read");
     request(1, "write");

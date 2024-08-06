@@ -44,6 +44,20 @@ using TAioSubRequestHolder = std::unique_ptr<TAioSubRequest, TFreeDeleter>;
 using TAioCompoundRequestHolder = std::unique_ptr<TAioCompoundRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+enum class ESgListDecryptionResult
+{
+    Success,
+    EncryptorError,
+};
+
+enum class ESgListEncryptionResult
+{
+    Success,
+    EncryptorError,
+    EncryptorGenerateZeroBlock,
+};
+
 struct TAioDevice
 {
     i64 StartOffset = 0;
@@ -120,16 +134,17 @@ void PrepareIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now);
+    TCpuCycles now,
+    TSimpleStats& queueStats);
 
-[[nodiscard]] bool SgListCopyWithOptionalEncryption(
+[[nodiscard]] ESgListEncryptionResult SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
     char* dst,
     IEncryptor* encryptor,
     ui64 startSector);
 
-[[nodiscard]] bool SgListCopyWithOptionalDecryption(
+[[nodiscard]] ESgListDecryptionResult SgListCopyWithOptionalDecryption(
     TLog& Log,
     const char* src,
     const vhd_sglist& dst,

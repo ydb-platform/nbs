@@ -33,10 +33,14 @@ template <
         TBlockDataRef dstRef(dst.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
 
         if (CheckAllZeroes && IsAllZeroes(srcRef.Data(), srcRef.Size())) {
+            // If there was a reading from a block that has not yet been written,
+            // then we return a block consisting of only zeros.
             memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
         } else {
             if (!(encryptor.*CryptoOperation)(srcRef, dstRef, startSector + i))
             {
+                // Something went wrong inside the encryption or decryption
+                // operation.
                 return false;
             }
         }
@@ -50,7 +54,8 @@ void PrepareCompoundIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -86,15 +91,26 @@ void PrepareCompoundIO(
     auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
 
     if (bio->type == VHD_BDEV_WRITE) {
-        const bool succ = SgListCopyWithOptionalEncryption(
+        const auto result = SgListCopyWithOptionalEncryption(
             Log,
             bio->sglist,
             req->Buffer.get(),
             encryptor,
             bio->first_sector);
-        if (!succ) {
-            vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-            return;
+        switch (result) {
+            case ESgListEncryptionResult::Success: {
+                break;
+            }
+            case ESgListEncryptionResult::EncryptorError: {
+                ++queueStats.EncryptorErrors;
+                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                return;
+            }
+            case ESgListEncryptionResult::EncryptorGenerateZeroBlock: {
+                ++queueStats.GeneratedZeroBlocks;
+                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                return;
+            }
         }
     }
 
@@ -144,7 +160,7 @@ void PrepareCompoundIO(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool SgListCopyWithOptionalDecryption(
+ESgListDecryptionResult SgListCopyWithOptionalDecryption(
     TLog& Log,
     const char* src,
     const vhd_sglist& dst,
@@ -158,7 +174,7 @@ bool SgListCopyWithOptionalDecryption(
             std::memcpy(buffer.base, src, buffer.len);
             src += buffer.len;
         }
-        return true;
+        return ESgListDecryptionResult::Success;
     }
 
     for (auto& buffer: buffers) {
@@ -175,15 +191,15 @@ bool SgListCopyWithOptionalDecryption(
                 ", blocks count %" PRIu64,
                 startSector,
                 buffers.size());
-            return false;
+            return ESgListDecryptionResult::EncryptorError;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
         src += buffer.len;
     }
-    return true;
+    return ESgListDecryptionResult::Success;
 }
 
-bool SgListCopyWithOptionalEncryption(
+ESgListEncryptionResult SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
     char* dst,
@@ -197,7 +213,7 @@ bool SgListCopyWithOptionalEncryption(
             std::memcpy(dst, buffer.base, buffer.len);
             dst += buffer.len;
         }
-        return true;
+        return ESgListEncryptionResult::Success;
     }
 
     for (auto& buffer: buffers) {
@@ -214,12 +230,20 @@ bool SgListCopyWithOptionalEncryption(
                 ", blocks count %" PRIu64,
                 startSector,
                 buffers.size());
-            return false;
+            return ESgListEncryptionResult::EncryptorError;
+        }
+        if (IsAllZeroes(dstRef.Data(), dstRef.Size())) {
+            STORAGE_ERROR(
+                "Encryptor has generated a zero block! Start block %" PRIu64
+                ", blocks count %" PRIu64,
+                startSector,
+                buffers.size());
+            return ESgListEncryptionResult::EncryptorGenerateZeroBlock;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
         dst += buffer.len;
     }
-    return true;
+    return ESgListEncryptionResult::Success;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,7 +254,8 @@ void PrepareIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -248,7 +273,7 @@ void PrepareIO(
 
     if (it->EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
-        PrepareCompoundIO(encryptor, Log, devices, io, batch, now);
+        PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
         return;
     }
 
@@ -288,15 +313,26 @@ void PrepareIO(
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
         if (bio->type == VHD_BDEV_WRITE) {
-            const bool succ = SgListCopyWithOptionalEncryption(
+            const auto result = SgListCopyWithOptionalEncryption(
                 Log,
                 bio->sglist,
                 static_cast<char*>(req->Data[0].iov_base),
                 encryptor,
                 bio->first_sector);
-            if (!succ) {
-                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                return;
+            switch (result) {
+                case ESgListEncryptionResult::Success: {
+                    break;
+                }
+                case ESgListEncryptionResult::EncryptorError: {
+                    ++queueStats.EncryptorErrors;
+                    vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                    return;
+                }
+                case ESgListEncryptionResult::EncryptorGenerateZeroBlock: {
+                    ++queueStats.GeneratedZeroBlocks;
+                    vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                    return;
+                }
             }
         }
         // Instead of multiple buffers, we have allocated one large buffer.
