@@ -96,17 +96,18 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-nbs-driver
-          image: cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
-          imagePullPolicy: Always
+          image: nbs-csi-driver:latest
+          imagePullPolicy: IfNotPresent
           args:
             - "--name=nbs.csi.nebius.ai"
             - "--version=$(DRIVER_VERSION)"
             - "--node-id=$(KUBE_NODE_NAME)"
             - "--endpoint=/csi/csi.sock"
+            - "--nfs-vhost-port=0"
             - "--nfs-server-port=0"
           env:
             - name: DRIVER_VERSION
-              value: "v0.1"
+              value: "latest"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -122,8 +123,6 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-      imagePullSecrets:
-        - name: nbs-puller-secret
       volumes:
         - name: socket-dir
           emptyDir: {}
