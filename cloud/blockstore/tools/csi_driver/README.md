@@ -86,23 +86,20 @@ kubectl apply -f ./deploy/manifests/5-csi-deployment.yaml
 kubectl apply -f ./deploy/manifests/6-csi-daemonset.yaml
 ```
 
-# copy nbsd-lightweight, blockstore-nbd and blockstore-client to minikube and run them
+# copy nbsd-lightweight and blockstore-client to minikube and run them
 ```bash
-./ya make -r cloud/blockstore/apps/server_lightweight
-minikube cp cloud/blockstore/apps/server_lightweight/libiconv.so /home/libiconv.so
-minikube cp cloud/blockstore/apps/server_lightweight/liblibaio-dynamic.so /home/liblibaio-dynamic.so
-minikube cp cloud/blockstore/apps/server_lightweight/liblibidn-dynamic.so /home/liblibidn-dynamic.so
+./ya make -r cloud/blockstore/apps/server_lightweight -DFORCE_STATIC_LINKING=yes
 minikube cp cloud/blockstore/apps/server_lightweight/nbsd-lightweight /home/nbsd-lightweight
 minikube cp cloud/blockstore/tools/csi_driver/deploy/server.txt /home/server.txt
 
-./ya make -r cloud/blockstore/apps/client
+./ya make -r cloud/blockstore/apps/client -DFORCE_STATIC_LINKING=yes
 minikube cp cloud/blockstore/apps/client/blockstore-client /home/blockstore-client
 ```
 
 ```bash
 minikube ssh
 cd /home
-sudo mkdir -p /Berkanavt/nbs-server/endpoints
+sudo mkdir -p /etc/nbs-server/endpoints
 sudo chmod +x nbsd-lightweight
 sudo chmod +x blockstore-client
 sudo ./nbsd-lightweight --service local --server-file server.txt --verbose
