@@ -114,7 +114,7 @@ func (r *runnerForRun) executeTask(
 
 	logging.Info(
 		ctx,
-		"started execution %v with id %v (run)",
+		"started execution of %v with id %v (run)",
 		taskType,
 		taskID,
 	)
