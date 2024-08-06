@@ -114,7 +114,7 @@ func (r *runnerForRun) executeTask(
 
 	logging.Info(
 		ctx,
-		"started %v with id %v",
+		"started execution %v with id %v (run)",
 		taskType,
 		taskID,
 	)
@@ -364,7 +364,7 @@ func (r *runnerForCancel) executeTask(
 
 	logging.Info(
 		ctx,
-		"started execution of %v with task id %v",
+		"started execution of %v with task id %v (cancel)",
 		taskType,
 		taskID,
 	)
