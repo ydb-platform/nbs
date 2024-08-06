@@ -305,4 +305,8 @@ message TStorageConfig
     // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
+
+    // Blob compression experiment params.
+    optional uint32 BlobCompressionRate = 364;
+    optional string BlobCompressionCodec = 365;
 }

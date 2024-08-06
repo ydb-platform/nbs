@@ -217,6 +217,9 @@ public:
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
 
+    ui32 GetBlobCompressionRate() const;
+    TString GetBlobCompressionCodec() const;
+
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 };
 
