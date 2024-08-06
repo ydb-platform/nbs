@@ -32,7 +32,7 @@ func newEndpointPicker(
 ) *endpointPicker {
 
 	healthyEndpoints := make([]string, len(endpoints))
-	_ = copy(healthyEndpoints, endpoints)
+	copy(healthyEndpoints, endpoints)
 
 	p := &endpointPicker{
 		endpoints:        endpoints,
