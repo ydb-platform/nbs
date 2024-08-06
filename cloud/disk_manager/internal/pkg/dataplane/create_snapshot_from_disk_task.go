@@ -110,10 +110,9 @@ func (t *createSnapshotFromDiskTask) run(
 
 	snapshotMeta, err := t.storage.CreateSnapshot(
 		ctx,
-		t.request.DstSnapshotId,
-		&storage.IncrementalInfo{
-			ZoneID:         t.request.SrcDisk.ZoneId,
-			DiskID:         t.request.SrcDisk.DiskId,
+		storage.SnapshotMeta{
+			ID:             t.request.DstSnapshotId,
+			Disk:           t.request.SrcDisk,
 			CheckpointID:   t.request.SrcDiskCheckpointId,
 			BaseSnapshotID: t.request.BaseSnapshotId,
 		},

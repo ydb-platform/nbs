@@ -54,8 +54,9 @@ func (t *createSnapshotFromURLTask) Run(
 
 	_, err := t.storage.CreateSnapshot(
 		ctx,
-		t.request.DstSnapshotId,
-		nil, // incrementalInfo
+		storage.SnapshotMeta{
+			ID: t.request.DstSnapshotId,
+		},
 	)
 	if err != nil {
 		return err

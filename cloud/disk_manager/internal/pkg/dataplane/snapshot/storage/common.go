@@ -45,12 +45,12 @@ func snapshotStatusToString(status snapshotStatus) string {
 // the mapping code.
 type snapshotState struct {
 	id                string
-	creatingAt        time.Time
-	createdAt         time.Time
-	deletingAt        time.Time
 	zoneID            string
 	diskID            string
 	checkpointID      string
+	creatingAt        time.Time
+	createdAt         time.Time
+	deletingAt        time.Time
 	baseSnapshotID    string
 	size              uint64
 	storageSize       uint64
@@ -78,12 +78,12 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 func (s *snapshotState) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
-		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
-		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
-		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
 		persistence.StructFieldValue("disk_id", persistence.UTF8Value(s.diskID)),
 		persistence.StructFieldValue("checkpoint_id", persistence.UTF8Value(s.checkpointID)),
+		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.createdAt)),
+		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("base_snapshot_id", persistence.UTF8Value(s.baseSnapshotID)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
@@ -97,12 +97,12 @@ func (s *snapshotState) structValue() persistence.Value {
 func scanSnapshotState(res persistence.Result) (state snapshotState, err error) {
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
-		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
-		persistence.OptionalWithDefault("created_at", &state.createdAt),
-		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("zone_id", &state.zoneID),
 		persistence.OptionalWithDefault("disk_id", &state.diskID),
 		persistence.OptionalWithDefault("checkpoint_id", &state.checkpointID),
+		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
+		persistence.OptionalWithDefault("created_at", &state.createdAt),
+		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("base_snapshot_id", &state.baseSnapshotID),
 		persistence.OptionalWithDefault("size", &state.size),
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
@@ -140,12 +140,12 @@ func scanSnapshotStates(ctx context.Context, res persistence.Result) ([]snapshot
 func snapshotStateStructTypeString() string {
 	return `Struct<
 		id: Utf8,
-		creating_at: Timestamp,
-		created_at: Timestamp,
-		deleting_at: Timestamp,
 		zone_id: Utf8,
 		disk_id: Utf8,
 		checkpoint_id: Utf8,
+		creating_at: Timestamp,
+		created_at: Timestamp,
+		deleting_at: Timestamp,
 		base_snapshot_id: Utf8,
 		size: Uint64,
 		storage_size: Uint64,
@@ -153,14 +153,4 @@ func snapshotStateStructTypeString() string {
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
 		status: Int64>`
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Temporary structure for copying data from incremental table in controlplane.
-type IncrementalInfo struct {
-	ZoneID         string
-	DiskID         string
-	CheckpointID   string
-	BaseSnapshotID string
 }

@@ -424,8 +424,9 @@ func TestCreateSnapshot(t *testing.T) {
 
 			snapshotMeta, err := f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 			require.False(t, snapshotMeta.Ready)
@@ -433,8 +434,9 @@ func TestCreateSnapshot(t *testing.T) {
 			// Check idempotency.
 			_, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 
@@ -448,8 +450,9 @@ func TestCreateSnapshot(t *testing.T) {
 			// Check idempotency.
 			snapshotMeta, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 			require.True(t, snapshotMeta.Ready)
@@ -465,8 +468,9 @@ func TestDeletingSnapshot(t *testing.T) {
 
 			_, err := f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 
@@ -483,8 +487,9 @@ func TestDeletingSnapshot(t *testing.T) {
 
 			_, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -495,8 +500,9 @@ func TestDeletingSnapshot(t *testing.T) {
 
 			_, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -530,8 +536,9 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 
 			_, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -547,8 +554,9 @@ func TestClearDeletingSnapshots(t *testing.T) {
 
 			_, err := f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 
@@ -590,8 +598,9 @@ func TestClearDeletingSnapshots(t *testing.T) {
 
 			_, err = f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 		})
@@ -1108,8 +1117,9 @@ func TestCheckSnapshotReady(t *testing.T) {
 
 			_, err := f.storage.CreateSnapshot(
 				f.ctx,
-				"snapshot",
-				nil, // incrementalInfo
+				SnapshotMeta{
+					ID: "snapshot",
+				},
 			)
 			require.NoError(t, err)
 

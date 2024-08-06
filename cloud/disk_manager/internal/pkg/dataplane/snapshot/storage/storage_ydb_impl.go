@@ -39,8 +39,7 @@ func makeShardID(s string) uint64 {
 func (s *storageYDB) createSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
-	snapshotID string,
-	incrementalInfo *IncrementalInfo,
+	snapshot SnapshotMeta,
 ) (created *SnapshotMeta, err error) {
 
 	defer s.metrics.StatOperation("createSnapshot")(&err)
@@ -60,7 +59,7 @@ func (s *storageYDB) createSnapshot(
 		from snapshots
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -83,7 +82,7 @@ func (s *storageYDB) createSnapshot(
 		if state.status >= snapshotStatusDeleting {
 			return nil, task_errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting snapshot with id %v",
-				snapshotID,
+				snapshot.ID,
 			)
 		}
 
@@ -92,16 +91,15 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
-		id:         snapshotID,
+		id:         snapshot.ID,
 		creatingAt: time.Now(),
 		status:     snapshotStatusCreating,
 	}
-
-	if incrementalInfo != nil {
-		state.zoneID = incrementalInfo.ZoneID
-		state.diskID = incrementalInfo.DiskID
-		state.checkpointID = incrementalInfo.CheckpointID
-		state.baseSnapshotID = incrementalInfo.BaseSnapshotID
+	if snapshot.Disk != nil {
+		state.zoneID = snapshot.Disk.ZoneId
+		state.diskID = snapshot.Disk.DiskId
+		state.checkpointID = snapshot.CheckpointID
+		state.baseSnapshotID = snapshot.BaseSnapshotID
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`

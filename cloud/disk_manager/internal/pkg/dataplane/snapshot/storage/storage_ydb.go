@@ -25,8 +25,7 @@ type storageYDB struct {
 
 func (s *storageYDB) CreateSnapshot(
 	ctx context.Context,
-	snapshotID string,
-	incrementalInfo *IncrementalInfo,
+	snapshot SnapshotMeta,
 ) (*SnapshotMeta, error) {
 
 	var created *SnapshotMeta
@@ -38,8 +37,7 @@ func (s *storageYDB) CreateSnapshot(
 			created, err = s.createSnapshot(
 				ctx,
 				session,
-				snapshotID,
-				incrementalInfo,
+				snapshot,
 			)
 			return err
 		},

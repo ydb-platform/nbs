@@ -19,11 +19,10 @@ type StorageMock struct {
 
 func (s *StorageMock) CreateSnapshot(
 	ctx context.Context,
-	snapshotID string,
-	incrementalInfo *storage.IncrementalInfo,
+	snapshot storage.SnapshotMeta,
 ) (*storage.SnapshotMeta, error) {
 
-	args := s.Called(ctx, snapshotID, incrementalInfo)
+	args := s.Called(ctx, snapshot)
 	return args.Get(0).(*storage.SnapshotMeta), args.Error(1)
 }
 

@@ -59,8 +59,11 @@ func Create(
 			persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
-			// Even if created_at timestamp is incorrect then we will just copy
-			// a little more data.
+			// We use timestamp to make it easier to find the latest snapshot
+			// and it is OK to depend on time here because clock discrepancy
+			// won't hurt the correctness, it can only increase amount of data
+			// to be copied but the probability of such event is very low and
+			// can be neglected.
 			persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 			persistence.WithPrimaryKeyColumn("zone_id", "disk_id", "snapshot_id", "created_at"),
 		),
@@ -176,12 +179,12 @@ func Drop(
 func snapshotStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
