@@ -39,7 +39,7 @@ func makeShardID(s string) uint64 {
 func (s *storageYDB) createSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
-	snapshot SnapshotMeta,
+	snapshotMeta SnapshotMeta,
 ) (created *SnapshotMeta, err error) {
 
 	defer s.metrics.StatOperation("createSnapshot")(&err)
@@ -59,7 +59,7 @@ func (s *storageYDB) createSnapshot(
 		from snapshots
 		where id = $id
 	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotMeta.ID)),
 	)
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (s *storageYDB) createSnapshot(
 		if state.status >= snapshotStatusDeleting {
 			return nil, task_errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting snapshot with id %v",
-				snapshot.ID,
+				snapshotMeta.ID,
 			)
 		}
 
@@ -91,15 +91,15 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
-		id:         snapshot.ID,
+		id:         snapshotMeta.ID,
 		creatingAt: time.Now(),
 		status:     snapshotStatusCreating,
 	}
-	if snapshot.Disk != nil {
-		state.zoneID = snapshot.Disk.ZoneId
-		state.diskID = snapshot.Disk.DiskId
-		state.checkpointID = snapshot.CheckpointID
-		state.baseSnapshotID = snapshot.BaseSnapshotID
+	if snapshotMeta.Disk != nil {
+		state.zoneID = snapshotMeta.Disk.ZoneId
+		state.diskID = snapshotMeta.Disk.DiskId
+		state.checkpointID = snapshotMeta.CheckpointID
+		state.baseSnapshotID = snapshotMeta.BaseSnapshotID
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -180,7 +180,7 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
 			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
-			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
+			persistence.ValueParam("$created_at", persistence.TimestampValue(state.createdAt)),
 		)
 		if err != nil {
 			return err
@@ -208,7 +208,7 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(state.id)),
 			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
 			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(state.baseSnapshotID)),
-			persistence.ValueParam("$created_at", persistence.TimestampValue(time.Now())),
+			persistence.ValueParam("$created_at", persistence.TimestampValue(state.createdAt)),
 		)
 		if err != nil {
 			return err

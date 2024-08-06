@@ -117,7 +117,7 @@ func (s *legacyStorage) CheckSnapshotReady(
 
 func (s *legacyStorage) CreateSnapshot(
 	ctx context.Context,
-	snapshot SnapshotMeta,
+	snapshotMeta SnapshotMeta,
 ) (*SnapshotMeta, error) {
 
 	return nil, task_errors.NewNonRetriableErrorf("not implemented")

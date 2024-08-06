@@ -38,7 +38,7 @@ type ChunkMapEntry struct {
 type Storage interface {
 	CreateSnapshot(
 		ctx context.Context,
-		snapshot SnapshotMeta,
+		snapshotMeta SnapshotMeta,
 	) (*SnapshotMeta, error)
 
 	SnapshotCreated(
