@@ -15,11 +15,13 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerCommon
+class TConfigInitializerCommon
     : public NCloud::NStorage::TConfigInitializerYdbBase
 {
+protected:
     using TApplyConfigFn = std::function<void(const TString&)>;
 
+public:
     TOptionsCommonPtr Options;
 
     TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -33,12 +35,15 @@ struct TConfigInitializerCommon
     void InitFeaturesConfig();
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+
+    NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
+
+private:
     void ApplyDiagnosticsConfig(const TString& text);
     void ApplyStorageConfig(const TString& text);
     void ApplyFeaturesConfig(const TString& text);
 
-    NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
-
+protected:
     static void ApplyConfigs(
         const NKikimrConfig::TAppConfig& config,
         const THashMap<TString, TApplyConfigFn>& handlers);

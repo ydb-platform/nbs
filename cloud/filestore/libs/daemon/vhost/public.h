@@ -12,7 +12,7 @@ using TOptionsVhostPtr = std::shared_ptr<TOptionsVhost>;
 struct TConfigInitializerVhost;
 using TConfigInitializerVhostPtr = std::shared_ptr<TConfigInitializerVhost>;
 
-struct TVhostModuleFactories;
+class TVhostModuleFactories;
 using TVhostModuleFactoriesPtr = std::shared_ptr<TVhostModuleFactories>;
 
 }   // namespace NCloud::NFileStore::NDaemon

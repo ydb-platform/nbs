@@ -121,7 +121,7 @@ void TConfigInitializerCommon::ApplyConfigs(
     const NKikimrConfig::TAppConfig& config,
     const THashMap<TString, TApplyConfigFn>& handlers)
 {
-    for (auto& item : config.GetNamedConfigs()) {
+    for (const auto& item: config.GetNamedConfigs()) {
         TStringBuf name = item.GetName();
         if (!name.SkipPrefix("Cloud.Filestore.")) {
             continue;

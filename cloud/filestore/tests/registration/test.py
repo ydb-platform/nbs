@@ -108,7 +108,7 @@ def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
 
     enable_custom_cms_configs(kikimr_cluster.client)
 
-    # nfs-server
+    # filestore-server
     storage = TStorageConfig()
     storage.NodeIndexCacheMaxNodes = 100
     storage.SchemeShardDir = "/Root"
