@@ -506,7 +506,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	resp, err := nodeService.NodeGetCapabilities(
 		ctx,
 		&csi.NodeGetCapabilitiesRequest{})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	capabilityIndex := slices.IndexFunc(
 		resp.GetCapabilities(),
