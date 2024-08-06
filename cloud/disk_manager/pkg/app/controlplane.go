@@ -366,6 +366,7 @@ func initControlplane(
 
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsFactory := nfs.NewFactoryWithCreds(
+		ctx,
 		config.GetNfsConfig(),
 		creds,
 		nfsClientMetricsRegistry,

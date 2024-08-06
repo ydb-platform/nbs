@@ -7,7 +7,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -97,6 +96,8 @@ type factory struct {
 	config      *nfs_config.ClientConfig
 	credentials auth.Credentials
 	metrics     clientMetrics
+	// map from zone
+	endpointPickers map[string]*endpointPicker
 }
 
 func (f *factory) NewClient(
@@ -106,11 +107,17 @@ func (f *factory) NewClient(
 
 	zone, ok := f.config.GetZones()[zoneID]
 	if !ok {
-		// This should be interpreted as non retriable error by task infrastructure.
 		return nil, errors.NewNonRetriableErrorf(
 			"unknown zone %q, available zones: %q",
 			zoneID,
 			maps.Keys(f.config.GetZones()),
+		)
+	}
+
+	if len(zone.Endpoints) == 0 {
+		return nil, errors.NewNonRetriableErrorf(
+			"no endpoints for zone %q",
+			zoneID,
 		)
 	}
 
@@ -123,13 +130,6 @@ func (f *factory) NewClient(
 		clientCreds = nil
 	}
 
-	if len(zone.Endpoints) == 0 {
-		return nil, errors.NewNonRetriableErrorf(
-			"no endpoints for zone %q",
-			zoneID,
-		)
-	}
-
 	durableClientTimeout, err := time.ParseDuration(
 		f.config.GetDurableClientTimeout(),
 	)
@@ -137,9 +137,11 @@ func (f *factory) NewClient(
 		return nil, err
 	}
 
+	endpointPicker, _ := f.endpointPickers[zoneID]
+
 	nfs, err := nfs_client.NewClient(
 		&nfs_client.GrpcClientOpts{
-			Endpoint:    common.RandomElement(zone.Endpoints),
+			Endpoint:    endpointPicker.pickEndpoint(),
 			Credentials: clientCreds,
 		},
 		&nfs_client.DurableClientOpts{
@@ -150,7 +152,6 @@ func (f *factory) NewClient(
 		},
 		NewNfsClientLog(nfs_client.LOG_DEBUG),
 	)
-
 	if err != nil {
 		return nil, errors.NewRetriableError(err)
 	}
@@ -179,6 +180,7 @@ func (f *factory) NewClientFromDefaultZone(
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewFactoryWithCreds(
+	ctx context.Context,
 	config *nfs_config.ClientConfig,
 	creds auth.Credentials,
 	metricsRegistry metrics.Registry,
@@ -193,17 +195,24 @@ func NewFactoryWithCreds(
 		errors:   metricsRegistry.Counter("errors"),
 	}
 
+	endpointPickers := make(map[string]*endpointPicker)
+	for zoneID, zone := range config.GetZones() {
+		endpointPickers[zoneID] = newEndpointPicker(ctx, zone.GetEndpoints())
+	}
+
 	return &factory{
-		config:      config,
-		credentials: creds,
-		metrics:     clientMetrics,
+		config:          config,
+		credentials:     creds,
+		metrics:         clientMetrics,
+		endpointPickers: endpointPickers,
 	}
 }
 
 func NewFactory(
+	ctx context.Context,
 	config *nfs_config.ClientConfig,
 	metricsRegistry metrics.Registry,
 ) Factory {
 
-	return NewFactoryWithCreds(config, nil, metricsRegistry)
+	return NewFactoryWithCreds(ctx, config, nil, metricsRegistry)
 }
