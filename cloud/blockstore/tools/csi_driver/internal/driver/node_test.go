@@ -23,7 +23,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
+func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -35,6 +35,10 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	podID := "test-pod-id-13"
 	actualClientId := "testClientId-test-pod-id-13"
 	diskID := "test-disk-id-42"
+	deviceName := diskID
+	if deviceNameOpt != nil {
+		deviceName = *deviceNameOpt
+	}
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := filepath.Join(socketsDir, podID, diskID)
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
@@ -69,7 +73,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 			DiskId:           diskID,
 			InstanceId:       podID,
 			ClientId:         actualClientId,
-			DeviceName:       diskID,
+			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: 8,
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
@@ -99,6 +103,13 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	mounter.On("IsMountPoint", targetPath).Return(false, nil)
 	mounter.On("Mount", sourcePath, targetPath, "", []string{"bind"}).Return(nil)
 
+	volumeContext := map[string]string{
+		backendVolumeContextKey: backend,
+	}
+	if deviceNameOpt != nil {
+		volumeContext[deviceNameVolumeContextKey] = *deviceNameOpt
+	}
+
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: "testStagingTargetPath",
@@ -108,9 +119,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 				Mount: &csi.VolumeCapability_MountVolume{},
 			},
 		},
-		VolumeContext: map[string]string{
-			"backend": backend,
-		},
+		VolumeContext: volumeContext,
 	})
 	require.NoError(t, err)
 
@@ -156,11 +165,16 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 }
 
 func TestPublishUnpublishDiskForKubevirt(t *testing.T) {
-	doTestPublishUnpublishVolumeForKubevirt(t, "nbs")
+	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", nil)
+}
+
+func TestPublishUnpublishDiskForKubevirtSetDeviceName(t *testing.T) {
+	deviceName := "test-disk-name-42"
+	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName)
 }
 
 func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
-	doTestPublishUnpublishVolumeForKubevirt(t, "nfs")
+	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
