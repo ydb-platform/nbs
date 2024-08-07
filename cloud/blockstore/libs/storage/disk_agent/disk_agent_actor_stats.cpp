@@ -26,7 +26,7 @@ enum class EDeviceHealthStatus
 EDeviceHealthStatus GetHealthStatus(EWellKnownResultCodes code)
 {
     switch (code) {
-        case EWellKnownResultCodes ::S_OK:
+        case EWellKnownResultCodes::S_OK:
             return EDeviceHealthStatus::Healthy;
         case EWellKnownResultCodes::E_REJECTED:
             return EDeviceHealthStatus::Unknown;
