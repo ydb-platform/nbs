@@ -148,7 +148,10 @@ private:
             explicit TRequestMetrics(
                 TVector<TRequestMetrics*>* allRequestMetrics)
             {
-                allRequestMetrics->push_back(this);
+                if (allRequestMetrics)
+                {
+                    allRequestMetrics->push_back(this);
+                }
             }
 
             std::atomic<i64> Count{0};
