@@ -134,6 +134,17 @@ struct TBlockWithBytes
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlockBytesMeta
+{
+    ui64 NodeId = 0;
+    ui32 BlockIndex = 0;
+    ui64 MinCommitId = 0;
+    ui32 OffsetInBlock = 0;
+    TString Data;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // XXX not the best place for this struct
 struct TFlushBytesCleanupInfo
 {
