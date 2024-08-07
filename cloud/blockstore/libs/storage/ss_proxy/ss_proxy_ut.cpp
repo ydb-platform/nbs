@@ -1459,22 +1459,23 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         CreateVolume(runtime, "vol0", 4096);
 
         runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
-            Y_UNUSED(runtime);
-            switch (ev->GetTypeRewrite()) {
-                case TEvSSProxy::EvDescribeSchemeResponse: {
-                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
-                    using TDescription = NKikimrSchemeOp::TPathDescription;
-                    auto* msg =
-                        ev->template Get<TEvent>();
-                    TDescription& desc =
-                        const_cast<TDescription&>(msg->PathDescription);
-                    desc.
-                        MutableBlockStoreVolumeDescription()->
-                        SetVolumeTabletId(0);
+                Y_UNUSED(runtime);
+                switch (ev->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeSchemeResponse: {
+                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                        using TDescription = NKikimrSchemeOp::TPathDescription;
+                        auto* msg =
+                            ev->template Get<TEvent>();
+                        TDescription& desc =
+                            const_cast<TDescription&>(msg->PathDescription);
+                        desc.
+                            MutableBlockStoreVolumeDescription()->
+                            SetVolumeTabletId(0);
+                    }
                 }
+                return false;
             }
-            return false;
-        });
+        );
 
         TActorId sender = runtime.AllocateEdgeActor();
 
@@ -1501,28 +1502,29 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         CreateVolume(runtime, "vol0", 4096);
 
         runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
-            Y_UNUSED(runtime);
-            switch (ev->GetTypeRewrite()) {
-                case TEvSSProxy::EvDescribeSchemeResponse: {
-                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
-                    using TDescription = NKikimrSchemeOp::TPathDescription;
-                    auto* msg =
-                        ev->template Get<TEvent>();
-                    auto& desc =
-                        const_cast<TDescription&>(msg->PathDescription);
-                    if (FAILED(msg->GetStatus()) ||
-                        desc.GetSelf().GetPathType() !=
-                        NKikimrSchemeOp::EPathTypeBlockStoreVolume)
-                    {
-                        break;
+                Y_UNUSED(runtime);
+                switch (ev->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeSchemeResponse: {
+                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                        using TDescription = NKikimrSchemeOp::TPathDescription;
+                        auto* msg =
+                            ev->template Get<TEvent>();
+                        auto& desc =
+                            const_cast<TDescription&>(msg->PathDescription);
+                        if (FAILED(msg->GetStatus()) ||
+                            desc.GetSelf().GetPathType() !=
+                            NKikimrSchemeOp::EPathTypeBlockStoreVolume)
+                        {
+                            break;
+                        }
+                        desc.
+                            MutableBlockStoreVolumeDescription()->
+                            MutablePartitions()->at(0).SetTabletId(0);
                     }
-                    desc.
-                        MutableBlockStoreVolumeDescription()->
-                        MutablePartitions()->at(0).SetTabletId(0);
                 }
+                return false;
             }
-            return false;
-        });
+        );
 
         TActorId sender = runtime.AllocateEdgeActor();
 

@@ -99,28 +99,30 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
 
     const auto pathType = msg->PathDescription.GetSelf().GetPathType();
 
-    if (pathType != NKikimrSchemeOp::EPathTypeFileStore) {
-        auto path = GetFileSystemPath(
-            Config->GetSchemeShardDir(),
-            FileSystemId);
+    auto path = GetFileSystemPath(
+        Config->GetSchemeShardDir(),
+        FileSystemId);
 
+    if (pathType != NKikimrSchemeOp::EPathTypeFileStore) {
         ReplyAndDie(
             ctx,
             MakeError(
-                E_FAIL,
+                E_INVALID_STATE,
                 TStringBuilder()
-                    << "Described path is not a filestore volume: "
-                    << path.Quote()
-            )
-        );
+                    << "Described path is not a filestore: "
+                    << path.Quote()));
         return;
     }
 
-    // Empty IndexTabletId means that tablet is not configured by Hive yet.
+    // Zero IndexTabletId means that tablet is not configured by Hive yet.
     if (!msg->PathDescription.GetFileStoreDescription().GetIndexTabletId()) {
         ReplyAndDie(
             ctx,
-            MakeError(E_REJECTED, "Filestore is not configured yet"));
+            MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Filestore volume " << path.Quote()
+                    << " has zero IndexTabletId"));
         return;
     }
 
