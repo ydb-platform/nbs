@@ -325,5 +325,5 @@ message TStorageConfig
     optional string BlobCompressionCodec = 365;
 
     // Number of ranges with zero compaction stats to delete per tx.
-    optional uint32 MaxZeroCompactionRangesToDeletePerTx = 364;
+    optional uint32 MaxZeroCompactionRangesToDeletePerTx = 366;
 }
