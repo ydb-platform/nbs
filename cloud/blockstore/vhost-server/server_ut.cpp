@@ -39,7 +39,7 @@ using TUnaligned = bool;
 using TTestParams =
     std::tuple<NProto::EEncryptionMode, TSectorsInRequest, TUnaligned>;
 
-class TMocEncryptor: public IEncryptor
+class TMockEncryptor: public IEncryptor
 {
 public:
     enum class EBehaviour
@@ -52,7 +52,7 @@ private:
     EBehaviour Behaviour;
 
 public:
-    explicit TMocEncryptor(EBehaviour behaviour)
+    explicit TMockEncryptor(EBehaviour behaviour)
         : Behaviour(behaviour)
     {}
 
@@ -859,8 +859,8 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
         return;
     }
 
-    Encryptor = std::make_shared<TMocEncryptor>(
-        TMocEncryptor::EBehaviour::ReturnError);
+    Encryptor = std::make_shared<TMockEncryptor>(
+        TMockEncryptor::EBehaviour::ReturnError);
     StartServer();
 
     // Fill storage with random data
@@ -931,8 +931,8 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
         return;
     }
 
-    Encryptor = std::make_shared<TMocEncryptor>(
-        TMocEncryptor::EBehaviour::EncryptToAllZeroes);
+    Encryptor = std::make_shared<TMockEncryptor>(
+        TMockEncryptor::EBehaviour::EncryptToAllZeroes);
     StartServer();
 
     std::span hdr_w = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
