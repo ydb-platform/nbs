@@ -1499,6 +1499,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         TNodeSet Nodes;
+        NProto::TError Error;
 
         TAddBlob(
                 TRequestInfoPtr requestInfo,
@@ -1526,6 +1527,7 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Nodes.clear();
+            Error.Clear();
         }
     };
 

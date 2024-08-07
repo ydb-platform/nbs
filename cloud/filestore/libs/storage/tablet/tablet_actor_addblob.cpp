@@ -61,7 +61,9 @@ public:
                 break;
         }
 
-        UpdateCompactionMap(db, args);
+        if (!HasError(args.Error)) {
+            UpdateCompactionMap(db, args);
+        }
     }
 
 private:
@@ -84,6 +86,21 @@ private:
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
             return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+        }
+
+        for (const auto& part: args.UnalignedDataParts) {
+            const auto offset = part.OffsetInBlock
+                + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            auto error = Tablet.CheckFreshBytes(
+                part.NodeId,
+                part.MinCommitId,
+                offset,
+                part.Data);
+
+            if (HasError(error)) {
+                args.Error = std::move(error);
+                return;
+            }
         }
 
         for (auto& blob: args.MergedBlobs) {
@@ -128,6 +145,9 @@ private:
         for (const auto& part: args.UnalignedDataParts) {
             const auto offset = part.OffsetInBlock
                 + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            // TODO: check whether MinCommitId is not older than what's
+            // expected by FreshBytes
+            // if it's older, return an error
             Tablet.WriteFreshBytes(
                 db,
                 part.NodeId,
@@ -452,7 +472,8 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         args.RequestInfo->CallContext,
         "AddBlob");
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);

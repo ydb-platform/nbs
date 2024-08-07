@@ -401,8 +401,6 @@ void TIndexTabletActor::HandleAddData(
         unalignedDataParts.push_back({
             0, // NodeId is not known at this point
             blockIndex,
-            // TODO: fix the situation when the current chunk's FirstCommitId
-            // is greater than CommitId from the request
             msg->Record.GetCommitId(),
             offsetInBlock,
             std::move(*part.MutableContent())});
