@@ -291,13 +291,9 @@ def test_nbs_csi_driver_volume_stat():
             assert 0 != usage["total"]
             assert usage["total"] == usage["available"] + usage["used"]
 
-        mountPath = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
-
-        with open(mountPath / "test1.file", "wb") as out:
-            out.write(b'\0')
-
-        with open(mountPath / "test2.file", "wb") as out:
-            out.write(b'\0')
+        mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
+        (mount_path / "test1.file").write_bytes(b"\0")
+        (mount_path / "test2.file").write_bytes(b"\0")
 
         stats2 = env.csi.volumestats(pod_id, volume_name)
         assert "usage" in stats2
