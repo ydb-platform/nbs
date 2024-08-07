@@ -150,6 +150,7 @@ kubectl -n nbs logs pod/nbs-csi-driver-node-xxxxx -c csi-nbs-driver
 kubectl -n nbs logs pod/nbs-csi-driver-controller-xxxxx -c csi-nbs-driver
 kubectl -n nbs delete deployment.apps/nbs-csi-driver-controller
 kubectl get CSIDriver
+kubectl get --raw "/api/v1/nodes/minikube/proxy/stats/summary"
 minikube ssh
   docker ps
   docker exec -it $MYCONTAINER /bin/bash
