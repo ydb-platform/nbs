@@ -188,7 +188,7 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
     const auto& volumeDescription =
         pathDescription.GetBlockStoreVolumeDescription();
 
-    // Emptiness of VolumeTabletId any of partition tablet ids means that
+    // Emptiness of VolumeTabletId or any of partition tablet ids means that
     // blockstore volume is not configured by Hive yet.
     const auto& descr = msg->PathDescription.GetBlockStoreVolumeDescription();
     bool idCheck = descr.GetVolumeTabletId();
