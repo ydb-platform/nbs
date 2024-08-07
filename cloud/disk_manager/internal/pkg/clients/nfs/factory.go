@@ -137,7 +137,7 @@ func (f *factory) NewClient(
 		return nil, err
 	}
 
-	endpointPicker, _ := f.endpointPickers[zoneID]
+	endpointPicker := f.endpointPickers[zoneID]
 
 	nfs, err := nfs_client.NewClient(
 		&nfs_client.GrpcClientOpts{
