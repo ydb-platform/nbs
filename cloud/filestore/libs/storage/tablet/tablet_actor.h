@@ -146,9 +146,9 @@ private:
         struct TRequestMetrics
         {
             explicit TRequestMetrics(
-                TVector<TRequestMetrics*>& allRequestMetrics)
+                TVector<TRequestMetrics*>* allRequestMetrics)
             {
-                allRequestMetrics.push_back(this);
+                allRequestMetrics->push_back(this);
             }
 
             std::atomic<i64> Count{0};
@@ -166,28 +166,29 @@ private:
         struct TCompactionMetrics: TRequestMetrics
         {
             explicit TCompactionMetrics(
-                    TVector<TRequestMetrics*>& allRequestMetrics)
+                    TVector<TRequestMetrics*>* allRequestMetrics)
                 : TRequestMetrics(allRequestMetrics)
             {}
 
             std::atomic<i64> DudCount{0};
         };
-        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(14)};
+        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(5)};
 
-        TRequestMetrics ReadBlob{AllRequestMetrics};
-        TRequestMetrics WriteBlob{AllRequestMetrics};
-        TRequestMetrics PatchBlob{AllRequestMetrics};
-        TRequestMetrics ReadData{AllRequestMetrics};
-        TRequestMetrics DescribeData{AllRequestMetrics};
-        TRequestMetrics WriteData{AllRequestMetrics};
-        TRequestMetrics AddData{AllRequestMetrics};
-        TRequestMetrics GenerateBlobIds{AllRequestMetrics};
-        TCompactionMetrics Compaction{AllRequestMetrics};
-        TRequestMetrics Cleanup{AllRequestMetrics};
-        TRequestMetrics Flush{AllRequestMetrics};
-        TRequestMetrics FlushBytes{AllRequestMetrics};
-        TRequestMetrics TrimBytes{AllRequestMetrics};
-        TRequestMetrics CollectGarbage{AllRequestMetrics};
+        // we only need metrics of operations that load the network.
+        TRequestMetrics ReadData{&AllRequestMetrics};
+        TRequestMetrics DescribeData{&AllRequestMetrics};
+        TRequestMetrics WriteData{&AllRequestMetrics};
+        TRequestMetrics Flush{&AllRequestMetrics};
+        TCompactionMetrics Compaction{&AllRequestMetrics};
+        TRequestMetrics AddData{nullptr};
+        TRequestMetrics GenerateBlobIds{nullptr};
+        TRequestMetrics Cleanup{nullptr};
+        TRequestMetrics ReadBlob{nullptr};
+        TRequestMetrics WriteBlob{nullptr};
+        TRequestMetrics PatchBlob{nullptr};
+        TRequestMetrics FlushBytes{nullptr};
+        TRequestMetrics TrimBytes{nullptr};
+        TRequestMetrics CollectGarbage{nullptr};
 
         i64 LastNetworkMetric = 0;
 

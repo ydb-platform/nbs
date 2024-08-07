@@ -235,6 +235,8 @@ public:
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
 
+    bool GetEnableSendingMetricsToHive() const;
+
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 };
 

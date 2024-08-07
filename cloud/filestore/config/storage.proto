@@ -323,4 +323,9 @@ message TStorageConfig
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
+
+    // At the moment, due to the specifics of the implementation,
+    // we sending a value much greater than it actually is.
+    // Because of this, HIVE may consider controls overloaded, even if the network bandwidth is still sufficient
+    optional bool EnableSendingMetricsToHive = 366;
 }
