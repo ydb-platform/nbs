@@ -1449,6 +1449,96 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 response->GetError().GetMessage());
         }
     }
+
+    Y_UNIT_TEST(ShouldReturnERejectedIfVolumeTabletIdIsZero)
+    {
+        TTestEnv env;
+        SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+
+        CreateVolume(runtime, "vol0", 4096);
+
+        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+            Y_UNUSED(runtime);
+            switch (ev->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeSchemeResponse: {
+                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    using TDescription = NKikimrSchemeOp::TPathDescription;
+                    auto* msg =
+                        ev->template Get<TEvent>();
+                    TDescription& desc =
+                        const_cast<TDescription&>(msg->PathDescription);
+                    desc.
+                        MutableBlockStoreVolumeDescription()->
+                        SetVolumeTabletId(0);
+                }
+            }
+            return false;
+        });
+
+        TActorId sender = runtime.AllocateEdgeActor();
+
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("vol0"));
+
+        TAutoPtr<IEventHandle> handle;
+        auto* response =
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldReturnERejectedIfAnyOfPartitionIdsIsZero)
+    {
+        TTestEnv env;
+        SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+
+        CreateVolume(runtime, "vol0", 4096);
+
+        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+            Y_UNUSED(runtime);
+            switch (ev->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeSchemeResponse: {
+                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    using TDescription = NKikimrSchemeOp::TPathDescription;
+                    auto* msg =
+                        ev->template Get<TEvent>();
+                    auto& desc =
+                        const_cast<TDescription&>(msg->PathDescription);
+                    if (FAILED(msg->GetStatus()) ||
+                        desc.GetSelf().GetPathType() !=
+                        NKikimrSchemeOp::EPathTypeBlockStoreVolume)
+                    {
+                        break;
+                    }
+                    desc.
+                        MutableBlockStoreVolumeDescription()->
+                        MutablePartitions()->at(0).SetTabletId(0);
+                }
+            }
+            return false;
+        });
+
+        TActorId sender = runtime.AllocateEdgeActor();
+
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("vol0"));
+
+        TAutoPtr<IEventHandle> handle;
+        auto* response =
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

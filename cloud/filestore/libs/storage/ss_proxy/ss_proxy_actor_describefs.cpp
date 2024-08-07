@@ -97,6 +97,33 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
         return;
     }
 
+    const auto pathType = msg->PathDescription.GetSelf().GetPathType();
+
+    if (pathType != NKikimrSchemeOp::EPathTypeFileStore) {
+        auto path = GetFileSystemPath(
+            Config->GetSchemeShardDir(),
+            FileSystemId);
+
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Described path is not a filestore volume: "
+                    << path.Quote()
+            )
+        );
+        return;
+    }
+
+    // Empty IndexTabletId means that tablet is not configured by Hive yet.
+    if (!msg->PathDescription.GetFileStoreDescription().GetIndexTabletId()) {
+        ReplyAndDie(
+            ctx,
+            MakeError(E_REJECTED, "Filestore is not configured yet"));
+        return;
+    }
+
     auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
         msg->Path,
         msg->PathDescription);

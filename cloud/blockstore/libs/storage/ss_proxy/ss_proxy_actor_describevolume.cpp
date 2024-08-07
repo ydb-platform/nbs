@@ -187,6 +187,34 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
 
     const auto& volumeDescription =
         pathDescription.GetBlockStoreVolumeDescription();
+
+    // Emptiness of VolumeTabletId any of partition tablet ids means that
+    // blockstore volume is not configured by Hive yet.
+    const auto& descr = msg->PathDescription.GetBlockStoreVolumeDescription();
+    bool idCheck = descr.GetVolumeTabletId();
+    for (const auto& part: descr.GetPartitions()) {
+        if (!part.GetTabletId()) {
+            idCheck = false;
+            break;
+        }
+    }
+
+    if (!idCheck) {
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Blockstore volume is not configured yet"
+                        << GetFullPath().Quote()
+                ),
+                GetFullPath()
+            )
+        );
+        return;
+    }
+
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
     if (!CheckVolume(ctx, volumeConfig)) {

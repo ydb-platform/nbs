@@ -280,6 +280,72 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             response->GetErrorReason()
         );
     }
+
+    Y_UNIT_TEST(ShouldReturnERejectedIfIndexTabletIdIsZero)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        ssProxy.CreateFileStore("test", 2000);
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+            Y_UNUSED(runtime);
+            switch (ev->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeSchemeResponse: {
+                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    using TDescription = NKikimrSchemeOp::TPathDescription;
+                    auto* msg = ev->template Get<TEvent>();
+                    auto& desc =
+                        const_cast<TDescription&>(msg->PathDescription);
+                    desc.
+                        MutableFileStoreDescription()->
+                        SetIndexTabletId(0);
+                }
+            }
+            return false;
+            });
+
+        ssProxy.SendDescribeFileStoreRequest("test");
+        auto describe = ssProxy.RecvDescribeFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, describe->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldFailRequestIfWrongPathTypeIsReturnedFromSS)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+        ssProxy.CreateFileStore("test", 2000);
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+            Y_UNUSED(runtime);
+            switch (ev->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeSchemeResponse: {
+                    using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    using TDescription = NKikimrSchemeOp::TPathDescription;
+                    auto* msg = ev->template Get<TEvent>();
+                    auto& desc =
+                        const_cast<TDescription&>(msg->PathDescription);
+                    desc.
+                        MutableSelf()->
+                        SetPathType(NKikimrSchemeOp::EPathTypeBlockStoreVolume);
+                }
+            }
+            return false;
+        });
+
+        ssProxy.SendDescribeFileStoreRequest("test");
+        auto describe = ssProxy.RecvDescribeFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, describe->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
