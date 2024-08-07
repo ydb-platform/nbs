@@ -1,5 +1,7 @@
 #include "stats.h"
 
+#include "critical_event.h"
+
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
@@ -48,7 +50,6 @@ public:
         CompletionStats.Completed = stats.Completed;
         CompletionStats.CompFailed = stats.CompFailed;
         CompletionStats.EncryptorErrors = stats.EncryptorErrors;
-        CompletionStats.GeneratedZeroBlocks = stats.GeneratedZeroBlocks;
 
         CompletionStats.Requests = stats.Requests;
         CompletionStats.Times = stats.Times;
@@ -163,9 +164,21 @@ void DumpStats(
     write("completed", stats.Completed - old.Completed);
     write("failed", stats.CompFailed - old.CompFailed);
     write("encryptor_errors", stats.EncryptorErrors - old.EncryptorErrors);
-    write(
-        "generated_zero",
-        stats.GeneratedZeroBlocks - old.GeneratedZeroBlocks);
+
+    auto criticalEvents = TakeAccumulatedCriticalEvents();
+    if (criticalEvents) {
+        buf.WriteKey("crit_events");
+        buf.BeginList();
+        for (const auto& criticalEvent: criticalEvents) {
+            buf.BeginObject();
+            buf.WriteKey("name");
+            buf.WriteString(criticalEvent.Name);
+            buf.WriteKey("message");
+            buf.WriteString(criticalEvent.Message);
+            buf.EndObject();
+        }
+        buf.EndList();
+    }
 
     request(0, "read");
     request(1, "write");

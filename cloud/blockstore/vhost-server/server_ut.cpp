@@ -10,6 +10,8 @@
 #include <cloud/storage/core/libs/vhost-client/monotonic_buffer_resource.h>
 #include <cloud/storage/core/libs/vhost-client/vhost-client.h>
 
+#include <library/cpp/json/json_reader.h>
+#include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/testing/gtest/gtest.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
@@ -921,7 +923,6 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
     EXPECT_EQ(readCount + splittedReads, stats.Dequeued);
     EXPECT_EQ(readCount + splittedReads, stats.Submitted);
     EXPECT_EQ(readCount + writeCount, stats.EncryptorErrors);
-    EXPECT_EQ(0u, stats.GeneratedZeroBlocks);
 }
 
 TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
@@ -952,15 +953,37 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
     }
 
     // validate stats
-    const auto stats = GetStats(0);
+    {
+        const auto stats = GetStats(0);
 
-    EXPECT_EQ(0u, stats.CompFailed);
-    EXPECT_EQ(0u, stats.SubFailed);
-    EXPECT_EQ(0u, stats.Completed);
-    EXPECT_EQ(0u, stats.Dequeued);
-    EXPECT_EQ(0u, stats.Submitted);
-    EXPECT_EQ(0u, stats.EncryptorErrors);
-    EXPECT_EQ(writeCount, stats.GeneratedZeroBlocks);
+        EXPECT_EQ(0u, stats.CompFailed);
+        EXPECT_EQ(0u, stats.SubFailed);
+        EXPECT_EQ(0u, stats.Completed);
+        EXPECT_EQ(0u, stats.Dequeued);
+        EXPECT_EQ(0u, stats.Submitted);
+        EXPECT_EQ(writeCount, stats.EncryptorErrors);
+    }
+
+    // validate crit events
+    {
+        constexpr ui64 cyclesPerMs = 2000000;
+        TSimpleStats prevStats;
+        TSimpleStats curStats;
+        TStringStream ss;
+        DumpStats(curStats, prevStats, TDuration::Seconds(1), ss, cyclesPerMs);
+        NJson::TJsonValue json;
+        NJson::ReadJsonTree(ss.Str(), &json, true);
+
+        ASSERT_EQ(true, json.Has("crit_events"));
+        for (const auto& event: json["crit_events"].GetArray()) {
+            const auto& name = event["name"].GetString();
+            const auto& message = event["message"].GetString();
+            EXPECT_EQ("EncryptorGeneratedZeroBlock", name);
+            EXPECT_EQ(
+                true,
+                message.StartsWith("Encryptor has generated a zero block #"));
+        }
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

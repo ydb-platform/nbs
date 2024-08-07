@@ -45,19 +45,6 @@ using TAioCompoundRequestHolder = std::unique_ptr<TAioCompoundRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ESgListDecryptionResult
-{
-    Success,
-    EncryptorError,
-};
-
-enum class ESgListEncryptionResult
-{
-    Success,
-    EncryptorError,
-    EncryptorGenerateZeroBlock,
-};
-
 struct TAioDevice
 {
     i64 StartOffset = 0;
@@ -137,14 +124,18 @@ void PrepareIO(
     TCpuCycles now,
     TSimpleStats& queueStats);
 
-[[nodiscard]] ESgListEncryptionResult SgListCopyWithOptionalEncryption(
+// Copies the data, and if an encryptor is specified, encrypt it. Returns true
+// if successful.
+[[nodiscard]] bool SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
     char* dst,
     IEncryptor* encryptor,
     ui64 startSector);
 
-[[nodiscard]] ESgListDecryptionResult SgListCopyWithOptionalDecryption(
+// Copies the data, and if an encryptor is specified, decrypt it. Returns true
+// if successful.
+[[nodiscard]] bool SgListCopyWithOptionalDecryption(
     TLog& Log,
     const char* src,
     const vhd_sglist& dst,

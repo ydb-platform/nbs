@@ -1,13 +1,17 @@
 #include "request_aio.h"
 
+#include "critical_event.h"
+
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 #include <algorithm>
 #include <memory>
+#include <span>
 
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
@@ -42,6 +46,14 @@ template <bool DoDecrypt>
         } else {
             if (!encryptor.Encrypt(srcRef, dstRef, startSector + i)) {
                 // Something went wrong inside the encryption operation.
+                return false;
+            }
+
+            if (IsAllZeroes(dstRef.Data(), dstRef.Size())) {
+                ReportCriticalEvent(
+                    "EncryptorGeneratedZeroBlock",
+                    TStringBuilder() << "Encryptor has generated a zero block #"
+                                     << startSector + i << " !");
                 return false;
             }
         }
@@ -92,26 +104,16 @@ void PrepareCompoundIO(
     auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
 
     if (bio->type == VHD_BDEV_WRITE) {
-        const auto result = SgListCopyWithOptionalEncryption(
+        const bool success = SgListCopyWithOptionalEncryption(
             Log,
             bio->sglist,
             req->Buffer.get(),
             encryptor,
             bio->first_sector);
-        switch (result) {
-            case ESgListEncryptionResult::Success: {
-                break;
-            }
-            case ESgListEncryptionResult::EncryptorError: {
-                ++queueStats.EncryptorErrors;
-                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                return;
-            }
-            case ESgListEncryptionResult::EncryptorGenerateZeroBlock: {
-                ++queueStats.GeneratedZeroBlocks;
-                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                return;
-            }
+        if (!success) {
+            ++queueStats.EncryptorErrors;
+            vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+            return;
         }
     }
 
@@ -161,7 +163,7 @@ void PrepareCompoundIO(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ESgListDecryptionResult SgListCopyWithOptionalDecryption(
+bool SgListCopyWithOptionalDecryption(
     TLog& Log,
     const char* src,
     const vhd_sglist& dst,
@@ -175,7 +177,7 @@ ESgListDecryptionResult SgListCopyWithOptionalDecryption(
             std::memcpy(buffer.base, src, buffer.len);
             src += buffer.len;
         }
-        return ESgListDecryptionResult::Success;
+        return true;
     }
 
     for (auto& buffer: buffers) {
@@ -187,15 +189,15 @@ ESgListDecryptionResult SgListCopyWithOptionalDecryption(
                 ", blocks count %" PRIu64,
                 startSector,
                 buffers.size());
-            return ESgListDecryptionResult::EncryptorError;
+            return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
         src += buffer.len;
     }
-    return ESgListDecryptionResult::Success;
+    return true;
 }
 
-ESgListEncryptionResult SgListCopyWithOptionalEncryption(
+bool SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
     char* dst,
@@ -209,7 +211,7 @@ ESgListEncryptionResult SgListCopyWithOptionalEncryption(
             std::memcpy(dst, buffer.base, buffer.len);
             dst += buffer.len;
         }
-        return ESgListEncryptionResult::Success;
+        return true;
     }
 
     for (auto& buffer: buffers) {
@@ -222,20 +224,12 @@ ESgListEncryptionResult SgListCopyWithOptionalEncryption(
                 ", blocks count %" PRIu64,
                 startSector,
                 buffers.size());
-            return ESgListEncryptionResult::EncryptorError;
-        }
-        if (IsAllZeroes(dstRef.Data(), dstRef.Size())) {
-            STORAGE_ERROR(
-                "Encryptor has generated a zero block! Start block %" PRIu64
-                ", blocks count %" PRIu64,
-                startSector,
-                buffers.size());
-            return ESgListEncryptionResult::EncryptorGenerateZeroBlock;
+            return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
         dst += buffer.len;
     }
-    return ESgListEncryptionResult::Success;
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -305,26 +299,16 @@ void PrepareIO(
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
         if (bio->type == VHD_BDEV_WRITE) {
-            const auto result = SgListCopyWithOptionalEncryption(
+            const bool success = SgListCopyWithOptionalEncryption(
                 Log,
                 bio->sglist,
                 static_cast<char*>(req->Data[0].iov_base),
                 encryptor,
                 bio->first_sector);
-            switch (result) {
-                case ESgListEncryptionResult::Success: {
-                    break;
-                }
-                case ESgListEncryptionResult::EncryptorError: {
-                    ++queueStats.EncryptorErrors;
-                    vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                    return;
-                }
-                case ESgListEncryptionResult::EncryptorGenerateZeroBlock: {
-                    ++queueStats.GeneratedZeroBlocks;
-                    vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                    return;
-                }
+            if (!success) {
+                ++queueStats.EncryptorErrors;
+                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
+                return;
             }
         }
         // Instead of multiple buffers, we have allocated one large buffer.

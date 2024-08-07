@@ -1,7 +1,7 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
-
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
 #include <type_traits>
@@ -71,11 +71,6 @@ void BatchCompleted(
             requestStats["encryptor_errors"].GetUInteger(),
         times,
         sizes);
-
-    if (requestStats["generated_zero"].GetUInteger()) {
-        // TODO(drbasic) https://github.com/ydb-platform/nbs/pull/1533
-        // ReportEncryptorGeneratedZeroBlock();
-    }
 }
 
 }   // namespace
@@ -97,6 +92,17 @@ void TEndpointStats::Update(const NJson::TJsonValue& stats)
         stats["write"],
         ClientId,
         DiskId);
+
+    // Report critical events
+    if (stats.Has("crit_events")) {
+        for (const auto& event: stats["crit_events"].GetArray()) {
+            ReportCriticalEvent(
+                GetCriticalEventFullName(event["name"].GetString()),
+                event["message"].GetString(),
+                false   // verifyDebug
+            );
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

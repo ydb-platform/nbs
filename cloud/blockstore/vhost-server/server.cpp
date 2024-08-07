@@ -261,7 +261,6 @@ void TServer::SyncQueueStats(ui32 queueIndex, const TSimpleStats& queueStats)
     stats.Submitted = queueStats.Submitted;
     stats.SubFailed = queueStats.SubFailed;
     stats.EncryptorErrors = queueStats.EncryptorErrors;
-    stats.GeneratedZeroBlocks = queueStats.GeneratedZeroBlocks;
 
     stats.Requests[0] = queueStats.Requests[VHD_BDEV_READ];
     stats.Requests[1] = queueStats.Requests[VHD_BDEV_WRITE];

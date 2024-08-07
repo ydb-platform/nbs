@@ -10,7 +10,6 @@
 #include <array>
 #include <atomic>
 #include <optional>
-#include <span>
 
 class IOutputStream;
 
@@ -83,7 +82,6 @@ struct TStats
     T Completed = {};
     T CompFailed = {};
     T EncryptorErrors = {};
-    T GeneratedZeroBlocks = {};
 
     std::array<TRequestStats<T>, 2> Requests = {};
     std::array<TTimeHistogram, 2> Times = {};
@@ -99,7 +97,6 @@ struct TStats
         , Completed{rhs.Completed}
         , CompFailed{rhs.CompFailed}
         , EncryptorErrors{rhs.EncryptorErrors}
-        , GeneratedZeroBlocks{rhs.GeneratedZeroBlocks}
         , Requests{rhs.Requests[0], rhs.Requests[1]}
         , Times{rhs.Times[0], rhs.Times[1]}
         , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
@@ -114,7 +111,6 @@ struct TStats
         Completed = rhs.Completed;
         CompFailed = rhs.CompFailed;
         EncryptorErrors = rhs.EncryptorErrors;
-        GeneratedZeroBlocks = rhs.GeneratedZeroBlocks;
         Requests = rhs.Requests;
         Times = rhs.Times;
         Sizes = rhs.Sizes;
@@ -131,7 +127,6 @@ struct TStats
         Completed += rhs.Completed;
         CompFailed += rhs.CompFailed;
         EncryptorErrors += rhs.EncryptorErrors;
-        GeneratedZeroBlocks += rhs.GeneratedZeroBlocks;
 
         for (size_t i = 0; i != Requests.size(); ++i) {
             Requests[i] += rhs.Requests[i];

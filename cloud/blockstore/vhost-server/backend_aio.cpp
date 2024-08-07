@@ -48,21 +48,15 @@ void CompleteRequest(
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             NSan::Unpoison(req->Data[0].iov_base, req->Data[0].iov_len);
-            const auto result = SgListCopyWithOptionalDecryption(
+            const bool success = SgListCopyWithOptionalDecryption(
                 log,
                 static_cast<const char*>(req->Data[0].iov_base),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
-            switch (result) {
-                case ESgListDecryptionResult::Success: {
-                    break;
-                }
-                case ESgListDecryptionResult::EncryptorError: {
-                    status = VHD_BDEV_IOERR;
-                    stats.EncryptorErrors++;
-                    break;
-                }
+            if (!success) {
+                status = VHD_BDEV_IOERR;
+                stats.EncryptorErrors++;
             }
         }
     }
@@ -101,22 +95,15 @@ void CompleteCompoundRequest(
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             NSan::Unpoison(req->Buffer.get(), bytes);
-            const auto result = SgListCopyWithOptionalDecryption(
+            const bool success = SgListCopyWithOptionalDecryption(
                 log,
                 req->Buffer.get(),
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
-
-            switch (result)     {
-                case ESgListDecryptionResult::Success: {
-                    break;
-                }
-                case ESgListDecryptionResult::EncryptorError: {
-                    status = VHD_BDEV_IOERR;
-                    stats.EncryptorErrors++;
-                    break;
-                }
+            if (!success) {
+                status = VHD_BDEV_IOERR;
+                stats.EncryptorErrors++;
             }
         }
         vhd_complete_bio(req->Io, status);
