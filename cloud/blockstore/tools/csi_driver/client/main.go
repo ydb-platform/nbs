@@ -338,7 +338,7 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newNodeGetVolumeStats(endpoint *string) *cobra.Command {
+func newNodeGetVolumeStatsCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId string
 	cmd := cobra.Command{
 		Use:   "volumestats",
@@ -401,7 +401,7 @@ func newCsiNodeCommand(endpoint *string) *cobra.Command {
 	cmd.AddCommand(
 		newPublishVolumeCommand(endpoint),
 		newUnpublishVolumeCommand(endpoint),
-		newNodeGetVolumeStats(endpoint),
+		newNodeGetVolumeStatsCommand(endpoint),
 	)
 	return &cmd
 }
