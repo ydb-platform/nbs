@@ -19,10 +19,10 @@ type StorageMock struct {
 
 func (s *StorageMock) CreateSnapshot(
 	ctx context.Context,
-	snapshotID string,
+	snapshotMeta storage.SnapshotMeta,
 ) (*storage.SnapshotMeta, error) {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, snapshotMeta)
 	return args.Get(0).(*storage.SnapshotMeta), args.Error(1)
 }
 
@@ -192,6 +192,16 @@ func (s *StorageMock) GetTotalSnapshotSize(ctx context.Context) (size uint64, er
 func (s *StorageMock) GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error) {
 	args := s.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) DeleteDiskFromIncremental(
+	ctx context.Context,
+	zoneID string,
+	diskID string,
+) error {
+
+	args := s.Called(ctx, zoneID, diskID)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

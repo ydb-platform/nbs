@@ -422,12 +422,22 @@ func TestCreateSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			snapshotMeta, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			snapshotMeta, err := f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 			require.False(t, snapshotMeta.Ready)
 
 			// Check idempotency.
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 
 			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
@@ -438,7 +448,12 @@ func TestCreateSnapshot(t *testing.T) {
 			require.NoError(t, err)
 
 			// Check idempotency.
-			snapshotMeta, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			snapshotMeta, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 			require.True(t, snapshotMeta.Ready)
 		})
@@ -451,7 +466,12 @@ func TestDeletingSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
@@ -465,7 +485,12 @@ func TestDeletingSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -473,7 +498,12 @@ func TestDeletingSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -504,7 +534,12 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
 			require.NoError(t, err)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
@@ -517,7 +552,12 @@ func TestClearDeletingSnapshots(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 
 			deletingAt := time.Now() // not exactly precise
@@ -556,7 +596,12 @@ func TestClearDeletingSnapshots(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, toDelete)
 
-			_, err = f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 		})
 	}
@@ -1070,7 +1115,12 @@ func TestCheckSnapshotReady(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			_, err := f.storage.CreateSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.CreateSnapshot(
+				f.ctx,
+				SnapshotMeta{
+					ID: "snapshot",
+				},
+			)
 			require.NoError(t, err)
 
 			diskSize := uint64(2 * 1024 * 1024)

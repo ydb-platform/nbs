@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -78,6 +79,23 @@ func (t *deleteDiskTask) deleteDisk(
 		return t.storage.DiskDeleted(ctx, diskID, time.Now())
 	}
 
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: t.request.Disk,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return err
@@ -91,8 +109,6 @@ func (t *deleteDiskTask) deleteDisk(
 	if err != nil {
 		return err
 	}
-
-	var taskID string
 
 	// Only overlay disks (created from image) should be released.
 	if len(diskMeta.SrcImageID) != 0 {

@@ -59,6 +59,16 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
 	}
 
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, nbsFactory, nbsClient, execCtx)
 	require.NoError(t, err)
@@ -105,6 +115,16 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
@@ -158,6 +178,16 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
 
 	poolService.On(
 		"ReleaseBaseDisk",

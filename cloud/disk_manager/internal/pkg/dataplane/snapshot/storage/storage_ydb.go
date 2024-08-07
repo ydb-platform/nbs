@@ -25,7 +25,7 @@ type storageYDB struct {
 
 func (s *storageYDB) CreateSnapshot(
 	ctx context.Context,
-	snapshotID string,
+	snapshotMeta SnapshotMeta,
 ) (*SnapshotMeta, error) {
 
 	var created *SnapshotMeta
@@ -37,7 +37,7 @@ func (s *storageYDB) CreateSnapshot(
 			created, err = s.createSnapshot(
 				ctx,
 				session,
-				snapshotID,
+				snapshotMeta,
 			)
 			return err
 		},
@@ -159,4 +159,23 @@ func (s *storageYDB) ReadChunkMap(
 	}
 
 	return entries, errors
+}
+
+func (s *storageYDB) DeleteDiskFromIncremental(
+	ctx context.Context,
+	zoneID string,
+	diskID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.deleteDiskFromIncremental(
+				ctx,
+				session,
+				zoneID,
+				diskID,
+			)
+		},
+	)
 }

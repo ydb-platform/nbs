@@ -478,6 +478,23 @@ func (t *migrateDiskTask) finishMigration(
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
 
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: t.request.Disk,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
 	return execCtx.FinishWithCallback(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {

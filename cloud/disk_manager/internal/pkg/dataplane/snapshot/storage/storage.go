@@ -12,6 +12,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type SnapshotMeta struct {
+	ID             string
+	Disk           *types.Disk
+	CheckpointID   string
+	BaseSnapshotID string
 	// Snapshot virtual size, i.e. the minimum amount of disk space needed to restore.
 	Size uint64
 	// Snapshot real size, i.e. the amount of disk space occupied in storage.
@@ -34,7 +38,7 @@ type ChunkMapEntry struct {
 type Storage interface {
 	CreateSnapshot(
 		ctx context.Context,
-		snapshotID string,
+		snapshotMeta SnapshotMeta,
 	) (*SnapshotMeta, error)
 
 	SnapshotCreated(
@@ -108,4 +112,10 @@ type Storage interface {
 	GetTotalSnapshotSize(ctx context.Context) (size uint64, err error)
 
 	GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error)
+
+	DeleteDiskFromIncremental(
+		ctx context.Context,
+		zoneID string,
+		diskID string,
+	) error
 }
