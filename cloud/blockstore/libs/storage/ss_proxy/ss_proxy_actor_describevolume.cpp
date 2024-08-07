@@ -175,18 +175,50 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             ctx,
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
                 MakeError(
-                    E_FAIL,
+                    E_INVALID_STATE,
                     TStringBuilder() << "Described path is not a blockstore volume: "
-                        << GetFullPath().Quote()
-                ),
-                GetFullPath()
-            )
-        );
+                        << GetFullPath().Quote()),
+                GetFullPath()));
         return;
     }
 
     const auto& volumeDescription =
         pathDescription.GetBlockStoreVolumeDescription();
+
+    const auto& descr = msg->PathDescription.GetBlockStoreVolumeDescription();
+    // Emptiness of VolumeTabletId or any of partition tablet ids means that
+    // blockstore volume is not configured by Hive yet.
+
+    if (!descr.GetVolumeTabletId()) {
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Blockstore volume " << GetFullPath().Quote()
+                        << " has zero VolumeTabletId"),
+                GetFullPath()));
+        return;
+    }
+
+    for (const auto& part: descr.GetPartitions()) {
+        if (!part.GetTabletId()) {
+            auto error = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Blockstore volume " << GetFullPath().Quote()
+                    << " has zero TabletId for partition: "
+                    << part.GetPartitionId());
+            ReplyAndDie(
+                ctx,
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    std::move(error),
+                    GetFullPath()));
+            return;
+        }
+    }
+
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
     if (!CheckVolume(ctx, volumeConfig)) {
