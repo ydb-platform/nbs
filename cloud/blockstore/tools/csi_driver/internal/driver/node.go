@@ -51,10 +51,15 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+			},
+		},
+	},
 }
 
-// CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
-// when volume is mounted to the pod as a local directory.
 var podModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
@@ -70,10 +75,19 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+	// CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
+	// when volume is mounted to the pod as a local directory.
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 			},
 		},
 	},
@@ -724,4 +738,39 @@ func (s *nodeService) NodeGetVolumeStats(
 			Unit:      csi.VolumeUsage_INODES,
 		},
 	}}, nil
+}
+
+func (s *nodeService) NodeExpandVolume(
+	ctx context.Context,
+	req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+
+	if s.nbsClient != nil {
+		resp, err := s.nbsClient.DescribeVolume(
+			ctx, &nbsapi.TDescribeVolumeRequest{
+				DiskId: req.VolumeId,
+			},
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		newBlocksCount := uint64(req.CapacityRange.RequiredBytes)/uint64(resp.Volume.BlockSize) + 1
+		_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
+			DiskId:             req.VolumeId,
+			BlocksCount:        newBlocksCount,
+			ConfigVersion:      resp.Volume.ConfigVersion,
+			PerformanceProfile: resp.Volume.PerformanceProfile,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		return &csi.NodeExpandVolumeResponse{
+			CapacityBytes: int64(newBlocksCount * uint64(resp.Volume.BlockSize)),
+		}, nil
+	}
+
+	return nil, fmt.Errorf("NodeExpandVolume is not supported")
 }
