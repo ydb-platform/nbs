@@ -277,7 +277,6 @@ struct TCompactionMap::TImpl
         }
 
         for (ui32 i = startIndex; i < endIndex; ++i) {
-
             TotalBlobsCount -= group->Get(ranges[i].RangeId).BlobsCount;
             TotalDeletionsCount -= group->Get(ranges[i].RangeId).DeletionsCount;
 

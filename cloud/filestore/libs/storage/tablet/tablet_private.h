@@ -11,7 +11,6 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
-#include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -440,7 +439,7 @@ struct TEvIndexTabletPrivate
     {
         const ui32 RangeId;
 
-        TDeleteZeroCompactionRangesRequest(ui32 rangeId)
+        explicit TDeleteZeroCompactionRangesRequest(ui32 rangeId)
             : RangeId(rangeId)
         {}
     };
