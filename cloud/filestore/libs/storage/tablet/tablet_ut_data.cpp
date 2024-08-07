@@ -3304,12 +3304,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         ui32 requests = 0;
         ui32 lastCompactionMapRangeId = 0;
-        env.GetRuntime().SetEventFilter([&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
             Y_UNUSED(runtime);
 
             switch (event->GetTypeRewrite()) {
-                case TEvIndexTabletPrivate::EvDeleteZeroCompactionRangesRequest: {
-                    requests++;
+                case TEvIndexTabletPrivate
+                    ::EvDeleteZeroCompactionRangesRequest:
+                {
+                    ++requests;
                     break;
                 }
                 case TEvIndexTabletPrivate::EvLoadCompactionMapChunkCompleted: {
@@ -3360,13 +3364,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteCompactionMap(ranges);
         tablet.RebootTablet();
 
-        tablet.ForcedOperation(NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES);
+        tablet.ForcedOperation(
+            NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES);
 
         UNIT_ASSERT_VALUES_EQUAL(requests, 15);
         UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 199);
         tablet.AssertForcedRangeOperationFailed(
             TVector<ui32>{},
-            TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges);
+            TEvIndexTabletPrivate
+                ::EForcedRangeOperationMode::DeleteZeroCompactionRanges);
 
         lastCompactionMapRangeId = 0;
         tablet.RebootTablet();

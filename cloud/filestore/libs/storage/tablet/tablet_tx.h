@@ -1655,9 +1655,11 @@ struct TTxIndexTablet
     struct TDeleteZeroCompactionRanges
     {
         const TRequestInfoPtr RequestInfo;
-        ui32 StartIndex;
+        const ui32 StartIndex;
 
-        TDeleteZeroCompactionRanges(TRequestInfoPtr requestInfo, ui32 startIndex)
+        TDeleteZeroCompactionRanges(
+                TRequestInfoPtr requestInfo,
+                ui32 startIndex)
             : RequestInfo(std::move(requestInfo))
             , StartIndex(startIndex)
         {}
@@ -1674,11 +1676,11 @@ struct TTxIndexTablet
     struct TWriteCompactionMap
     {
         const TRequestInfoPtr RequestInfo;
-        TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
+        const TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
 
         TWriteCompactionMap(
                 TRequestInfoPtr requestInfo,
-                const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
+                TVector<NProtoPrivate::TCompactionRangeStats> ranges)
             : RequestInfo(std::move(requestInfo))
             , Ranges(std::move(ranges))
         {}

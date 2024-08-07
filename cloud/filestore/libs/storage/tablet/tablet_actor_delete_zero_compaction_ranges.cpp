@@ -51,10 +51,10 @@ void TIndexTabletActor::ExecuteTx_DeleteZeroCompactionRanges(
 
     TVector<ui32> ranges(
         Reserve(Config->GetMaxZeroCompactionRangesToDeletePerTx()));
-    ui32 rangesCount = RangesWithEmptyCompactionScore.size();
+    ui32 rangeCount = RangesWithEmptyCompactionScore.size();
     ui32 rangesPerTx = Config->GetMaxZeroCompactionRangesToDeletePerTx();
     for (ui32 i = args.StartIndex;
-            i < Min<ui32>(args.StartIndex + rangesPerTx, rangesCount); i++)
+            i < Min<ui32>(args.StartIndex + rangesPerTx, rangeCount); ++i)
     {
         ui32 range = RangesWithEmptyCompactionScore[i];
         db.WriteCompactionMap(

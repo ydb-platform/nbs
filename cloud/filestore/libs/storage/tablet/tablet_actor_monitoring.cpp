@@ -1214,7 +1214,11 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         mode = TEvIndexTabletPrivate::EForcedRangeOperationMode
             ::DeleteZeroCompactionRanges;
     } else {
-        RejectHttpRequest(ctx, TabletID(), *requestInfo, "Invalid mode");
+        RejectHttpRequest(
+            ctx,
+            TabletID(),
+            *requestInfo,
+            TStringBuilder() << "Invalid mode: " << params.Get("mode"));
         return;
     }
 
@@ -1239,7 +1243,8 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
                 1));
     } else {
         if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
-                ::DeleteZeroCompactionRanges) {
+                ::DeleteZeroCompactionRanges)
+        {
             ranges = RangesWithEmptyCompactionScore;
         } else {
             ranges = GetNonEmptyCompactionRanges();

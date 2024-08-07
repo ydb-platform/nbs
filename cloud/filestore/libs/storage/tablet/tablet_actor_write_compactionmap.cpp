@@ -21,8 +21,8 @@ void TIndexTabletActor::HandleWriteCompactionMap(
         msg->CallContext);
 
     TVector<NProtoPrivate::TCompactionRangeStats> ranges(
-        msg->Record.GetRanges().size());
-    for (auto& range: msg->Record.GetRanges()) {
+        Reserve(msg->Record.GetRanges().size()));
+    for (const auto& range: msg->Record.GetRanges()) {
         ranges.push_back(range);
     }
 
@@ -54,7 +54,7 @@ void TIndexTabletActor::ExecuteTx_WriteCompactionMap(
     Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    for (auto range: args.Ranges) {
+    for (const auto& range: args.Ranges) {
         db.ForceWriteCompactionMap(
             range.GetRangeId(),
             range.GetBlobCount(),
