@@ -112,7 +112,7 @@ func (l *loggerWithURLReplaced) Error(msg string, keysAndValues ...interface{}) 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func checkHttpStatus(statusCode int) error {
+func checkHTTPStatus(statusCode int) error {
 	if statusCode >= 200 && statusCode <= 299 {
 		return nil
 	}
@@ -206,7 +206,7 @@ func (c *httpClient) head(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	err = checkHttpStatus(resp.StatusCode)
+	err = checkHTTPStatus(resp.StatusCode)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (c *httpClient) body(
 		)
 	}
 
-	err = checkHttpStatus(resp.StatusCode)
+	err = checkHTTPStatus(resp.StatusCode)
 	if err != nil {
 		return nil, err
 	}
