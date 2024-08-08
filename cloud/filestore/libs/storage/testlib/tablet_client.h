@@ -605,7 +605,8 @@ public:
         ui64 offset,
         ui64 length,
         const TVector<NKikimr::TLogoBlobID>& blobIds,
-        ui64 commitId)
+        ui64 commitId,
+        TVector<NProtoPrivate::TFreshDataRange> unalignedDataParts = {})
     {
         auto request = CreateSessionRequest<
             TEvIndexTablet::TEvAddDataRequest>();
@@ -619,6 +620,9 @@ public:
                 request->Record.MutableBlobIds()->Add());
         }
         request->Record.SetCommitId(commitId);
+        for (auto& part: unalignedDataParts) {
+            *request->Record.AddUnalignedDataRanges() = std::move(part);
+        }
         return request;
     }
 

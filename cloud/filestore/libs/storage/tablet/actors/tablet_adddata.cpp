@@ -25,6 +25,7 @@ TAddDataActor::TAddDataActor(
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
+        TVector<TBlockBytesMeta> unalignedDataParts,
         TWriteRange writeRange)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
@@ -32,6 +33,7 @@ TAddDataActor::TAddDataActor(
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
     , Blobs(std::move(blobs))
+    , UnalignedDataParts(std::move(unalignedDataParts))
     , WriteRange(writeRange)
 {
     for (const auto& blob: Blobs) {
@@ -56,6 +58,7 @@ void TAddDataActor::AddBlob(const TActorContext& ctx)
         RequestInfo->CallContext);
     request->Mode = EAddBlobMode::Write;
     request->WriteRanges.push_back(WriteRange);
+    request->UnalignedDataParts = std::move(UnalignedDataParts);
 
     for (const auto& blob: Blobs) {
         request->MergedBlobs.emplace_back(

@@ -6,6 +6,7 @@
 
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/storage/core/libs/common/byte_vector.h>
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/map.h>
 #include <util/generic/deque.h>
@@ -94,6 +95,11 @@ public:
         return std::make_pair(bytes, deletedBytes);
     }
 
+    NProto::TError CheckBytes(
+        ui64 nodeId,
+        ui64 offset,
+        TStringBuf data,
+        ui64 commitId) const;
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);
     void AddDeletionMarker(ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
 

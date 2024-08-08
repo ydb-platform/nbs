@@ -1375,6 +1375,7 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         TVector<NKikimr::TLogoBlobID> BlobIds;
+        TVector<TBlockBytesMeta> UnalignedDataParts;
         ui64 CommitId;
 
         ui64 NodeId = InvalidNodeId;
@@ -1385,12 +1386,14 @@ struct TTxIndexTablet
                 const NProtoPrivate::TAddDataRequest& request,
                 TByteRange byteRange,
                 TVector<NKikimr::TLogoBlobID> blobIds,
+                TVector<TBlockBytesMeta> unalignedDataParts,
                 ui64 commitId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , BlobIds(std::move(blobIds))
+            , UnalignedDataParts(std::move(unalignedDataParts))
             , CommitId(commitId)
         {}
 
@@ -1482,9 +1485,11 @@ struct TTxIndexTablet
         /*const*/ TVector<TMixedBlobMeta> MixedBlobs;
         /*const*/ TVector<TMergedBlobMeta> MergedBlobs;
         const TVector<TWriteRange> WriteRanges;
+        const TVector<TBlockBytesMeta> UnalignedDataParts;
 
         ui64 CommitId = InvalidCommitId;
         TNodeSet Nodes;
+        NProto::TError Error;
 
         TAddBlob(
                 TRequestInfoPtr requestInfo,
@@ -1493,7 +1498,8 @@ struct TTxIndexTablet
                 TVector<TBlock> srcBlocks,
                 TVector<TMixedBlobMeta> mixedBlobs,
                 TVector<TMergedBlobMeta> mergedBlobs,
-                TVector<TWriteRange> writeRanges)
+                TVector<TWriteRange> writeRanges,
+                TVector<TBlockBytesMeta> unalignedDataParts)
             : TProfileAware(EFileStoreSystemRequest::AddBlob)
             , RequestInfo(std::move(requestInfo))
             , Mode(mode)
@@ -1502,6 +1508,7 @@ struct TTxIndexTablet
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
             , WriteRanges(std::move(writeRanges))
+            , UnalignedDataParts(std::move(unalignedDataParts))
         {}
 
         void Clear()
@@ -1510,6 +1517,7 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Nodes.clear();
+            Error.Clear();
         }
     };
 
