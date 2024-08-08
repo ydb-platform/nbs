@@ -1,4 +1,4 @@
-#include "nvme.h"
+#include "nvme_stub.h"
 
 namespace NCloud::NBlockStore::NNvme {
 
@@ -13,10 +13,14 @@ class TNvmeManagerStub final
 {
 private:
     bool IsDeviceSsd;
+    TNvmeDeallocateHistoryPtr DeallocateHistory;
 
 public:
-    TNvmeManagerStub(bool isDeviceSsd)
+    TNvmeManagerStub(
+            bool isDeviceSsd,
+            TNvmeDeallocateHistoryPtr deallocateHistory)
         : IsDeviceSsd(isDeviceSsd)
+        , DeallocateHistory(std::move(deallocateHistory))
     {}
 
     TFuture<NProto::TError> Format(
@@ -35,8 +39,10 @@ public:
         ui64 sizeBytes) override
     {
         Y_UNUSED(path);
-        Y_UNUSED(offsetBytes);
-        Y_UNUSED(sizeBytes);
+
+        if (DeallocateHistory) {
+            DeallocateHistory->emplace_back(offsetBytes, sizeBytes);
+        }
 
         return MakeFuture<NProto::TError>();
     }
@@ -60,9 +66,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManagerStub(bool isDeviceSsd)
+INvmeManagerPtr CreateNvmeManagerStub(
+    bool isDeviceSsd,
+    TNvmeDeallocateHistoryPtr deallocateHistory)
 {
-    return std::make_shared<TNvmeManagerStub>(isDeviceSsd);
+    return std::make_shared<TNvmeManagerStub>(isDeviceSsd, std::move(deallocateHistory));
 }
 
 }   // namespace NCloud::NBlockStore::NNvme

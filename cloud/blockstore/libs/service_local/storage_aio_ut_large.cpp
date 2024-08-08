@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>

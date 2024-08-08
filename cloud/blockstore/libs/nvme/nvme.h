@@ -31,6 +31,5 @@ struct INvmeManager
 ////////////////////////////////////////////////////////////////////////////////
 
 INvmeManagerPtr CreateNvmeManager(TDuration timeout);
-INvmeManagerPtr CreateNvmeManagerStub(bool isDeviceSsd = true);
 
 }   // namespace NCloud::NBlockStore::NNvme
