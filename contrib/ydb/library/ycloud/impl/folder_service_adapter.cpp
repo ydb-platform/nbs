@@ -160,7 +160,7 @@ public:
     void Bootstrap() {
         if (Config.HasResourceManagerEndpoint() && !Config.GetResourceManagerEndpoint().empty()) {
             RegisterFolderService();
-        }   
+        }
         else {
             RegisterTransitionalFolderService();
         }

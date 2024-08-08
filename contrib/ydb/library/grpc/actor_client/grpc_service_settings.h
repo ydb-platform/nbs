@@ -1,6 +1,6 @@
 #pragma once
 
-namespace NCloud {
+namespace NGrpcActorClient {
 
 struct TGrpcClientSettings {
     TString Endpoint;
@@ -11,4 +11,4 @@ struct TGrpcClientSettings {
     bool EnableSsl = false;
 };
 
-}
+} // namespace NGrpcActorClient

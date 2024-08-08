@@ -2,14 +2,14 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/public/api/client/yc_private/resourcemanager/folder_service.grpc.pb.h>
 #include "folder_service.h"
-#include "grpc_service_client.h"
-#include "grpc_service_cache.h"
+#include <contrib/ydb/library/grpc/actor_client/grpc_service_client.h>
+#include <contrib/ydb/library/grpc/actor_client/grpc_service_cache.h>
 
 namespace NCloud {
 
 using namespace NKikimr;
 
-class TFolderService : public NActors::TActor<TFolderService>, TGrpcServiceClient<yandex::cloud::priv::resourcemanager::v1::FolderService> {
+class TFolderService : public NActors::TActor<TFolderService>, NGrpcActorClient::TGrpcServiceClient<yandex::cloud::priv::resourcemanager::v1::FolderService> {
     using TThis = TFolderService;
     using TBase = NActors::TActor<TFolderService>;
 
@@ -46,7 +46,7 @@ IActor* CreateFolderService(const TFolderServiceSettings& settings) {
 
 IActor* CreateFolderServiceWithCache(const TFolderServiceSettings& settings) {
     IActor* folderService = CreateFolderService(settings);
-    folderService = CreateGrpcServiceCache<TEvFolderService::TEvResolveFoldersRequest, TEvFolderService::TEvResolveFoldersResponse>(folderService);
+    folderService = NGrpcActorClient::CreateGrpcServiceCache<TEvFolderService::TEvResolveFoldersRequest, TEvFolderService::TEvResolveFoldersResponse>(folderService);
     return folderService;
 }
 

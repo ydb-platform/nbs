@@ -8,6 +8,7 @@ SIZE(MEDIUM)
 
 PEERDIR(
     contrib/ydb/core/testlib/default
+    contrib/ydb/library/testlib/service_mocks
     contrib/ydb/library/testlib/service_mocks/ldap_mock
 )
 
