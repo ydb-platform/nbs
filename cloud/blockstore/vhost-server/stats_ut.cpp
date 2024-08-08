@@ -29,9 +29,11 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         auto dump = [&] (auto dt) {
             TStringStream ss;
 
-            auto curStats = completionStats;
+            auto curStats = TCompleteStats{
+                .SimpleStats = completionStats,
+                .CriticalEvents = TakeAccumulatedCriticalEvents()};
             for (auto& s: queueStats) {
-                curStats += s;
+                curStats.SimpleStats += s;
             }
 
             DumpStats(

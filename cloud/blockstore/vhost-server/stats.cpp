@@ -126,12 +126,14 @@ void WriteSizes(NJsonWriter::TBuf& buf, const auto& hist, const auto& prevHist)
 ////////////////////////////////////////////////////////////////////////////////
 
 void DumpStats(
-    const TSimpleStats& stats,
+    const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs)
 {
+    const auto & stats = completeStats.SimpleStats;
+
     NJsonWriter::TBuf buf {NJsonWriter::HEM_DONT_ESCAPE_HTML, &stream};
 
     auto write = [&] (TStringBuf key, ui64 value) {
@@ -165,11 +167,10 @@ void DumpStats(
     write("failed", stats.CompFailed - old.CompFailed);
     write("encryptor_errors", stats.EncryptorErrors - old.EncryptorErrors);
 
-    auto criticalEvents = TakeAccumulatedCriticalEvents();
-    if (criticalEvents) {
+    if (completeStats.CriticalEvents) {
         buf.WriteKey("crit_events");
         buf.BeginList();
-        for (const auto& criticalEvent: criticalEvents) {
+        for (const auto& criticalEvent: completeStats.CriticalEvents) {
             buf.BeginObject();
             buf.WriteKey("name");
             buf.WriteString(criticalEvent.SensorName);

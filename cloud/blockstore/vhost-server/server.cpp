@@ -101,12 +101,12 @@ private:
     TVector<std::thread> QueueThreads;
 
 public:
-    explicit TServer(ILoggingServicePtr logging, IBackendPtr backend);
+    TServer(ILoggingServicePtr logging, IBackendPtr backend);
 
     void Start(const TOptions& options) override;
     void Stop() override;
 
-    TSimpleStats GetStats(const TSimpleStats& prevStats) override;
+    TCompleteStats GetStats(const TSimpleStats& prevStats) override;
 
 private:
     void QueueThreadFunc(ui32 queueIndex);
@@ -214,19 +214,25 @@ void TServer::Stop()
     STORAGE_INFO("Server has been stopped.");
 }
 
-TSimpleStats TServer::GetStats(const TSimpleStats& prevStats)
+TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
+    TCompleteStats result{
+        .SimpleStats{},
+        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+
     auto completionStats =
         Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
     if (!completionStats) {
-        return prevStats;
+        result.SimpleStats = prevStats;
+        return result;
     }
 
+    result.SimpleStats = *completionStats;
     for (ui32 i = 0; i != Queues.size(); ++i) {
-        *completionStats += QueueStats[i];
+        result.SimpleStats += QueueStats[i];
     }
 
-    return *completionStats;
+    return result;
 }
 
 void TServer::QueueThreadFunc(ui32 queueIndex)

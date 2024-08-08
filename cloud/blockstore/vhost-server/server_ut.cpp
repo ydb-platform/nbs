@@ -240,7 +240,7 @@ public:
         Options.Layout.clear();
     }
 
-    TSimpleStats GetStats(ui64 expectedCompleted) const
+    TCompleteStats GetStats(ui64 expectedCompleted) const
     {
         // Without I/O, stats are synced every second and only if there is a
         // pending GetStats call. The first call to GetStats might not bring the
@@ -248,10 +248,10 @@ public:
         // backend will sync the stats.
 
         TSimpleStats prevStats;
-        TSimpleStats stats;
+        TCompleteStats stats;
         for (int i = 0; i != 5; ++i) {
             stats = Server->GetStats(prevStats);
-            if (stats.Completed == expectedCompleted) {
+            if (stats.SimpleStats.Completed == expectedCompleted) {
                 break;
             }
             Sleep(TDuration::Seconds(1));
@@ -454,7 +454,8 @@ TEST_P(TServerTest, ShouldReadAndWrite)
     const auto splittedWrites = (SectorsPerRequest - 1) * (ChunkCount - 1);
     const auto expectedTotalRequestCount =
         writesCount + readsCount + splittedReads + splittedWrites;
-    const auto stats = GetStats(expectedTotalRequestCount);
+    const auto completeStats = GetStats(expectedTotalRequestCount);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
     EXPECT_EQ(0u, stats.SubFailed);
@@ -591,7 +592,8 @@ TEST_P(TServerTest, ShouldHandleMultipleQueues)
 
     WaitAll(futures).Wait();
 
-    const auto stats = GetStats(requestCount);
+    const auto completeStats = GetStats(requestCount);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(requestCount, stats.Submitted);
     EXPECT_EQ(requestCount, stats.Completed);
@@ -670,7 +672,8 @@ TEST_P(TServerTest, ShouldWriteMultipleAndReadByOne)
     const auto splittedWrites = (SectorsPerRequest - 1) * (ChunkCount - 1);
     const auto expectedTotalRequestCount =
         writeCount + readCount + splittedReads + splittedWrites;
-    const auto stats = GetStats(expectedTotalRequestCount);
+    const auto completeStats = GetStats(expectedTotalRequestCount);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
     EXPECT_EQ(0u, stats.SubFailed);
@@ -753,7 +756,8 @@ TEST_P(TServerTest, ShouldWriteByOneAndReadMultiple)
     const auto splittedWrites = 0;
     const auto expectedTotalRequestCount =
         writeCount + readCount + splittedReads + splittedWrites;
-    const auto stats = GetStats(expectedTotalRequestCount);
+    const auto completeStats = GetStats(expectedTotalRequestCount);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
     EXPECT_EQ(0u, stats.SubFailed);
@@ -812,7 +816,8 @@ TEST_P(TServerTest, ShouldHandleWrongSectorIndex)
         EXPECT_EQ(VIRTIO_BLK_S_IOERR, readStatus[0]);
     }
     // validate stats
-    const auto stats = GetStats(0);
+    const auto completeStats = GetStats(0);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
     EXPECT_EQ(0u, stats.SubFailed);
@@ -915,7 +920,8 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
 
     // validate stats
     const auto splittedReads = (SectorsPerRequest - 1) * (ChunkCount - 1);
-    const auto stats = GetStats(readCount + splittedReads);
+    const auto completeStats = GetStats(readCount + splittedReads);
+    const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
     EXPECT_EQ(0u, stats.SubFailed);
@@ -953,36 +959,23 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
     }
 
     // validate stats
-    {
-        const auto stats = GetStats(0);
+    const auto completeStats = GetStats(0);
+    const auto& stats = completeStats.SimpleStats;
 
-        EXPECT_EQ(0u, stats.CompFailed);
-        EXPECT_EQ(0u, stats.SubFailed);
-        EXPECT_EQ(0u, stats.Completed);
-        EXPECT_EQ(0u, stats.Dequeued);
-        EXPECT_EQ(0u, stats.Submitted);
-        EXPECT_EQ(writeCount, stats.EncryptorErrors);
-    }
+    EXPECT_EQ(0u, stats.CompFailed);
+    EXPECT_EQ(0u, stats.SubFailed);
+    EXPECT_EQ(0u, stats.Completed);
+    EXPECT_EQ(0u, stats.Dequeued);
+    EXPECT_EQ(0u, stats.Submitted);
+    EXPECT_EQ(writeCount, stats.EncryptorErrors);
 
     // validate crit events
-    {
-        constexpr ui64 cyclesPerMs = 2000000;
-        TSimpleStats prevStats;
-        TSimpleStats curStats;
-        TStringStream ss;
-        DumpStats(curStats, prevStats, TDuration::Seconds(1), ss, cyclesPerMs);
-        NJson::TJsonValue json;
-        NJson::ReadJsonTree(ss.Str(), &json, true);
-
-        ASSERT_EQ(true, json.Has("crit_events"));
-        for (const auto& event: json["crit_events"].GetArray()) {
-            const auto& name = event["name"].GetString();
-            const auto& message = event["message"].GetString();
-            EXPECT_EQ("EncryptorGeneratedZeroBlock", name);
-            EXPECT_EQ(
-                true,
-                message.StartsWith("Encryptor has generated a zero block #"));
-        }
+    EXPECT_EQ(writeCount, completeStats.CriticalEvents.size());
+    for (auto& [sensorName, message]: completeStats.CriticalEvents) {
+        EXPECT_EQ("EncryptorGeneratedZeroBlock", sensorName);
+        EXPECT_EQ(
+            true,
+            message.StartsWith("Encryptor has generated a zero block #"));
     }
 }
 

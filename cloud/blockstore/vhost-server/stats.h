@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "critical_event.h"
 #include "histogram.h"
 
 #include <util/datetime/base.h>
@@ -148,6 +149,12 @@ using TAtomicStats = TStats<std::atomic<ui64>>;
 using TSimpleStats = TStats<ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
+struct TCompleteStats {
+    TSimpleStats SimpleStats;
+    TCriticalEvents CriticalEvents;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct ICompletionStats
 {
@@ -163,7 +170,7 @@ struct ICompletionStats
 ICompletionStatsPtr CreateCompletionStats();
 
 void DumpStats(
-    const TSimpleStats& stats,
+    const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
