@@ -4920,23 +4920,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TString unalignedHead(1_KB, 'h');
         TString alignedBody(block, 'b');
         TString unalignedTail(2_KB, 't');
-        auto gbi = tablet.GenerateBlobIds(id, handle, block, block)->Record;
-        UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
 
-        auto blobId = LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
-        auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
-            blobId,
-            alignedBody,
-            TInstant::Max(),
-            NKikimrBlobStorage::UserData);
-        NKikimr::TActorId proxy =
-            MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
-        auto evPutSender = env.GetRuntime().AllocateEdgeActor(proxy.NodeId());
-        env.GetRuntime().Send(CreateEventForBSProxy(
-            evPutSender,
-            proxy,
-            evPut.release(),
-            blobId.Cookie()));
+        NKikimr::TLogoBlobID blobId;
+        ui64 commitId = 0;
+
+        auto writeBlob = [&] () {
+            auto gbi = tablet.GenerateBlobIds(id, handle, block, block)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
+
+            blobId = LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
+            commitId = gbi.GetCommitId();
+            auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
+                blobId,
+                alignedBody,
+                TInstant::Max(),
+                NKikimrBlobStorage::UserData);
+            NKikimr::TActorId proxy =
+                MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
+            auto evPutSender = env.GetRuntime().AllocateEdgeActor(proxy.NodeId());
+            env.GetRuntime().Send(CreateEventForBSProxy(
+                evPutSender,
+                proxy,
+                evPut.release(),
+                blobId.Cookie()));
+        };
+
+        writeBlob();
 
         TVector<NProtoPrivate::TFreshDataRange> unalignedParts;
         {
@@ -4959,7 +4968,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             offset,
             len,
             TVector<NKikimr::TLogoBlobID>({blobId}),
-            gbi.GetCommitId(),
+            commitId,
             unalignedParts);
 
         // one of the parts is empty
@@ -4972,6 +4981,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // setting it
         unalignedParts[1].SetContent(unalignedTail);
 
+        // writing a new blob since prev collect barrier was released after we
+        // got the error
+        writeBlob();
+
         // now our request should succeed
         tablet.AddData(
             id,
@@ -4979,7 +4992,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             offset,
             len,
             TVector<NKikimr::TLogoBlobID>({blobId}),
-            gbi.GetCommitId(),
+            commitId,
             unalignedParts);
 
         auto data = tablet.ReadData(handle, offset, len)->Record.GetBuffer();

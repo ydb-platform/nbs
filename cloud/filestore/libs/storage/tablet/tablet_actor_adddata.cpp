@@ -459,6 +459,17 @@ void TIndexTabletActor::HandleAddDataCompleted(
 {
     auto* msg = ev->Get();
 
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s AddData failed: %s",
+            LogTag.c_str(),
+            FormatError(msg->Error).Quote().c_str());
+    } else {
+        Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+    }
+
     // We try to release commit barrier twice: once for the lock
     // acquired by the GenerateBlob request and once for the lock
     // acquired by the AddData request. Though, the first lock is
@@ -469,8 +480,6 @@ void TIndexTabletActor::HandleAddDataCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
-
-    Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
