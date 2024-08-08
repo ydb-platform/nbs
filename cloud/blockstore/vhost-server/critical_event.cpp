@@ -9,9 +9,15 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+constexpr size_t MaxStoredCriticalEventCount = 1024;
+
 TLog Log;
 TCriticalEvents CriticalEventsAccumulator;
 TAdaptiveLock Guard;
+
+}   // namespace
 
 void SetCriticalEventsLog(TLog log)
 {
@@ -30,6 +36,9 @@ void ReportCriticalEvent(TString sensorName, TString message)
     }
 
     with_lock (Guard) {
+        if (CriticalEventsAccumulator.size() >= MaxStoredCriticalEventCount) {
+            return;
+        }
         CriticalEventsAccumulator.emplace_back(
             std::move(sensorName),
             std::move(message));
@@ -38,11 +47,11 @@ void ReportCriticalEvent(TString sensorName, TString message)
 
 TCriticalEvents TakeAccumulatedCriticalEvents()
 {
+    TCriticalEvents result;
     with_lock (Guard) {
-        TCriticalEvents result;
         CriticalEventsAccumulator.swap(result);
-        return result;
     }
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

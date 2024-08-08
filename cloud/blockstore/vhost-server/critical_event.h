@@ -11,13 +11,13 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 struct TCriticalEvent
 {
-    TString Name;
+    TString SensorName;
     TString Message;
 };
 using TCriticalEvents = TVector<TCriticalEvent>;
 
 void SetCriticalEventsLog(TLog log);
-void ReportCriticalEvent(TString name, TString message);
+void ReportCriticalEvent(TString sensorName, TString message);
 
 TCriticalEvents TakeAccumulatedCriticalEvents();
 

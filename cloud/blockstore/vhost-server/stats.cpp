@@ -172,7 +172,7 @@ void DumpStats(
         for (const auto& criticalEvent: criticalEvents) {
             buf.BeginObject();
             buf.WriteKey("name");
-            buf.WriteString(criticalEvent.Name);
+            buf.WriteString(criticalEvent.SensorName);
             buf.WriteKey("message");
             buf.WriteString(criticalEvent.Message);
             buf.EndObject();
