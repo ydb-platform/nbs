@@ -234,7 +234,7 @@ func (s *nodeService) NodePublishVolume(
 
 	if err != nil {
 		return nil, s.statusErrorf(codes.Internal,
-			"Failed to publish volume: %w", err)
+			"Failed to publish volume: %v", err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -261,7 +261,7 @@ func (s *nodeService) NodeUnpublishVolume(
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, s.statusErrorf(
 			codes.InvalidArgument,
-			"Failed to unpublish volume: %w", err)
+			"Failed to unpublish volume: %v", err)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
