@@ -40,7 +40,7 @@ PEERDIR(
     contrib/ydb/library/login
     contrib/ydb/library/ncloud/impl
     contrib/ydb/library/ycloud/api
-    contrib/ydb/library/ycloud/impl
+    contrib/ydb/library/grpc/actor_client
     contrib/ydb/library/security
 )
 
