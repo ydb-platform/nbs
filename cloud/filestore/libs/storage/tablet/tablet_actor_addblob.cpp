@@ -2,6 +2,7 @@
 
 #include "profile_log_events.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/group_by.h>
 
 #include <util/generic/set.h>
@@ -93,11 +94,12 @@ private:
                 + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
             auto error = Tablet.CheckFreshBytes(
                 part.NodeId,
-                part.MinCommitId,
+                args.CommitId,
                 offset,
                 part.Data);
 
             if (HasError(error)) {
+                ReportCheckFreshBytesFailed(error.GetMessage());
                 args.Error = std::move(error);
                 return;
             }
@@ -148,7 +150,7 @@ private:
             Tablet.WriteFreshBytes(
                 db,
                 part.NodeId,
-                part.MinCommitId,
+                args.CommitId,
                 offset,
                 part.Data);
         }

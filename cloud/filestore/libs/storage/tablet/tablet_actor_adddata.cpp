@@ -381,6 +381,15 @@ void TIndexTabletActor::HandleAddData(
 
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
+        if (part.GetContent().Empty()) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
+                    E_ARGUMENT,
+                    "empty unaligned data part"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
         const ui32 blockIndex = part.GetOffset() / GetBlockSize();
         const ui32 lastBlockIndex =
             (part.GetOffset() + part.GetContent().Size() - 1) / GetBlockSize();
@@ -401,7 +410,6 @@ void TIndexTabletActor::HandleAddData(
         unalignedDataParts.push_back({
             0, // NodeId is not known at this point
             blockIndex,
-            msg->Record.GetCommitId(),
             offsetInBlock,
             std::move(*part.MutableContent())});
     }
@@ -414,7 +422,6 @@ void TIndexTabletActor::HandleAddData(
             }
 
             sb << part.BlockIndex
-                << ":" << part.MinCommitId
                 << ":" << part.OffsetInBlock
                 << ":" << part.Data.Size();
         }
@@ -452,6 +459,17 @@ void TIndexTabletActor::HandleAddDataCompleted(
 {
     auto* msg = ev->Get();
 
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s AddData failed: %s",
+            LogTag.c_str(),
+            FormatError(msg->Error).Quote().c_str());
+    } else {
+        Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+    }
+
     // We try to release commit barrier twice: once for the lock
     // acquired by the GenerateBlob request and once for the lock
     // acquired by the AddData request. Though, the first lock is
@@ -462,8 +480,6 @@ void TIndexTabletActor::HandleAddDataCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
-
-    Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
