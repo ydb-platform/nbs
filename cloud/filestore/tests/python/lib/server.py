@@ -27,7 +27,7 @@ def wait_for_nfs_server(daemon, port):
     it is running and listening by the moment the actual test execution begins
     '''
     if not daemon.is_alive():
-        raise RuntimeError(" server is dead")
+        raise RuntimeError("filestore server is dead")
 
     with client.CreateGrpcClient(str("localhost:%d" % port)) as grpc_client:
         grpc_client.ping(protos.TPingRequest())
@@ -40,7 +40,7 @@ def wait_for_filestore_vhost(daemon, port):
     it is running and listening by the moment the actual test execution begins
     '''
     if not daemon.is_alive():
-        raise RuntimeError("nfs server is dead")
+        raise RuntimeError("filestore vhost is dead")
 
     with client.CreateGrpcEndpointClient(str("localhost:%d" % port)) as grpc_client:
         grpc_client.ping(protos.TPingRequest())
