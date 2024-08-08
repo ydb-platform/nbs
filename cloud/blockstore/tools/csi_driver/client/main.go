@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -337,6 +338,61 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func newNodeGetVolumeStatsCommand(endpoint *string) *cobra.Command {
+	var volumeId, podId string
+	cmd := cobra.Command{
+		Use:   "volumestats",
+		Short: "get volume stats",
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
+			defer cancelFunc()
+			client, err := newNodeClient(ctx, *endpoint)
+
+			volumePath := fmt.Sprintf(
+				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
+					"%s/mount",
+				podId,
+				volumeId,
+			)
+			response, err := client.NodeGetVolumeStats(
+				ctx,
+				&csi.NodeGetVolumeStatsRequest{
+					VolumeId:   volumeId,
+					VolumePath: volumePath,
+				},
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			jsonBytes, _ := json.MarshalIndent(response, "", "    ")
+			fmt.Println(string(jsonBytes))
+		},
+	}
+	cmd.Flags().StringVar(
+		&volumeId,
+		"volume-id",
+		"",
+		"volume id",
+	)
+	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
+	err := cmd.MarkFlagRequired("volume-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = cmd.MarkFlagRequired("pod-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newCsiNodeCommand(endpoint *string) *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "node",
@@ -345,6 +401,7 @@ func newCsiNodeCommand(endpoint *string) *cobra.Command {
 	cmd.AddCommand(
 		newPublishVolumeCommand(endpoint),
 		newUnpublishVolumeCommand(endpoint),
+		newNodeGetVolumeStatsCommand(endpoint),
 	)
 	return &cmd
 }
