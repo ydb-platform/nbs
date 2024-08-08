@@ -145,9 +145,6 @@ private:
         for (const auto& part: args.UnalignedDataParts) {
             const auto offset = part.OffsetInBlock
                 + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
-            // TODO: check whether MinCommitId is not older than what's
-            // expected by FreshBytes
-            // if it's older, return an error
             Tablet.WriteFreshBytes(
                 db,
                 part.NodeId,
