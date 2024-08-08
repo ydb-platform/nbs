@@ -522,6 +522,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
         CalculateNodeIndexCacheStats());
+
     if (Config->GetEnableSendingMetricsToExecutor())
     {
         SendMetricsToExecutor(ctx);
