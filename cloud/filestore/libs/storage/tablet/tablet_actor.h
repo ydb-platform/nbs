@@ -146,11 +146,10 @@ private:
         struct TRequestMetrics
         {
             explicit TRequestMetrics(
-                TVector<TRequestMetrics*>* allRequestMetrics)
+                TVector<TRequestMetrics*>* MetricsToReport)
             {
-                if (allRequestMetrics)
-                {
-                    allRequestMetrics->push_back(this);
+                if (MetricsToReport) {
+                    MetricsToReport->push_back(this);
                 }
             }
 
@@ -169,20 +168,20 @@ private:
         struct TCompactionMetrics: TRequestMetrics
         {
             explicit TCompactionMetrics(
-                    TVector<TRequestMetrics*>* allRequestMetrics)
-                : TRequestMetrics(allRequestMetrics)
+                    TVector<TRequestMetrics*>* MetricsToReport)
+                : TRequestMetrics(MetricsToReport)
             {}
 
             std::atomic<i64> DudCount{0};
         };
-        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(5)};
+        TVector<TRequestMetrics*> MetricsToReport{Reserve(5)};
 
         // we only need metrics of operations that load the network.
-        TRequestMetrics ReadData{&AllRequestMetrics};
-        TRequestMetrics DescribeData{&AllRequestMetrics};
-        TRequestMetrics WriteData{&AllRequestMetrics};
-        TRequestMetrics Flush{&AllRequestMetrics};
-        TCompactionMetrics Compaction{&AllRequestMetrics};
+        TRequestMetrics ReadData{&MetricsToReport};
+        TRequestMetrics DescribeData{&MetricsToReport};
+        TRequestMetrics WriteData{&MetricsToReport};
+        TRequestMetrics Flush{&MetricsToReport};
+        TCompactionMetrics Compaction{&MetricsToReport};
         TRequestMetrics AddData{nullptr};
         TRequestMetrics GenerateBlobIds{nullptr};
         TRequestMetrics Cleanup{nullptr};
