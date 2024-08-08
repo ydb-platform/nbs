@@ -95,7 +95,6 @@ private:
     using TEvNebiusAccessServiceAuthorizeRequest = TEvRequestWithKey<NNebiusCloud::TEvAccessService::TEvAuthorizeRequest>;
     using TEvNebiusAccessServiceAuthenticateRequest = TEvRequestWithKey<NNebiusCloud::TEvAccessService::TEvAuthenticateRequest>;
 
-
     struct TTokenRefreshRecord {
         TString Key;
         TInstant RefreshTime;
@@ -380,7 +379,6 @@ private:
         return request;
     }
 
-
     template <typename TPathsContainerPtr>
     static void AddResourcePath(TPathsContainerPtr pathsContainer, const TString& id, const TString& type) {
         auto resourcePath = pathsContainer->add_resource_path();
@@ -398,21 +396,21 @@ private:
     template <typename TTokenRecord, typename TPathsContainerPtr>
     void addResourcePaths(const TTokenRecord& record, const TString& permission, TPathsContainerPtr pathsContainer) const {
         if (const auto databaseId = record.GetAttributeValue(permission, "database_id"); databaseId) {
-            addResourcePath(pathsContainer, databaseId, "ydb.database");
+            AddResourcePath(pathsContainer, databaseId, "ydb.database");
         } else if (const auto serviceAccountId = record.GetAttributeValue(permission, "service_account_id"); serviceAccountId) {
-            addResourcePath(pathsContainer, serviceAccountId, "iam.serviceAccount");
+            AddResourcePath(pathsContainer, serviceAccountId, "iam.serviceAccount");
         }
 
         if (const auto folderId = record.GetAttributeValue(permission, "folder_id"); folderId) {
-            addResourcePath(pathsContainer, folderId, "resource-manager.folder");
+            AddResourcePath(pathsContainer, folderId, "resource-manager.folder");
         }
 
         if (const auto cloudId = record.GetAttributeValue(permission, "cloud_id"); cloudId) {
-            addResourcePath(pathsContainer, cloudId, "resource-manager.cloud");
+            AddResourcePath(pathsContainer, cloudId, "resource-manager.cloud");
         }
 
         if (const TString gizmoId = record.GetAttributeValue(permission, "gizmo_id"); gizmoId) {
-            addResourcePath(pathsContainer, gizmoId, "iam.gizmo");
+            AddResourcePath(pathsContainer, gizmoId, "iam.gizmo");
         }
     }
 
@@ -499,8 +497,9 @@ private:
         }
     }
 
-    template <typename TSubject>
-    bool GetSubjectId(const TSubject& subjectProto, TString& subjectId) {        switch (subject.type_case()) {
+    template <typename TSubject> // Yandex IAM v1/v2
+    bool GetSubjectId(const TSubject& subjectProto, TString& subjectId) {
+        switch (subjectProto.type_case()) {
         case TSubject::TypeCase::kUserAccount:
             subjectId = subjectProto.user_account().id();
             return true;
@@ -515,7 +514,7 @@ private:
         }
     }
 
-     bool GetSubjectId(const nebius::iam::v1::Account& accountProto, TString& subjectId) {
+    bool GetSubjectId(const nebius::iam::v1::Account& accountProto, TString& subjectId) {
         using Account = nebius::iam::v1::Account;
         switch (accountProto.type_case()) {
         case Account::TypeCase::kUserAccount:
@@ -744,6 +743,7 @@ private:
         ui64 cookie = ev->Cookie;
 
         CounterTicketsReceived->Inc();
+        const auto& signature = ev->Get()->Signature;
         if (!IsAccessKeySignatureSupported() && (signature.AccessKeyId || signature.Signature)) {
             TEvTicketParser::TError error;
             error.Message = "Access key signature is not supported";
@@ -752,7 +752,6 @@ private:
             Send(sender, new TEvTicketParser::TEvAuthorizeTicketResult(ev->Get()->Ticket, error), 0, cookie);
             return;
         }
-        const auto& signature = ev->Get()->Signature;
         if (ticket.empty() && !signature.AccessKeyId) {
             TEvTicketParser::TError error;
             error.Message = "Ticket is empty";
@@ -816,7 +815,7 @@ private:
         record.AuthorizeRequests.emplace_back(ev.Release());
     }
 
-     static auto GetTokenType(TEvAccessServiceAuthenticateRequest* request) {
+    static auto GetTokenType(TEvAccessServiceAuthenticateRequest* request) {
         return request->Request.has_api_key() ? TDerived::ETokenType::ApiKey : TDerived::ETokenType::AccessService;
     }
 
@@ -865,9 +864,10 @@ private:
         return false;
     }
 
-    void Handle(NCloud::TEvAccessService::TEvAuthenticateResponse::TPtr& ev) {
-        NCloud::TEvAccessService::TEvAuthenticateResponse* response = ev->Get();
-        TEvAccessServiceAuthenticateRequest* request = response->Request->Get<TEvAccessServiceAuthenticateRequest>();
+    template <typename TEvRequest, typename TEvResponse>
+    void HandleIamAuthenticateResponse(typename TEvResponse::TPtr& ev) {
+        TEvResponse* response = ev->Get();
+        TEvRequest* request = response->Request->template Get<TEvRequest>();
         auto& userTokens = GetDerived()->GetUserTokens();
         auto it = userTokens.find(request->Key);
         if (it == userTokens.end()) {
@@ -890,7 +890,7 @@ private:
                         .UserSID = record.Subject,
                         .AuthType = record.GetAuthType()
                     }));
-                }else{
+                } else {
                     SetError(key, record, {errorMessage, false});
                 }
             } else {
@@ -904,6 +904,7 @@ private:
             }
         }
     }
+
     void Handle(NNebiusCloud::TEvAccessService::TEvAuthenticateResponse::TPtr& ev) {
         HandleIamAuthenticateResponse<TEvNebiusAccessServiceAuthenticateRequest, NNebiusCloud::TEvAccessService::TEvAuthenticateResponse>(ev);
     }
@@ -955,7 +956,6 @@ private:
             }
         }
     }
-
 
     template <class TResourcePath>
     TString GetResourcePathIdForRequiredPermissions(const TResourcePath& resourcePath) {
@@ -1121,19 +1121,6 @@ private:
     }
 
     void Handle(NCloud::TEvAccessService::TEvBulkAuthorizeResponse::TPtr& ev) {
-        auto getResourcePathIdForRequiredPermissions = [] (const ::yandex::cloud::priv::accessservice::v2::Resource& resource_path) -> TString {
-            if (resource_path.type() == "resource-manager.folder") {
-                return " folder_id " + resource_path.id();
-            }
-            if (resource_path.type() == "resource-manager.cloud") {
-                return " cloud_id " + resource_path.id();
-            }
-            if (resource_path.type() == "iam.serviceAccount") {
-                return " service_account_id " + resource_path.id();
-            }
-            return "";
-        };
-
         NCloud::TEvAccessService::TEvBulkAuthorizeResponse* response = ev->Get();
         TEvAccessServiceBulkAuthorizeRequest* request = response->Request->Get<TEvAccessServiceBulkAuthorizeRequest>();
         const TString& key(request->Key);
@@ -1184,7 +1171,7 @@ private:
                                 errorMessage << " - ";
                                 requiredPermissions.push_back(permissionDeniedIt);
                             }
-                            permissionDeniedError = result.permission_denied_error().message();;
+                            permissionDeniedError = result.permission_denied_error().message();
                             errorMessage << permissionDeniedError;
                             permissionDeniedRecord.Error = {.Message = errorMessage, .Retryable = false};
                         } else {
@@ -1228,7 +1215,7 @@ private:
             auto itPermission = record.Permissions.find(permission);
             if (itPermission != record.Permissions.end()) {
                 if (response->Status.Ok()) {
-                     TString errorMessage;
+                    TString errorMessage;
                     if (ApplySubjectName(response->Response.subject(), itPermission->second.Subject, errorMessage)) {
                         itPermission->second.SubjectType = ConvertSubjectType(response->Response.subject().type_case());
                         itPermission->second.Error.clear();
@@ -1244,7 +1231,6 @@ private:
                                     << record.Subject
                                     << "\"");
                     }
-
                 } else {
                     bool retryable = IsRetryableGrpcError(response->Status);
                     itPermission->second.Error = {response->Status.Msg, retryable};
@@ -1443,7 +1429,6 @@ private:
             html << "<table class='table simple-table1 table-hover table-condensed'>";
             html << "<thead><tr>";
             html << "<th>Ticket</th>";
-            html << "<th>UID</th>";
             html << "<th>Database</th>";
             html << "<th>Subject</th>";
             html << "<th>Error</th>";
@@ -1456,10 +1441,7 @@ private:
             html << "<th>Peer</th>";
             html << "</tr></thead><tbody>";
             for (const auto& [key, record] : GetDerived()->GetUserTokens()) {
-                html << "<tr>";
-                html << "<td>" << record.GetMaskedTicket() << "</td>";
-                TDerived::WriteTokenRecordValues(html, key, record);
-                html << "</tr>";
+                WriteTokenRecordValues(html, key, record);
             }
             html << "</tbody></table>";
             html << "</div>";
@@ -1850,6 +1832,8 @@ protected:
 
     template <typename TTokenRecord>
     static void WriteTokenRecordValues(TStringBuilder& html, const TString& key, const TTokenRecord& record) {
+        html << "<tr>";
+        html << "<td>" << record.GetMaskedTicket() << "</td>";
         html << "<td>" << record.Database << "</td>";
         html << "<td>" << record.Subject << "</td>";
         html << "<td>" << record.Error << "</td>";
@@ -1860,6 +1844,7 @@ protected:
         html << "<td>" << record.ExpireTime << "</td>";
         html << "<td>" << record.AccessTime << "</td>";
         html << "<td>" << record.PeerName << "</td>";
+        html << "</tr>";
     }
 
     void InitCounters(::NMonitoring::TDynamicCounterPtr counters) {
@@ -1892,7 +1877,6 @@ protected:
         ServiceDomain = Config.GetServiceDomain();
 
         if (Config.GetUseAccessService()) {
-            NCloud::TAccessServiceSettings settings;
             if (Config.GetAccessServiceType() == "Yandex_v2") {
                 NCloud::TAccessServiceSettings settings;
                 FillAccessServiceSettings(settings);
@@ -1911,9 +1895,9 @@ protected:
                                                             Config.GetGrpcCacheSize(),
                                                             TDuration::MilliSeconds(Config.GetGrpcSuccessLifeTime()),
                                                             TDuration::MilliSeconds(Config.GetGrpcErrorLifeTime())), TMailboxType::HTSwap, AppData()->UserPoolId);
-            }
+                }
 
-            AccessServiceValidatorV2 = Register(NCloud::CreateAccessServiceV2(settings), TMailboxType::HTSwap, AppData()->UserPoolId);
+                AccessServiceValidatorV2 = Register(NCloud::CreateAccessServiceV2(settings), TMailboxType::HTSwap, AppData()->UserPoolId);
             } else if (Config.GetAccessServiceType() == "Nebius_v1") {
                 NNebiusCloud::TAccessServiceSettings settings;
                 FillAccessServiceSettings(settings);
