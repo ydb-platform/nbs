@@ -308,6 +308,19 @@ void TIndexTabletState::FindFreshBytes(
         commitId);
 }
 
+NProto::TError TIndexTabletState::CheckFreshBytes(
+    ui64 nodeId,
+    ui64 commitId,
+    ui64 offset,
+    TStringBuf data) const
+{
+    return Impl->FreshBytes.CheckBytes(
+        nodeId,
+        offset,
+        data,
+        commitId);
+}
+
 void TIndexTabletState::WriteFreshBytes(
     TIndexTabletDatabase& db,
     ui64 nodeId,
