@@ -6,7 +6,7 @@ CHECK_DEPENDENT_DIRS(
     EXCEPT contrib/ydb/library/services
     EXCEPT contrib/ydb/library/yql/providers/generic/connector/api/common
     EXCEPT contrib/ydb/library/yql/public/types
-    
+
     EXCEPT contrib/ydb/public/lib/protobuf # base for validation and config_proto_plugin
     EXCEPT contrib/ydb/public/lib/validation
 
