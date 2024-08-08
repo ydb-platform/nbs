@@ -4945,7 +4945,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             part.SetContent(unalignedHead);
             unalignedParts.push_back(part);
             part.SetOffset(block + alignedBody.Size());
-            part.SetContent(unalignedTail);
+            part.ClearContent();
             unalignedParts.push_back(part);
         }
 
@@ -4953,6 +4953,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const ui64 len =
             unalignedHead.Size() + alignedBody.Size() + unalignedTail.Size();
 
+        tablet.SendAddDataRequest(
+            id,
+            handle,
+            offset,
+            len,
+            TVector<NKikimr::TLogoBlobID>({blobId}),
+            gbi.GetCommitId(),
+            unalignedParts);
+
+        // one of the parts is empty
+        auto response = tablet.RecvAddDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            response->GetErrorReason());
+
+        // setting it
+        unalignedParts[1].SetContent(unalignedTail);
+
+        // now our request should succeed
         tablet.AddData(
             id,
             handle,

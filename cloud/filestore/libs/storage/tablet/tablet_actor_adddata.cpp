@@ -381,6 +381,15 @@ void TIndexTabletActor::HandleAddData(
 
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
+        if (part.GetContent().Empty()) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
+                    E_ARGUMENT,
+                    "empty unaligned data part"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
         const ui32 blockIndex = part.GetOffset() / GetBlockSize();
         const ui32 lastBlockIndex =
             (part.GetOffset() + part.GetContent().Size() - 1) / GetBlockSize();
@@ -401,7 +410,6 @@ void TIndexTabletActor::HandleAddData(
         unalignedDataParts.push_back({
             0, // NodeId is not known at this point
             blockIndex,
-            msg->Record.GetCommitId(),
             offsetInBlock,
             std::move(*part.MutableContent())});
     }
@@ -414,7 +422,6 @@ void TIndexTabletActor::HandleAddData(
             }
 
             sb << part.BlockIndex
-                << ":" << part.MinCommitId
                 << ":" << part.OffsetInBlock
                 << ":" << part.Data.Size();
         }
