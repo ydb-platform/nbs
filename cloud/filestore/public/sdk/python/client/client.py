@@ -1,7 +1,7 @@
 import cloud.filestore.public.sdk.python.protos as protos
 
 from .error import _handle_errors
-from .grpc_client import CreateGrpcClient
+from .grpc_client import CreateGrpcClient, CreateGrpcEndpointClient
 from .durable import DurableClient
 
 
@@ -451,6 +451,7 @@ def CreateClient(
         log)
 
     return Client(durable_client)
+
 
 def CreateEndpointClient(
         endpoint,
