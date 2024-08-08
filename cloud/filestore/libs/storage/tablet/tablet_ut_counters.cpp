@@ -618,7 +618,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         storageConfig.SetCompactionThresholdAverage(10000);
 
         storageConfig.SetThrottlingEnabled(false);
-        storageConfig.SetEnableSendingMetricsToExecutor(true);
+        storageConfig.SetEnableSendingMetricsToHive(true);
 
         TTestEnv env({}, storageConfig);
         auto registry = env.GetRegistry();
