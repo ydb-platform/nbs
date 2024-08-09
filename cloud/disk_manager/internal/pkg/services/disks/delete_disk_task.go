@@ -82,7 +82,7 @@ func (t *deleteDiskTask) deleteDisk(
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			"delete_disk_from_incremental"+":"+zoneID+":"+diskID,
+			selfTaskID+"_delete_disk_from_incremental",
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
@@ -121,7 +121,7 @@ func (t *deleteDiskTask) deleteDisk(
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
-				"release_base_disk"+":"+zoneID+":"+diskID,
+				selfTaskID+"_release_base_disk",
 			),
 			&pools_protos.ReleaseBaseDiskRequest{
 				OverlayDisk: &types.Disk{
