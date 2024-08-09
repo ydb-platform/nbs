@@ -122,6 +122,15 @@ struct TByteRange
         };
     }
 
+    TByteRange AlignedSubRange() const
+    {
+        return {
+            FirstAlignedBlock() * BlockSize,
+            AlignedBlockCount() * BlockSize,
+            BlockSize
+        };
+    }
+
     TByteRange Intersect(TByteRange other) const
     {
         auto offset = Max(Offset, other.Offset);
