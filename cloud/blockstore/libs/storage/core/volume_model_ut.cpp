@@ -1342,6 +1342,56 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldNotOverflowWhenUseSeparatedMixedChannelCount)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetAllocateSeparateMixedChannels(true);
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed");
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
+        storageServiceConfig.SetMinChannelCount(1);
+        storageServiceConfig.SetFreshChannelCount(1);
+        storageServiceConfig.SetAllocationUnitHDD(1);
+        storageServiceConfig.SetHDDUnitWriteIops(10);
+        storageServiceConfig.SetSSDUnitWriteIops(100);
+        storageServiceConfig.SetHDDUnitWriteBandwidth(10);
+        storageServiceConfig.SetSSDUnitWriteBandwidth(30);
+        storageServiceConfig.SetThrottlingEnabled(true);
+
+        auto config = std::make_unique<TStorageConfig>(
+            std::move(storageServiceConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
+        );
+
+        const auto blocksCount = 400_GB / DefaultBlockSize;
+        TVolumeParams params{
+            DefaultBlockSize,
+            blocksCount,
+            1,
+            {},
+            0,
+            0,
+            0,
+            0,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID
+        };
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        auto countChannels = [&](EChannelDataKind kind)
+        {
+            return CountIf(
+                volumeConfig.GetExplicitChannelProfiles(),
+                [kind](const auto& channel)
+                { return channel.GetDataKind() == static_cast<ui32>(kind); });
+        };
+        UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(216, countChannels(EChannelDataKind::Merged));
+        UNIT_ASSERT_VALUES_EQUAL(35, countChannels(EChannelDataKind::Mixed));
+        UNIT_ASSERT_VALUES_EQUAL(1, countChannels(EChannelDataKind::Fresh));
+    }
+
     Y_UNIT_TEST(ShouldNotDecreaseDataChannelCount)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
@@ -1902,6 +1952,122 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
 #undef CHECK_CHANNEL
 #undef CHECK_CHANNEL_HDD
+
+    Y_UNIT_TEST(ShouldNotCapWhenEnoughChannels)
+    {
+        int wantAddMerged = 50;
+        int wantAddMixed = 35;
+        int wantAddFresh = 15;
+
+        ComputeChannelCountLimits(
+            100,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+
+        UNIT_ASSERT_VALUES_EQUAL(50, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(35, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(15, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldCapAllWhenNoFreeChannels)
+    {
+        int wantAddMerged = 50;
+        int wantAddMixed = 35;
+        int wantAddFresh = 15;
+
+        ComputeChannelCountLimits(
+            0,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldCapLessAffectedChannel)
+    {
+        int wantAddMerged = 10;
+        int wantAddMixed = 1;
+        int wantAddFresh = 1;
+
+        ComputeChannelCountLimits(
+            2,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldDoFairCapping)
+    {
+        int wantAddMerged = 10;
+        int wantAddMixed = 100;
+        int wantAddFresh = 1;
+
+        ComputeChannelCountLimits(
+            101,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+        UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(91, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldGiveMoreToThoseWhoAskForMore)
+    {
+        int wantAddMerged = 20;
+        int wantAddMixed = 2;
+        int wantAddFresh = 1;
+
+        ComputeChannelCountLimits(
+            11,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+
+        UNIT_ASSERT_VALUES_EQUAL(9, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldGiveAtLeastOneChannel)
+    {
+        int wantAddMerged = 2000;
+        int wantAddMixed = 2;
+        int wantAddFresh = 1;
+
+        ComputeChannelCountLimits(
+            5,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
+    }
+
+    Y_UNIT_TEST(ShouldGiveTheChannelWhereItIsMostNeeded)
+    {
+        int wantAddMerged = 2000;
+        int wantAddMixed = 2000;
+        int wantAddFresh = 1;
+
+        ComputeChannelCountLimits(
+            1,
+            &wantAddMerged,
+            &wantAddMixed,
+            &wantAddFresh);
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMerged);
+        UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
+        UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
