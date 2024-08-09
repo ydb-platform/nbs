@@ -288,6 +288,34 @@ public:
         return request;
     }
 
+    auto CreateForcedOperationRequest(
+        NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
+    {
+        NProtoPrivate::TForcedOperationRequest request;
+        request.SetOpType(type);
+        auto requestToTablet =
+            std::make_unique<TEvIndexTablet::TEvForcedOperationRequest>();
+
+        requestToTablet->Record = std::move(request);
+        return requestToTablet;
+    }
+
+    auto CreateWriteCompactionMapRequest(
+        const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
+    {
+        NProtoPrivate::TWriteCompactionMapRequest request;
+        for (auto range: ranges)
+        {
+            *request.AddRanges() = range;
+        }
+
+        auto requestToTablet =
+            std::make_unique<TEvIndexTablet::TEvWriteCompactionMapRequest>();
+
+        requestToTablet->Record = std::move(request);
+        return requestToTablet;
+    }
+
     //
     // TEvIndexTabletPrivate
     //

@@ -253,6 +253,24 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         "Force cleanup",
         "Are you sure you want to force cleanup for ALL ranges?",
         "forceCleanupAll();");
+
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-delete-zero-compaction-ranges'>Force Delete zero compaction ranges</a></p>"
+        << "<form method='POST' name='ForceDeleteZeroCompactionRanges' style='display:none'>"
+        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
+        << "<input type='hidden' name='action' value='forceOperationAll'/>"
+        << "<input type='hidden' name='mode' value='deleteZeroCompactionRanges'/>"
+        << "<input class='btn btn-primary' type='button' value='Delete zero "
+           "compaction ranges'"
+        << " data-toggle='modal' data-target='#force-delete-zero-compaction-ranges'/>"
+        << "</form>";
+
+    BuildConfirmActionDialog(
+        out,
+        "force-delete-zero-compaction-ranges",
+        "Force delete zero compaction ranges",
+        "Are you sure you want to delete ALL zero compaction ranges?",
+        "forceDeleteZeroCompactionRanges();");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -765,6 +783,14 @@ void GenerateActionsJS(IOutputStream& out)
         }
         </script>
     )___";
+
+    out << R"___(
+        <script type='text/javascript'>
+        function forceDeleteZeroCompactionRanges() {
+            document.forms['ForceDeleteZeroCompactionRanges'].submit();
+        }
+        </script>
+    )___";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1179,6 +1205,23 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         return;
     }
 
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode;
+    if (params.Get("mode") == "cleanup") {
+        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup;
+    } else if (params.Get("mode") == "compaction") {
+        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
+    } else if (params.Get("mode") == "deleteZeroCompactionRanges") {
+        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode
+            ::DeleteZeroCompactionRanges;
+    } else {
+        RejectHttpRequest(
+            ctx,
+            TabletID(),
+            *requestInfo,
+            TStringBuilder() << "Invalid mode: " << params.Get("mode"));
+        return;
+    }
+
     TVector<ui32> ranges;
     if (params.Has("RangeIndex") && params.Has("RangesCount")) {
         ui64 rangeIndex = 0;
@@ -1199,13 +1242,14 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
                 rangeIndex + rangesCount,
                 1));
     } else {
-        ranges = GetNonEmptyCompactionRanges();
+        if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
+                ::DeleteZeroCompactionRanges)
+        {
+            ranges = RangesWithEmptyCompactionScore;
+        } else {
+            ranges = GetNonEmptyCompactionRanges();
+        }
     }
-
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode =
-        params.Get("mode") == "cleanup"
-            ? TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup
-            : TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
 
     EnqueueForcedRangeOperation(mode, std::move(ranges));
     EnqueueForcedRangeOperationIfNeeded(ctx);

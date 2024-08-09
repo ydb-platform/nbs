@@ -41,6 +41,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
     xxx(AddBlob,                                __VA_ARGS__)                   \
     xxx(Cleanup,                                __VA_ARGS__)                   \
+    xxx(DeleteZeroCompactionRanges,             __VA_ARGS__)                   \
     xxx(DeleteGarbage,                          __VA_ARGS__)                   \
     xxx(TruncateRange,                          __VA_ARGS__)                   \
     xxx(ZeroRange,                              __VA_ARGS__)                   \
@@ -431,6 +432,25 @@ struct TEvIndexTabletPrivate
     using TCompactionCompleted = TOperationCompleted;
 
     //
+    // DeleteZeroCompactionRanges
+    //
+
+    struct TDeleteZeroCompactionRangesRequest
+    {
+        const ui32 RangeId;
+
+        explicit TDeleteZeroCompactionRangesRequest(ui32 rangeId)
+            : RangeId(rangeId)
+        {}
+    };
+
+    struct TDeleteZeroCompactionRangesResponse
+    {
+    };
+
+    using TDeleteZeroCompactionRangesCompleted = TOperationCompleted;
+
+    //
     // LoadCompactionMapChunk
     //
 
@@ -475,6 +495,7 @@ struct TEvIndexTabletPrivate
     {
         Compaction = 0,
         Cleanup = 1,
+        DeleteZeroCompactionRanges = 2,
     };
 
     struct TForcedRangeOperationRequest
