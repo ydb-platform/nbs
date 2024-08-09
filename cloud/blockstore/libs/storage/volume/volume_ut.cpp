@@ -8203,6 +8203,146 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(describeRequest);
     }
 
+    Y_UNIT_TEST(ShouldTrackusedFromOverlayAndBaseRequested)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(), runtime->AllocateEdgeActor(), 0);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,                 // maxBandwidth
+            0,                 // maxIops
+            0,                 // burstPercentage
+            0,                 // maxPostponedWeight
+            false,             // throttlingEnabled
+            1,                 // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024 * 4,              // block count per partition
+            "vol0",            // diskId
+            "cloud",           // cloudId
+            "folder",          // folderId
+            1,                 // partition count
+            2,                 // blocksPerStripe
+            "track-used",      // tags
+            "base_disk",       // baseDiskId
+            "checkpoint"       // baseDiskCheckpointId
+        );
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        bool checkReadLocalEvent = true;
+        const ui64 UninitializedValue = 9999;
+        ui64 describeBlockCount = UninitializedValue;
+        ui64 describeBlockIndex = UninitializedValue;
+        ui64 overlayBlockCount = UninitializedValue;
+        ui64 overlayBlockIndex = UninitializedValue;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::TEvDescribeBlocksRequest::EventType:
+                    {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvDescribeBlocksRequest>();
+
+                        describeBlockCount = msg->Record.GetBlocksCount();
+                        describeBlockIndex = msg->Record.GetStartIndex();
+
+                        runtime->Send(new IEventHandle(
+                            event->Sender,
+                            event->Sender,
+                            new TEvVolume::TEvDescribeBlocksResponse()));
+
+                        return true;
+                    }
+                    case TEvService::TEvReadBlocksLocalRequest::EventType:
+                    {
+                        // Trackused
+                        if (checkReadLocalEvent)
+                        {
+                            auto* msg =
+                                event->Get<TEvService::TEvReadBlocksLocalRequest>();
+
+                            overlayBlockCount = msg->Record.GetBlocksCount();
+                            overlayBlockIndex = msg->Record.GetStartIndex();
+                        }
+                        break;
+                    }
+                    case TEvService::TEvReadBlocksRequest::EventType:
+                    {
+                        if (!checkReadLocalEvent)
+                        {
+                            auto* msg =
+                                event->Get<TEvService::TEvReadBlocksRequest>();
+
+                            overlayBlockCount = msg->Record.GetBlocksCount();
+                            overlayBlockIndex = msg->Record.GetStartIndex();
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // base disk emit...
+        // base[1024]...overlay[1024]
+        // Write something
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 2048),
+            clientInfo.GetClientId(),
+            1);
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(2048, 2048),
+            clientInfo.GetClientId(),
+            2);
+
+        TVector<TBlockRange64> ranges;
+        ranges.push_back(TBlockRange64::WithLength(0, 2048));
+        volume.UpdateUsedBlocks(ranges, false);
+
+        auto resetValues = [&] {
+            describeBlockCount = UninitializedValue;
+            describeBlockIndex = UninitializedValue;
+            overlayBlockCount = UninitializedValue;
+            overlayBlockIndex = UninitializedValue;
+        };
+
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(1024, 2048),
+            clientInfo.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockCount, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockIndex, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockCount, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockIndex, 2048);
+
+        resetValues();
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockCount, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockIndex, 0);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockCount, UninitializedValue);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockIndex, UninitializedValue);
+
+        resetValues();
+        checkReadLocalEvent = false;
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(2048, 1024),
+            clientInfo.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockCount, UninitializedValue);
+        UNIT_ASSERT_VALUES_EQUAL(describeBlockIndex, UninitializedValue);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockCount, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(overlayBlockIndex, 2048);
+    }
+
     Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

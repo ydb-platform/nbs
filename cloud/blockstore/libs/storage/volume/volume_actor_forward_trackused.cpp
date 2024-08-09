@@ -1,5 +1,7 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <cloud/blockstore/libs/storage/volume/actors/forward_read_marked.h>
 #include <cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.h>
 #include <cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.h>
@@ -17,6 +19,45 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsOnlyOverlayDisk(
+    const TCompressedBitmap* usedBlocks,
+    NBlockStore::TBlockRange64 range,
+    ui64 baseDiskBlocksCount)
+{
+    if (!usedBlocks) {
+        return false;
+    }
+
+    auto usedBlocksRange =
+        NBlockStore::TBlockRange64::WithLength(0, usedBlocks->Count());
+
+    // base     111111-----
+    // overlay  00022222222
+    // range    00000033333
+    if (!usedBlocksRange.Overlaps(range)) {
+        return true;
+    }
+
+    // base     111111-----
+    // overlay  00022222222
+    // range    03333000000
+    if (usedBlocksRange.Contains(range)) {
+        return usedBlocks->Count(range.Start, range.End + 1) == range.Size();
+    }
+
+    // base     111111-----
+    // overlay  00022222222
+    // range    00033333300
+    return usedBlocks->Count(range.Start, baseDiskBlocksCount) == baseDiskBlocksCount - range.Start;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,14 +109,14 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             overlayDiskRegistryBasedDisk)
         {
             const TCompressedBitmap* usedBlocks = State->GetUsedBlocks();
-            const bool isOnlyOverlayDisk = usedBlocks
-                ? usedBlocks->Count(
-                    msg->Record.GetStartIndex(),
-                    msg->Record.GetStartIndex() + msg->Record.GetBlocksCount())
-                        == msg->Record.GetBlocksCount()
-                : false;
+            const bool isOnlyOverlay = IsOnlyOverlayDisk(
+                    usedBlocks,
+                    TBlockRange64::WithLength(
+                        msg->Record.GetStartIndex(),
+                        msg->Record.GetBlocksCount()),
+                    State->GetBlocksCount());
 
-            if (isOnlyOverlayDisk) {
+            if (isOnlyOverlay) {
                 return false;
             }
 
