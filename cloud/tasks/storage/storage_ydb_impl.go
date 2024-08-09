@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -508,7 +509,7 @@ func (s *storageYDB) prepareCreateTask(
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
 
-		select count(*)
+		select *
 		from tasks
 		where id = $id
 	`, s.tablesPath),
@@ -519,22 +520,49 @@ func (s *storageYDB) prepareCreateTask(
 	}
 	defer res.Close()
 
-	if res.NextResultSet(ctx) && res.NextRow() {
-		var count uint64
-		err = res.ScanWithDefaults(&count)
-		if err != nil {
-			return nil, err
+	existingStates, err := s.scanTaskStates(ctx, res)
+	if err != nil {
+		return []stateTransition{}, err
+	}
+
+	if len(existingStates) != 0 {
+		logging.Info(
+			ctx,
+			"task with id=%v already exists",
+			state.ID,
+		)
+
+		if state.TaskType != existingStates[0].TaskType {
+			err = tx.Commit(ctx)
+			if err != nil {
+				return []stateTransition{}, err
+			}
+
+			return []stateTransition{}, errors.NewNonRetriableErrorf(
+				`cannot create task with type=%v, because task with same id=%v,
+				 but different type=%v already exists`,
+				state.TaskType,
+				state.ID,
+				existingStates[0].TaskType,
+			)
 		}
 
-		if count != 0 {
-			logging.Info(
-				ctx,
-				"%v tasks with id='%v' already exist",
-				count,
+		if !bytes.Equal(state.Request, existingStates[0].Request) {
+			err = tx.Commit(ctx)
+			if err != nil {
+				return []stateTransition{}, err
+			}
+
+			return []stateTransition{}, errors.NewNonRetriableErrorf(
+				`cannot create task with request=%s, because task with same id=%v,
+				 but different request=%s already exists`,
+				state.Request,
 				state.ID,
+				existingStates[0].Request,
 			)
-			return []stateTransition{}, nil
 		}
+
+		return []stateTransition{}, nil
 	}
 
 	state.ChangedStateAt = state.CreatedAt
