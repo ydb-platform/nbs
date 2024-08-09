@@ -13,7 +13,7 @@
 #include <array>
 #include <random>
 
-using namespace NCloud::NBlockStore::NVHostServer;
+namespace NCloud::NBlockStore::NVHostServer {
 
 namespace {
 
@@ -131,7 +131,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         const ui64 now = GetCycleCount();
 
         TVector<iocb*> batch;
-        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+        TSimpleStats queueStats;
+        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
         auto req = TAioRequest::FromIocb(batch[0]);
@@ -187,7 +188,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         const ui64 now = GetCycleCount();
 
         TVector<iocb*> batch;
-        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+        TSimpleStats queueStats;
+        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
         UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
         auto req = TAioRequest::FromIocb(batch[0]);
@@ -242,7 +244,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         const ui64 now = GetCycleCount();
 
         TVector<iocb*> batch;
-        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+        TSimpleStats queueStats;
+        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
         UNIT_ASSERT_VALUES_EQUAL(2, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
@@ -313,7 +316,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         const ui64 now = GetCycleCount();
 
         TVector<iocb*> batch;
-        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+        TSimpleStats queueStats;
+        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
@@ -404,7 +408,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
 
             TVector<iocb*> batch;
 
-            PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+            TSimpleStats queueStats;
+            PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
             auto req = TAioRequest::FromIocb(batch[0]);
@@ -459,7 +464,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
             const ui64 now = GetCycleCount();
 
             TVector<iocb*> batch;
-            PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+            TSimpleStats queueStats;
+            PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
             UNIT_ASSERT_VALUES_EQUAL(1, batch.size());
             auto req = TAioRequest::FromIocb(batch[0]);
@@ -524,7 +530,8 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         const ui64 now = GetCycleCount();
 
         TVector<iocb*> batch;
-        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now);
+        TSimpleStats queueStats;
+        PrepareIO(Log, nullptr, Devices, &bio.io, batch, now, queueStats);
 
         UNIT_ASSERT_VALUES_EQUAL(3, batch.size());
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, batch[0]->data);
@@ -584,3 +591,5 @@ Y_UNIT_TEST_SUITE(TAioRequestTest)
         auto holder = sub1->TakeParentRequest();
     }
 }
+
+}   // namespace NCloud::NBlockStore::NVHostServer

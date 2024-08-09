@@ -7,6 +7,7 @@ SRCS(
     backend_aio.cpp
     backend_rdma.cpp
     backend_null.cpp
+    critical_event.cpp
     histogram.cpp
     options.cpp
     request_aio.cpp

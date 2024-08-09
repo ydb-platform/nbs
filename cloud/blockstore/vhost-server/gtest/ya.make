@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     ../backend.cpp
     ../backend_aio.cpp
+    ../critical_event.cpp
     ../histogram.cpp
     ../options.cpp
     ../request_aio.cpp
