@@ -1,7 +1,7 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
-
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
 #include <type_traits>
@@ -67,7 +67,8 @@ void BatchCompleted(
         request,
         requestStats["count"].GetUInteger(),
         requestStats["bytes"].GetUInteger(),
-        requestStats["errors"].GetUInteger(),
+        requestStats["errors"].GetUInteger() +
+            requestStats["encryptor_errors"].GetUInteger(),
         times,
         sizes);
 }
@@ -91,6 +92,17 @@ void TEndpointStats::Update(const NJson::TJsonValue& stats)
         stats["write"],
         ClientId,
         DiskId);
+
+    // Report critical events
+    if (stats.Has("crit_events")) {
+        for (const auto& event: stats["crit_events"].GetArray()) {
+            ReportCriticalEvent(
+                GetCriticalEventFullName(event["name"].GetString()),
+                event["message"].GetString(),
+                false   // verifyDebug
+            );
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -1,5 +1,7 @@
 #include "stats.h"
 
+#include "critical_event.h"
+
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
@@ -21,8 +23,6 @@ private:
     TAutoEvent CompletionStatsEvent;
 
 public:
-    virtual ~TCompletionStats() = default;
-
     std::optional<TSimpleStats> Get(TDuration timeout) override
     {
         if (!IsCompletionStatsWaitTimeout) {
@@ -49,6 +49,7 @@ public:
 
         CompletionStats.Completed = stats.Completed;
         CompletionStats.CompFailed = stats.CompFailed;
+        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
 
         CompletionStats.Requests = stats.Requests;
         CompletionStats.Times = stats.Times;
@@ -125,12 +126,14 @@ void WriteSizes(NJsonWriter::TBuf& buf, const auto& hist, const auto& prevHist)
 ////////////////////////////////////////////////////////////////////////////////
 
 void DumpStats(
-    const TSimpleStats& stats,
+    const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs)
 {
+    const auto & stats = completeStats.SimpleStats;
+
     NJsonWriter::TBuf buf {NJsonWriter::HEM_DONT_ESCAPE_HTML, &stream};
 
     auto write = [&] (TStringBuf key, ui64 value) {
@@ -162,6 +165,21 @@ void DumpStats(
     write("submission_failed", stats.SubFailed - old.SubFailed);
     write("completed", stats.Completed - old.Completed);
     write("failed", stats.CompFailed - old.CompFailed);
+    write("encryptor_errors", stats.EncryptorErrors - old.EncryptorErrors);
+
+    if (completeStats.CriticalEvents) {
+        buf.WriteKey("crit_events");
+        buf.BeginList();
+        for (const auto& criticalEvent: completeStats.CriticalEvents) {
+            buf.BeginObject();
+            buf.WriteKey("name");
+            buf.WriteString(criticalEvent.SensorName);
+            buf.WriteKey("message");
+            buf.WriteString(criticalEvent.Message);
+            buf.EndObject();
+        }
+        buf.EndList();
+    }
 
     request(0, "read");
     request(1, "write");

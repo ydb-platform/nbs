@@ -12,7 +12,4 @@ DEPENDS(
 DATA(
 )
 
-PEERDIR(
-)
-
 END()

@@ -29,4 +29,5 @@ RECURSE(
     stats_aggregator_perf
     storage_discovery
     vhost-server
+    vhost-server/run_and_die
 )

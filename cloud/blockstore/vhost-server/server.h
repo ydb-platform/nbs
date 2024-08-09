@@ -7,9 +7,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <functional>
 #include <memory>
-#include <span>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -21,7 +19,7 @@ struct IServer
 
     virtual void Start(const TOptions& options) = 0;
     virtual void Stop() = 0;
-    virtual TSimpleStats GetStats(const TSimpleStats& prevStats) = 0;
+    virtual TCompleteStats GetStats(const TSimpleStats& prevStats) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -12,8 +12,6 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 struct IBackend: public IStartable
 {
-    virtual ~IBackend() = default;
-
     virtual vhd_bdev_info Init(const TOptions& options) = 0;
     virtual void ProcessQueue(
         ui32 queueIndex,

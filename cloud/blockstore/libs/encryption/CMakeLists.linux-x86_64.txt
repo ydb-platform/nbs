@@ -29,4 +29,5 @@ target_sources(blockstore-libs-encryption PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_service.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryption_test.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/encryptor.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/encryption/model/utils.cpp
 )

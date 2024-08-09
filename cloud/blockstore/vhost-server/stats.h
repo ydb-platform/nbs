@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "critical_event.h"
 #include "histogram.h"
 
 #include <util/datetime/base.h>
@@ -10,7 +11,6 @@
 #include <array>
 #include <atomic>
 #include <optional>
-#include <span>
 
 class IOutputStream;
 
@@ -33,7 +33,7 @@ struct TRequestStats
     TRequestStats() = default;
 
     template <typename U>
-    TRequestStats(const TRequestStats<U>& rhs) noexcept
+    explicit TRequestStats(const TRequestStats<U>& rhs) noexcept
         : Count{rhs.Count}
         , Bytes{rhs.Bytes}
         , Errors{rhs.Errors}
@@ -82,6 +82,7 @@ struct TStats
     T SubFailed = {};
     T Completed = {};
     T CompFailed = {};
+    T EncryptorErrors = {};
 
     std::array<TRequestStats<T>, 2> Requests = {};
     std::array<TTimeHistogram, 2> Times = {};
@@ -90,18 +91,16 @@ struct TStats
     TStats() = default;
 
     template <typename U>
-    TStats(const TStats<U>& rhs) noexcept
+    explicit TStats(const TStats<U>& rhs) noexcept
         : Dequeued{rhs.Dequeued}
         , Submitted{rhs.Submitted}
         , SubFailed{rhs.SubFailed}
         , Completed{rhs.Completed}
         , CompFailed{rhs.CompFailed}
+        , EncryptorErrors{rhs.EncryptorErrors}
         , Requests{rhs.Requests[0], rhs.Requests[1]}
         , Times{rhs.Times[0], rhs.Times[1]}
-        , Sizes{
-              rhs.Sizes[0],
-              rhs.Sizes[1],
-          }
+        , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
     {}
 
     template <typename U>
@@ -112,6 +111,7 @@ struct TStats
         SubFailed = rhs.SubFailed;
         Completed = rhs.Completed;
         CompFailed = rhs.CompFailed;
+        EncryptorErrors = rhs.EncryptorErrors;
         Requests = rhs.Requests;
         Times = rhs.Times;
         Sizes = rhs.Sizes;
@@ -127,6 +127,7 @@ struct TStats
         SubFailed += rhs.SubFailed;
         Completed += rhs.Completed;
         CompFailed += rhs.CompFailed;
+        EncryptorErrors += rhs.EncryptorErrors;
 
         for (size_t i = 0; i != Requests.size(); ++i) {
             Requests[i] += rhs.Requests[i];
@@ -148,6 +149,12 @@ using TAtomicStats = TStats<std::atomic<ui64>>;
 using TSimpleStats = TStats<ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
+struct TCompleteStats {
+    TSimpleStats SimpleStats;
+    TCriticalEvents CriticalEvents;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct ICompletionStats
 {
@@ -163,7 +170,7 @@ struct ICompletionStats
 ICompletionStatsPtr CreateCompletionStats();
 
 void DumpStats(
-    const TSimpleStats& stats,
+    const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,

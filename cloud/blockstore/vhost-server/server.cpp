@@ -101,12 +101,12 @@ private:
     TVector<std::thread> QueueThreads;
 
 public:
-    explicit TServer(ILoggingServicePtr logging, IBackendPtr backend);
+    TServer(ILoggingServicePtr logging, IBackendPtr backend);
 
     void Start(const TOptions& options) override;
     void Stop() override;
 
-    TSimpleStats GetStats(const TSimpleStats& prevStats) override;
+    TCompleteStats GetStats(const TSimpleStats& prevStats) override;
 
 private:
     void QueueThreadFunc(ui32 queueIndex);
@@ -214,21 +214,25 @@ void TServer::Stop()
     STORAGE_INFO("Server has been stopped.");
 }
 
-TSimpleStats TServer::GetStats(const TSimpleStats& prevStats)
+TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
     auto completionStats =
         Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
     if (!completionStats) {
-        return prevStats;
+        return TCompleteStats{
+            .SimpleStats{prevStats},
+            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
     }
 
-    TSimpleStats stats = *std::move(completionStats);
+    TCompleteStats result{
+        .SimpleStats{*completionStats},
+        .CriticalEvents = TakeAccumulatedCriticalEvents()};
 
     for (ui32 i = 0; i != Queues.size(); ++i) {
-        stats += QueueStats[i];
+        result.SimpleStats += QueueStats[i];
     }
 
-    return stats;
+    return result;
 }
 
 void TServer::QueueThreadFunc(ui32 queueIndex)
@@ -262,6 +266,7 @@ void TServer::SyncQueueStats(ui32 queueIndex, const TSimpleStats& queueStats)
     stats.Dequeued = queueStats.Dequeued;
     stats.Submitted = queueStats.Submitted;
     stats.SubFailed = queueStats.SubFailed;
+    stats.EncryptorErrors = queueStats.EncryptorErrors;
 
     stats.Requests[0] = queueStats.Requests[VHD_BDEV_READ];
     stats.Requests[1] = queueStats.Requests[VHD_BDEV_WRITE];
