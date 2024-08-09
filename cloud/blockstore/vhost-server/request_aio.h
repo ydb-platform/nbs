@@ -44,6 +44,7 @@ using TAioSubRequestHolder = std::unique_ptr<TAioSubRequest, TFreeDeleter>;
 using TAioCompoundRequestHolder = std::unique_ptr<TAioCompoundRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TAioDevice
 {
     i64 StartOffset = 0;
@@ -120,8 +121,11 @@ void PrepareIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now);
+    TCpuCycles now,
+    TSimpleStats& queueStats);
 
+// Copies the data, and if an encryptor is specified, encrypt it. Returns true
+// if successful.
 [[nodiscard]] bool SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
@@ -129,6 +133,8 @@ void PrepareIO(
     IEncryptor* encryptor,
     ui64 startSector);
 
+// Copies the data, and if an encryptor is specified, decrypt it. Returns true
+// if successful.
 [[nodiscard]] bool SgListCopyWithOptionalDecryption(
     TLog& Log,
     const char* src,

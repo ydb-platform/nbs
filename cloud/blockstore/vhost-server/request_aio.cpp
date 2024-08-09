@@ -1,23 +1,24 @@
 #include "request_aio.h"
 
+#include "critical_event.h"
+
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 #include <algorithm>
 #include <memory>
+#include <span>
 
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <bool (IEncryptor::*CryptoOperation)(
-    const TBlockDataRef& src,
-    const TBlockDataRef& dst,
-    ui64 blockIndex)>
+template <bool DoDecrypt>
 [[nodiscard]] bool DoCryptoOperation(
     IEncryptor& encryptor,
     TBlockDataRef src,
@@ -30,11 +31,29 @@ template <bool (IEncryptor::*CryptoOperation)(
         TBlockDataRef srcRef(src.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
         TBlockDataRef dstRef(dst.Data() + i * VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
 
-        if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
-            memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
+        if constexpr (DoDecrypt) {
+            if (IsAllZeroes(srcRef.Data(), srcRef.Size())) {
+                // If there was a reading from a block that has not yet been
+                // written, then we return a block consisting of only zeros.
+                memset(const_cast<char*>(dstRef.Data()), 0, dstRef.Size());
+                continue;
+            }
+
+            if (!encryptor.Decrypt(srcRef, dstRef, startSector + i)) {
+                // Something went wrong inside the decryption operation.
+                return false;
+            }
         } else {
-            if (!(encryptor.*CryptoOperation)(srcRef, dstRef, startSector + i))
-            {
+            if (!encryptor.Encrypt(srcRef, dstRef, startSector + i)) {
+                // Something went wrong inside the encryption operation.
+                return false;
+            }
+
+            if (IsAllZeroes(dstRef.Data(), dstRef.Size())) {
+                ReportCriticalEvent(
+                    "EncryptorGeneratedZeroBlock",
+                    TStringBuilder() << "Encryptor has generated a zero block #"
+                                     << startSector + i << " !");
                 return false;
             }
         }
@@ -48,7 +67,8 @@ void PrepareCompoundIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -84,13 +104,14 @@ void PrepareCompoundIO(
     auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
 
     if (bio->type == VHD_BDEV_WRITE) {
-        const bool succ = SgListCopyWithOptionalEncryption(
+        const bool success = SgListCopyWithOptionalEncryption(
             Log,
             bio->sglist,
             req->Buffer.get(),
             encryptor,
             bio->first_sector);
-        if (!succ) {
+        if (!success) {
+            ++queueStats.EncryptorErrors;
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -162,12 +183,7 @@ bool SgListCopyWithOptionalDecryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{src, buffer.len};
         TBlockDataRef dstRef{static_cast<const char*>(buffer.base), buffer.len};
-        if (!DoCryptoOperation<&IEncryptor::Decrypt>(
-                *encryptor,
-                srcRef,
-                dstRef,
-                startSector))
-        {
+        if (!DoCryptoOperation<true>(*encryptor, srcRef, dstRef, startSector)) {
             STORAGE_ERROR(
                 "Decryption error. Start block %" PRIu64
                 ", blocks count %" PRIu64,
@@ -201,11 +217,7 @@ bool SgListCopyWithOptionalEncryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{static_cast<const char*>(buffer.base), buffer.len};
         TBlockDataRef dstRef{dst, buffer.len};
-        if (!DoCryptoOperation<&IEncryptor::Encrypt>(
-                *encryptor,
-                srcRef,
-                dstRef,
-                startSector))
+        if (!DoCryptoOperation<false>(*encryptor, srcRef, dstRef, startSector))
         {
             STORAGE_ERROR(
                 "Encryption error. Start block %" PRIu64
@@ -228,7 +240,8 @@ void PrepareIO(
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
     const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -246,7 +259,7 @@ void PrepareIO(
 
     if (it->EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
-        PrepareCompoundIO(encryptor, Log, devices, io, batch, now);
+        PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
         return;
     }
 
@@ -286,13 +299,14 @@ void PrepareIO(
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
         if (bio->type == VHD_BDEV_WRITE) {
-            const bool succ = SgListCopyWithOptionalEncryption(
+            const bool success = SgListCopyWithOptionalEncryption(
                 Log,
                 bio->sglist,
                 static_cast<char*>(req->Data[0].iov_base),
                 encryptor,
                 bio->first_sector);
-            if (!succ) {
+            if (!success) {
+                ++queueStats.EncryptorErrors;
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
