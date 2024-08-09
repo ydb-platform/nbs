@@ -14,16 +14,14 @@ class TConfigInitializerServer
     : public TConfigInitializerCommon
 {
 public:
-    TOptionsServerPtr Options;
+    const TOptionsServerPtr Options;
 
     NProto::TServerAppConfig AppConfig;
     NServer::TServerConfigPtr ServerConfig;
 
-    TConfigInitializerServer(TOptionsServerPtr options);
+    explicit TConfigInitializerServer(TOptionsServerPtr options);
 
     void InitAppConfig();
-
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
 
 private:
     void ApplyServerAppConfig(const TString& text);
