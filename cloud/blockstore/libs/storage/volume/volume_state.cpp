@@ -516,7 +516,8 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
                 res.Error = MakeError(
                     E_BS_MOUNT_CONFLICT,
                     TStringBuilder()
-                        << "Volume already has connection with read-write access: "
+                        << "Volume " << Config->GetDiskId().Quote()
+                        << " already has connection with read-write access: "
                         << ReadWriteAccessClientId);
                 return res;
         }
@@ -533,7 +534,8 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
                 res.Error = MakeError(
                     E_BS_MOUNT_CONFLICT,
                     TStringBuilder()
-                        << "Volume already has connection with local mount: "
+                        << "Volume " << Config->GetDiskId().Quote()
+                        << " already has connection with local mount: "
                         << LocalMountClientId);
                 return res;
         }

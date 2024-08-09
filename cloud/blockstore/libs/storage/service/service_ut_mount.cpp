@@ -1774,7 +1774,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(
-            "Volume already has connection with read-write access: 0",
+            "Volume \"path_to_test_volume\" already has connection with read-write access: 0",
             response->GetErrorReason());
     }
 
