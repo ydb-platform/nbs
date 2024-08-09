@@ -12,10 +12,23 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TConfigInitializerCommon::TConfigInitializerCommon(TOptionsCommonPtr options)
+TConfigInitializerCommon::TConfigInitializerCommon(
+        TConfigHandlers configHandlers,
+        TOptionsCommonPtr options)
     : TConfigInitializerYdbBase(options)
+    , ConfigHandlers(std::move(configHandlers))
     , Options(std::move(options))
-{}
+{
+    ConfigHandlers.insert(
+        {"DiagnosticsConfig",
+         bind_front(&TConfigInitializerCommon::ApplyDiagnosticsConfig, this)});
+    ConfigHandlers.insert(
+        {"FeaturesConfig",
+         bind_front(&TConfigInitializerCommon::ApplyFeaturesConfig, this)});
+    ConfigHandlers.insert(
+        {"StorageConfig",
+         bind_front(&TConfigInitializerCommon::ApplyStorageConfig, this)});
+}
 
 void TConfigInitializerCommon::InitDiagnosticsConfig()
 {
@@ -79,15 +92,16 @@ TNodeRegistrationSettings
 void TConfigInitializerCommon::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
-    using TSelf = TConfigInitializerCommon;
+    for (const auto& item: config.GetNamedConfigs()) {
+        TStringBuf name = item.GetName();
+        if (!name.SkipPrefix("Cloud.Filestore.")) {
+            continue;
+        }
 
-    const THashMap<TString, TApplyConfigFn> map {
-        { "DiagnosticsConfig", bind_front(&TSelf::ApplyDiagnosticsConfig, this)},
-        { "FeaturesConfig",    bind_front(&TSelf::ApplyFeaturesConfig, this)   },
-        { "StorageConfig",     bind_front(&TSelf::ApplyStorageConfig, this)    },
-    };
-
-    ApplyConfigs(config, map);
+        if (auto* handler = ConfigHandlers.FindPtr(name)) {
+            std::invoke(*handler, item.GetConfig());
+        }
+    }
 }
 
 void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
@@ -115,23 +129,6 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
 
     FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
         std::move(config));
-}
-
-void TConfigInitializerCommon::ApplyConfigs(
-    const NKikimrConfig::TAppConfig& config,
-    const THashMap<TString, TApplyConfigFn>& handlers)
-{
-    for (const auto& item: config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.Filestore.")) {
-            continue;
-        }
-
-        auto it = handlers.find(name);
-        if (it != handlers.end()) {
-            std::invoke(it->second, item.GetConfig());
-        }
-    }
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

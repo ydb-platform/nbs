@@ -15,17 +15,15 @@ class TConfigInitializerVhost final
     : public TConfigInitializerCommon
 {
 public:
-    TOptionsVhostPtr Options;
+    const TOptionsVhostPtr Options;
 
     NProto::TVhostAppConfig AppConfig;
     NVhost::TVhostServiceConfigPtr VhostServiceConfig;
     NServer::TServerConfigPtr ServerConfig;
 
-    TConfigInitializerVhost(TOptionsVhostPtr options);
+    explicit TConfigInitializerVhost(TOptionsVhostPtr options);
 
     void InitAppConfig();
-
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
 
 private:
     void ApplyVHostAppConfig(const TString& text);

@@ -19,22 +19,28 @@ class TConfigInitializerCommon
     : public NCloud::NStorage::TConfigInitializerYdbBase
 {
 protected:
-    using TApplyConfigFn = std::function<void(const TString&)>;
+    using TConfigHandlerFn = std::function<void(const TString&)>;
+    using TConfigHandlers = THashMap<TString, TConfigHandlerFn>;
+
+    TConfigInitializerCommon(
+        TConfigHandlers configHandlers,
+        TOptionsCommonPtr options);
+
+private:
+    TConfigHandlers ConfigHandlers;
 
 public:
-    TOptionsCommonPtr Options;
+    const TOptionsCommonPtr Options;
 
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NStorage::TStorageConfigPtr StorageConfig;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
-    TConfigInitializerCommon(TOptionsCommonPtr options);
-
     void InitDiagnosticsConfig();
     void InitStorageConfig();
     void InitFeaturesConfig();
 
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) final;
 
     NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
 
@@ -42,11 +48,6 @@ private:
     void ApplyDiagnosticsConfig(const TString& text);
     void ApplyStorageConfig(const TString& text);
     void ApplyFeaturesConfig(const TString& text);
-
-protected:
-    static void ApplyConfigs(
-        const NKikimrConfig::TAppConfig& config,
-        const THashMap<TString, TApplyConfigFn>& handlers);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon
