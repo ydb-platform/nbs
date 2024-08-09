@@ -258,10 +258,11 @@ int main(int argc, char** argv)
         }
         switch (sig) {
             case SIGUSR1: {
+                auto completeStats = server->GetStats(prevStats);
                 auto now = Now();
                 try {
                     DumpStats(
-                        server->GetStats(prevStats),
+                        completeStats,
                         prevStats,
                         now - ts,
                         Cout,

@@ -216,18 +216,18 @@ void TServer::Stop()
 
 TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
-    TCompleteStats result{
-        .SimpleStats{},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
-
     auto completionStats =
         Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
     if (!completionStats) {
-        result.SimpleStats = prevStats;
-        return result;
+        return TCompleteStats{
+            .SimpleStats{prevStats},
+            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
     }
 
-    result.SimpleStats = *completionStats;
+    TCompleteStats result{
+        .SimpleStats{*completionStats},
+        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+
     for (ui32 i = 0; i != Queues.size(); ++i) {
         result.SimpleStats += QueueStats[i];
     }
