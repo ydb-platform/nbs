@@ -61,7 +61,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 
 	scheduler.On(
 		"ScheduleTask",
-		mock.Anything,
+		headers.SetIncomingIdempotencyKey(ctx, "delete_disk_from_incremental:zone:disk"),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
 		mock.Anything,
@@ -118,7 +118,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 
 	scheduler.On(
 		"ScheduleTask",
-		mock.Anything,
+		headers.SetIncomingIdempotencyKey(ctx, "delete_disk_from_incremental:zone:disk"),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
 		mock.Anything,
@@ -131,7 +131,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 
 	poolService.On(
 		"ReleaseBaseDisk",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "release_base_disk:zone:disk"),
 		&pools_protos.ReleaseBaseDiskRequest{
 			OverlayDisk: disk,
 		}).Return("release", nil)
@@ -181,7 +181,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 
 	scheduler.On(
 		"ScheduleTask",
-		mock.Anything,
+		headers.SetIncomingIdempotencyKey(ctx, "delete_disk_from_incremental:zone:disk"),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
 		mock.Anything,
@@ -191,7 +191,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 
 	poolService.On(
 		"ReleaseBaseDisk",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "release_base_disk:zone:disk"),
 		&pools_protos.ReleaseBaseDiskRequest{
 			OverlayDisk: disk,
 		}).Return("release", nil)

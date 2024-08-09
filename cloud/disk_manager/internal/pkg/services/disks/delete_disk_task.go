@@ -82,7 +82,7 @@ func (t *deleteDiskTask) deleteDisk(
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			"delete_disk_from_incremental_"+":"+zoneID+":"+diskID,
+			"delete_disk_from_incremental"+":"+zoneID+":"+diskID,
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
