@@ -532,7 +532,8 @@ func (s *storageYDB) prepareCreateTask(
 			state.ID,
 		)
 
-		if state.TaskType != existingStates[0].TaskType {
+		existingState := existingStates[0]
+		if state.TaskType != existingState.TaskType {
 			err = tx.Commit(ctx)
 			if err != nil {
 				return []stateTransition{}, err
@@ -543,11 +544,11 @@ func (s *storageYDB) prepareCreateTask(
 				 but different type=%v already exists`,
 				state.TaskType,
 				state.ID,
-				existingStates[0].TaskType,
+				existingState.TaskType,
 			)
 		}
 
-		if !bytes.Equal(state.Request, existingStates[0].Request) {
+		if !bytes.Equal(state.Request, existingState.Request) {
 			err = tx.Commit(ctx)
 			if err != nil {
 				return []stateTransition{}, err
@@ -558,7 +559,7 @@ func (s *storageYDB) prepareCreateTask(
 				 but different request=%s already exists`,
 				state.Request,
 				state.ID,
-				existingStates[0].Request,
+				existingState.Request,
 			)
 		}
 
