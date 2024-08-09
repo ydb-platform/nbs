@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <util/string/builder.h>
+#include <util/system/sanitizers.h>
 
 namespace NCloud::NFileStore {
 
@@ -79,6 +80,8 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     }
 
     auto b = TString::Uninitialized(request.GetLength());
+    NSan::Unpoison(b.Data(), b.Size());
+
     TArrayRef<char> data(b.begin(), b.vend());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
