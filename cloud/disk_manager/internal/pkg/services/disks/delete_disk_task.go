@@ -80,11 +80,17 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			"delete_disk_from_incremental_"+":"+zoneID+":"+diskID,
+		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
 		&dataplane_protos.DeleteDiskFromIncrementalRequest{
-			Disk: t.request.Disk,
+			Disk: &types.Disk{
+				ZoneId: zoneID,
+				DiskId: diskID,
+			},
 		},
 	)
 	if err != nil {
@@ -113,7 +119,10 @@ func (t *deleteDiskTask) deleteDisk(
 	// Only overlay disks (created from image) should be released.
 	if len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				"release_base_disk"+":"+zoneID+":"+diskID,
+			),
 			&pools_protos.ReleaseBaseDiskRequest{
 				OverlayDisk: &types.Disk{
 					ZoneId: zoneID,
