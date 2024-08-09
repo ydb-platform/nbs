@@ -33,6 +33,13 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 			},
 		},
 	},
+	{
+		Type: &csi.ControllerServiceCapability_Rpc{
+			Rpc: &csi.ControllerServiceCapability_RPC{
+				Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+			},
+		},
+	},
 }
 
 func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMediaKind {

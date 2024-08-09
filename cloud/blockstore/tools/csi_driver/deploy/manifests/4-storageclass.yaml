@@ -5,3 +5,4 @@ metadata:
   name: nbs-csi-sc
 provisioner: nbs.csi.nebius.ai
 volumeBindingMode: Immediate
+allowVolumeExpansion: true
