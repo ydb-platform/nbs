@@ -208,7 +208,7 @@ func TestStorageYDBCreateTwoTasks(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 }
 
-func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyIDs(t *testing.T) {
+func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyKeys(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -223,6 +223,7 @@ func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyIDs(t *testing.T) {
 		TaskStallingTimeout: &taskStallingTimeout,
 	}, metricsRegistry)
 	require.NoError(t, err)
+
 	taskState := TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
 		TaskType:       "task1",
@@ -260,7 +261,7 @@ func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyIDs(t *testing.T) {
 	require.NotEqual(t, taskID1, taskID2)
 }
 
-func TestStorageYDBCreateTwoTasksWithTheSameIdempotencyID(t *testing.T) {
+func TestStorageYDBCreateTwoTasksWithSameIdempotencyKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -275,6 +276,7 @@ func TestStorageYDBCreateTwoTasksWithTheSameIdempotencyID(t *testing.T) {
 		TaskStallingTimeout: &taskStallingTimeout,
 	}, metricsRegistry)
 	require.NoError(t, err)
+
 	taskState := TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
 		TaskType:       "task1",
@@ -304,6 +306,57 @@ func TestStorageYDBCreateTwoTasksWithTheSameIdempotencyID(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 
 	require.Equal(t, taskID1, taskID2)
+}
+
+func TestStorageYDBFailCreationOfTwoTasksWithSameIdempotencyKeyButDifferentTypesOrRequests(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	taskState1 := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      time.Now(),
+		CreatedBy:      "some_user",
+		ModifiedAt:     time.Now(),
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	}
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": taskState1.TaskType},
+	).On("Add", int64(1)).Once()
+	taskID1, err := storage.CreateTask(ctx, taskState1)
+	require.NoError(t, err)
+	require.NotZero(t, taskID1)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState2 := taskState1
+	taskState2.TaskType = "task2"
+	_, err = storage.CreateTask(ctx, taskState2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot create task with type")
+
+	taskState3 := taskState1
+	taskState3.Request = []byte{'a'}
+	_, err = storage.CreateTask(ctx, taskState3)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot create task with request")
 }
 
 func TestStorageYDBGetTask(t *testing.T) {
