@@ -59,9 +59,14 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
         if (requestId < oldestRequestId) {
             *overlapDetails =
                 TStringBuilder()
+                << "[" << DeviceUUID << "] "
                 << "The request is too old. Oldest tracked id="
                 << TCompositeId::FromRaw(oldestRequestId).Print()
                 << ", requestId=" << TCompositeId::FromRaw(requestId).Print();
+            LOG_WARN(
+                *NActors::TActivationContext::ActorSystem(),
+                TBlockStoreComponents::DISK_AGENT,
+                *overlapDetails);
             return EOverlapStatus::Unknown;
         }
     }
@@ -75,9 +80,13 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
         ReportRepeatedRequestId(requestId, range);
         // Got same requestId. Reject it.
         *overlapDetails = TStringBuilder()
-                         << "The request with id="
-                         << TCompositeId::FromRaw(requestId).Print()
-                         << " repeated";
+                          << "[" << DeviceUUID << "] The request with id="
+                          << TCompositeId::FromRaw(requestId).Print()
+                          << " repeated";
+        LOG_WARN(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            *overlapDetails);
         return EOverlapStatus::Unknown;
     }
 
@@ -86,33 +95,43 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     const ui64 rangeSize = range.Size();
     bitmap.Reserve(rangeSize);
     bitmap.Set(0, rangeSize);
-    auto lastOverlaped = OrderedById.end();
+    auto lastOverlapped = OrderedById.end();
     for (; it != OrderedById.end(); ++it) {
         if (!range.Overlaps(it->second)) {
             continue;
         }
         foundIntersections = true;
-        lastOverlaped = it;
+        lastOverlapped = it;
         TBlockRange64 other = range.Intersect(it->second);
         bitmap.Reset(other.Start - range.Start, other.End - range.Start + 1);
     }
     if (bitmap.FirstNonZeroBit() >= rangeSize) {
         *overlapDetails = TStringBuilder()
-                         << "Complete overlapping "
+                         << "[" << DeviceUUID << "] Complete overlapping "
                          << TCompositeId::FromRaw(requestId).Print() << " "
                          << DescribeRange(range) << " with "
-                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
-                         << " " << DescribeRange(lastOverlaped->second);
+                         << TCompositeId::FromRaw(lastOverlapped->first).Print()
+                         << " " << DescribeRange(lastOverlapped->second);
+        LOG_WARN(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            *overlapDetails);
         return EOverlapStatus::Complete;
     }
 
     if (foundIntersections) {
         *overlapDetails = TStringBuilder()
-                         << "Partial overlapping "
-                         << TCompositeId::FromRaw(requestId).Print() << " "
-                         << DescribeRange(range) << " with "
-                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
-                         << " " << DescribeRange(lastOverlaped->second);
+                          << "[" << DeviceUUID << "] Partial overlapping "
+                          << TCompositeId::FromRaw(requestId).Print() << " "
+                          << DescribeRange(range) << " with "
+                          << TCompositeId::FromRaw(lastOverlapped->first).Print()
+                          << " " << DescribeRange(lastOverlapped->second);
+
+        LOG_WARN(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            *overlapDetails);
+
         return EOverlapStatus::Partial;
     }
     return EOverlapStatus::NotOverlapped;
