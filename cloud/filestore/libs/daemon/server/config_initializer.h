@@ -13,16 +13,18 @@ namespace NCloud::NFileStore::NDaemon {
 struct TConfigInitializerServer
     : public TConfigInitializerCommon
 {
-    TOptionsServerPtr Options;
+public:
+    const TOptionsServerPtr Options;
 
     NProto::TServerAppConfig AppConfig;
     NServer::TServerConfigPtr ServerConfig;
 
-    TConfigInitializerServer(TOptionsServerPtr options);
+    explicit TConfigInitializerServer(TOptionsServerPtr options);
 
     void InitAppConfig();
 
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+private:
+    void ApplyServerAppConfig(const TString& text);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon
