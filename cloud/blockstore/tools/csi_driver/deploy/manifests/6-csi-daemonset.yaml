@@ -42,6 +42,35 @@ spec:
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
+        - name: csi-node-driver-external-resizer
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--v=5"
+            - "--csi-address=/csi/csi.sock"
+            - "--leader-election"
+            - "--http-endpoint=:8080"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+          ports:
+            - containerPort: 8080
+              name: http-endpoint
+              protocol: TCP
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: sockets-dir
+              mountPath: /run/nbsd/sockets
         - name: csi-nbs-driver
           securityContext:
             privileged: true
