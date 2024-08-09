@@ -76,4 +76,62 @@ TNodeRegistrationSettings
     return settings;
 }
 
+void TConfigInitializerCommon::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    using TSelf = TConfigInitializerCommon;
+
+    const THashMap<TString, TApplyConfigFn> map {
+        { "DiagnosticsConfig", bind_front(&TSelf::ApplyDiagnosticsConfig, this)},
+        { "FeaturesConfig",    bind_front(&TSelf::ApplyFeaturesConfig, this)   },
+        { "StorageConfig",     bind_front(&TSelf::ApplyStorageConfig, this)    },
+    };
+
+    ApplyConfigs(config, map);
+}
+
+void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
+{
+    NProto::TDiagnosticsConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(
+        std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
+{
+    NProto::TStorageConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+        std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
+{
+    NCloud::NProto::TFeaturesConfig config;
+    ParseProtoTextFromStringRobust(text, config);
+
+    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
+        std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyConfigs(
+    const NKikimrConfig::TAppConfig& config,
+    const THashMap<TString, TApplyConfigFn>& handlers)
+{
+    for (const auto& item: config.GetNamedConfigs()) {
+        TStringBuf name = item.GetName();
+        if (!name.SkipPrefix("Cloud.Filestore.")) {
+            continue;
+        }
+
+        auto it = handlers.find(name);
+        if (it != handlers.end()) {
+            std::invoke(it->second, item.GetConfig());
+        }
+    }
+}
+
 }   // namespace NCloud::NFileStore::NDaemon

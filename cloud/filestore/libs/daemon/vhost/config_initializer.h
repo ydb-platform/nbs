@@ -11,9 +11,10 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerVhost final
+class TConfigInitializerVhost final
     : public TConfigInitializerCommon
 {
+public:
     TOptionsVhostPtr Options;
 
     NProto::TVhostAppConfig AppConfig;
@@ -25,6 +26,9 @@ struct TConfigInitializerVhost final
     void InitAppConfig();
 
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+
+private:
+    void ApplyVHostAppConfig(const TString& text);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon
