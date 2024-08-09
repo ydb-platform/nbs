@@ -104,8 +104,8 @@ public:
             ", aligned size: %lu, aligned offset: %lu",
             WriteRequest.GetBuffer().size(),
             WriteRequest.GetOffset(),
-            BlobRange.Offset,
-            BlobRange.Length);
+            BlobRange.Length,
+            BlobRange.Offset);
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
