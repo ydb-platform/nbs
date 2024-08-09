@@ -16,6 +16,25 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EDeviceHealthStatus
+{
+    Healthy,
+    Broken,
+    Unknown,
+};
+
+EDeviceHealthStatus GetHealthStatus(EWellKnownResultCodes code)
+{
+    switch (code) {
+        case EWellKnownResultCodes::S_OK:
+            return EDeviceHealthStatus::Healthy;
+        case EWellKnownResultCodes::E_REJECTED:
+            return EDeviceHealthStatus::Unknown;
+        default:
+            return EDeviceHealthStatus::Broken;
+    }
+}
+
 NProto::TDeviceStats CalcDelta(
     const NProto::TDeviceStats& cur,
     const NProto::TDeviceStats& prev)
@@ -81,11 +100,13 @@ class TStatsActor
 {
 private:
     const TActorId Owner;
+    const TVector<NProto::TDeviceConfig> Devices;
+
+    TVector<EDeviceHealthStatus> DevicesHealth;
 
     NProto::TAgentStats PrevStats = {};
     NProto::TAgentStats CurStats = {};
 
-    TVector<NProto::TDeviceConfig> Devices;
     TFastRng32 Rng;
 
 public:
@@ -123,9 +144,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsActor::TStatsActor(const TActorId& owner, const TVector<NProto::TDeviceConfig>& devices)
+TStatsActor::TStatsActor(
+        const TActorId& owner,
+        const TVector<NProto::TDeviceConfig>& devices)
     : Owner(owner)
     , Devices(devices)
+    , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
     , Rng(12345, 0)
 {}
 
@@ -144,15 +168,15 @@ void TStatsActor::ScheduleUpdateStats(const TActorContext& ctx)
 
     ctx.ExecutorThread.Schedule(
         UpdateCountersInterval,
-        new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
-
-    request.release();
+        new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
 }
 
 void TStatsActor::CheckDevicesHealth(const TActorContext& ctx)
 {
-    for (const auto& device: Devices) {
-        auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+    for (size_t i = 0; i < Devices.size(); ++i) {
+        const auto& device = Devices[i];
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
         auto& rec = request->Record;
         rec.MutableHeaders()->SetClientId(TString(CheckHealthClientId));
         rec.SetDeviceUUID(device.GetDeviceUUID());
@@ -164,7 +188,7 @@ void TStatsActor::CheckDevicesHealth(const TActorContext& ctx)
             ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
             "Checking device: " + rec.DebugString());
 
-        ctx.Send(Owner, request.release());
+        ctx.Send(Owner, request.release(), TEventFlags{}, i);
     }
 }
 
@@ -240,21 +264,64 @@ void TStatsActor::HandleReadDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    const size_t deviceIndex = ev->Cookie;
+    Y_DEBUG_ABORT_UNLESS(
+        deviceIndex < DevicesHealth.size(),
+        "Invalid device index");
+    const auto& deviceUUID = Devices[deviceIndex].GetDeviceUUID();
 
-    if (!HasError(msg->GetError())) {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
-            "Everything fine!");
-        return;
+    auto currentHealth = GetHealthStatus(
+        static_cast<EWellKnownResultCodes>(msg->GetError().GetCode()));
+    auto lastHealth = DevicesHealth[deviceIndex];
+
+    // Device has changed state only if reads status changed from healthy to
+    // broken or vice versa. Ignore the "unknown" state.
+    const bool deviceHealthChanged =
+        currentHealth != lastHealth &&
+        currentHealth != EDeviceHealthStatus::Unknown;
+
+    if (currentHealth != EDeviceHealthStatus::Unknown) {
+        // We save only the "healthy" and "broken" states. This allows us not to
+        // trigger when transitions with "unknown" state occur.
+        DevicesHealth[deviceIndex] = currentHealth;
     }
 
-    if (msg->GetError().GetCode() == E_REJECTED) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
-            "Got error from reading device blocks: " << FormatError(msg->GetError()));
-        return;
+    switch (currentHealth) {
+        case EDeviceHealthStatus::Healthy: {
+            LOG_TRACE_S(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                "Everything fine!");
+            if (deviceHealthChanged) {
+                LOG_WARN_S(
+                    ctx,
+                    TBlockStoreComponents::DISK_AGENT_WORKER,
+                    "A miracle happened, the device " << deviceUUID.Quote()
+                                                      << " was healed.");
+            }
+            break;
+        }
+        case EDeviceHealthStatus::Broken: {
+            auto priority = deviceHealthChanged ? NActors::NLog::PRI_ERROR
+                                                : NActors::NLog::PRI_INFO;
+            LOG_LOG_S(
+                ctx,
+                priority,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                "The device " << deviceUUID.Quote() << " broke down. "
+                              << FormatError(msg->GetError()));
+            break;
+        }
+        case EDeviceHealthStatus::Unknown: {
+            LOG_DEBUG_S(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                "Got error when reading from the device "
+                    << deviceUUID.Quote() << ". "
+                    << FormatError(msg->GetError()));
+            break;
+        }
     }
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Broken device found: " << FormatError(msg->GetError()));
 }
 
 STFUNC(TStatsActor::StateWork)
