@@ -24,6 +24,7 @@ target_link_libraries(filestore-libs-daemon-common PUBLIC
   filestore-libs-service
   filestore-libs-storage-core
   libs-storage-init
+  core-libs-aio
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics
