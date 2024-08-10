@@ -147,6 +147,7 @@ namespace {
     xxx(TwoStageReadEnabled,             bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\

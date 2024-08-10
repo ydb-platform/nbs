@@ -323,4 +323,7 @@ message TStorageConfig
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
+
+    // Enables ThreeStageWrite for unaligned requests.
+    optional bool UnalignedThreeStageWriteEnabled = 366;
 }
