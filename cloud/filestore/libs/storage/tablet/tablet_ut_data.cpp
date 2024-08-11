@@ -4892,6 +4892,121 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
+    TABLET_TEST(ShouldAddDataWithUnalignedDataParts)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TString unalignedHead(1_KB, 'h');
+        TString alignedBody(block, 'b');
+        TString unalignedTail(2_KB, 't');
+
+        NKikimr::TLogoBlobID blobId;
+        ui64 commitId = 0;
+
+        auto writeBlob = [&] () {
+            auto gbi = tablet.GenerateBlobIds(id, handle, block, block)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
+
+            blobId = LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
+            commitId = gbi.GetCommitId();
+            auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
+                blobId,
+                alignedBody,
+                TInstant::Max(),
+                NKikimrBlobStorage::UserData);
+            NKikimr::TActorId proxy =
+                MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
+            auto evPutSender = env.GetRuntime().AllocateEdgeActor(proxy.NodeId());
+            env.GetRuntime().Send(CreateEventForBSProxy(
+                evPutSender,
+                proxy,
+                evPut.release(),
+                blobId.Cookie()));
+        };
+
+        writeBlob();
+
+        TVector<NProtoPrivate::TFreshDataRange> unalignedParts;
+        {
+            NProtoPrivate::TFreshDataRange part;
+            part.SetOffset(block - unalignedHead.Size());
+            part.SetContent(unalignedHead);
+            unalignedParts.push_back(part);
+            part.SetOffset(block + alignedBody.Size());
+            part.ClearContent();
+            unalignedParts.push_back(part);
+        }
+
+        const ui64 offset = block - unalignedHead.Size();
+        const ui64 len =
+            unalignedHead.Size() + alignedBody.Size() + unalignedTail.Size();
+
+        tablet.SendAddDataRequest(
+            id,
+            handle,
+            offset,
+            len,
+            TVector<NKikimr::TLogoBlobID>({blobId}),
+            commitId,
+            unalignedParts);
+
+        // one of the parts is empty
+        auto response = tablet.RecvAddDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            response->GetErrorReason());
+
+        // setting it
+        unalignedParts[1].SetContent(unalignedTail);
+
+        // writing a new blob since prev collect barrier was released after we
+        // got the error
+        writeBlob();
+
+        // now our request should succeed
+        tablet.AddData(
+            id,
+            handle,
+            offset,
+            len,
+            TVector<NKikimr::TLogoBlobID>({blobId}),
+            commitId,
+            unalignedParts);
+
+        auto data = tablet.ReadData(handle, offset, len)->Record.GetBuffer();
+
+        // AddData should correctly update file size
+        auto stat = tablet.GetNodeAttr(id)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(
+            block + alignedBody.Size() + unalignedTail.Size(),
+            stat.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            unalignedHead + alignedBody + unalignedTail,
+            data);
+    }
+
     TABLET_TEST(ShouldCollectCountersForBackgroundOps)
     {
         const auto block = tabletConfig.BlockSize;

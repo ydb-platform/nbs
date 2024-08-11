@@ -71,7 +71,13 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         freshBytes.AddBytes(1, 50, "cCc", 12);
         freshBytes.AddBytes(1, 50, "dDd", 13);
         freshBytes.AddBytes(2, 100, "eEeEe", 14);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            freshBytes.CheckBytes(2, 1000, "fFf", 15).GetCode());
         freshBytes.AddBytes(2, 1000, "fFf", 15);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            freshBytes.CheckBytes(2, 1000, "zzz", 9).GetCode());
         freshBytes.AddDeletionMarker(2, 100, 3, 16);
 
         {

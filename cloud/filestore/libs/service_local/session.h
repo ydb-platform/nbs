@@ -28,39 +28,41 @@ public:
 
 private:
     THashMap<TString, TString> Attrs;
-    THashMap<ui32, TFile> Handles;
+    THashMap<ui32, TFileHandle> Handles;
     TRWMutex Lock;
 
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 public:
-    TSession(TFsPath root, TString clientId, TString sessionId, TLocalIndexPtr index)
+    TSession(
+            const TFsPath& root,
+            TString clientId,
+            TString sessionId,
+            TLocalIndexPtr index)
         : Root(root.RealPath())
         , ClientId(std::move(clientId))
         , SessionId(std::move(sessionId))
         , Index(std::move(index))
     {}
 
-    void InsertHandle(const TFile& handle)
+    void InsertHandle(TFileHandle handle)
     {
         TWriteGuard guard(Lock);
 
-        auto it = Handles.find(handle.GetHandle());
-        Y_ABORT_UNLESS(it == Handles.end(), "dup file handle for: %d",
-            handle.GetHandle());
-
-        Handles[handle.GetHandle()] = handle;
+        const auto fhandle = static_cast<FHANDLE>(handle);
+        auto [_, inserted] = Handles.emplace(fhandle, std::move(handle));
+        Y_ABORT_UNLESS(inserted, "dup file handle for: %d", fhandle);
     }
 
-    TFile LookupHandle(ui64 handle)
+    TFileHandle* LookupHandle(ui64 handle)
     {
         TReadGuard guard(Lock);
 
         auto it = Handles.find(handle);
         if (it == Handles.end()) {
-            return {};
+            return nullptr;
         }
 
-        return it->second;
+        return &it->second;
     }
 
     void DeleteHandle(ui64 handle)
@@ -88,7 +90,10 @@ public:
     void Ping(ui64 sessionSeqNo)
     {
         auto it = SubSessions.find(sessionSeqNo);
-        Y_ABORT_UNLESS(it != SubSessions.end(), "seq no: %lu not found", sessionSeqNo);
+        Y_ABORT_UNLESS(
+            it != SubSessions.end(),
+            "seq no: %lu not found",
+            sessionSeqNo);
         it->second.second = TInstant::Now();
     }
 

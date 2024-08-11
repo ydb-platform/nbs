@@ -5,3 +5,5 @@ ThreeStageWriteEnabled: true
 ReadAheadCacheRangeSize: 1048576
 NodeIndexCacheMaxNodes: 128
 PreferredBlockSizeMultiplier: 64
+MultiTabletForwardingEnabled: true
+GetNodeAttrBatchEnabled: true

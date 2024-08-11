@@ -2,6 +2,7 @@
 
 #include "profile_log_events.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/group_by.h>
 
 #include <util/generic/set.h>
@@ -61,7 +62,9 @@ public:
                 break;
         }
 
-        UpdateCompactionMap(db, args);
+        if (!HasError(args.Error)) {
+            UpdateCompactionMap(db, args);
+        }
     }
 
 private:
@@ -84,6 +87,22 @@ private:
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
             return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+        }
+
+        for (const auto& part: args.UnalignedDataParts) {
+            const auto offset = part.OffsetInBlock
+                + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            auto error = Tablet.CheckFreshBytes(
+                part.NodeId,
+                args.CommitId,
+                offset,
+                part.Data);
+
+            if (HasError(error)) {
+                ReportCheckFreshBytesFailed(error.GetMessage());
+                args.Error = std::move(error);
+                return;
+            }
         }
 
         for (auto& blob: args.MergedBlobs) {
@@ -125,6 +144,17 @@ private:
             AccessCompactionStats(rangeId).BlobsCount += 1;
         }
 
+        for (const auto& part: args.UnalignedDataParts) {
+            const auto offset = part.OffsetInBlock
+                + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            Tablet.WriteFreshBytes(
+                db,
+                part.NodeId,
+                args.CommitId,
+                offset,
+                part.Data);
+        }
+
         UpdateNodeAttrs(db, args);
     }
 
@@ -135,6 +165,7 @@ private:
     {
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MergedBlobs);
+        TABLET_VERIFY(!args.UnalignedDataParts);
 
         AddBlobsInfo(
             Tablet.GetBlockSize(),
@@ -197,6 +228,7 @@ private:
     {
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MergedBlobs);
+        TABLET_VERIFY(!args.UnalignedDataParts);
 
         for (auto& blob: args.MixedBlobs) {
             for (auto& block: blob.Blocks) {
@@ -229,6 +261,7 @@ private:
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
+        TABLET_VERIFY(!args.UnalignedDataParts);
 
         for (auto& blob: args.SrcBlobs) {
             Tablet.UpdateBlockLists(db, blob);
@@ -260,6 +293,7 @@ private:
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
+        TABLET_VERIFY(!args.UnalignedDataParts);
 
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
@@ -372,7 +406,8 @@ void TIndexTabletActor::HandleAddBlob(
         std::move(msg->SrcBlocks),
         std::move(msg->MixedBlobs),
         std::move(msg->MergedBlobs),
-        std::move(msg->WriteRanges));
+        std::move(msg->WriteRanges),
+        std::move(msg->UnalignedDataParts));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -407,11 +442,7 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
         AddRange(id, 0, maxOffset, args.ProfileLogRequest);
     }
 
-    if (!ready) {
-        return false;
-    }
-
-    return true;
+    return ready;
 }
 
 void TIndexTabletActor::ExecuteTx_AddBlob(
@@ -440,7 +471,8 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         args.RequestInfo->CallContext,
         "AddBlob");
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);

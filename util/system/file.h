@@ -76,6 +76,13 @@ public:
         other.Fd_ = INVALID_FHANDLE;
     }
 
+    TFileHandle& operator=(TFileHandle&& other) noexcept
+    {
+        Close();
+        Fd_ = other.Release();
+        return *this;
+    }
+
     TFileHandle(const TString& fName, EOpenMode oMode) noexcept;
 
     inline ~TFileHandle() {

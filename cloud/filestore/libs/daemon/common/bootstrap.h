@@ -63,6 +63,7 @@ protected:
     ISchedulerPtr BackgroundScheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    IFileIOServicePtr FileIOService;
     NMetrics::IMetricsServicePtr Metrics;
     IRequestStatsRegistryPtr StatsRegistry;
     IStatsUpdaterPtr RequestStatsUpdater;

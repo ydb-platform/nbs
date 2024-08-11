@@ -78,6 +78,28 @@ void TFreshBytes::DeleteBytes(
     }
 }
 
+NProto::TError TFreshBytes::CheckBytes(
+    ui64 nodeId,
+    ui64 offset,
+    TStringBuf data,
+    ui64 commitId) const
+{
+    // might use these in the future
+    Y_UNUSED(nodeId);
+    Y_UNUSED(offset);
+    Y_UNUSED(data);
+
+    const auto& c = Chunks.back();
+    if (c.FirstCommitId != InvalidCommitId && commitId < c.FirstCommitId) {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "bytes' commitId too old: " << commitId << " < "
+                << c.FirstCommitId);
+    }
+
+    return {};
+}
+
 void TFreshBytes::AddBytes(
     ui64 nodeId,
     ui64 offset,

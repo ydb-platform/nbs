@@ -334,6 +334,7 @@ struct TEvIndexTabletPrivate
         TVector<TMixedBlobMeta> MixedBlobs;
         TVector<TMergedBlobMeta> MergedBlobs;
         TVector<TWriteRange> WriteRanges;
+        TVector<TBlockBytesMeta> UnalignedDataParts;
     };
 
     struct TAddBlobResponse
