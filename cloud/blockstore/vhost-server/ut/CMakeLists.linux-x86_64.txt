@@ -18,6 +18,7 @@ target_link_libraries(cloud-blockstore-vhost-server-ut PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
+  blockstore-libs-encryption
   cpp-testing-unittest_main
   vhost-server
   core-libs-common
