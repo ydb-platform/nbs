@@ -213,6 +213,32 @@ func (s *storageYDB) checkBaseDisksConsistency(
 	return nil
 }
 
+func (s *storageYDB) checkOverlayDiskSlotConsistency(
+	ctx context.Context,
+	session *persistence.Session,
+	diskID string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	slot, err := s.getAcquiredSlot(ctx, tx, diskID)
+	if slot == nil {
+		return tx.Commit(ctx)
+	}
+
+	if slot.status != slotStatusReleased {
+		return errors.NewNonRetriableErrorf(
+			"internal inconsistency: slot %+v should be released",
+			slot,
+		)
+	}
+	return nil
+}
+
 func (s *storageYDB) checkPoolConsistency(
 	ctx context.Context,
 	expectedPoolState pool,

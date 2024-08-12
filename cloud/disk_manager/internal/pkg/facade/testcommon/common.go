@@ -19,6 +19,7 @@ import (
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -452,6 +453,24 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	)
 }
 
+func newResourceStorage(ctx context.Context) (resources.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Should be in sync with settings from configs in test recipe.
+	return resources.NewStorage(
+		"disks",
+		"images",
+		"snapshots",
+		"filesystems",
+		"placement_groups",
+		db,
+		time.Second*30,
+	)
+}
+
 func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	db, err := newYDB(ctx)
 	if err != nil {
@@ -511,8 +530,23 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 		time.Sleep(time.Second)
 	}
 
+	resourceStorage, err := newResourceStorage(ctx)
+	require.NoError(t, err)
+
 	poolStorage, err := newPoolStorage(ctx)
 	require.NoError(t, err)
+
+	diskIDs, err := resourceStorage.ListDisks(
+		ctx,
+		"", // folderID,
+		time.Now(),
+	)
+	require.NoError(t, err)
+
+	for _, diskID := range diskIDs {
+		err = poolStorage.CheckOverlayDiskSlotConsistency(ctx, diskID)
+		require.NoError(t, err)
+	}
 
 	err = poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
