@@ -600,9 +600,14 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
 
+        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
+
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted,
+            HandleChecksumBlocksCompleted);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
