@@ -18,12 +18,8 @@ PEERDIR(
 DEPENDS(
     cloud/filestore/apps/client
     cloud/filestore/apps/server
+    cloud/filestore/apps/vhost
     contrib/ydb/apps/ydbd
-)
-
-DATA(
-    arcadia/cloud/filestore/tests/certs/server.crt
-    arcadia/cloud/filrstore/tests/certs/server.key
 )
 
 END()

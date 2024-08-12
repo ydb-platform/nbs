@@ -449,6 +449,9 @@ message TAddDataRequest
 
     // Commit id.
     uint64 CommitId = 8;
+
+    // Unaligned data parts - supposed to contain unaligned head and tail.
+    repeated TFreshDataRange UnalignedDataRanges = 9;
 }
 
 message TAddDataResponse

@@ -420,8 +420,6 @@ func (c *resizeDisk) run() error {
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func newResizeDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	c := &resizeDisk{
 		clientConfig: clientConfig,
@@ -487,8 +485,6 @@ func (c *alterDisk) run() error {
 
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 func newAlterDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	c := &alterDisk{
@@ -563,8 +559,6 @@ func (c *assignDisk) run() error {
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func newAssignDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	c := &assignDisk{
 		clientConfig: clientConfig,
@@ -636,8 +630,6 @@ func (c *unassignDisk) run() error {
 
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 func newUnassignDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	c := &unassignDisk{

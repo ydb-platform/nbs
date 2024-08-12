@@ -152,6 +152,7 @@ using TAliasMap = THashMap<TString, TString>;
     xxx(TwoStageReadEnabled,             bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
@@ -178,6 +179,8 @@ using TAliasMap = THashMap<TString, TString>;
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\
     xxx(NodeType,                        TString,               {}            )\
+    xxx(BlobCompressionRate,             ui32,                  0             )\
+    xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
     xxx(FilestoreAliases,                TAliasMap,             {}            )\
 // FILESTORE_STORAGE_CONFIG

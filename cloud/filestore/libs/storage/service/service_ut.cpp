@@ -2401,6 +2401,74 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(1, 128_KB, 1 + 128_KB);
     }
 
+    Y_UNIT_TEST(ShouldUseThreeStageWriteForLargeUnalignedRequestsIfEnabled)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(4_KB);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        NProtoPrivate::TAddDataRequest addData;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvAddDataRequest: {
+                        addData = event->template Get<
+                            TEvIndexTablet::TEvAddDataRequest>()->Record;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto data = GenerateValidateData(7_KB);
+        auto offset = 3_KB;
+
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        auto readData = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            offset,
+            data.Size())->Record.GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(data, readData);
+        UNIT_ASSERT_VALUES_EQUAL(2, addData.UnalignedDataRangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf(data).Head(1_KB),
+            addData.GetUnalignedDataRanges(0).GetContent());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf(data).Tail(5_KB),
+            addData.GetUnalignedDataRanges(1).GetContent());
+
+        auto stat = service.GetNodeAttr(
+            headers,
+            fs,
+            RootNodeId,
+            "file")->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(data.Size() + offset, stat.GetSize());
+    }
+
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
         TTestEnv env;

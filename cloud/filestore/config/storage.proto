@@ -320,6 +320,13 @@ message TStorageConfig
     optional string NodeRegistrationRootCertsFile = 362;
     optional NCloud.NProto.TCertificate NodeRegistrationCert = 363;
 
+    // Blob compression experiment params.
+    optional uint32 BlobCompressionRate = 364;
+    optional string BlobCompressionCodec = 365;
+
+    // Enables ThreeStageWrite for unaligned requests.
+    optional bool UnalignedThreeStageWriteEnabled = 366;
+
     // Mapping allowing for multiple fs ids to point to the same fs
     message TFilestoreAliasEntry {
         optional string Alias = 1;
@@ -328,5 +335,5 @@ message TStorageConfig
     message TFilestoreAliases {
         repeated TFilestoreAliasEntry Entries = 1;
     }
-    optional TFilestoreAliases FilestoreAliases = 364;
+    optional TFilestoreAliases FilestoreAliases = 367;
 }

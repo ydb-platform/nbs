@@ -25,7 +25,8 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 CommitId;
-    /*const*/ TVector<TMergedBlob> Blobs;
+    const TVector<TMergedBlob> Blobs;
+    TVector<TBlockBytesMeta> UnalignedDataParts;
     const TWriteRange WriteRange;
     ui32 BlobsSize = 0;
 
@@ -37,6 +38,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
+        TVector<TBlockBytesMeta> unalignedDataParts,
         TWriteRange writeRange);
 
     void Bootstrap(const TActorContext& ctx);

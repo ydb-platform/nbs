@@ -46,7 +46,12 @@ func (t *createSnapshotFromSnapshotTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
-	_, err = t.storage.CreateSnapshot(ctx, t.request.DstSnapshotId)
+	_, err = t.storage.CreateSnapshot(
+		ctx,
+		storage.SnapshotMeta{
+			ID: t.request.DstSnapshotId,
+		},
+	)
 	if err != nil {
 		return err
 	}

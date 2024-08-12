@@ -316,6 +316,13 @@ void TIndexTabletActor::TMetrics::Register(
         FsRegistry,
         {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
 
+    REGISTER_AGGREGATABLE_SUM(
+        UncompressedBytesWritten,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        CompressedBytesWritten,
+        EMetricType::MT_DERIVATIVE);
+
 #define REGISTER_REQUEST(name)                                                 \
     REGISTER_AGGREGATABLE_SUM(                                                 \
         name.Count,                                                            \

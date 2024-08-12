@@ -30,16 +30,16 @@ This binary is used in `acceptance` and `eternal` tests and performs the followi
    * creates image-2 from disk-2
    * creates image-3 from image-2
    * removes images, disks and snapshots (if `output-disk-ids` is present disks are conserved, the same goes for snapshots and `output-snapshot-ids`, those parameters are file paths, those files store "\n" separated disk/snapshot ids respectively).
-   * In case of the test utility failure, the following entities would remain and not be cleaned up: `acceptance-test-image-{suffix}-{timestamp}`, `acceptance-test-snapshot-{suffix}-{timestamp}`, `acceptance-test-disk-{suffix}-{timestamp}`
+   * In case of the test utility failure, the following entities would remain and not be cleaned up: `acc-image-{suffix}-{timestamp}`, `acc-snapshot-{suffix}-{timestamp}`, `acc-disk-{suffix}-{timestamp}`
 2. `createImageFromURLTest`
    * For this test, `url-for-create-image-from-url-test` parameter is required and must be a valid and accessible from the host running the test S3 image url. Image shall be of the following formats: `QCOW2`, `raw`, `VMDK`.
    * Image is created from the S3 URL.
-   * Image is deleted afterward. In case of the test failure image is not being cleaned up. Created image has the following format: `acceptance-test-image-{suffix}-{timestamp}`, where suffix is optional.
+   * Image is deleted afterward. In case of the test failure image is not being cleaned up. Created image has the following format: `acc-image-{suffix}-{timestamp}`, where suffix is optional.
 3. `cancelTest`
    * starts snapshot creation operation from the source disk in the background
    * deletes snapshots
    * checks if the snapshot is actually deleted
-   * If the test case is interrupted/fails before the snapshot creation is cancelled, the snapshot `acceptance-test-snapshot-{suffix}-{timestamp}` would remain.
+   * If the test case is interrupted/fails before the snapshot creation is cancelled, the snapshot `acc-snapshot-{suffix}-{timestamp}` would remain.
 
 
 ## Dependencies
@@ -80,7 +80,7 @@ $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test 
 
 ### Description
 1. Creates instance.
-2. Tries to find disk with name regex `acceptance-test-eternal-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (first number is the test disk size, second - blocksize).
+2. Tries to find disk with name regex `acc-eternal-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (first number is the test disk size, second - blocksize).
 3. If disk wasn't found on previous step, then creates it.
 4. Attaches disk to instance.
 5. Fills disk with random data (remotely via `fio`).
@@ -104,14 +104,14 @@ $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test 
 
 ### Description
 1. Creates instance.
-2. Tries to find disk with name regex `acceptance-test-sync-disk-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (first number is the test disk size, second - blocksize).
+2. Tries to find disk with name regex `acc-sync-disk-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (first number is the test disk size, second - blocksize).
 3. If disk wasn't found on previous step, then creates it.
 4. Attaches disk to instance.
 5. Creates ext4 filesystem on the disk and mounts the disk to the `/tmp` subdirectory.
 6. Creates 3 files on the disk, fills them with random data from `/dev/random`.
 7. Saves those file's checksums into a local variable.
-8. Creates a snapshot with name `sync-acceptance-test-snapshot-<timestamp>` from the disk with files.
-9. Creates a disk `acceptance-test-sync-<size>-<block-size>-<timestamp>-from-snapshot` from the snapshot
+8. Creates a snapshot with name `sync-acc-snapshot-<timestamp>` from the disk with files.
+9. Creates a disk `acc-sync-<size>-<block-size>-<timestamp>-from-snapshot` from the snapshot
 10. Attaches the disk and compares files checksums
 
 **NOTE:** Source disk is not deleted after the test is finished. It must be deleted manually!
@@ -124,33 +124,33 @@ $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test 
 ### Leaked resources and cleanup process:
 Here's the list of the resources and regular expressions matching those resources:
 * For `acceptance` tests: 
-  * For instances: `^acceptance-test-acceptance-(small|medium|big|enormous)-[0-9]+$`
+  * For instances: `^acc-acceptance-(small|medium|big|enormous)-[0-9]+$`
   * For disks:
-    - `^acceptance-test-acceptance-(small|medium|big|enormous)-[0-9]+$`
-    - `^acceptance-test-disk-acceptance-[0-9]+$` (These disks are created by previous tests versions)
-    - `^acceptance-test-disk-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    - `^acc-acceptance-(small|medium|big|enormous)-[0-9]+$`
+    - `^acc-disk-acceptance-[0-9]+$` (These disks are created by previous tests versions)
+    - `^acc-disk-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
   * For images:
-    - `^acceptance-test-image-acceptance-[0-9]+$` (These images are created by previous tests versions)
-    - `^acceptance-test-image-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    - `^acc-image-acceptance-[0-9]+$` (These images are created by previous tests versions)
+    - `^acc-image-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
   * For snapshots:
-    - `^acceptance-test-snapshot-acceptance-[0-9]+$` (These snapshots are created by previous tests versions)
-    - `^acceptance-test-snapshot-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    - `^acc-snapshot-acceptance-[0-9]+$` (These snapshots are created by previous tests versions)
+    - `^acc-snapshot-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
 * For `eternal` tests
-  * For instances: `^acceptance-test-eternal-[0-9]+$`
+  * For instances: `^acc-eternal-[0-9]+$`
   * For disks:
-    * `^acceptance-test-eternal-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+$` (This disk is a base disk)
-    * `^acceptance-test-disk-eternal-[0-9]+$` (These disks are created by previous tests versions)
-    * `^acceptance-test-disk-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    * `^acc-eternal-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+$` (This disk is a base disk)
+    * `^acc-disk-eternal-[0-9]+$` (These disks are created by previous tests versions)
+    * `^acc-disk-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
   * For images:
-    * `^acceptance-test-image-eternal-[0-9]+$` (These images are created by previous tests versions)
-    * `^acceptance-test-image-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    * `^acc-image-eternal-[0-9]+$` (These images are created by previous tests versions)
+    * `^acc-image-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
   * For snapshots:
-    * `^acceptance-test-snapshot-eternal-[0-9]+$` (These snapshots are created by previous tests versions)
-    * `^acceptance-test-snapshot-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+    * `^acc-snapshot-eternal-[0-9]+$` (These snapshots are created by previous tests versions)
+    * `^acc-snapshot-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
 * For sync tests:
-  * For instances: `^acceptance-test-sync-[0-9]+$`
+  * For instances: `^acc-sync-[0-9]+$`
   * For disks:
-    * `^acceptance-test-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (This disk is a base disk)
-    * `^acceptance-test-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+-from-snapshot$`
-  * For snapshots: `^sync-acceptance-test-snapshot-.*$`
+    * `^acc-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (This disk is a base disk)
+    * `^acc-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+-from-snapshot$`
+  * For snapshots: `^sync-acc-snapshot-.*$`
 Note that for the `sync` and `eternal` tests, at least on "base" disk should be kept present, because sync and eternal tests check incremental snapshots.

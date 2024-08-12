@@ -8,12 +8,12 @@ echo "=== get all ==="
 kubectl -n nbs get all
 
 echo "=== update driver ==="
-minikube ssh -- docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
+docker build -t nbs-csi-driver:latest ../../
 
 echo "=== create driver-controller ==="
-kubectl -n nbs apply -f ./manifests/7-csi-deployment.yaml
+kubectl -n nbs apply -f ./manifests/5-csi-deployment.yaml
 echo "=== create driver-node ==="
-kubectl -n nbs apply -f ./manifests/8-csi-daemonset.yaml
+kubectl -n nbs apply -f ./manifests/6-csi-daemonset.yaml
 echo "=== get all ==="
 kubectl -n nbs get all
 

@@ -12,7 +12,10 @@ using namespace NCloud::NFileStore::NVhost;
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerVhost::TConfigInitializerVhost(TOptionsVhostPtr options)
-    : TConfigInitializerCommon(options)
+    : TConfigInitializerCommon(
+          {{"VHostAppConfig",
+            bind_front(&TConfigInitializerVhost::ApplyVHostAppConfig, this)}},
+          options)
     , Options(std::move(options))
 {}
 
@@ -37,9 +40,16 @@ void TConfigInitializerVhost::InitAppConfig()
         AppConfig.GetVhostServiceConfig());
 }
 
-void TConfigInitializerVhost::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&)
+void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)
 {
-    // nothing to do
+    AppConfig.Clear();
+    ParseProtoTextFromStringRobust(text, AppConfig);
+
+    ServerConfig = std::make_shared<NServer::TServerConfig>(
+        AppConfig.GetServerConfig());
+
+    VhostServiceConfig = std::make_shared<TVhostServiceConfig>(
+        AppConfig.GetVhostServiceConfig());
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

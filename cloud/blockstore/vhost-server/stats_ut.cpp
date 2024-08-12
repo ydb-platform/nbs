@@ -1,4 +1,5 @@
 #include "stats.h"
+#include "critical_event.h"
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -28,9 +29,11 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         auto dump = [&] (auto dt) {
             TStringStream ss;
 
-            auto curStats = completionStats;
+            auto curStats = TCompleteStats{
+                .SimpleStats = completionStats,
+                .CriticalEvents = TakeAccumulatedCriticalEvents()};
             for (auto& s: queueStats) {
-                curStats += s;
+                curStats.SimpleStats += s;
             }
 
             DumpStats(
@@ -94,6 +97,15 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
         for (int i = 0; i != 50; ++i) {
             write(32_MB, 32ms);
+        }
+
+        // Fill crit events
+        TMultiMap<TString, TString> testCritEvents{
+            {"event1", "message 1"},
+            {"event1", "message 2"},
+            {"event2", "message n"}};
+        for (const auto& [name, message]: testCritEvents) {
+            ReportCriticalEvent(name, message);
         }
 
         {
@@ -189,6 +201,17 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
                 UNIT_ASSERT_VALUES_EQUAL_C(32_MB, size, "32M");
                 UNIT_ASSERT_VALUES_EQUAL(50, count);
+            }
+
+            {   // Check crit events
+                UNIT_ASSERT_VALUES_EQUAL(true, stats.Has("crit_events"));
+                TMultiMap<TString, TString> critEvents;
+                for (const auto& event: stats["crit_events"].GetArray()) {
+                    const auto& name = event["name"].GetString();
+                    const auto& message = event["message"].GetString();
+                    critEvents.emplace(name, message);
+                }
+                UNIT_ASSERT_VALUES_EQUAL(testCritEvents, critEvents);
             }
         }
 
@@ -314,6 +337,12 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
                 UNIT_ASSERT_VALUES_EQUAL_C(96_GB, size, "100G");
                 UNIT_ASSERT_VALUES_EQUAL(3, count);
+            }
+            {
+                // The critical events list were taken in the last dump.
+                // ReportCriticalEvent() was not called after that, so the key
+                // "crit_events" absent.
+                UNIT_ASSERT_VALUES_EQUAL(false, stats.Has("crit_events"));
             }
         }
     }

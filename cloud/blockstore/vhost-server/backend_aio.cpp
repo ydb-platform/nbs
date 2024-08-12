@@ -13,14 +13,19 @@
 #include <libaio.h>
 
 #include <thread>
+#include <utility>
 
 namespace NCloud::NBlockStore::NVHostServer {
+
+using namespace NThreading;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void CompleteRequest(
+    TLog& log,
+    IEncryptor* encryptor,
     TAioRequestHolder req,
     vhd_bdev_io_result status,
     TSimpleStats& stats,
@@ -29,28 +34,38 @@ void CompleteRequest(
     auto* bio = vhd_get_bdev_io(req->Io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    stats.Requests[bio->type].Errors += status != VHD_BDEV_SUCCESS;
-    stats.Requests[bio->type].Count += status == VHD_BDEV_SUCCESS;
-    stats.Requests[bio->type].Bytes += bytes;
-    stats.Requests[bio->type].Unaligned += req->BounceBuf;
+    auto& requestStat = stats.Requests[bio->type];
+    requestStat.Errors += status != VHD_BDEV_SUCCESS;
+    requestStat.Count += status == VHD_BDEV_SUCCESS;
+    requestStat.Bytes += bytes;
+    requestStat.Unaligned += req->Unaligned;
 
     if (status == VHD_BDEV_SUCCESS) {
         stats.Times[bio->type].Increment(now - req->SubmitTs);
         stats.Sizes[bio->type].Increment(bytes);
     }
 
-    if (req->BounceBuf) {
+    if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            // TODO(drbasic): decrypt
-            SgListCopy(
+            NSan::Unpoison(req->Data[0].iov_base, req->Data[0].iov_len);
+            const bool success = SgListCopyWithOptionalDecryption(
+                log,
                 static_cast<const char*>(req->Data[0].iov_base),
-                bio->sglist);
+                bio->sglist,
+                encryptor,
+                bio->first_sector);
+            if (!success) {
+                status = VHD_BDEV_IOERR;
+                stats.EncryptorErrors++;
+            }
         }
     }
     vhd_complete_bio(req->Io, status);
 }
 
 void CompleteCompoundRequest(
+    TLog& log,
+    IEncryptor* encryptor,
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
     TSimpleStats& stats,
@@ -68,9 +83,10 @@ void CompleteCompoundRequest(
         auto* bio = vhd_get_bdev_io(req->Io);
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-        stats.Requests[bio->type].Errors += req->Errors != 0;
-        stats.Requests[bio->type].Count += 1;
-        stats.Requests[bio->type].Bytes += bytes;
+        auto& requestStat = stats.Requests[bio->type];
+        requestStat.Errors += req->Errors != 0;
+        requestStat.Count += 1;
+        requestStat.Bytes += bytes;
 
         if (status == VHD_BDEV_SUCCESS) {
             stats.Times[bio->type].Increment(now - req->SubmitTs);
@@ -78,8 +94,17 @@ void CompleteCompoundRequest(
         }
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            // TODO(drbasic): decrypt
-            SgListCopy(req->Buffer.get(), bio->sglist);
+            NSan::Unpoison(req->Buffer.get(), bytes);
+            const bool success = SgListCopyWithOptionalDecryption(
+                log,
+                req->Buffer.get(),
+                bio->sglist,
+                encryptor,
+                bio->first_sector);
+            if (!success) {
+                status = VHD_BDEV_IOERR;
+                stats.EncryptorErrors++;
+            }
         }
         vhd_complete_bio(req->Io, status);
     }
@@ -93,6 +118,7 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
+    IEncryptorPtr Encryptor;
     TVector<TAioDevice> Devices;
 
     io_context_t Io = {};
@@ -105,7 +131,7 @@ private:
     ICompletionStatsPtr CompletionStats;
 
 public:
-    explicit TAioBackend(ILoggingServicePtr logging);
+    TAioBackend(IEncryptorPtr encryptor, ILoggingServicePtr logging);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -124,15 +150,19 @@ private:
     size_t PrepareBatch(
         vhd_request_queue* queue,
         TVector<iocb*>& batch,
-        TCpuCycles now);
+        TCpuCycles now,
+        TSimpleStats& queueStats);
 
     void CompletionThreadFunc();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAioBackend::TAioBackend(ILoggingServicePtr logging)
+TAioBackend::TAioBackend(
+        IEncryptorPtr encryptor,
+        ILoggingServicePtr logging)
     : Logging{std::move(logging)}
+    , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
 {
     Log = Logging->CreateLog("AIO");
@@ -141,7 +171,9 @@ TAioBackend::TAioBackend(ILoggingServicePtr logging)
 vhd_bdev_info TAioBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing AIO backend");
-
+    if (Encryptor) {
+        STORAGE_INFO("Encryption enabled");
+    }
     BatchSize = options.BatchSize;
 
     Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
@@ -259,7 +291,7 @@ void TAioBackend::ProcessQueue(
         const TCpuCycles now = GetCycleCount();
 
         // append new requests to the tail of the batch
-        queueStats.Dequeued += PrepareBatch(queue, batch, now);
+        queueStats.Dequeued += PrepareBatch(queue, batch, now, queueStats);
 
         if (batch.empty()) {
             break;
@@ -284,12 +316,16 @@ void TAioBackend::ProcessQueue(
 
             if (batch[0]->data) {
                 CompleteCompoundRequest(
+                    Log,
+                    Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
                     queueStats,
                     now);
             } else {
                 CompleteRequest(
+                    Log,
+                    Encryptor.get(),
                     TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
                     queueStats,
@@ -314,7 +350,8 @@ std::optional<TSimpleStats> TAioBackend::GetCompletionStats(TDuration timeout)
 size_t TAioBackend::PrepareBatch(
     vhd_request_queue* queue,
     TVector<iocb*>& batch,
-    TCpuCycles now)
+    TCpuCycles now,
+    TSimpleStats& queueStats)
 {
     const size_t initialSize = batch.size();
 
@@ -322,7 +359,14 @@ size_t TAioBackend::PrepareBatch(
     while (batch.size() < BatchSize && vhd_dequeue_request(queue, &req)) {
         Y_DEBUG_ABORT_UNLESS(vhd_vdev_get_priv(req.vdev) == this);
 
-        PrepareIO(Log, Devices, req.io, batch, now);
+        PrepareIO(
+            Log,
+            Encryptor.get(),
+            Devices,
+            req.io,
+            batch,
+            now,
+            queueStats);
     }
 
     return batch.size() - initialSize;
@@ -385,6 +429,8 @@ void TAioBackend::CompletionThreadFunc()
                 }
 
                 CompleteCompoundRequest(
+                    Log,
+                    Encryptor.get(),
                     std::move(sub),
                     result,
                     stats,
@@ -414,7 +460,13 @@ void TAioBackend::CompletionThreadFunc()
                     strerror(-events[i].res));
             }
 
-            CompleteRequest(std::move(req), result, stats, now);
+            CompleteRequest(
+                Log,
+                Encryptor.get(),
+                std::move(req),
+                result,
+                stats,
+                now);
         }
 
         stats.Completed += ret;
@@ -425,9 +477,13 @@ void TAioBackend::CompletionThreadFunc()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBackendPtr CreateAioBackend(ILoggingServicePtr logging)
+IBackendPtr CreateAioBackend(
+    IEncryptorPtr encryptor,
+    ILoggingServicePtr logging)
 {
-    return std::make_shared<TAioBackend>(std::move(logging));
+    return std::make_shared<TAioBackend>(
+        std::move(encryptor),
+        std::move(logging));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

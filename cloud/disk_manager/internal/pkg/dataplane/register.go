@@ -223,7 +223,16 @@ func RegisterForExecution(
 		},
 	)
 
-	return nil
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.DeleteDiskFromIncremental",
+		func() tasks.Task {
+			return &deleteDiskFromIncrementalTask{
+				storage: storage,
+				config:  config,
+			}
+		},
+	)
+	return err
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -250,4 +259,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.ReplicateDisk":                    func() tasks.Task { return &replicateDiskTask{} },
 	"dataplane.DeleteSnapshot":                   func() tasks.Task { return &deleteSnapshotTask{} },
 	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
+	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 }

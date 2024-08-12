@@ -52,7 +52,12 @@ func (t *createSnapshotFromURLTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	_, err := t.storage.CreateSnapshot(ctx, t.request.DstSnapshotId)
+	_, err := t.storage.CreateSnapshot(
+		ctx,
+		storage.SnapshotMeta{
+			ID: t.request.DstSnapshotId,
+		},
+	)
 	if err != nil {
 		return err
 	}

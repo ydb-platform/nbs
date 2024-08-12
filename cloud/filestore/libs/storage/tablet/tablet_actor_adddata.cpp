@@ -18,7 +18,6 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,6 +76,10 @@ bool TIndexTabletActor::PrepareTx_AddData(
     args.NodeId = handle->GetNodeId();
     ui64 commitId = GetCurrentCommitId();
 
+    for (auto& part: args.UnalignedDataParts) {
+        part.NodeId = args.NodeId;
+    }
+
     LOG_TRACE(
         ctx,
         TFileStoreComponents::TABLET,
@@ -93,6 +96,7 @@ bool TIndexTabletActor::PrepareTx_AddData(
     }
 
     // TODO: access check
+    // TODO: replace VERIFY with a check + critical event
     TABLET_VERIFY(args.Node);
     if (!HasSpaceLeft(args.Node->Attrs, args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
@@ -110,9 +114,7 @@ void TIndexTabletActor::ExecuteTx_AddData(
     Y_UNUSED(ctx, tx, args);
 
     // Note: unlike ExecuteTx_WriteData, we do not need to call UpdateNode here,
-    // as it is done in AddBlob operation. If unaligned data is to be supported
-    // for AddData, UpdateNode should be called here as well, analogously to
-    // WriteData.
+    // as it is done in AddBlob operation.
 }
 
 void TIndexTabletActor::CompleteTx_AddData(
@@ -189,6 +191,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
+        std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()});
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
@@ -373,16 +376,67 @@ void TIndexTabletActor::HandleAddData(
                 E_ARGUMENT,
                 "empty list of blobs given in AddData request"));
         NCloud::Reply(ctx, *ev, std::move(response));
+        return;
     }
+
+    TVector<TBlockBytesMeta> unalignedDataParts;
+    for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
+        if (part.GetContent().Empty()) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
+                    E_ARGUMENT,
+                    "empty unaligned data part"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
+        const ui32 blockIndex = part.GetOffset() / GetBlockSize();
+        const ui32 lastBlockIndex =
+            (part.GetOffset() + part.GetContent().Size() - 1) / GetBlockSize();
+        if (blockIndex != lastBlockIndex) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "unaligned part spanning more than one"
+                        << " block: " << part.GetOffset() << ":"
+                        << part.GetContent().Size()));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
+        const ui32 offsetInBlock =
+            part.GetOffset() - static_cast<ui64>(blockIndex) * GetBlockSize();
+
+        unalignedDataParts.push_back({
+            0, // NodeId is not known at this point
+            blockIndex,
+            offsetInBlock,
+            std::move(*part.MutableContent())});
+    }
+
+    auto unalignedMsg = [&] () {
+        TStringBuilder sb;
+        for (auto& part: unalignedDataParts) {
+            if (sb.Size()) {
+                sb << ", ";
+            }
+
+            sb << part.BlockIndex
+                << ":" << part.OffsetInBlock
+                << ":" << part.Data.Size();
+        }
+        return sb;
+    };
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s %s: blobId: %s,... (total: %lu)",
+        "%s %s: blobId: %s,... (total: %lu), unaligned: %s",
         LogTag.c_str(),
         "AddData",
         blobIds[0].ToString().c_str(),
-        blobIds.size());
+        blobIds.size(),
+        unalignedMsg().c_str());
 
     AddTransaction<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
@@ -392,6 +446,7 @@ void TIndexTabletActor::HandleAddData(
         msg->Record,
         range,
         std::move(blobIds),
+        std::move(unalignedDataParts),
         msg->Record.GetCommitId());
     txStarted = true;
 }
@@ -404,6 +459,17 @@ void TIndexTabletActor::HandleAddDataCompleted(
 {
     auto* msg = ev->Get();
 
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s AddData failed: %s",
+            LogTag.c_str(),
+            FormatError(msg->Error).Quote().c_str());
+    } else {
+        Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+    }
+
     // We try to release commit barrier twice: once for the lock
     // acquired by the GenerateBlob request and once for the lock
     // acquired by the AddData request. Though, the first lock is
@@ -414,8 +480,6 @@ void TIndexTabletActor::HandleAddDataCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
-
-    Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
