@@ -30,6 +30,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 #undef STORAGE_INIT_CRITICAL_EVENT_COUNTER
 }
 
+TString GetCriticalEventFullName(const TString& name)
+{
+    return "AppCriticalEvents/" + name;
+}
+
 TString ReportCriticalEvent(
     const TString& sensorName,
     const TString& message,

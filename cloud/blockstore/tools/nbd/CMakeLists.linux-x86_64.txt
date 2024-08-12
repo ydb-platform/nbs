@@ -18,6 +18,7 @@ target_link_libraries(blockstore-nbd PUBLIC
   blockstore-libs-client
   blockstore-libs-common
   blockstore-libs-diagnostics
+  blockstore-libs-encryption
   blockstore-libs-nbd
   blockstore-libs-service
   core-libs-grpc

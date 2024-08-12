@@ -17,6 +17,8 @@ namespace NCloud {
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
+TString GetCriticalEventFullName(const TString& name);
+
 TString ReportCriticalEvent(
     const TString& sensorName,
     const TString& message,

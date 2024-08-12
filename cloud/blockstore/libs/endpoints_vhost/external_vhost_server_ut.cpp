@@ -483,6 +483,82 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldStartEncryptedAioExternalEndpointWithPath, TFixture)
+    {
+        auto request = CreateDefaultStartEndpointRequest();
+        auto* encryption = request.MutableEncryptionSpec();
+        encryption->SetMode(NProto::EEncryptionMode::ENCRYPTION_AES_XTS);
+        encryption->MutableKeyPath()->SetFilePath("/tmp/secret.key");
+
+        auto error =
+            Listener->StartEndpoint(request, Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+
+        /*
+            --serial local0                     2
+            --disk-id vol0                      2
+            --socket-path /tmp/socket.vhost     2
+            -q 2                                2
+            --device ...                        2
+            --device ...                        2
+            --read-only                         1
+            --wait-after-parent-exit ...        2
+            --wait-after-parent-exit ...        2
+            --encryption-mode ...               2
+            --encryption-key-path ...           2
+                                               19
+        */
+
+        UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aes-xts",
+            GetArg(create->CmdArgs, "--encryption-mode"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/tmp/secret.key",
+            GetArg(create->CmdArgs, "--encryption-key-path"));
+    }
+
+    Y_UNIT_TEST_F(ShouldStartEncryptedAioExternalEndpointWithKeyring, TFixture)
+    {
+        auto request = CreateDefaultStartEndpointRequest();
+        auto* encryption = request.MutableEncryptionSpec();
+        encryption->SetMode(NProto::EEncryptionMode::ENCRYPTION_AES_XTS);
+        encryption->MutableKeyPath()->SetKeyringId(100);
+
+        auto error =
+            Listener->StartEndpoint(request, Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+
+        /*
+            --serial local0                     2
+            --disk-id vol0                      2
+            --socket-path /tmp/socket.vhost     2
+            -q 2                                2
+            --device ...                        2
+            --device ...                        2
+            --read-only                         1
+            --wait-after-parent-exit ...        2
+            --wait-after-parent-exit ...        2
+            --encryption-mode ...               2
+            --encryption-keyring-id ...         2
+                                               19
+        */
+
+        UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aes-xts",
+            GetArg(create->CmdArgs, "--encryption-mode"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "100",
+            GetArg(create->CmdArgs, "--encryption-keyring-id"));
+    }
+
     Y_UNIT_TEST_F(ShouldStartRdmaExternalEndpoint, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());

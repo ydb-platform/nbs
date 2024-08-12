@@ -7,6 +7,7 @@ SRCS(
     backend_aio.cpp
     backend_rdma.cpp
     backend_null.cpp
+    critical_event.cpp
     histogram.cpp
     options.cpp
     request_aio.cpp
@@ -21,6 +22,9 @@ ADDINCL(
 
 PEERDIR(
     cloud/blockstore/libs/client
+    cloud/blockstore/libs/common
+    cloud/blockstore/libs/encryption
+    cloud/blockstore/libs/encryption/model
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service_local
 
@@ -39,4 +43,7 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    gtest
+    ut
+)

@@ -6,8 +6,10 @@
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/vhost-server/options.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -37,6 +39,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <thread>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
@@ -55,6 +59,11 @@ constexpr ui64 ReadFirstStatRetryCount = 10;
 // It doesn't make sense to make the delay less than
 // COMPLETION_STATS_WAIT_DURATION.
 constexpr auto StatReadDuration = TDuration::Seconds(1);
+
+// Backoff delays for external-vhost server restart.
+constexpr auto RestartMinDelay = TDuration::MilliSeconds(100);
+constexpr auto RestartMaxDelay = TDuration::Seconds(30);
+constexpr auto RestartWasTooLongAgo = TDuration::Seconds(60);
 
 enum class EEndpointType
 {
@@ -527,8 +536,7 @@ void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 class TEndpoint final
     : public IExternalEndpoint
     , public std::enable_shared_from_this<TEndpoint>
-    , public ISimpleThread  // XXX: pidfd_open is not implemented for Linux 4.14
-{                           // so we are forced to use a thread for waitpid.
+{
 private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
@@ -545,6 +553,8 @@ private:
 
     TIntrusivePtr<TEndpointProcess> Process;
     std::atomic_bool ShouldStop = false;
+    TInstant LastRestartAt;
+    TBackoffDelayProvider RestartBackoff{RestartMinDelay, RestartMaxDelay};
 
     TPromise<NProto::TError> StopPromise = NewPromise<NProto::TError>();
 
@@ -588,7 +598,14 @@ public:
     {
         Process = StartProcess();
 
-        ISimpleThread::Start();
+        // To avoid a race, we need to get the shared pointer in the calling
+        // thread and pass it to the background thread. This guaranteed that the
+        // background thread will deal with a live this.
+        auto workFunc = [self = shared_from_this()]()
+        {
+            self->ThreadProc();
+        };
+        std::thread(std::move(workFunc)).detach();
     }
 
     TFuture<NProto::TError> Stop() override
@@ -604,12 +621,10 @@ public:
     }
 
 private:
-    void* ThreadProc() override
+    // XXX: pidfd_open is not implemented for Linux 4.14
+    // so we are forced to use a thread for waitpid.
+    void ThreadProc()
     {
-        auto holder = shared_from_this();
-
-        Detach();   // don't call Join in the same thread
-
         ::NCloud::SetCurrentThreadName("waitEP");
 
         NProto::TError error;
@@ -644,8 +659,6 @@ private:
         }
 
         StopPromise.SetValue(error);
-
-        return nullptr;
     }
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
@@ -657,7 +670,12 @@ private:
             }
         };
 
-        AddToCGroups(process.Pid, Cgroups);
+        try {
+            AddToCGroups(process.Pid, Cgroups);
+        } catch (...) {
+            ShouldStop = true;
+            throw;
+        }
 
         auto ep = MakeIntrusive<TEndpointProcess>(
             ClientId,
@@ -674,9 +692,25 @@ private:
 
     TIntrusivePtr<TEndpointProcess> RestartProcess()
     {
+        if (TInstant::Now() - LastRestartAt > RestartWasTooLongAgo) {
+            // The last restart happened a long time ago, restart immediately.
+            RestartBackoff.Reset();
+        } else {
+            auto delay = RestartBackoff.GetDelayAndIncrease();
+            STORAGE_WARN(
+                "[" << ClientId << "] Will restart external endpoint after "
+                    << delay.ToString());
+            Sleep(delay);
+        }
+
+        if (ShouldStop) {
+            return nullptr;
+        }
+
         STORAGE_WARN("[" << ClientId << "] Restart external endpoint");
 
         try {
+            LastRestartAt = TInstant::Now();
             return StartProcess();
         } catch (...) {
             STORAGE_ERROR("[" << ClientId << "] Can't restart external endpoint: "
@@ -1038,6 +1072,25 @@ private:
 
         if (request.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY) {
             args.emplace_back("--read-only");
+        }
+
+        const auto& encryptionSpec = request.GetEncryptionSpec();
+        if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
+            args.emplace_back("--encryption-mode");
+            args.emplace_back(EncryptionModeToString(encryptionSpec.GetMode()));
+
+            const auto& keyPath = encryptionSpec.GetKeyPath();
+            if (keyPath.HasFilePath()) {
+                args.emplace_back("--encryption-key-path");
+                args.emplace_back(keyPath.GetFilePath());
+            } else if (keyPath.HasKeyringId()) {
+                args.emplace_back("--encryption-keyring-id");
+                args.emplace_back(ToString(keyPath.GetKeyringId()));
+            } else {
+                ythrow yexception()
+                    << "EncryptionSpec should has FilePath or KeyringId "
+                    << encryptionSpec.AsJSON();
+            }
         }
 
         TVector<TString> cgroups(
