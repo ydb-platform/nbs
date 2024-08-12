@@ -16,6 +16,7 @@ target_link_libraries(blockstore-vhost-server PUBLIC
   yutil
   library-cpp-cpuid_check
   blockstore-libs-client
+  blockstore-libs-encryption
   libs-rdma-impl
   blockstore-libs-service_local
   vhost-server
