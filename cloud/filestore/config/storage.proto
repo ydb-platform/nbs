@@ -319,4 +319,14 @@ message TStorageConfig
     // TLS node registration details.
     optional string NodeRegistrationRootCertsFile = 362;
     optional NCloud.NProto.TCertificate NodeRegistrationCert = 363;
+
+    // Mapping allowing for multiple fs ids to point to the same fs
+    message TFilestoreAliasEntry {
+        optional string Alias = 1;
+        optional string FsId = 2;
+    }
+    message TFilestoreAliases {
+        repeated TFilestoreAliasEntry Entries = 1;
+    }
+    optional TFilestoreAliases FilestoreAliases = 364;
 }

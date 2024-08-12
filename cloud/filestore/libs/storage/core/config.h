@@ -233,6 +233,8 @@ public:
     TCertificate GetNodeRegistrationCert() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
+
+    THashMap<TString, TString> GetFilestoreAliases() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
