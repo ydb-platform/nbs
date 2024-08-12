@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
