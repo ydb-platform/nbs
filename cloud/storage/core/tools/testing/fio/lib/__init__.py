@@ -10,21 +10,22 @@ import yatest.common as common
 logger = logging.getLogger(__name__)
 
 KB = 1024
-MB = 1024*1024
+MB = 1024 * 1024
 
 
 def _print_size(size):
     if size < KB:
         return str(size)
     elif size < MB:
-        return "{}K".format(int(size/KB))
+        return "{}K".format(int(size / KB))
     else:
-        return "{}M".format(int(size/MB))
+        return "{}M".format(int(size / MB))
 
 
 class TestCase:
     def __init__(self, scenario, size, request_size, iodepth, sync, duration, compress_percentage,
-                 verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier, unique_name):
+                 verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier, unique_name,
+                 offset):
         self._scenario = scenario
         self._size = size
         self._request_size = request_size
@@ -40,6 +41,7 @@ class TestCase:
         self._end_fsync = end_fsync
         self._write_barrier = write_barrier
         self._unique_name = unique_name
+        self._offset = offset
 
     @property
     def scenario(self):
@@ -102,6 +104,10 @@ class TestCase:
         return self._unique_name
 
     @property
+    def offset(self):
+        return self._offset
+
+    @property
     def name(self):
         parts = [
             self.scenario,
@@ -139,6 +145,8 @@ class TestCase:
             "--time_based",
             "--output-format", "json",
         ]
+        if self.offset:
+            cmd += ["--offset", str(self.offset)]
         if self.verify and 'read' not in self.scenario:
             cmd += [
                 "--verify", "md5",
@@ -187,36 +195,37 @@ class TestCase:
 
 
 def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage, verify,
-                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name):
+                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset):
     return [
         TestCase(scenario, size, request_size, iodepth, sync, duration, compress_percentage, verify,
-                 unlink, numjob, fsync, fdatasync, end_fsync, write_barrier, unique_name)
+                 unlink, numjob, fsync, fdatasync, end_fsync, write_barrier, unique_name,
+                 offset)
         for scenario, request_size, iodepth, unlink, numjob, fsync, fdatasync, end_fsync, write_barrier
         in itertools.product(scenarios, sizes, iodepths, unlinks, numjobs, fsyncs, fdatasyncs,
                              end_fsyncs, write_barriers)
     ]
 
 
-def generate_tests(size=100*MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
-                   sizes=[4*KB, 4*MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
+def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
+                   sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
                    numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
-                   unique_name=False):
+                   unique_name=False, offset=0):
     return {
         test.name: test
         for test in _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage,
                                     verify, unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers,
-                                    unique_name)
+                                    unique_name, offset)
     }
 
 
 def generate_default_test():
-    return generate_tests(size=100*MB, duration=60, sync=False, scenarios=['randrw'],
-                          sizes=[4*KB], iodepths=[32], compress_percentage=90, verify=True, unlinks=[False],
+    return generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randrw'],
+                          sizes=[4 * KB], iodepths=[32], compress_percentage=90, verify=True, unlinks=[False],
                           numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
                           unique_name=False)
 
 
-def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodepths=[16], unlinks=[False, True],
+def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4 * KB], iodepths=[16], unlinks=[False, True],
                          numjobs=[1, 4], fsyncs=[0, 16], fdatasyncs=[0, 8], end_fsyncs=[False, True],
                          write_barriers=[0, 4], unique_name=False):
     return generate_tests(duration=duration, scenarios=scenarios, sizes=sizes, iodepths=iodepths, unlinks=unlinks,
@@ -225,7 +234,7 @@ def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodept
 
 
 def generate_default_index_test():
-    return generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodepths=[16], unlinks=[True],
+    return generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4 * KB], iodepths=[16], unlinks=[True],
                                 numjobs=[4], fsyncs=[16], fdatasyncs=[8], end_fsyncs=[True], write_barriers=[4],
                                 unique_name=False)
 
