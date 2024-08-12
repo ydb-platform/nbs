@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
@@ -22,7 +24,10 @@ func newContext() context.Context {
 	)
 }
 
-func newYDB(ctx context.Context) (*YDBClient, error) {
+func newYDB(
+	ctx context.Context,
+	metricsRegistry metrics.Registry,
+) (*YDBClient, error) {
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "disk_manager"
@@ -34,7 +39,7 @@ func newYDB(ctx context.Context) (*YDBClient, error) {
 			Database: &database,
 			RootPath: &rootPath,
 		},
-		empty.NewRegistry(),
+		metricsRegistry,
 	)
 }
 
@@ -231,7 +236,7 @@ func TestYDBCreateTableV1(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -265,7 +270,7 @@ func TestYDBCreateTableV1Twice(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -316,7 +321,7 @@ func TestYDBMigrateTableV1ToTableV2(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -374,7 +379,7 @@ func TestYDBUseV1InV2(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -432,7 +437,7 @@ func TestYDBFailMigrationChangingType(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -466,7 +471,7 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
+	db, err := newYDB(ctx, empty.NewRegistry())
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -494,4 +499,31 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 		false, // dropUnusedColumns
 	)
 	assert.Error(t, err)
+}
+
+func TestYDBShouldSendErrorTLIMetric(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+
+	db, err := newYDB(ctx, mocks.NewRegistryMock())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	name := "transaction/Execute"
+	defer db.metrics.StatCall(ctx, name, query)(&err)
+	db.metrics.registry.GetCounter(
+		"errors",
+		map[string]string{
+			"error": "tliError",
+			"call": name,
+		},
+	).On("Inc").Once()
+
+	// err = Operation(
+	// 	WithStatusCode(Ydb.StatusIds_ABORTED),
+	// 	WithIssues([]*Ydb_Issue.IssueMessage{{
+	// 		IssueCode: issueCodeTransactionLocksInvalidated,
+	// 	}}),
+	// )
 }

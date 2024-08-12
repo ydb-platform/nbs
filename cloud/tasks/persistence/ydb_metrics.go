@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
+
 	ydb_metrics "github.com/ydb-platform/ydb-go-sdk/v3/metrics"
 	ydb_trace "github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
@@ -35,7 +36,7 @@ func (m *ydbMetrics) StatCall(
 
 		// Should initialize all counters before using them, to avoid 'no data'.
 		hangingCounter := subRegistry.Counter("hanging")
-		errorCounter := subRegistry.Counter("errors")
+		// errorCounter := subRegistry.Counter("errors")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
 
@@ -45,6 +46,23 @@ func (m *ydbMetrics) StatCall(
 		}
 
 		if *err != nil {
+			var errName string
+			switch {
+			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
+				errName = "tliError"
+			case ydb.IsOperationErrorSchemeError(*err):
+				errName = "schemeError"
+			case errors.Is(*err, errors.NewEmptyRetriableError()):
+				errName = "retriableError"
+			default:
+				errName = "error"
+			}
+			errorRegistry := m.registry.WithTags(map[string]string{
+				"error": errName,
+				"call": name,
+			})
+
+			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
