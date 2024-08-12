@@ -236,7 +236,7 @@ func (s *storageYDB) checkOverlayDiskSlotConsistency(
 			slot,
 		)
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (s *storageYDB) checkPoolConsistency(
