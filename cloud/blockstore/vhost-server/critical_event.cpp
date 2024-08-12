@@ -39,9 +39,8 @@ void ReportCriticalEvent(TString sensorName, TString message)
         if (CriticalEventsAccumulator.size() >= MaxStoredCriticalEventCount) {
             return;
         }
-        CriticalEventsAccumulator.emplace_back(
-            std::move(sensorName),
-            std::move(message));
+        CriticalEventsAccumulator.push_back(
+            TCriticalEvent{std::move(sensorName), std::move(message)});
     }
 }
 
