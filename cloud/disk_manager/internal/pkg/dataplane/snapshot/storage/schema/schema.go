@@ -53,6 +53,30 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
+		"incremental",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+			// We use timestamp to make it easier to find the latest snapshot
+			// and it is OK to depend on time here because clock discrepancy
+			// won't hurt the correctness, it can only increase amount of data
+			// to be copied but the probability of such event is very low and
+			// can be neglected.
+			persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+			persistence.WithPrimaryKeyColumn("zone_id", "disk_id", "snapshot_id", "created_at"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created incremental table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
 		"chunk_blobs",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
@@ -129,6 +153,12 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped deleting table")
 
+	err = db.DropTable(ctx, config.GetStorageFolder(), "incremental")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped incremental table")
+
 	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_blobs")
 	if err != nil {
 		return err
@@ -149,9 +179,13 @@ func Drop(
 func snapshotStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),

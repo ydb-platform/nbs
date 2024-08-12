@@ -203,6 +203,13 @@ class NfsCliClient:
         os.unlink(request_file.name)
         return res.stdout
 
+    def get_storage_service_config(self, fs_id=None):
+        req = {"FileSystemId": "" if fs_id is None else fs_id}
+
+        resp = self.execute_action("getstorageconfig", req)
+
+        return json.loads(resp)
+
     def __cmd_opts(self, vhost=False):
         opts = [
             "--server-address", "localhost",

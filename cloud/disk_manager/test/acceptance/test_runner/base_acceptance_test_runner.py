@@ -26,7 +26,7 @@ from .cleanup import (
 from .lib import (
     check_ssh_connection,
     create_ycp,
-    size_prettifier,
+    make_disk_parameters_string,
     Error,
     YcpNewInstancePolicy,
     YcpFindDiskPolicy,
@@ -70,17 +70,18 @@ class BaseTestBinaryExecutor:
 
         if args.verbose:
             self._acceptance_test_cmd.append('--verbose')
+        if args.skip_images:
+            self._acceptance_test_cmd.append('--skip-images')
 
         self._s3_host = getattr(args, 's3_host', None)
 
-    def run(self, disk_id: str, disk_size: str, disk_blocksize: str) -> None:
+    def run(self, disk_type: str, disk_id: str, disk_size: str, disk_blocksize: str) -> None:
         self._acceptance_test_cmd.extend(
             [
                 '--suffix',
                 (
                     f'{self._entity_suffix}-'
-                    f'{size_prettifier(int(disk_size))}-'
-                    f'{size_prettifier(int(disk_blocksize))}'.lower()
+                    f'{make_disk_parameters_string(disk_type, int(disk_size), int(disk_blocksize))}'.lower()
                 ),
             ]
         )
@@ -205,13 +206,14 @@ class BaseAcceptanceTestRunner(ABC):
             cleanup_previous_acceptance_tests_results(
                 self._ycp,
                 self._args.test_type,
+                disk.type_id,
                 int(disk.size),
                 int(disk.block_size),
                 self._single_disk_test_ttl,
             )
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()
-        self._test_binary_executor.run(disk.id, disk.size, disk.block_size)
+        self._test_binary_executor.run(disk.type_id, disk.id, disk.size, disk.block_size)
         disk_ids = self._test_binary_executor.get_disk_ids()
 
         if self._args.conserve_snapshots:
@@ -365,3 +367,11 @@ class BaseAcceptanceTestRunner(ABC):
                     test_case_name=test_case_name,
                     error=error,
                 )
+
+    def _make_disk_parameters_string(self, delim: str = "-"):
+        return make_disk_parameters_string(
+            self._args.disk_type,
+            self._args.disk_size * (1024 ** 3),
+            self._args.disk_blocksize,
+            delim,
+        )

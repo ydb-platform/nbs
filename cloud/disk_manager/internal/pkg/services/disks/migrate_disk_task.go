@@ -334,7 +334,10 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 ) error {
 
 	replicateTaskID, err := t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			execCtx.GetTaskID()+"_replicate_disk",
+		),
 		"dataplane.ReplicateDisk",
 		"",
 		t.request.Disk.ZoneId,
@@ -477,6 +480,26 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
+
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			execCtx.GetTaskID()+"_delete_disk_from_incremental",
+		),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: t.request.Disk,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
 
 	return execCtx.FinishWithCallback(
 		ctx,

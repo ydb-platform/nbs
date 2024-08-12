@@ -6,6 +6,8 @@ SRCS(
     backend.cpp
     backend_aio.cpp
 
+    critical_event.cpp
+
     histogram.cpp
     histogram_ut.cpp
 
@@ -14,9 +16,6 @@ SRCS(
 
     request_aio.cpp
     request_aio_ut.cpp
-
-    server.cpp
-    server_ut.cpp
 
     stats.cpp
     stats_ut.cpp
@@ -27,6 +26,7 @@ ADDINCL(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/common
     cloud/blockstore/libs/encryption/model
     cloud/contrib/vhost
     cloud/storage/core/libs/common

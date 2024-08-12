@@ -85,7 +85,9 @@ void TIndexTabletState::LoadState(
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
-    LastStep = 0;
+    // https://github.com/ydb-platform/nbs/issues/1714
+    // because of possible race in vdisks we should not start with 0
+    LastStep = 1;
     LastCollectCounter = 0;
 
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();

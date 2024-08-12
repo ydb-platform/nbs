@@ -1,6 +1,11 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/endpoint_vhost/config.h>
+#include <cloud/filestore/libs/server/config.h>
+#include <cloud/filestore/libs/storage/core/config.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -89,6 +94,92 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "UNKNOWN_COMPONENT",
             logConfig.GetEntry(1).GetComponent());
         UNIT_ASSERT_VALUES_EQUAL(6, logConfig.GetEntry(1).GetLevel());
+    }
+
+    Y_UNIT_TEST(ShouldLoadConfigsFromCmsAtStartup)
+    {
+        NKikimrConfig::TAppConfig appConfig;
+
+        {
+            auto configStr = R"(
+                BastionNameSuffix: "xyz"
+            )";
+
+            auto* diagCfg = appConfig.AddNamedConfigs();
+            diagCfg->SetName("Cloud.Filestore.DiagnosticsConfig");
+            diagCfg->SetConfig(std::move(configStr));
+        }
+
+        {
+            auto configStr = R"(
+                NodeType: "xyz"
+            )";
+
+            auto* diagCfg = appConfig.AddNamedConfigs();
+            diagCfg->SetName("Cloud.Filestore.StorageConfig");
+            diagCfg->SetConfig(std::move(configStr));
+        }
+
+        {
+            auto configStr = R"(
+                Features {
+                    Name: "xyz"
+                    Value: "abc"
+                    Whitelist {
+                        EntityIds: "fs1"
+                        EntityIds: "fs2"
+                    }
+                }
+            )";
+
+            auto* diagCfg = appConfig.AddNamedConfigs();
+            diagCfg->SetName("Cloud.Filestore.FeaturesConfig");
+            diagCfg->SetConfig(std::move(configStr));
+        }
+
+        {
+            auto configStr = R"(
+                ServerConfig {
+                    Host: "abc"
+                }
+                VhostServiceConfig {
+                    RootKeyringName: "xyz"
+                }
+            )";
+
+            auto* diagCfg = appConfig.AddNamedConfigs();
+            diagCfg->SetName("Cloud.Filestore.VHostAppConfig");
+            diagCfg->SetConfig(std::move(configStr));
+        }
+
+        auto options = CreateOptions();
+
+        auto ci = TConfigInitializerVhost(std::move(options));
+        ci.ApplyCustomCMSConfigs(appConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "xyz",
+            ci.DiagnosticsConfig->GetBastionNameSuffix());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "xyz",
+            ci.StorageConfig->GetNodeType());
+
+        const auto& features = ci.FeaturesConfig->CollectAllFeatures();
+        UNIT_ASSERT_VALUES_EQUAL(1, features.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "abc",
+            ci.FeaturesConfig->GetFeatureValue("", "", "fs1", "xyz"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "abc",
+            ci.FeaturesConfig->GetFeatureValue("", "", "fs2", "xyz"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "abc",
+            ci.ServerConfig->GetHost());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "xyz",
+            ci.VhostServiceConfig->GetRootKeyringName());
     }
 }
 

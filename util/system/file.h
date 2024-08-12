@@ -77,6 +77,13 @@ public:
         other.Fd_ = INVALID_FHANDLE;
     }
 
+    TFileHandle& operator=(TFileHandle&& other) noexcept
+    {
+        Close();
+        Fd_ = other.Release();
+        return *this;
+    }
+
     TFileHandle(const char* fName, EOpenMode oMode) noexcept;
     TFileHandle(const TString& fName, EOpenMode oMode) noexcept;
     TFileHandle(const std::filesystem::path& path, EOpenMode oMode) noexcept;

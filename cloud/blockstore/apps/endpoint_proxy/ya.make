@@ -15,8 +15,4 @@ PEERDIR(
     contrib/libs/grpc/grpc++_reflection
 )
 
-IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
-    SPLIT_DWARF()
-ENDIF()
-
 END()

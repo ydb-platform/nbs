@@ -55,6 +55,7 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::move(config))
     , UseNoneCompactionPolicy(useNoneCompactionPolicy)
+    , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {
     UpdateLogTag();
 }

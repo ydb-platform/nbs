@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     client.go
+    endpoint_picker.go
     interface.go
     factory.go
 )

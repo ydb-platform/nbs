@@ -2,6 +2,7 @@
 
 #include "stats.h"
 
+#include <cloud/blockstore/libs/encryption/encryptor.h>
 #include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/contrib/vhost/include/vhost/types.h>
@@ -10,10 +11,10 @@
 #include <util/generic/vector.h>
 #include <util/system/file.h>
 
-#include <atomic>
-
 #include <libaio.h>
-#include <sys/uio.h>    // iovec
+#include <sys/uio.h>   // iovec
+
+#include <atomic>
 
 class TLog;
 
@@ -43,6 +44,7 @@ using TAioSubRequestHolder = std::unique_ptr<TAioSubRequest, TFreeDeleter>;
 using TAioCompoundRequestHolder = std::unique_ptr<TAioCompoundRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TAioDevice
 {
     i64 StartOffset = 0;
@@ -60,17 +62,19 @@ struct TAioRequest
 {
     vhd_io* Io;
     TCpuCycles SubmitTs;
-    bool BounceBuf = false;
+    bool BufferAllocated = false;
+    bool Unaligned = false;
     iovec Data[ /* Bio->sglist.nbuffers */ ];
 
     static TAioRequestHolder CreateNew(
         size_t bufferCount,
+        size_t allocatedBufferSize,
         vhd_io* io,
         TCpuCycles submitTs);
     static TAioRequestHolder FromIocb(iocb* cb);
 
 private:
-    TAioRequest(vhd_io* io, TCpuCycles submitTs);
+    TAioRequest(size_t allocatedBufferSize, vhd_io* io, TCpuCycles submitTs);
 };
 
 // Cross-device sub IO request.
@@ -113,12 +117,29 @@ struct TAioCompoundRequest
 
 void PrepareIO(
     TLog& log,
+    IEncryptor* encryptor,
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
-    TCpuCycles now);
+    TCpuCycles now,
+    TSimpleStats& queueStats);
 
-void SgListCopy(const vhd_sglist& src, char* dst);
-void SgListCopy(const char* src, const vhd_sglist& dst);
+// Copies the data, and if an encryptor is specified, encrypt it. Returns true
+// if successful.
+[[nodiscard]] bool SgListCopyWithOptionalEncryption(
+    TLog& Log,
+    const vhd_sglist& src,
+    char* dst,
+    IEncryptor* encryptor,
+    ui64 startSector);
+
+// Copies the data, and if an encryptor is specified, decrypt it. Returns true
+// if successful.
+[[nodiscard]] bool SgListCopyWithOptionalDecryption(
+    TLog& Log,
+    const char* src,
+    const vhd_sglist& dst,
+    IEncryptor* encryptor,
+    ui64 startSector);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

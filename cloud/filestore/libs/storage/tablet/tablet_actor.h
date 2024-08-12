@@ -40,6 +40,14 @@
 
 #include <atomic>
 
+namespace NBlockCodecs {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct ICodec;
+
+}   // namespace NBlockCodecs
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,6 +133,9 @@ private:
         std::atomic<i64> BusyTime{0};
         std::atomic<i64> IdleTime{0};
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
+
+        std::atomic<i64> UncompressedBytesWritten{0};
+        std::atomic<i64> CompressedBytesWritten{0};
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
@@ -243,6 +254,8 @@ private:
     NProto::TStorageConfig StorageConfigOverride;
 
     ui32 BackpressureErrorCount = 0;
+
+    const NBlockCodecs::ICodec* BlobCodec;
 
 public:
     TIndexTabletActor(

@@ -108,7 +108,15 @@ func (t *createSnapshotFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	snapshotMeta, err := t.storage.CreateSnapshot(ctx, t.request.DstSnapshotId)
+	snapshotMeta, err := t.storage.CreateSnapshot(
+		ctx,
+		storage.SnapshotMeta{
+			ID:             t.request.DstSnapshotId,
+			Disk:           t.request.SrcDisk,
+			CheckpointID:   t.request.SrcDiskCheckpointId,
+			BaseSnapshotID: t.request.BaseSnapshotId,
+		},
+	)
 	if err != nil {
 		return err
 	}

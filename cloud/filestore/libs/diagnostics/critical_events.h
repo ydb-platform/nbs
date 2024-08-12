@@ -33,6 +33,7 @@ namespace NCloud::NFileStore{
     xxx(ChildRefIsNull)                                                        \
     xxx(NewChildNodeIsNull)                                                    \
     xxx(IndexOutOfBounds)                                                      \
+    xxx(CheckFreshBytesFailed)                                                 \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

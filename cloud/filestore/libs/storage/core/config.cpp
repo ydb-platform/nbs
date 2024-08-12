@@ -1,8 +1,11 @@
 #include "config.h"
 
+#include <cloud/storage/core/protos/certificate.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -144,6 +147,7 @@ namespace {
     xxx(TwoStageReadEnabled,             bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
@@ -166,6 +170,12 @@ namespace {
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
+    xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
+    xxx(NodeRegistrationCert,            TCertificate,          {}            )\
+    xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeType,                        TString,               {}            )\
+    xxx(BlobCompressionRate,             ui32,                  0             )\
+    xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
     xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
     xxx(InMemoryIndexCacheNodesCapacity,                ui64,       0         )\
@@ -192,10 +202,22 @@ bool IsEmpty(const T& t)
     return !t;
 }
 
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
 template <>
@@ -222,6 +244,16 @@ template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
+}
+
+template <>
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
 }
 
 }   // namespace

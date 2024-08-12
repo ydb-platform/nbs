@@ -13,8 +13,16 @@ func Find(slice []string, value string) bool {
 			return true
 		}
 	}
-
 	return false
+}
+
+func Remove(slice []string, value string) []string {
+	for i, v := range slice {
+		if v == value {
+			return append(slice[:i], slice[i+1:]...)
+		}
+	}
+	return slice
 }
 
 func RandomShuffle(slice []string) {

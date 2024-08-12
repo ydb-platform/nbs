@@ -772,6 +772,81 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT(!counters);
         }
     }
+
+    Y_UNIT_TEST(ShouldNotReportZeroCounters)
+    {
+        const TString FS = "test";
+        const TString CLIENT = "client";
+
+        TBootstrap bootstrap;
+
+        auto fsCounters = bootstrap.Counters
+            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        UNIT_ASSERT(fsCounters);
+        fsCounters = fsCounters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(fsCounters);
+
+        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT);
+        UNIT_ASSERT(stats);
+        fsCounters = fsCounters->FindSubgroup("filesystem", FS);
+        UNIT_ASSERT(fsCounters);
+        fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+        UNIT_ASSERT(fsCounters);
+
+        // non lazy-init request
+        auto readData = fsCounters->FindSubgroup("request", "ReadData");
+        UNIT_ASSERT(readData);
+
+        // lazy-init request
+        auto createHandle = fsCounters->FindSubgroup("request", "CreateHandle");
+        UNIT_ASSERT(createHandle);
+
+        // these ones should always be present
+        auto readDataCount = readData->FindCounter("Count");
+        auto readDataErrors = readData->FindCounter("Errors");
+
+        // non lazy-init counters
+        auto createHandleCount = createHandle->FindCounter("Count");
+        auto createHandleErrorsFatal =
+            createHandle->FindCounter("Errors/Fatal");
+        // lazy-init counter
+        auto createHandleErrors = createHandle->FindCounter("Errors");
+
+        UNIT_ASSERT(readDataCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, readDataCount->Val());
+        UNIT_ASSERT(readDataErrors);
+        UNIT_ASSERT_VALUES_EQUAL(0, readDataErrors->Val());
+        UNIT_ASSERT(createHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, createHandleCount->Val());
+        UNIT_ASSERT(createHandleErrorsFatal);
+        UNIT_ASSERT_VALUES_EQUAL(0, createHandleErrorsFatal->Val());
+        UNIT_ASSERT(!createHandleErrors);
+
+        {
+            auto context = MakeIntrusive<TCallContext>(FS);
+            context->RequestType = EFileStoreRequest::CreateHandle;
+            stats->RequestStarted(*context);
+            stats->RequestCompleted(*context, MakeError(S_OK));
+
+            // we got a request - now all counters for this request should be
+            // initialized
+            createHandleErrors = createHandle->FindCounter("Errors");
+            UNIT_ASSERT(createHandleErrors);
+            UNIT_ASSERT_VALUES_EQUAL(0, createHandleErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, createHandleCount->Val());
+        }
+
+        {
+            auto context = MakeIntrusive<TCallContext>(FS);
+            context->RequestType = EFileStoreRequest::CreateHandle;
+            stats->RequestStarted(*context);
+            stats->RequestCompleted(*context, MakeError(E_REJECTED));
+
+            // and now we successfully registered an error
+            UNIT_ASSERT_VALUES_EQUAL(1, createHandleErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, createHandleCount->Val());
+        }
+    }
 }
 
 } // namespace NCloud::NFileStore::NStorage

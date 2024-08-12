@@ -23,11 +23,24 @@ class NfsServer(Daemon):
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_nfs_server(daemon, port):
     '''
-    Ping NFS server with delay between attempts to ensure
+    Ping filestore server with delay between attempts to ensure
     it is running and listening by the moment the actual test execution begins
     '''
     if not daemon.is_alive():
-        raise RuntimeError("nfs server is dead")
+        raise RuntimeError("filestore server is dead")
 
     with client.CreateGrpcClient(str("localhost:%d" % port)) as grpc_client:
+        grpc_client.ping(protos.TPingRequest())
+
+
+@retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
+def wait_for_filestore_vhost(daemon, port):
+    '''
+    Ping filestore vhost with delay between attempts to ensure
+    it is running and listening by the moment the actual test execution begins
+    '''
+    if not daemon.is_alive():
+        raise RuntimeError("filestore vhost is dead")
+
+    with client.CreateGrpcEndpointClient(str("localhost:%d" % port)) as grpc_client:
         grpc_client.ping(protos.TPingRequest())

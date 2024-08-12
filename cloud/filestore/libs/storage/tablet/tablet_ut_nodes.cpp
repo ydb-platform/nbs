@@ -1443,6 +1443,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             });
         }
     }
+
+    Y_UNIT_TEST(ShouldNotGenerateDeletionMarkersUponSymLinkRemoval)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        CreateNode(
+            tablet,
+            TCreateNodeArgs::SymLink(RootNodeId, "l", "target/path"));
+        tablet.UnlinkNode(RootNodeId, "l", false);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

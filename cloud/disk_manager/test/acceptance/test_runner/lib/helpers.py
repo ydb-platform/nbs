@@ -202,3 +202,31 @@ def size_prettifier(size_bytes: int) -> str:
         return '%sKiB' % (size_bytes // 1024)
     else:
         return '%sB' % size_bytes
+
+
+def shorten_disk_type(disk_type: str) -> str:
+    match disk_type:
+        case "network-ssd-nonreplicated":
+            return "ssd-nonrepl"
+        case "network-hdd-nonreplicated":
+            return "hdd-nonrepl"
+        case "network-ssd-io-m2":
+            return "ssd-io-m2"
+        case "network-ssd-io-m3":
+            return "ssd-io-m3"
+        case _:
+            return disk_type
+
+
+# Example of disk parameters string: network-ssd-1tib-4kib
+def make_disk_parameters_string(
+        disk_type: str,
+        size: int | str,
+        block_size: int | str,
+        delim: str = "-") -> str:
+    disk_type = shorten_disk_type(disk_type)
+    if not isinstance(size, str):
+        size = size_prettifier(size)
+    if not isinstance(block_size, str):
+        block_size = size_prettifier(block_size)
+    return f'{disk_type}{delim}{size}{delim}{block_size}'.lower()

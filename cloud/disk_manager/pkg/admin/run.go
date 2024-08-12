@@ -70,12 +70,14 @@ func Run(
 			HiddenDefaultCmd:    true,
 		},
 	}
+
 	rootCmd.PersistentFlags().StringVar(
 		&clientConfigFilePath,
 		"config",
 		defaultClientConfigFilePath,
 		"Path to the client config file",
 	)
+
 	rootCmd.PersistentFlags().StringVar(
 		&serverConfigFilePath,
 		"server-config",
@@ -85,10 +87,10 @@ func Run(
 
 	rootCmd.AddCommand(
 		newOperationsCmd(clientConfig),
-		newPrivateCmd(clientConfig),
 	)
 
-	additionalCommands := []*cobra.Command{
+	commandsWhichRequireServerConfig := []*cobra.Command{
+		newPrivateCmd(clientConfig, serverConfig),
 		newDisksCmd(clientConfig, serverConfig),
 		newTasksCmd(clientConfig, serverConfig),
 		newImagesCmd(clientConfig, serverConfig),
@@ -107,7 +109,7 @@ func Run(
 		return util.ParseProto(serverConfigFilePath, serverConfig)
 	}
 
-	for _, cmd := range additionalCommands {
+	for _, cmd := range commandsWhichRequireServerConfig {
 		cmd.PersistentPreRunE = parseClientAndServerConfig
 		rootCmd.AddCommand(cmd)
 	}

@@ -2,9 +2,16 @@
 
 #include "lowlevel.h"
 
+#include <cloud/storage/core/libs/common/file_io_service.h>
+
 #include <util/string/builder.h>
+#include <util/system/sanitizers.h>
 
 namespace NCloud::NFileStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,9 +29,10 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     }
 
     const int flags = HandleFlagsToSystem(request.GetFlags());
-    const int mode = request.GetMode() ? request.GetMode() : Config->GetDefaultPermissions();
+    const int mode = request.GetMode()
+        ? request.GetMode() : Config->GetDefaultPermissions();
 
-    TFile handle;
+    TFileHandle handle;
     TFileStat stat;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
@@ -38,10 +46,11 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         stat = node->Stat();
     }
 
-    session->InsertHandle(handle);
+    const FHANDLE fd = handle;
+    session->InsertHandle(std::move(handle));
 
     NProto::TCreateHandleResponse response;
-    response.SetHandle(handle.GetHandle());
+    response.SetHandle(fd);
     ConvertStats(stat, *response.MutableNodeAttr());
 
     return response;
@@ -58,46 +67,74 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     return {};
 }
 
-NProto::TReadDataResponse TLocalFileSystem::ReadData(
-    const NProto::TReadDataRequest& request)
+TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
+    NProto::TReadDataRequest& request)
 {
     STORAGE_TRACE("ReadData " << DumpMessage(request));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
-        return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
+        return MakeFuture<NProto::TReadDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto buffer = TString::Uninitialized(request.GetLength());
-    size_t bytesRead = handle.Pread(
-        const_cast<char*>(buffer.data()),
-        buffer.size(),
-        request.GetOffset());
-    buffer.resize(bytesRead);
+    auto b = TString::Uninitialized(request.GetLength());
+    NSan::Unpoison(b.Data(), b.Size());
 
-    NProto::TReadDataResponse response;
-    response.SetBuffer(std::move(buffer));
-
-    return response;
+    TArrayRef<char> data(b.begin(), b.vend());
+    auto promise = NewPromise<NProto::TReadDataResponse>();
+    FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
+        [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
+            NProto::TReadDataResponse response;
+            try {
+                auto bytesRead = f.GetValue();
+                b.resize(bytesRead);
+                response.SetBuffer(std::move(b));
+            } catch (...) {
+                *response.MutableError() =
+                    MakeError(E_IO, CurrentExceptionMessage());
+            }
+            promise.SetValue(std::move(response));
+        });
+    return promise;
 }
 
-NProto::TWriteDataResponse TLocalFileSystem::WriteData(
-    const NProto::TWriteDataRequest& request)
+TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
+    NProto::TWriteDataRequest& request)
 {
     STORAGE_TRACE("WriteData " << DumpMessage(request));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
-        return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
+        return MakeFuture<NProto::TWriteDataResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    const auto& buffer = request.GetBuffer();
-    handle.Pwrite(buffer.data(), buffer.size(), request.GetOffset());
-    handle.Flush(); // TODO
+    const FHANDLE fd = *handle;
+    auto b = std::move(*request.MutableBuffer());
+    TArrayRef<char> data(b.begin(), b.vend());
+    auto promise = NewPromise<NProto::TWriteDataResponse>();
+    FileIOService->AsyncWrite(*handle, request.GetOffset(), data).Subscribe(
+        [b = std::move(b), promise, fd] (const TFuture<ui32>& f) mutable {
+            NProto::TWriteDataResponse response;
+            try {
+                f.GetValue();
+                TFileHandle h(fd);
+                const bool flushed = h.Flush();
+                h.Release();
+                if (!flushed) {
+                    throw yexception() << "failed to flush " << fd;
+                }
+            } catch (...) {
+                *response.MutableError() =
+                    MakeError(E_IO, CurrentExceptionMessage());
+            }
+            promise.SetValue(std::move(response));
+        });
 
-    return {};
+    return promise;
 }
 
 NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
@@ -107,15 +144,19 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
         << " flags: " << FallocateFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
-    if (!handle.IsOpen()) {
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
     const int flags = FallocateFlagsToSystem(request.GetFlags());
 
-    NLowLevel::Allocate(handle, flags, request.GetOffset(), request.GetLength());
-    handle.Flush(); // TODO
+    NLowLevel::Allocate(
+        *handle,
+        flags,
+        request.GetOffset(),
+        request.GetLength());
+    handle->Flush(); // TODO
 
     return {};
 }

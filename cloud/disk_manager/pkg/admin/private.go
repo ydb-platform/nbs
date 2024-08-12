@@ -8,7 +8,11 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -188,6 +192,7 @@ type retireBaseDisks struct {
 	imageID          string
 	zoneID           string
 	useBaseDiskAsSrc bool
+	useImageSize     uint64
 	async            bool
 }
 
@@ -204,6 +209,7 @@ func (c *retireBaseDisks) run() error {
 		ImageId:          c.imageID,
 		ZoneId:           c.zoneID,
 		UseBaseDiskAsSrc: c.useBaseDiskAsSrc,
+		UseImageSize:     c.useImageSize,
 	}
 
 	resp, err := client.RetireBaseDisks(getRequestContext(ctx), req)
@@ -255,6 +261,13 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 		"use-base-disk-as-src",
 		false,
 		"enables feature that uses base disk as src when doing retire",
+	)
+
+	cmd.Flags().Uint64Var(
+		&c.useImageSize,
+		"use-image-size",
+		0,
+		"size of new base disks will be equal to this parameter if it is set",
 	)
 
 	cmd.Flags().BoolVar(
@@ -523,19 +536,107 @@ func newGetAliveNodesCmd(config *client_config.ClientConfig) *cobra.Command {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newPrivateCmd(config *client_config.ClientConfig) *cobra.Command {
+type getCheckpointSizeCmd struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	diskID       string
+	zoneID       string
+	checkpointID string
+}
+
+func (c *getCheckpointSizeCmd) run() error {
+	ctx := newContext(c.clientConfig)
+	nbsFactory, err := nbs.NewFactory(
+		ctx,
+		c.serverConfig.NbsConfig,
+		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		logging.Error(ctx, "Failed to create nbs factory: %v", err)
+		return err
+	}
+
+	client, err := nbsFactory.GetClient(ctx, c.zoneID)
+	if err != nil {
+		return err
+	}
+
+	var checkpointSize uint64
+	err = client.GetCheckpointSize(
+		ctx,
+		func(blockIndex uint64, result uint64) error {
+			checkpointSize = result
+			return nil
+		},
+		c.diskID,
+		c.checkpointID,
+		0, // milestoneBlockIndex
+		0, // milestoneCheckpointSize
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%v\n", checkpointSize)
+	return nil
+}
+
+func newGetCheckpointSizeCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &getCheckpointSizeCmd{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "get-checkpoint-size",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.diskID, "disk-id", "", "disk ID; required")
+	if err := cmd.MarkFlagRequired("disk-id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.zoneID, "zone-id", "", "zone ID where disk is located;")
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.checkpointID, "checkpoint-id", "", "checkpoint id")
+	if err := cmd.MarkFlagRequired("checkpoint-id"); err != nil {
+		log.Fatalf("Error setting flag checkpoint-id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func newPrivateCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
 	cmd := &cobra.Command{
 		Use: "private",
 	}
 
 	cmd.AddCommand(
-		newRebaseOverlayDiskCmd(config),
-		newRetireBaseDiskCmd(config),
-		newRetireBaseDisksCmd(config),
-		newOptimizeBaseDisksCmd(config),
-		newConfigurePoolCmd(config),
-		newDeletePoolCmd(config),
-		newGetAliveNodesCmd(config),
+		newRebaseOverlayDiskCmd(clientConfig),
+		newRetireBaseDiskCmd(clientConfig),
+		newRetireBaseDisksCmd(clientConfig),
+		newOptimizeBaseDisksCmd(clientConfig),
+		newConfigurePoolCmd(clientConfig),
+		newDeletePoolCmd(clientConfig),
+		newGetAliveNodesCmd(clientConfig),
+		newGetCheckpointSizeCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

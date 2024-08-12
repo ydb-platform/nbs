@@ -6,10 +6,7 @@ import re
 from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
-from .lib import (
-    size_prettifier,
-    Error,
-)
+from .lib import Error
 
 from cloud.blockstore.pylibs import common
 
@@ -25,23 +22,38 @@ class SyncTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(SyncTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
+
         disk_name_string = (
-            fr'^acceptance-test-{test_type}-'
-            fr'{self._disk_size}-'
-            fr'{self._disk_blocksize}-[0-9]+'
+            fr'^acc-{test_type}-'
+            fr'{self._disk_parameters_string}-[0-9]+'
         )
         disk_name_pattern = re.compile(fr'{disk_name_string}$')
         secondary_disk_name_pattern = re.compile(
             fr'{disk_name_string}-from-snapshot$',
         )
+
+        old_disk_name_string = (
+            fr'^acceptance-test-{test_type}-'
+            fr'{self._disk_size}-'
+            fr'{self._disk_blocksize}-[0-9]+'
+        )
+        old_disk_name_pattern = re.compile(fr'{old_disk_name_string}$')
+        old_secondary_disk_name_pattern = re.compile(
+            fr'{old_disk_name_string}-from-snapshot$',
+        )
+
         self._entity_ttls = self._entity_ttls | {
             'disk': datetime.timedelta(days=5),
             'snapshot': datetime.timedelta(days=5),
         }
         self._patterns = {
             **self._patterns,
-            'disk': [disk_name_pattern, secondary_disk_name_pattern],
-            'snapshot': [re.compile(r'^sync-acceptance-test-snapshot-.*$')]
+            'disk': [disk_name_pattern,
+                     secondary_disk_name_pattern,
+                     old_disk_name_pattern,
+                     old_secondary_disk_name_pattern],
+            'snapshot': [re.compile(r'^sync-acc-snapshot-.*$'),
+                         re.compile(r'^sync-acceptance-test-snapshot-.*$')]
         }
 
 
@@ -53,9 +65,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
     def _get_test_suite(self):
         return (
             f'{self._args.zone_id}_sync_'
-            f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-            f'{size_prettifier(self._args.disk_blocksize)}'.lower()
-        )
+            f'{self._make_disk_parameters_string(delim="_")}').lower()
 
     def _report_compute_failure(self, error):
         if self._results_processor is not None:
@@ -73,7 +83,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
-            f'acceptance-test-{self._args.test_type}-{self._timestamp}',
+            f'acc-{self._args.test_type}-{self._timestamp}',
             'sync',
         )
         with self.instance_policy_obtained(self._report_compute_failure) as instance:
@@ -87,9 +97,8 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 self._get_test_suite(),
             ):
                 disk_name_prefix = (
-                    f'acceptance-test-{self._args.test_type}-'
-                    f'{size_prettifier(self._args.disk_size * (1024 ** 3))}'
-                    f'-{size_prettifier(self._args.disk_blocksize)}').lower()
+                    f'acc-{self._args.test_type}-'
+                    f'{self._make_disk_parameters_string()}').lower()
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
                 _logger.info(
@@ -151,7 +160,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
         _logger.info('Creating snapshot')
 
         suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-        snapshot_name = f"sync-acceptance-test-snapshot-{suffix}"
+        snapshot_name = f"sync-acc-snapshot-{suffix}"
         self._ycp.create_snapshot(disk.id, snapshot_name)
 
         _logger.info('Created snapshot')
