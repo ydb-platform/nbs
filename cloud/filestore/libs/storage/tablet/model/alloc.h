@@ -17,7 +17,7 @@ enum class EAllocatorTag
     GarbageQueue,
     ReadAheadCache,
     NodeIndexCache,
-    InMemoryCache,
+    InMemoryNodeIndexCache,
 
     Max
 };

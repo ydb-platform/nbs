@@ -137,8 +137,7 @@ private:
 
     struct TNodeRow
     {
-    public:
-        ui64 CommitId;
+        ui64 CommitId = 0;
         NProto::TNode Node;
     };
 
@@ -150,14 +149,13 @@ private:
 
     struct TNodesVerKey
     {
-    public:
         TNodesVerKey(ui64 nodeId, ui64 minCommitId)
             : NodeId(nodeId)
             , MinCommitId(minCommitId)
         {}
 
-        ui64 NodeId;
-        ui64 MinCommitId;
+        ui64 NodeId = 0;
+        ui64 MinCommitId = 0;
 
         bool operator<(const TNodesVerKey& rhs) const
         {
@@ -168,8 +166,7 @@ private:
 
     struct TNodesVerRow
     {
-    public:
-        ui64 MaxCommitId;
+        ui64 MaxCommitId = 0;
         NProto::TNode Node;
     };
 
@@ -181,13 +178,12 @@ private:
 
     struct TNodeAttrsKey
     {
-    public:
         TNodeAttrsKey(ui64 nodeId, const TString& name)
             : NodeId(nodeId)
             , Name(name)
         {}
 
-        ui64 NodeId;
+        ui64 NodeId = 0;
         TString Name;
 
         bool operator==(const TNodeAttrsKey& rhs) const
@@ -203,14 +199,13 @@ private:
         {
             return MultiHash(key.NodeId, key.Name);
         }
-    };   // namespace NCloud::NFileStore::NStorage
+    };
 
     struct TNodeAttrsRow
     {
-    public:
-        ui64 CommitId;
+        ui64 CommitId = 0;
         TString Value;
-        ui64 Version;
+        ui64 Version = 0;
     };
 
     THashMap<TNodeAttrsKey, TNodeAttrsRow, TNodeAttrsKeyHash> NodeAttrs;
@@ -221,16 +216,15 @@ private:
 
     struct TNodeAttrsVerKey
     {
-    public:
         TNodeAttrsVerKey(ui64 nodeId, const TString& name, ui64 minCommitId)
             : NodeId(nodeId)
             , Name(name)
             , MinCommitId(minCommitId)
         {}
 
-        ui64 NodeId;
+        ui64 NodeId = 0;
         TString Name;
-        ui64 MinCommitId;
+        ui64 MinCommitId = 0;
 
         bool operator<(const TNodeAttrsVerKey& rhs) const
         {
@@ -241,10 +235,9 @@ private:
 
     struct TNodeAttrsVerRow
     {
-    public:
-        ui64 MaxCommitId;
+        ui64 MaxCommitId = 0;
         TString Value;
-        ui64 Version;
+        ui64 Version = 0;
     };
 
     TMap<TNodeAttrsVerKey, TNodeAttrsVerRow> NodeAttrsVer;
@@ -255,13 +248,12 @@ private:
 
     struct TNodeRefsKey
     {
-    public:
         TNodeRefsKey(ui64 nodeId, const TString& name)
             : NodeId(nodeId)
             , Name(name)
         {}
 
-        ui64 NodeId;
+        ui64 NodeId = 0;
         TString Name;
 
         bool operator==(const TNodeRefsKey& rhs) const
@@ -281,9 +273,8 @@ private:
 
     struct TNodeRefsRow
     {
-    public:
-        ui64 CommitId;
-        ui64 ChildId;
+        ui64 CommitId = 0;
+        ui64 ChildId = 0;
         TString FollowerId;
         TString FollowerName;
     };
@@ -296,16 +287,15 @@ private:
 
     struct TNodeRefsVerKey
     {
-    public:
         TNodeRefsVerKey(ui64 nodeId, const TString& name, ui64 minCommitId)
             : NodeId(nodeId)
             , Name(name)
             , MinCommitId(minCommitId)
         {}
 
-        ui64 NodeId;
+        ui64 NodeId = 0;
         TString Name;
-        ui64 MinCommitId;
+        ui64 MinCommitId = 0;
 
         bool operator<(const TNodeRefsVerKey& rhs) const
         {
@@ -316,9 +306,8 @@ private:
 
     struct TNodeRefsVerRow
     {
-    public:
-        ui64 MaxCommitId;
-        ui64 ChildId;
+        ui64 MaxCommitId = 0;
+        ui64 ChildId = 0;
         TString FollowerId;
         TString FollowerName;
     };
