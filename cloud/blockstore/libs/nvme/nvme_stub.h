@@ -11,6 +11,11 @@ struct TDeallocateReq
     ui64 Offset;
     ui64 Size;
 
+    TDeallocateReq(ui64 offset, ui64 size)
+        : Offset(offset)
+        , Size(size)
+    {}
+
     bool operator==(const TDeallocateReq& other) const
     {
         return Offset == other.Offset && Size == other.Size;
