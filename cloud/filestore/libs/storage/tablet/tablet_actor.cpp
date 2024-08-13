@@ -984,6 +984,7 @@ i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
     for (auto* metric: MetricsToReport) {
         sumRequestBytes += metric->RequestBytes;
     }
+    sumRequestBytes += DescribeData.Count * 1_KB;
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;
