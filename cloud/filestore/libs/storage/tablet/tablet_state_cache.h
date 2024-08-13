@@ -143,6 +143,7 @@ private:
 
     THashMap<ui64, TNodeRow> Nodes;
 
+<<<<<<< HEAD
     struct TWriteNodeRequest
     {
         ui64 NodeId;
@@ -150,6 +151,14 @@ private:
 
     struct TDeleteNodeRequest
     {
+=======
+    struct TWriteNodeRequest {
+        ui64 NodeId;
+        TNodeRow Row;
+    };
+
+    struct TDeleteNodeRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         ui64 NodeId;
     };
 
@@ -178,14 +187,22 @@ private:
         NProto::TNode Node;
     };
 
+<<<<<<< HEAD
     struct TWriteNodeVerRequest
     {
+=======
+    struct TWriteNodeVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodesVerKey NodesVerKey;
         TNodesVerRow NodesVerRow;
     };
 
+<<<<<<< HEAD
     struct TDeleteNodeVerRequest
     {
+=======
+    struct TDeleteNodeVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodesVerKey NodesVerKey;
     };
 
@@ -226,14 +243,22 @@ private:
         ui64 Version = 0;
     };
 
+<<<<<<< HEAD
     struct TWriteNodeAttrsRequest
     {
+=======
+    struct TWriteNodeAttrsRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeAttrsKey NodeAttrsKey;
         TNodeAttrsRow NodeAttrsRow;
     };
 
+<<<<<<< HEAD
     struct TDeleteNodeAttrsRequest
     {
+=======
+    struct TDeleteNodeAttrsRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeAttrsKey NodeAttrsKey;
     };
 
@@ -269,14 +294,22 @@ private:
         ui64 Version = 0;
     };
 
+<<<<<<< HEAD
     struct TWriteNodeAttrsVerRequest
     {
+=======
+    struct TWriteNodeAttrsVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeAttrsVerKey NodeAttrsVerKey;
         TNodeAttrsVerRow NodeAttrsVerRow;
     };
 
+<<<<<<< HEAD
     struct TDeleteNodeAttrsVerRequest
     {
+=======
+    struct TDeleteNodeAttrsVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeAttrsVerKey NodeAttrsVerKey;
     };
 
@@ -318,14 +351,22 @@ private:
         TString FollowerName;
     };
 
+<<<<<<< HEAD
     struct TWriteNodeRefsRequest
     {
+=======
+    struct TWriteNodeRefsRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeRefsKey NodeRefsKey;
         TNodeRefsRow NodeRefsRow;
     };
 
+<<<<<<< HEAD
     struct TDeleteNodeRefsRequest
     {
+=======
+    struct TDeleteNodeRefsRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeRefsKey NodeRefsKey;
     };
 
@@ -362,20 +403,31 @@ private:
         TString FollowerName;
     };
 
+<<<<<<< HEAD
     struct TWriteNodeRefsVerRequest
     {
+=======
+    struct TWriteNodeRefsVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeRefsVerKey NodeRefsVerKey;
         TNodeRefsVerRow NodeRefsVerRow;
     };
 
+<<<<<<< HEAD
     struct TDeleteNodeRefsVerRequest
     {
+=======
+    struct TDeleteNodeRefsVerRequest {
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
         TNodeRefsVerKey NodeRefsVerKey;
     };
 
     TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
 
+<<<<<<< HEAD
 public:
+=======
+>>>>>>> de824e5dfa (add update/delete requests (no implementations))
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,
