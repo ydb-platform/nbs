@@ -517,17 +517,24 @@ func (c *YDBClient) CreateOrAlterTable(
 		ctx,
 		func(ctx context.Context, s *Session) error {
 			err := c.makeDirs(ctx, folderFullPath)
+			defer s.metrics.StatCall(
+				ctx, 
+				"session/CreateOrAlterTable",
+				fmt.Sprintf("At path: %v", fullPath),
+			)(&err)
+			
 			if err != nil {
 				return err
 			}
 
-			return createOrAlterTable(
+			err = createOrAlterTable(
 				ctx,
 				s.session,
 				fullPath,
 				description,
 				dropUnusedColumns,
 			)
+			return err
 		},
 	)
 }

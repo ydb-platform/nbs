@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"strings"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
@@ -514,7 +516,7 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"success",
-		map[string]string{"call": "session/Execute"},
+		map[string]string{"call": "session/CreateOrAlterTable"},
 	).On("Inc").Once()
 	
 	metricsRegistry.GetCounter(
@@ -535,14 +537,6 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	val1 := TableV1{
-		id:   "id2",
-		val1: "value2",
-	}
-
-	err = insertTableV1(ctx, db, fullPath, table, val1)
-	require.NoError(t, err)
-
 	val2 := TableV2{
 		id: "id2",
 		val1: "val2",
@@ -551,4 +545,52 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 
 	err = insertTableV2(ctx, db, fullPath, table, val2)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))	
+
+	metricsRegistry.AssertAllExpectations(t)
+}
+
+
+func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	db, err := newYDB(ctx, metricsRegistry)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+	
+	metricsRegistry.GetCounter(
+		"errors",
+		map[string]string{"call": "session/CreateOrAlterTable", "type": "schemeError",},
+	).On("Inc").Times(2)
+
+	extraLargeString := strings.Repeat("x", 257)
+	// YDB has limited length of object name. Current limit is 255
+	folder := fmt.Sprintf("ydb_test/%v/%v", extraLargeString, t.Name())
+	table := "table"
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		table,
+		tableV1TableDescription(),
+		false, // dropUnusedColumns
+	)
+	require.True(t, ydb.IsOperationErrorSchemeError(err))
+
+	// YDB has limited length of object name. Current limit is 255
+	folder = fmt.Sprintf("ydb_test/%v", t.Name())
+	table = extraLargeString
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		table,
+		tableV1TableDescription(),
+		false, // dropUnusedColumns
+	)
+	require.True(t, ydb.IsOperationErrorSchemeError(err))
+
+	metricsRegistry.AssertAllExpectations(t)
 }
