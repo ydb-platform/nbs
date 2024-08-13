@@ -516,6 +516,7 @@ public:
         return Executor->Execute([                                             \
             ctx = std::move(callContext),                                      \
             req = std::move(request),                                          \
+            self = shared_from_this(),                                         \
             this] () mutable                                                   \
         {                                                                      \
             return Do##name(std::move(ctx), std::move(req));                   \
