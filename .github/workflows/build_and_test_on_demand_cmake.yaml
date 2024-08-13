@@ -12,6 +12,8 @@ on:
           - relwithdebinfo
           - release-asan
           - release-tsan
+          - release-msan
+          - release-ubsan
       run_build:
         type: boolean
         default: true

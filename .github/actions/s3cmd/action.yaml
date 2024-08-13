@@ -101,6 +101,12 @@ runs:
           release-tsan)
             folder+="-tsan"
             ;;
+          release-msan)
+            folder+="-msan"
+            ;;
+          release-ubsan)
+            folder+="-ubsan"
+            ;;
           *)
             echo "Invalid preset: ${{ inputs.build_preset }}"
             exit 1
