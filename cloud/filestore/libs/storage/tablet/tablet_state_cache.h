@@ -425,9 +425,13 @@ private:
     TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 public:
 =======
 >>>>>>> de824e5dfa (add update/delete requests (no implementations))
+=======
+public:
+>>>>>>> ba6e5d7060 (fix compile issue)
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,
