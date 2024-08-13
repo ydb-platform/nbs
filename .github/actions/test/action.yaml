@@ -7,7 +7,7 @@ inputs:
   build_preset:
     required: true
     default: "relwithdebinfo"
-    description: "relwithdebinfo, release-asan, release-tsan"
+    description: "relwithdebinfo, release-asan, release-tsan, release-msan, release-ubsan"
   test_size:
     required: false
     default: "small,medium,large"
@@ -105,6 +105,16 @@ runs:
           release-tsan)
             build_type=release
             extra_params+=(--sanitize="thread")
+            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            ;;
+          release-msan)
+            build_type=release
+            extra_params+=(--sanitize="memory")
+            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            ;;
+          release-ubsan)
+            build_type=release
+            extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             ;;
           *)
