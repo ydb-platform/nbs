@@ -143,6 +143,15 @@ private:
 
     THashMap<ui64, TNodeRow> Nodes;
 
+    struct TWriteNodeRequest {
+        ui64 NodeId;
+        TNodeRow Row;
+    };
+
+    struct TDeleteNodeRequest {
+        ui64 NodeId;
+    };
+
     //
     // Nodes_Ver
     //
@@ -168,6 +177,15 @@ private:
     {
         ui64 MaxCommitId = 0;
         NProto::TNode Node;
+    };
+
+    struct TWriteNodeVerRequest {
+        TNodesVerKey NodesVerKey;
+        TNodesVerRow NodesVerRow;
+    };
+
+    struct TDeleteNodeVerRequest {
+        TNodesVerKey NodesVerKey;
     };
 
     TMap<TNodesVerKey, TNodesVerRow> NodesVer;
@@ -208,6 +226,15 @@ private:
         ui64 Version = 0;
     };
 
+    struct TWriteNodeAttrsRequest {
+        TNodeAttrsKey NodeAttrsKey;
+        TNodeAttrsRow NodeAttrsRow;
+    };
+
+    struct TDeleteNodeAttrsRequest {
+        TNodeAttrsKey NodeAttrsKey;
+    };
+
     THashMap<TNodeAttrsKey, TNodeAttrsRow, TNodeAttrsKeyHash> NodeAttrs;
 
     //
@@ -238,6 +265,15 @@ private:
         ui64 MaxCommitId = 0;
         TString Value;
         ui64 Version = 0;
+    };
+
+    struct TWriteNodeAttrsVerRequest {
+        TNodeAttrsVerKey NodeAttrsVerKey;
+        TNodeAttrsVerRow NodeAttrsVerRow;
+    };
+
+    struct TDeleteNodeAttrsVerRequest {
+        TNodeAttrsVerKey NodeAttrsVerKey;
     };
 
     TMap<TNodeAttrsVerKey, TNodeAttrsVerRow> NodeAttrsVer;
@@ -279,6 +315,15 @@ private:
         TString FollowerName;
     };
 
+    struct TWriteNodeRefsRequest {
+        TNodeRefsKey NodeRefsKey;
+        TNodeRefsRow NodeRefsRow;
+    };
+
+    struct TDeleteNodeRefsRequest {
+        TNodeRefsKey NodeRefsKey;
+    };
+
     THashMap<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash> NodeRefs;
 
     //
@@ -312,7 +357,30 @@ private:
         TString FollowerName;
     };
 
+    struct TWriteNodeRefsVerRequest {
+        TNodeRefsVerKey NodeRefsVerKey;
+        TNodeRefsVerRow NodeRefsVerRow;
+    };
+
+    struct TDeleteNodeRefsVerRequest {
+        TNodeRefsVerKey NodeRefsVerKey;
+    };
+
     TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
+
+    using TIndexStateRequest = std::variant<
+        TWriteNodeRequest,
+        TDeleteNodeRequest,
+        TWriteNodeVerRequest,
+        TDeleteNodeVerRequest,
+        TWriteNodeAttrsRequest,
+        TDeleteNodeAttrsRequest,
+        TWriteNodeAttrsVerRequest,
+        TDeleteNodeAttrsVerRequest,
+        TWriteNodeRefsRequest,
+        TDeleteNodeRefsRequest,
+        TWriteNodeRefsVerRequest,
+        TDeleteNodeRefsVerRequest>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
