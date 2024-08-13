@@ -309,7 +309,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {

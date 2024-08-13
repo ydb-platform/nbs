@@ -89,7 +89,7 @@ bool TIndexTabletActor::PrepareTx_AddData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
         return false;
