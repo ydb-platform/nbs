@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
@@ -501,29 +502,53 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestYDBShouldSendErrorTLIMetric(t *testing.T) {
+func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
+	metricsRegistry := mocks.NewRegistryMock()
 
-	db, err := newYDB(ctx, mocks.NewRegistryMock())
+	db, err := newYDB(ctx, metricsRegistry)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	name := "transaction/Execute"
-	defer db.metrics.StatCall(ctx, name, query)(&err)
-	db.metrics.registry.GetCounter(
+	metricsRegistry.GetCounter(
+		"success",
+		map[string]string{"call": "session/Execute"},
+	).On("Inc").Once()
+	
+	metricsRegistry.GetCounter(
 		"errors",
-		map[string]string{
-			"error": "tliError",
-			"call": name,
-		},
+		map[string]string{"call": "session/Execute", "type": "retriableError",},
 	).On("Inc").Once()
 
-	// err = Operation(
-	// 	WithStatusCode(Ydb.StatusIds_ABORTED),
-	// 	WithIssues([]*Ydb_Issue.IssueMessage{{
-	// 		IssueCode: issueCodeTransactionLocksInvalidated,
-	// 	}}),
-	// )
+	folder := fmt.Sprintf("ydb_test/%v", t.Name())
+	table := "table"
+	fullPath := db.AbsolutePath(folder)
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		table,
+		tableV1TableDescription(),
+		false, // dropUnusedColumns
+	)
+	require.NoError(t, err)
+
+	val1 := TableV1{
+		id:   "id2",
+		val1: "value2",
+	}
+
+	err = insertTableV1(ctx, db, fullPath, table, val1)
+	require.NoError(t, err)
+
+	val2 := TableV2{
+		id: "id2",
+		val1: "val2",
+		val2: "other2",
+	}
+
+	err = insertTableV2(ctx, db, fullPath, table, val2)
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))	
 }
