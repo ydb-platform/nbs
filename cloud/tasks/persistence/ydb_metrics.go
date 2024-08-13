@@ -47,17 +47,17 @@ func (m *ydbMetrics) StatCall(
 			var errorType string
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
-				errorType = "tliError"
+				errorType = "tli"
 			case ydb.IsOperationErrorSchemeError(*err):
-				errorType = "schemeError"
+				errorType = "scheme"
 			case errors.Is(*err, errors.NewEmptyRetriableError()):
-				errorType = "retriableError"
+				logging.Warn(ctx, "Got Retriable error %v", *err)
+				errorType = "retriable"
 			default:
 				errorType = "other"
 			}
-			errorRegistry := subRegistry.WithTags(map[string]string{
-				"type": errorType,
-			})
+
+			errorRegistry := subRegistry.WithTags(map[string]string{"type": errorType})
 
 			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
