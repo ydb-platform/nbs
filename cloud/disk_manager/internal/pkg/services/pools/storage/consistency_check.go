@@ -213,10 +213,10 @@ func (s *storageYDB) checkBaseDisksConsistency(
 	return nil
 }
 
-func (s *storageYDB) checkOverlayDiskSlotConsistency(
+func (s *storageYDB) checkBaseDiskSlotReleased(
 	ctx context.Context,
 	session *persistence.Session,
-	diskID string,
+	overlayDiskID string,
 ) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -225,7 +225,7 @@ func (s *storageYDB) checkOverlayDiskSlotConsistency(
 	}
 	defer tx.Rollback(ctx)
 
-	slot, err := s.getAcquiredSlot(ctx, tx, diskID)
+	slot, err := s.getAcquiredSlot(ctx, tx, overlayDiskID)
 	if slot == nil {
 		return tx.Commit(ctx)
 	}

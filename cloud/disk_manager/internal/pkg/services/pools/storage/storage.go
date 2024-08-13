@@ -180,7 +180,7 @@ type Storage interface {
 	CheckBaseDisksConsistency(ctx context.Context) error
 
 	// Used in tests and SRE tools.
-	CheckOverlayDiskSlotConsistency(ctx context.Context, diskID string) error
+	CheckBaseDiskSlotReleased(ctx context.Context, overlayDiskID string) error
 
 	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.

@@ -256,12 +256,12 @@ func (s *StorageMock) CheckBaseDisksConsistency(ctx context.Context) error {
 	return args.Error(0)
 }
 
-func (s *StorageMock) CheckOverlayDiskSlotConsistency(
+func (s *StorageMock) CheckBaseDiskSlotReleased(
 	ctx context.Context,
-	diskID string,
+	overlayDiskID string,
 ) error {
 
-	args := s.Called(ctx, diskID)
+	args := s.Called(ctx, overlayDiskID)
 	return args.Error(0)
 }
 
