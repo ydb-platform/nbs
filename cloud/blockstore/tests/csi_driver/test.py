@@ -338,13 +338,7 @@ def test_csi_sanity_nbs_backend():
         params_file = Path(os.getcwd()) / "params.yaml"
         params_file.write_text(f"backend: {backend}")
 
-        skipTests = ["should fail when requesting to create a volume with already existing name and different capacity",
-                     "should fail when the node does not exist",
-                     # below are disabled NodeGetVolumeStats tests: NBSNEBIUS-390
-                     "should fail when no volume id is provided",
-                     "should fail when no volume path is provided",
-                     "should fail when volume does not exist on the specified path",
-                     "should fail when volume is not found"]
+        skipTests = ["should fail when the node does not exist"]
 
         args = [CSI_SANITY_BINARY_PATH,
                 "-csi.endpoint",

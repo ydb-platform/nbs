@@ -125,12 +125,16 @@ func (c *nbsServerControllerService) CreateVolume(
 	var err error
 	if parameters["backend"] == "nfs" {
 		err = c.createFileStore(ctx, req.Name, requiredBytes)
+		// TODO (issues/464): return codes.AlreadyExists if volume exists
 	} else {
 		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
+		if err != nil && c.doesVolumeExist(ctx, req.Name) {
+			return nil, status.Errorf(
+				codes.AlreadyExists, "Failed to create volume: %w", err)
+		}
 	}
 
 	if err != nil {
-		// TODO (issues/464): return codes.AlreadyExists if volume exists
 		return nil, status.Errorf(
 			codes.Internal, "Failed to create volume: %w", err)
 	}

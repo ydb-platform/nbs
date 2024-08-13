@@ -129,17 +129,17 @@ func (s *nodeService) NodeStageVolume(
 	if req.VolumeId == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"VolumeId missing in NodeStageVolumeRequest")
+			"VolumeId is missing in NodeStageVolumeRequest")
 	}
 	if req.StagingTargetPath == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"StagingTargetPath missing in NodeStageVolumeRequest")
+			"StagingTargetPath is missing in NodeStageVolumeRequest")
 	}
 	if req.VolumeCapability == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"VolumeCapability missing in NodeStageVolumeRequest")
+			"VolumeCapability is missing in NodeStageVolumeRequest")
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -154,12 +154,12 @@ func (s *nodeService) NodeUnstageVolume(
 	if req.VolumeId == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"VolumeId missing in NodeUnstageVolumeRequest")
+			"VolumeId is missing in NodeUnstageVolumeRequest")
 	}
 	if req.StagingTargetPath == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"StagingTargetPath missing in NodeUnstageVolumeRequest")
+			"StagingTargetPath is missing in NodeUnstageVolumeRequest")
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -179,27 +179,27 @@ func (s *nodeService) NodePublishVolume(
 	if req.StagingTargetPath == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"StagingTargetPath missing in NodePublishVolumeRequest")
+			"StagingTargetPath is missing in NodePublishVolumeRequest")
 	}
 	if req.TargetPath == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"TargetPath missing in NodePublishVolumeRequest")
+			"TargetPath is missing in NodePublishVolumeRequest")
 	}
 	if req.VolumeCapability == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"VolumeCapability missing in NodePublishVolumeRequest")
+			"VolumeCapability is missing in NodePublishVolumeRequest")
 	}
 	if req.VolumeContext == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"VolumeContext missing in NodePublishVolumeRequest")
+			"VolumeContext is missing in NodePublishVolumeRequest")
 	}
 
 	if s.getPodId(req) == "" {
 		return nil, s.statusError(codes.Internal,
-			"podUID missing in NodePublishVolumeRequest.VolumeContext")
+			"podUID is missing in NodePublishVolumeRequest.VolumeContext")
 	}
 
 	var err error
@@ -250,12 +250,12 @@ func (s *nodeService) NodeUnpublishVolume(
 	if req.VolumeId == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"Volume ID missing in NodeUnpublishVolumeRequest")
+			"Volume ID is missing in NodeUnpublishVolumeRequest")
 	}
 	if req.TargetPath == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
-			"Target Path missing in NodeUnpublishVolumeRequest")
+			"Target Path is missing in NodeUnpublishVolumeRequest")
 	}
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
@@ -687,17 +687,62 @@ func logVolume(volumeId string, format string, v ...any) {
 	log.Printf("[v=%s]: %s", volumeId, msg)
 }
 
+func (s *nodeService) doesVolumeExist(
+	ctx context.Context,
+	volumeId string) bool {
+
+	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
+		DiskId: volumeId,
+	}
+
+	_, err := s.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
 func (s *nodeService) NodeGetVolumeStats(
 	ctx context.Context,
 	req *csi.NodeGetVolumeStatsRequest) (
 	*csi.NodeGetVolumeStatsResponse, error) {
 
+	if req.VolumeId == "" {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"VolumeId is missing in NodeGetVolumeStatsRequest")
+	}
+
+	if req.VolumePath == "" {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"VolumePath is missing in NodeGetVolumeStatsRequest")
+	}
+
 	if s.vmMode {
 		return nil, fmt.Errorf("NodeGetVolumeStats is not supported in vmMode")
 	}
 
+	if s.nbsClient == nil {
+		return nil, fmt.Errorf("NBS client is not available")
+	}
+
+	if !s.doesVolumeExist(ctx, req.VolumeId) {
+		return nil, s.statusError(
+			codes.NotFound,
+			"Volume is not found")
+	}
+
+	_, err := s.mounter.IsMountPoint(req.VolumePath)
+	if err != nil {
+		return nil, s.statusError(
+			codes.NotFound,
+			"Volume does not exist on the specified path")
+	}
+
 	var stat unix.Statfs_t
-	err := unix.Statfs(req.VolumePath, &stat)
+	err = unix.Statfs(req.VolumePath, &stat)
 	if err != nil {
 		return nil, err
 	}
