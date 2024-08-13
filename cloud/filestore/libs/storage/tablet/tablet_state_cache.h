@@ -368,6 +368,7 @@ private:
 
     TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
 
+public:
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,

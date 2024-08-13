@@ -113,12 +113,12 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheMaxHandlesPerNode());
     Impl->NodeIndexCache.Reset(config.GetNodeIndexCacheMaxNodes());
     Impl->InMemoryIndexState.Reset(
-        config.GetNodesCapacity(),
-        config.GetNodesVerCapacity(),
-        config.GetNodeAttrsCapacity(),
-        config.GetNodeAttrsVerCapacity(),
-        config.GetNodeRefsCapacity(),
-        config.GetNodeRefsVerCapacity());
+        config.GetInMemoryIndexCacheNodesCapacity(),
+        config.GetInMemoryIndexCacheNodesVerCapacity(),
+        config.GetInMemoryIndexCacheNodeAttrsCapacity(),
+        config.GetInMemoryIndexCacheNodeAttrsVerCapacity(),
+        config.GetInMemoryIndexCacheNodeRefsCapacity(),
+        config.GetInMemoryIndexCacheNodeRefsVerCapacity());
 }
 
 void TIndexTabletState::UpdateConfig(
