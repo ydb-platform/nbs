@@ -6,7 +6,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -20,7 +19,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	tracerName = "yc-disk-manager"
+	tracerName = "disk-manager"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,14 +44,14 @@ func newTraceExporter(
 		ctx,
 		otlptracegrpc.WithEndpoint(fmt.Sprintf(
 			"localhost:%v",
-			*config.ExporterPort)),
+			*config.Port)),
 		otlptracegrpc.WithInsecure(),
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func InitOpentelemetryTracing(
+func InitTracing(
 	ctx context.Context,
 	config *tracing_config.TracingConfig,
 ) (shutdown func(context.Context) error, err error) {
@@ -66,13 +65,11 @@ func InitOpentelemetryTracing(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(*config.ServiceName),
 	)
-
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)
-
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	return tracerProvider.Shutdown, nil

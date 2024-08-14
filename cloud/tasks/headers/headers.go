@@ -41,7 +41,7 @@ func Append(ctx context.Context, headers map[string]string) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getFromIncomingContext(
+func GetFromIncomingContext(
 	ctx context.Context,
 	allowedKeys []string,
 ) map[string]string {
@@ -71,17 +71,7 @@ func GetTracingHeaders(ctx context.Context) map[string]string {
 		"x-request-id",
 		"x-request-uid",
 	}
-	return getFromIncomingContext(ctx, allowedKeys)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func GetTraceContext(
-	ctx context.Context,
-	traceContextKeys []string,
-) map[string]string {
-
-	return getFromIncomingContext(ctx, traceContextKeys)
+	return GetFromIncomingContext(ctx, allowedKeys)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

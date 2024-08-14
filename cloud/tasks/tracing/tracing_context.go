@@ -5,7 +5,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -20,21 +19,21 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 // Extracts traceparent and tracestate headers from grpc metadata.
-func ExtractTraceContext(
+func ExtractTracingContext(
 	ctx context.Context,
 ) context.Context {
 
-	traceContext := headers.GetTraceContext(ctx, []string{
+	tracingContext := headers.GetFromIncomingContext(ctx, []string{
 		traceparentHeaderKey,
 		tracestateHeaderKey,
 	})
 
-	traceparent, ok := traceContext[traceparentHeaderKey]
+	traceparent, ok := tracingContext[traceparentHeaderKey]
 	if !ok || len(traceparent) == 0 {
-		logging.Debug(ctx, "No traceparent in incoming trace context")
+		logging.Debug(ctx, "No traceparent in incoming tracing context")
 		return ctx
 	}
 
 	prop := otel.GetTextMapPropagator()
-	return prop.Extract(ctx, propagation.MapCarrier(traceContext))
+	return prop.Extract(ctx, propagation.MapCarrier(tracingContext))
 }

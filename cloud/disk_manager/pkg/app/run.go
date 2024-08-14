@@ -110,7 +110,7 @@ func run(
 
 	if config.TracingConfig != nil {
 		logging.Info(ctx, "Initializing tracing")
-		shutdown, err := tracing.InitOpentelemetryTracing(ctx, config.TracingConfig)
+		shutdown, err := tracing.InitTracing(ctx, config.TracingConfig)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize tracing: %w", err)
 			return err

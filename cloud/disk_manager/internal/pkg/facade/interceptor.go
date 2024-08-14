@@ -205,7 +205,7 @@ func (i *interceptor) intercept(
 		return nil, err
 	}
 
-	ctx = tracing.ExtractTraceContext(ctx)
+	ctx = tracing.ExtractTracingContext(ctx)
 	ctx, span := tracing.StartSpan(ctx, requestName)
 	defer span.End()
 
