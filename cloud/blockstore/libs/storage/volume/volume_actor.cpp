@@ -26,6 +26,7 @@
 #include <library/cpp/lwtrace/signature.h>
 
 #include <util/string/builder.h>
+#include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -597,11 +598,32 @@ void TVolumeActor::HandlePoisonTaken(
         }
     }
 
+    const auto removed = std::distance(WaitForPartitions.begin(), it);
+
     WaitForPartitions.erase(WaitForPartitions.begin(), it);
 
     if (WaitForPartitions.empty()) {
         StoppedPartitions.clear();
     }
+
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] Partitions removed from the wait list: %lu. %s",
+        TabletID(),
+        removed,
+        [&] {
+            TStringStream ss;
+            ss << "W: [";
+            for (const auto& [p, _]: WaitForPartitions) {
+                ss << " " << p.ToString();
+            }
+            ss << "] S: [";
+            for (const auto& p: StoppedPartitions) {
+                ss << " " << p.ToString();
+            }
+            ss << "]";
+
+            return ss.Str();
+        }().c_str());
 }
 
 void TVolumeActor::HandleUpdateThrottlerState(
