@@ -31,6 +31,7 @@ func newYDB(
 	ctx context.Context,
 	metricsRegistry metrics.Registry,
 ) (*YDBClient, error) {
+	
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "disk_manager"
