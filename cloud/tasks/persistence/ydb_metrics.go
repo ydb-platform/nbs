@@ -51,14 +51,17 @@ func (m *ydbMetrics) StatCall(
 			case ydb.IsOperationErrorSchemeError(*err):
 				errorType = "scheme"
 			case errors.Is(*err, errors.NewEmptyRetriableError()):
-				logging.Warn(ctx, "Got Retriable error %v", *err)
+				logging.Info(ctx, "Got Retriable error %v", *err)
 				errorType = "retriable"
 			default:
 				errorType = "other"
 			}
 
-			errorRegistry := subRegistry.WithTags(map[string]string{"type": errorType})
+			errorRegistry := subRegistry.WithTags(map[string]string{
+				"type": errorType,
+			})
 
+			// Should initialize all counters before using them, to avoid 'no data'.
 			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 

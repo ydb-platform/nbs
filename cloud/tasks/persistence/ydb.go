@@ -515,13 +515,13 @@ func (c *YDBClient) CreateOrAlterTable(
 
 	return c.Execute(
 		ctx,
-		func(ctx context.Context, s *Session) error {
-			err := c.makeDirs(ctx, folderFullPath)
+		func(ctx context.Context, s *Session) (err error) {
 			defer s.metrics.StatCall(
 				ctx,
 				"session/CreateOrAlterTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
+			err = c.makeDirs(ctx, folderFullPath)
 
 			if err != nil {
 				return err
@@ -550,13 +550,13 @@ func (c *YDBClient) DropTable(
 
 	return c.Execute(
 		ctx,
-		func(ctx context.Context, s *Session) error {
-			err := dropTable(ctx, s.session, fullPath)
+		func(ctx context.Context, s *Session) (err error) {
 			defer s.metrics.StatCall(
 				ctx,
 				"session/DropTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
+			err = dropTable(ctx, s.session, fullPath)
 			return err
 		},
 	)
