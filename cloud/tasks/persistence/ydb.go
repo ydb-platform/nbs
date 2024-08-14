@@ -521,8 +521,8 @@ func (c *YDBClient) CreateOrAlterTable(
 				"session/CreateOrAlterTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
-			err = c.makeDirs(ctx, folderFullPath)
 
+			err = c.makeDirs(ctx, folderFullPath)
 			if err != nil {
 				return err
 			}
@@ -556,6 +556,7 @@ func (c *YDBClient) DropTable(
 				"session/DropTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
+
 			err = dropTable(ctx, s.session, fullPath)
 			return err
 		},
