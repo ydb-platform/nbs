@@ -336,7 +336,7 @@ def test_csi_sanity_nbs_backend():
         mount_dir.mkdir(parents=True, exist_ok=True)
 
         params_file = Path(os.getcwd()) / "params.yaml"
-        params_file.write_text(f"backend: {backend}\npodUID: {podId}\n")
+        params_file.write_text(f"backend: {backend}")
 
         skipTests = ["should fail when requesting to create a volume with already existing name and different capacity",
                      "should fail when the node does not exist",
