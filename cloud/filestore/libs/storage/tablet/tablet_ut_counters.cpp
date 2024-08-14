@@ -684,7 +684,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             }, TDuration::Seconds(reportInterval));
 
         // becouse of executor sends to HIVE average value from last operations
-        UNIT_ASSERT_DOUBLES_EQUAL(sz / 2, (network * reportInterval), sz / 100);
+        UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval * 2), sz / 100);
     }
 
     Y_UNIT_TEST(ShouldReportCompressionMetrics)
