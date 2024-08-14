@@ -72,7 +72,6 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             if (!needZeroesUnusedBlocks) {
                 // We don't need to zeroes unused blocks. Therefore, we can do
                 // the usual reading.
-                Cout << "!needZeroesUnusedBlocks\n";
                 return false;
             }
 
@@ -83,7 +82,6 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                         msg->Record.GetBlocksCount()) ==
                 msg->Record.GetBlocksCount();
 
-            Cout << "readUsedBlocksOnly="<< readUsedBlocksOnly << "\n";
             if (readUsedBlocksOnly) {
                 // We don't need to look at the map of used blocks when
                 // reading, because all the blocks have been used.
@@ -115,7 +113,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
                     &State->AccessUsedBlocks(),
-                    State->GetMaskUnusedBlocks(),
+                    needZeroesUnusedBlocks,
                     encryptedDiskRegistryBasedDisk,
                     partActorId,
                     TabletID(),
