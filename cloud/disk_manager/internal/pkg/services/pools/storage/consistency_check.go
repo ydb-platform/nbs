@@ -226,6 +226,9 @@ func (s *storageYDB) checkBaseDiskSlotReleased(
 	defer tx.Rollback(ctx)
 
 	slot, err := s.getAcquiredSlot(ctx, tx, overlayDiskID)
+	if err != nil {
+		return err
+	}
 	if slot == nil {
 		return tx.Commit(ctx)
 	}
