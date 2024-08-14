@@ -606,24 +606,22 @@ void TVolumeActor::HandlePoisonTaken(
         StoppedPartitions.clear();
     }
 
+    TStringStream waitList;
+    for (const auto& [p, _]: WaitForPartitions) {
+        waitList << p.ToString() << " ";
+    }
+
+    TStringStream stoppedList;
+    for (const auto& p: StoppedPartitions) {
+        stoppedList << p.ToString() << " ";
+    }
+
     LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Partitions removed from the wait list: %lu. %s",
+        "[%lu] Partitions removed from the wait list: %lu. W: [ %s], S: [ %s]",
         TabletID(),
         removed,
-        [&] {
-            TStringStream ss;
-            ss << "W: [";
-            for (const auto& [p, _]: WaitForPartitions) {
-                ss << " " << p.ToString();
-            }
-            ss << "] S: [";
-            for (const auto& p: StoppedPartitions) {
-                ss << " " << p.ToString();
-            }
-            ss << "]";
-
-            return ss.Str();
-        }().c_str());
+        waitList.Str().c_str(),
+        stoppedList.Str().c_str());
 }
 
 void TVolumeActor::HandleUpdateThrottlerState(
