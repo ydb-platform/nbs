@@ -542,7 +542,7 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 		val1: "val2",
 		val2: "other2",
 	}
-
+	// Wrong query request causes non-retriable error, that wrapped as Retriable
 	err = insertTableV2(ctx, db, fullPath, table, val2)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
 
