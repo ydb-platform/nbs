@@ -537,8 +537,8 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Wrong query request causes non-retriable error, that wrapped as Retriable
-	// Table has 2 columns, requested value has 3
+	// Wrong query request causes non-retriable error, that wrapped as Retriable.
+	// Table has 2 columns, requested value has 3.
 	val2 := TableV2{
 		id:   "id2",
 		val1: "val2",
