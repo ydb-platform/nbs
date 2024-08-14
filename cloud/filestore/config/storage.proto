@@ -328,11 +328,13 @@ message TStorageConfig
     optional bool UnalignedThreeStageWriteEnabled = 366;
 
     // Mapping allowing for multiple fs ids to point to the same fs
-    message TFilestoreAliasEntry {
+    message TFilestoreAliasEntry
+    {
         optional string Alias = 1;
         optional string FsId = 2;
     }
-    message TFilestoreAliases {
+    message TFilestoreAliases
+    {
         repeated TFilestoreAliasEntry Entries = 1;
     }
     optional TFilestoreAliases FilestoreAliases = 367;

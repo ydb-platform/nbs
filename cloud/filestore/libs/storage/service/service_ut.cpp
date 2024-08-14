@@ -5243,7 +5243,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(originalHeaders, TCreateNodeArgs::File(RootNodeId, "testfile"));
 
         // Check that the file is visible in the mirrored fs
-        auto listNodesResponse = service.ListNodes(mirroredHeaders, mirroredFs, RootNodeId)->Record;
+        auto listNodesResponse =
+            service.ListNodes(mirroredHeaders, mirroredFs, RootNodeId)->Record;
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL("testfile", listNodesResponse.GetNames(0));

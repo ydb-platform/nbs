@@ -226,8 +226,7 @@ TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
 }
 
 template <>
-TAliasMap ConvertValue(
-    const NProto::TStorageConfig::TFilestoreAliases& value)
+TAliasMap ConvertValue(const NProto::TStorageConfig::TFilestoreAliases& value)
 {
     TAliasMap result;
     for (const auto& entry: value.GetEntries()) {
