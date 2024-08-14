@@ -518,7 +518,7 @@ func (c *YDBClient) CreateOrAlterTable(
 		func(ctx context.Context, s *Session) (err error) {
 			defer s.metrics.StatCall(
 				ctx,
-				"session/CreateOrAlterTable",
+				"client/CreateOrAlterTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
 
@@ -553,7 +553,7 @@ func (c *YDBClient) DropTable(
 		func(ctx context.Context, s *Session) (err error) {
 			defer s.metrics.StatCall(
 				ctx,
-				"session/DropTable",
+				"client/DropTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
 

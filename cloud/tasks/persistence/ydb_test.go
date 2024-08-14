@@ -566,7 +566,7 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 		map[string]string{"call": "session/CreateOrAlterTable", "type": "scheme"},
 	).On("Inc").Once()
 
-	// YDB has limited length of object name. Current limit is 255
+	// YDB has limited length of object name. Current limit is 255.
 	extraLargeString := strings.Repeat("x", 257)
 	folder := fmt.Sprintf("ydb_test/%v/%v", extraLargeString, t.Name())
 	table := "table"
