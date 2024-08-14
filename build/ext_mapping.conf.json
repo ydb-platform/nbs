@@ -17,7 +17,8 @@
         "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs",
         "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz",
         "5922914799": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk",
-        "6318551696": "https://storage.yandexcloud.net/barkovbg-s3/ubuntu1604-ci-stable"
+        "6318551696": "https://storage.yandexcloud.net/barkovbg-s3/ubuntu1604-ci-stable",
+        "9413258143": "https://storage.ai.nebius.cloud/nbs-oss-resources/csi-sanity"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
@@ -35,7 +36,8 @@
         "4709742882": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests",
         "4915490540": "cloud/disk_manager/internal/pkg/facade/image_service_test|cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test",
         "1268336763": "cloud/disk_manager/internal/pkg/logging/journald_tests",
-        "2831814743": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests"
+        "2831814743": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests",
+        "9413258143": "csi-sanity tests binary: https://github.com/kubernetes-csi/csi-test"
     },
     "tasks": {}
 }

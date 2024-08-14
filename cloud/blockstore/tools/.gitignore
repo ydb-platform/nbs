@@ -67,3 +67,5 @@ testing/plugintest/blockstore-plugintest
 testing/rdma-test/rdma-test
 testing/stable-plugin/yandex-cloud-blockstore-plugin_*.deb
 testing/verify-test/verify-test
+testing/csi-sanity/bin/cloud
+testing/csi-sanity/bin/csi-sanity
