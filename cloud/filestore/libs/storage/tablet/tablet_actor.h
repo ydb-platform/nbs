@@ -177,13 +177,6 @@ private:
         TRequestMetrics TrimBytes;
         TRequestMetrics CollectGarbage;
 
-        // we only need metrics of operations that load the network.
-        TVector<TRequestMetrics*> MetricsToReport{
-            &ReadBlob,
-            &WriteBlob,
-            &Flush,
-            &Compaction};
-
         i64 LastNetworkMetric = 0;
 
         i64 TakeTotalRequestBytes();
