@@ -687,22 +687,6 @@ func logVolume(volumeId string, format string, v ...any) {
 	log.Printf("[v=%s]: %s", volumeId, msg)
 }
 
-func (s *nodeService) doesVolumeExist(
-	ctx context.Context,
-	volumeId string) bool {
-
-	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
-		DiskId: volumeId,
-	}
-
-	_, err := s.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
 func (s *nodeService) NodeGetVolumeStats(
 	ctx context.Context,
 	req *csi.NodeGetVolumeStatsRequest) (
@@ -728,13 +712,23 @@ func (s *nodeService) NodeGetVolumeStats(
 		return nil, fmt.Errorf("NBS client is not available")
 	}
 
-	if !s.doesVolumeExist(ctx, req.VolumeId) {
-		return nil, s.statusError(
-			codes.NotFound,
-			"Volume is not found")
+	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
+		DiskId: req.VolumeId,
 	}
 
-	_, err := s.mounter.IsMountPoint(req.VolumePath)
+	_, err := s.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	if err != nil {
+		if nbsclient.IsDiskNotFoundError(err) {
+			return nil, s.statusError(
+				codes.NotFound,
+				"Volume is not found")
+		}
+		return nil, s.statusErrorf(
+			codes.Internal,
+			"Failed to get volume stats: %v", err)
+	}
+
+	_, err = s.mounter.IsMountPoint(req.VolumePath)
 	if err != nil {
 		return nil, s.statusError(
 			codes.NotFound,

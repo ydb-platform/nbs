@@ -128,9 +128,18 @@ func (c *nbsServerControllerService) CreateVolume(
 		// TODO (issues/464): return codes.AlreadyExists if volume exists
 	} else {
 		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
-		if err != nil && c.doesVolumeExist(ctx, req.Name) {
-			return nil, status.Errorf(
-				codes.AlreadyExists, "Failed to create volume: %w", err)
+		if err != nil {
+			describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
+				DiskId: req.Name,
+			}
+			_, describeVolumeErr := c.nbsClient.DescribeVolume(
+				ctx,
+				describeVolumeRequest)
+			if describeVolumeErr == nil {
+				return nil, status.Errorf(
+					codes.AlreadyExists,
+					"Failed to create volume: %w", describeVolumeErr)
+			}
 		}
 	}
 
@@ -247,9 +256,18 @@ func (c *nbsServerControllerService) ControllerPublishVolume(
 			"VolumeCapability missing in ControllerPublishVolumeRequest")
 	}
 
-	if !c.doesVolumeExist(ctx, req.VolumeId) {
+	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
+		DiskId: req.VolumeId,
+	}
+	_, err := c.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	if err != nil {
+		if nbsclient.IsDiskNotFoundError(err) {
+			return nil, status.Errorf(
+				codes.NotFound, "Volume %q does not exist", req.VolumeId)
+		}
+
 		return nil, status.Errorf(
-			codes.NotFound, "Volume %q does not exist", req.VolumeId)
+			codes.Internal, "Failed to publish volume: %w", err)
 	}
 
 	// TODO (issues/464): check if req.NodeId exists in the cluster
@@ -291,9 +309,18 @@ func (c *nbsServerControllerService) ValidateVolumeCapabilities(
 			"VolumeCapabilities missing in ValidateVolumeCapabilitiesRequest")
 	}
 
-	if !c.doesVolumeExist(ctx, req.VolumeId) {
+	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
+		DiskId: req.VolumeId,
+	}
+	_, err := c.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	if err != nil {
+		if nbsclient.IsDiskNotFoundError(err) {
+			return nil, status.Errorf(
+				codes.NotFound, "Volume %q does not exist", req.VolumeId)
+		}
+
 		return nil, status.Errorf(
-			codes.NotFound, "Volume %q does not exist", req.VolumeId)
+			codes.Internal, "Failed to validate volume capabilities: %w", err)
 	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{}, nil
@@ -307,21 +334,4 @@ func (c *nbsServerControllerService) ControllerGetCapabilities(
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: nbsServerControllerServiceCapabilities,
 	}, nil
-}
-
-func (c *nbsServerControllerService) doesVolumeExist(
-	ctx context.Context,
-	volumeId string) bool {
-
-	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
-		DiskId: volumeId,
-	}
-
-	_, err := c.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
-	if err != nil {
-		// TODO (issues/464): check error code
-		return false
-	}
-
-	return true
 }
