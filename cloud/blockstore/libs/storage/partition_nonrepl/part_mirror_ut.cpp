@@ -185,7 +185,6 @@ struct TTestEnv
                 NProto::STORAGE_MEDIA_SSD_MIRROR3},
             VolumeActorId,
             false, // muteIOErrors
-            markBlocksUsed,
             std::move(freshDeviceIds),
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

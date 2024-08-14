@@ -244,8 +244,11 @@ void TVolumeState::Reset()
         if (Meta.GetDevices().size()) {
             CreatePartitionStatInfo(GetDiskId(), 0);
         }
-        const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
-        if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {
+        const bool encrypted =
+            Meta.GetVolumeConfig().GetEncryptionDesc().GetMode() !=
+            NProto::NO_ENCRYPTION;
+        const bool overlay = !GetBaseDiskId().Empty();
+        if (encrypted || overlay) {
             TrackUsedBlocks = true;
         }
     } else {

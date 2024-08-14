@@ -21,10 +21,10 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    bool hasCheckpointLight = State->HasCheckpointLight();
+    const bool needTrackPersistent = State->GetTrackUsedBlocks();
+    const bool needTrackInMemory = State->HasCheckpointLight();
 
-    const bool isOverlay = !State->GetBaseDiskId().Empty();
-    if (!State->GetTrackUsedBlocks() && !hasCheckpointLight && !isOverlay) {
+    if (!needTrackPersistent && !needTrackInMemory) {
         return replyFalse();
     }
 
@@ -53,22 +53,22 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         ));
     }
 
+    if (needTrackInMemory) {
+        for (const auto& range: ranges) {
+            State->MarkBlocksAsDirtyInCheckpointLight(range);
+        }
+    }
+
+    if (!needTrackPersistent) {
+        return replyFalse();
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
     auto& ub = State->AccessUsedBlocks();
-
-    if (hasCheckpointLight) {
-        for (const auto& range: ranges) {
-            State->MarkBlocksAsDirtyInCheckpointLight(range);
-        }
-    }
-
-    if (!State->GetTrackUsedBlocks() && !isOverlay) {
-        return replyFalse();
-    }
 
     // XXX: possible race when we have 2 inflight writes for the same block:
     // 1. request 1 is received and updates used block map here

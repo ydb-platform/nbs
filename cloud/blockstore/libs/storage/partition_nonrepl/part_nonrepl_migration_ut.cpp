@@ -142,7 +142,6 @@ struct TTestEnv
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
             VolumeActorId,
             false, // muteIOErrors
-            false, // markBlocksUsed
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

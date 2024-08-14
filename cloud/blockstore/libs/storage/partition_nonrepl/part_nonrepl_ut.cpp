@@ -133,7 +133,6 @@ struct TTestEnv
             TNonreplicatedPartitionConfig::TVolumeInfo{Now(), params.MediaKind},
             VolumeActorId,
             params.MuteIOErrors,
-            params.MarkBlocksUsed,
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

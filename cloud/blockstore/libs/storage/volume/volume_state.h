@@ -677,9 +677,9 @@ public:
         return MaxTimedOutDeviceStateDuration;
     }
 
-    const TCompressedBitmap* GetUsedBlocks() const
+    size_t GetUsedBlocksCount() const
     {
-        return UsedBlocks.get();
+        return UsedBlocks ? UsedBlocks->Count() : 0;
     }
 
     TCompressedBitmap& AccessUsedBlocks()
