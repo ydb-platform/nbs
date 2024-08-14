@@ -45,6 +45,7 @@ func (m *ydbMetrics) StatCall(
 
 		if *err != nil {
 			var errorType string
+			errorRegistry := subRegistry
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
 				errorType = "tli"
@@ -56,10 +57,12 @@ func (m *ydbMetrics) StatCall(
 			default:
 				errorType = "other"
 			}
-
-			errorRegistry := subRegistry.WithTags(map[string]string{
-				"type": errorType,
-			})
+			
+			if errorType != "other" {
+				errorRegistry = errorRegistry.WithTags(map[string]string{
+					"type": errorType,
+				})
+			}
 
 			// Should initialize all counters before using them, to avoid 'no data'.
 			errorCounter := errorRegistry.Counter("errors")
