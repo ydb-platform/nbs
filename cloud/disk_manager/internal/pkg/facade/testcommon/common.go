@@ -470,6 +470,19 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func CheckBaseDiskSlotReleased(
+	t *testing.T,
+	ctx context.Context,
+	overlayDiskID string,
+) {
+
+	poolStorage, err := newPoolStorage(ctx)
+	require.NoError(t, err)
+
+	err = poolStorage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
+	require.NoError(t, err)
+}
+
 func CheckConsistency(t *testing.T, ctx context.Context) {
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
 
