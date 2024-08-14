@@ -79,15 +79,20 @@ std::pair<ui32, TString> HandleException(
     try {
         throw;
     } catch (const TServiceError& e) {
-        LOG_ERROR(actorSystem, TBlockStoreComponents::DISK_AGENT,
+        const bool isHealthChecking = clientId == CheckHealthClientId;
+        auto priority = isHealthChecking ? NActors::NLog::PRI_DEBUG
+                                         : NActors::NLog::PRI_ERROR;
+        LOG_LOG(
+            actorSystem,
+            priority,
+            TBlockStoreComponents::DISK_AGENT,
             "%s [%s / %s] Service %s error: %s (%s)",
             methodName,
             deviceUUID.c_str(),
             clientId.c_str(),
             source,
             FormatResultCode(e.GetCode()).c_str(),
-            e.what()
-        );
+            e.what());
 
         return { e.GetCode(), e.what() };
     } catch (...) {

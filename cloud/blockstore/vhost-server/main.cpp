@@ -1,6 +1,7 @@
 #include "backend_aio.h"
 #include "backend_null.h"
 #include "backend_rdma.h"
+#include "critical_event.h"
 #include "server.h"
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
@@ -217,6 +218,7 @@ int main(int argc, char** argv)
     auto backend = CreateBackend(options, logService);
     auto server = CreateServer(logService, backend);
     auto Log = logService->CreateLog("SERVER");
+    SetCriticalEventsLog(Log);
 
     server->Start(options);
 
@@ -256,11 +258,11 @@ int main(int argc, char** argv)
         }
         switch (sig) {
             case SIGUSR1: {
-                auto stats = server->GetStats(prevStats);
+                auto completeStats = server->GetStats(prevStats);
                 auto now = Now();
                 try {
                     DumpStats(
-                        stats,
+                        completeStats,
                         prevStats,
                         now - ts,
                         Cout,

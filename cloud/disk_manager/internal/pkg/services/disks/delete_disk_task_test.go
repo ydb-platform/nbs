@@ -59,6 +59,16 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
 	}
 
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, nbsFactory, nbsClient, execCtx)
 	require.NoError(t, err)
@@ -106,12 +116,22 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
 
 	poolService.On(
 		"ReleaseBaseDisk",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_release_base_disk"),
 		&pools_protos.ReleaseBaseDiskRequest{
 			OverlayDisk: disk,
 		}).Return("release", nil)
@@ -159,9 +179,19 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
 
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+
 	poolService.On(
 		"ReleaseBaseDisk",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_release_base_disk"),
 		&pools_protos.ReleaseBaseDiskRequest{
 			OverlayDisk: disk,
 		}).Return("release", nil)

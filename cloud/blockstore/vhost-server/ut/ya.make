@@ -6,6 +6,8 @@ SRCS(
     backend.cpp
     backend_aio.cpp
 
+    critical_event.cpp
+
     histogram.cpp
     histogram_ut.cpp
 

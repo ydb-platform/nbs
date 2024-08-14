@@ -20,6 +20,8 @@ on:
           - relwithdebinfo
           - release-asan
           - release-tsan
+          - release-msan
+          - release-ubsan
       cache_update:
         type: boolean
         default: true
@@ -167,4 +169,3 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
       timeout-minutes: 1440
-

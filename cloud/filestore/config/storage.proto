@@ -324,9 +324,12 @@ message TStorageConfig
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
 
+    // Enables ThreeStageWrite for unaligned requests.
+    optional bool UnalignedThreeStageWriteEnabled = 366;
+
     // At the moment, due to the specifics of the implementation,
     // we sending a value much greater than it actually is.
     // Because of this, HIVE may consider controls overloaded,
     // even if the network bandwidth is still enough
-    optional bool EnableSendingMetricsToHive = 366;
+    optional bool EnableSendingMetricsToHive = 367;
 }

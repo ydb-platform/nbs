@@ -24,6 +24,7 @@ ci/relocation_test/yc-nbs-ci-relocation-test
 cms/config/blockstore-config
 cms/patcher/blockstore-patcher
 cms/patcher/tests/cloud-blockstore-tools-cms-patcher-tests
+csi_driver/client
 debug/featureconfig/blockstore-debug-featureconfig
 debug/formatter/blockstore-debug-formatter
 debug/readbdev/blockstore-readbdev

@@ -38,16 +38,17 @@ func newEndpointPicker(
 		endpoints:        endpoints,
 		healthyEndpoints: healthyEndpoints,
 	}
+
 	go func() {
 		ticker := time.NewTicker(endpointPickerCheckPeriod)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			for _, endpoint := range endpoints {
-				p.checkEndpoint(ctx, endpoint)
-			}
-
+		for {
 			select {
+			case <-ticker.C:
+				for _, endpoint := range endpoints {
+					p.checkEndpoint(ctx, endpoint)
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -99,5 +100,11 @@ func (p *endpointPicker) markAsHealthy(endpoint string) {
 func (p *endpointPicker) pickEndpoint() string {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	return common.RandomElement(p.healthyEndpoints)
+
+	endpoints := p.healthyEndpoints
+	if len(endpoints) == 0 {
+		endpoints = p.endpoints
+	}
+
+	return common.RandomElement(endpoints)
 }

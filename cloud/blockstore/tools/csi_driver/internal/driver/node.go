@@ -33,6 +33,9 @@ const nfsSocketName = "nfs.sock"
 const vhostIpc = nbsapi.EClientIpcType_IPC_VHOST
 const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
+const backendVolumeContextKey = "backend"
+const deviceNameVolumeContextKey = "deviceName"
+
 var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
@@ -200,7 +203,7 @@ func (s *nodeService) NodePublishVolume(
 	}
 
 	var err error
-	nfsBackend := (req.VolumeContext["backend"] == "nfs")
+	nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
@@ -231,7 +234,7 @@ func (s *nodeService) NodePublishVolume(
 
 	if err != nil {
 		return nil, s.statusErrorf(codes.Internal,
-			"Failed to publish volume: %w", err)
+			"Failed to publish volume: %v", err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -258,7 +261,7 @@ func (s *nodeService) NodeUnpublishVolume(
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, s.statusErrorf(
 			codes.InvalidArgument,
-			"Failed to unpublish volume: %w", err)
+			"Failed to unpublish volume: %v", err)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -296,7 +299,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	_, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, vhostIpc)
+	_, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext, vhostIpc)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
@@ -308,7 +311,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
+	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext, nbdIpc)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
@@ -375,7 +378,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
+	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext, nbdIpc)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
@@ -392,11 +395,17 @@ func (s *nodeService) startNbsEndpoint(
 	ctx context.Context,
 	podId string,
 	volumeId string,
+	volumeContext map[string]string,
 	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := filepath.Join(s.socketsDir, podId, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return nil, err
+	}
+
+	deviceName, found := volumeContext[deviceNameVolumeContextKey]
+	if !found {
+		deviceName = volumeId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
@@ -405,7 +414,7 @@ func (s *nodeService) startNbsEndpoint(
 		DiskId:           volumeId,
 		InstanceId:       podId,
 		ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
-		DeviceName:       volumeId,
+		DeviceName:       deviceName,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,

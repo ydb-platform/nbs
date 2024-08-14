@@ -706,6 +706,12 @@ public:
         ui64 commitId,
         TByteRange byteRange) const;
 
+    NProto::TError CheckFreshBytes(
+        ui64 nodeId,
+        ui64 commitId,
+        ui64 offset,
+        TStringBuf data) const;
+
     void WriteFreshBytes(
         TIndexTabletDatabase& db,
         ui64 nodeId,

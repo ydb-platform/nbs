@@ -10,7 +10,10 @@ namespace NCloud::NFileStore::NDaemon {
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerServer::TConfigInitializerServer(TOptionsServerPtr options)
-    : TConfigInitializerCommon(options)
+    : TConfigInitializerCommon(
+          {{"ServerAppConfig",
+            bind_front(&TConfigInitializerServer::ApplyServerAppConfig, this)}},
+          options)
     , Options(std::move(options))
 {}
 
@@ -32,9 +35,13 @@ void TConfigInitializerServer::InitAppConfig()
     ServerConfig = std::make_shared<NServer::TServerConfig>(serverConfig);
 }
 
-void TConfigInitializerServer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&)
+void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
 {
-    // nothing to do
+    AppConfig.Clear();
+    ParseProtoTextFromStringRobust(text, AppConfig);
+
+    ServerConfig = std::make_shared<NServer::TServerConfig>(
+        AppConfig.GetServerConfig());
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

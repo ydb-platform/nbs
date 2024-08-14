@@ -232,6 +232,76 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestPrivateServiceRetireBaseDiskInParallelWithOverlayDiskDeleting(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := t.Name()
+	imageSize := uint64(64 * 1024 * 1024)
+
+	testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		true, // pooled
+	)
+
+	var operations []*disk_manager.Operation
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: 134217728,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: "disk",
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	operations = append(operations, operation)
+
+	privateClient, err := testcommon.NewPrivateClient(ctx)
+	require.NoError(t, err)
+	defer privateClient.Close()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
+		ImageId: imageID,
+		ZoneId:  "zone-a",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	operations = append(operations, operation)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: "disk",
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	operations = append(operations, operation)
+
+	for _, operation := range operations {
+		err := internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+	}
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	ctx := testcommon.NewContext()
 
