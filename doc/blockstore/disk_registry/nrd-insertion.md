@@ -29,7 +29,7 @@ Symbols and terms:
 ### Text description
 
 1. The disk is broken
-    1. It is not completely broken, i.e. it is readable. `REMOVE_DEVICE` is sent for each device of the disk, pending migration of all the devices (in the meantime `DA` responses with `TRY_AGAIN`)
+    1. It is not completely broken, i.e. it is readable. `REMOVE_DEVICE` is sent to the `DR` with the path to the broken disk (e.g. `/dev/disk/by-partlabel/NBSNVME01`), pending migration of all the devices of this disk (in the meantime `DA` responses with `TRY_AGAIN`)
     1. It is completely broken (the OS does not see it, nothing can be read from it) - it is impossible to migrate devices. `Infra` cannot obtain the path to the broken disk and send `REMOVE_DEVICE`.
 1. The broken disk is physically removed from the host
 1. `Infra` reboots `DA` on the host so that it releases the broken path. The new disk would then be accessible at the same path
