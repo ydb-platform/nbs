@@ -18,7 +18,7 @@
         "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz",
         "5922914799": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk",
         "6318551696": "https://storage.yandexcloud.net/barkovbg-s3/ubuntu1604-ci-stable",
-        "9413258143": "https://storage.nemax.nebius.cloud/nbs-oss-resources/csi-sanity"
+        "9413258143": "https://storage.ai.nebius.cloud/nbs-oss-resources/csi-sanity"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
