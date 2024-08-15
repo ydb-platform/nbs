@@ -107,9 +107,9 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 ////////////////////////////////////////////////////////////////////////////////
 
 type releaseBaseDisk struct {
-	config            *client_config.ClientConfig
-	overlayDiskZoneID string
-	overlayDiskID     string
+	config        *client_config.ClientConfig
+	zoneID        string
+	overlayDiskID string
 }
 
 func (c *releaseBaseDisk) run() error {
@@ -128,7 +128,7 @@ func (c *releaseBaseDisk) run() error {
 
 	req := &api.ReleaseBaseDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: c.overlayDiskZoneID,
+			ZoneId: c.zoneID,
 			DiskId: c.overlayDiskID,
 		},
 	}
@@ -149,15 +149,15 @@ func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "release-base-disk",
+		Use: "release_base_disk",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
 	}
 
 	cmd.Flags().StringVar(
-		&c.overlayDiskZoneID,
-		"overlay-disk-zone-id",
+		&c.zoneID,
+		"zone-id",
 		"",
 		"overlay disk zone ID where disk is located; required",
 	)
@@ -171,8 +171,8 @@ func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 		"",
 		"overlay disk ID; required",
 	)
-	if err := cmd.MarkFlagRequired("id"); err != nil {
-		log.Fatalf("Error setting flag id as required: %v", err)
+	if err := cmd.MarkFlagRequired("overlay-disk-id"); err != nil {
+		log.Fatalf("Error setting flag overlay-disk-id as required: %v", err)
 	}
 
 	return cmd
