@@ -110,11 +110,15 @@ type releaseBaseDisk struct {
 	config            *client_config.ClientConfig
 	overlayDiskZoneID string
 	overlayDiskID     string
-	async             bool
 }
 
 func (c *releaseBaseDisk) run() error {
 	ctx := newContext(c.config)
+
+	err := requestConfirmation("overlay disk", c.overlayDiskID)
+	if err != nil {
+		return err
+	}
 
 	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
 	if err != nil {
@@ -135,10 +139,6 @@ func (c *releaseBaseDisk) run() error {
 	}
 
 	fmt.Printf("Operation: %v\n", resp.Id)
-
-	if c.async {
-		return nil
-	}
 
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
@@ -174,13 +174,6 @@ func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
-
-	cmd.Flags().BoolVar(
-		&c.async,
-		"async",
-		false,
-		"do not wait for task ending",
-	)
 
 	return cmd
 }
