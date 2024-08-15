@@ -5270,7 +5270,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             jsonResponse->Record.GetOutput(),
             &response).ok());
 
-
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.RebootTablet();
 
