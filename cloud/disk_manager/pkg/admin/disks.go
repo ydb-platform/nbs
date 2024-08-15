@@ -328,7 +328,7 @@ type deleteDisk struct {
 func (c *deleteDisk) run() error {
 	ctx := newContext(c.clientConfig)
 
-	err := requestDeletionConfirmation("disk", c.diskID)
+	err := requestConfirmation("disk", c.diskID)
 	if err != nil {
 		return err
 	}
