@@ -263,7 +263,7 @@ type deletePlacementGroup struct {
 func (c *deletePlacementGroup) run() error {
 	ctx := newContext(c.clientConfig)
 
-	err := requestDeletionConfirmation("placementGroup", c.placementGroupID)
+	err := requestConfirmation("placementGroup", c.placementGroupID)
 	if err != nil {
 		return err
 	}
