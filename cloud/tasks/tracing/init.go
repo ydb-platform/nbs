@@ -58,7 +58,7 @@ func InitTracing(
 
 	traceExporter, err := newTraceExporter(ctx, config)
 	if err != nil {
-		return nil, errors.NewNonRetriableErrorf("Failed to create exporter: %w", err)
+		return nil, errors.NewNonRetriableErrorf("failed to create trace exporter: %w", err)
 	}
 
 	resource := otel_resource.NewWithAttributes(
