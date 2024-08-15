@@ -106,6 +106,87 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type releaseBaseDisk struct {
+	config            *client_config.ClientConfig
+	overlayDiskZoneID string
+	overlayDiskID     string
+	async             bool
+}
+
+func (c *releaseBaseDisk) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	req := &api.ReleaseBaseDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: c.overlayDiskZoneID,
+			DiskId: c.overlayDiskID,
+		},
+	}
+
+	resp, err := client.ReleaseBaseDisk(getRequestContext(ctx), req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
+}
+
+func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
+	c := &releaseBaseDisk{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use: "release-base-disk",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.overlayDiskZoneID,
+		"overlay-disk-zone-id",
+		"",
+		"overlay disk zone ID where disk is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.overlayDiskID,
+		"overlay-disk-id",
+		"",
+		"overlay disk ID; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type retireBaseDisk struct {
 	config        *client_config.ClientConfig
 	baseDiskID    string
