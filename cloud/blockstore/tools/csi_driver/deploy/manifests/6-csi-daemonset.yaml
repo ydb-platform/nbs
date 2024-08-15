@@ -81,6 +81,9 @@ spec:
               mountPath: /run/nbsd/sockets
             - name: dev
               mountPath: /mnt/dev
+          ports:
+            - containerPort: 8775
+              name: http-monitoring
       volumes:
         - name: registration-dir
           hostPath:
