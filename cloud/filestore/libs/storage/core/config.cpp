@@ -169,6 +169,8 @@ namespace {
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
+                                                                               \
+    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \

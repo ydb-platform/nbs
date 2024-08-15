@@ -216,6 +216,8 @@ public:
 
     ui64 GetTrimBytesItemCount() const;
 
+    ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

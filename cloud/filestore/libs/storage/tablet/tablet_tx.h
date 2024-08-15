@@ -110,6 +110,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddBlob,                            __VA_ARGS__)                       \
     xxx(Cleanup,                            __VA_ARGS__)                       \
     xxx(Compaction,                         __VA_ARGS__)                       \
+    xxx(DeleteZeroCompactionRanges,         __VA_ARGS__)                       \
+    xxx(WriteCompactionMap,                 __VA_ARGS__)                       \
     xxx(DeleteGarbage,                      __VA_ARGS__)                       \
     xxx(DumpCompactionRange,                __VA_ARGS__)                       \
     xxx(FlushBytes,                         __VA_ARGS__)                       \
@@ -1641,6 +1643,48 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             ProcessedDeletionMarkerCount = 0;
+        }
+    };
+
+    //
+    // DeleteZeroCompactionRanges
+    //
+
+    struct TDeleteZeroCompactionRanges
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 StartIndex;
+
+        TDeleteZeroCompactionRanges(
+                TRequestInfoPtr requestInfo,
+                ui32 startIndex)
+            : RequestInfo(std::move(requestInfo))
+            , StartIndex(startIndex)
+        {}
+
+        void Clear()
+        {
+        }
+    };
+
+    //
+    // WriteCompactionMap
+    //
+
+    struct TWriteCompactionMap
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
+
+        TWriteCompactionMap(
+                TRequestInfoPtr requestInfo,
+                TVector<NProtoPrivate::TCompactionRangeStats> ranges)
+            : RequestInfo(std::move(requestInfo))
+            , Ranges(std::move(ranges))
+        {}
+
+        void Clear()
+        {
         }
     };
 
