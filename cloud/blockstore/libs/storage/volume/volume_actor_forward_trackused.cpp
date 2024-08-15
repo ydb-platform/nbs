@@ -47,14 +47,14 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             // does not contain marks that the block is used, but there was no
             // completed writes to this block. Therefore, we must update the map
             // only after the block has been successfully written.
-            const bool needTrackUsedBlocksReliable =
+            const bool needReliableTrackingUsedBlocks =
                 encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                needTrackUsedBlocksReliable,
+                needReliableTrackingUsedBlocks,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
@@ -95,7 +95,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    &State->AccessUsedBlocks(),
+                    State->AccessUsedBlocks(),
                     SelfId(),
                     partActorId,
                     TabletID(),
@@ -112,7 +112,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    &State->AccessUsedBlocks(),
+                    State->AccessUsedBlocks(),
                     needZeroesUnusedBlocks,
                     encryptedDiskRegistryBasedDisk,
                     partActorId,

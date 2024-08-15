@@ -55,7 +55,7 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
                     0ull,
                     MakeIntrusive<TCallContext>()),
                 request,
-                &usedBlocks,
+                usedBlocks,
                 true,
                 true,
                 EdgeActor,
