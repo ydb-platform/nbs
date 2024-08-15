@@ -6194,7 +6194,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         readBlocks(309, 7);
         readBlocksLocal(309, 7);
 
-        updateVolumeConfig("track-used,mask-unused");
+        updateVolumeConfig("mask-unused");
         volume.ReconnectPipe();
         volume.AddClient(clientInfo);
 

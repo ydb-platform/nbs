@@ -285,6 +285,7 @@ void TVolumeState::Reset()
             // volumes
             TrackUsedBlocks = true;
         } else if (tag == "mask-unused") {
+            TrackUsedBlocks = true;
             MaskUnusedBlocks = true;
         } else if (tag == "use-rdma") {
             UseRdma = true;
