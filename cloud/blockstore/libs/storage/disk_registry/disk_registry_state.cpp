@@ -522,14 +522,18 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         if (!config.GetFinishedMigrations().empty()) {
-            ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskId);
-            if (!seqNo) {
-                ReportDiskRegistryNoScheduledNotification(TStringBuilder()
-                    << "No scheduled notification for disk " << diskId.Quote());
+            const auto& notifiedDiskId = disk.MasterDiskId
+                ? disk.MasterDiskId
+                : diskId;
 
-                seqNo = NotificationSystem.AddReallocateRequest(disk.MasterDiskId
-                    ? disk.MasterDiskId
-                    : diskId);
+            ui64 seqNo = NotificationSystem.GetDiskSeqNo(notifiedDiskId);
+
+            if (!seqNo) {
+                ReportDiskRegistryNoScheduledNotification(
+                    TStringBuilder() << "No scheduled notification for disk "
+                                     << notifiedDiskId.Quote());
+
+                seqNo = NotificationSystem.AddReallocateRequest(notifiedDiskId);
             }
 
             for (const auto& m: config.GetFinishedMigrations()) {
