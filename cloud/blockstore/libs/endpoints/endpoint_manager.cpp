@@ -516,10 +516,15 @@ public:
         return Executor->Execute([                                             \
             ctx = std::move(callContext),                                      \
             req = std::move(request),                                          \
-            self = shared_from_this(),                                         \
-            this] () mutable                                                   \
+            weak_self = weak_from_this()] () mutable                           \
+        -> T##name##Method::TResponse                                          \
         {                                                                      \
-            return Do##name(std::move(ctx), std::move(req));                   \
+            auto self = weak_self.lock();                                      \
+            if (!self) {                                                       \
+                return TErrorResponse(E_FAIL, "EndpointManager is destroyed"); \
+            }                                                                  \
+                                                                               \
+            return self->Do##name(std::move(ctx), std::move(req));             \
         });                                                                    \
     }                                                                          \
                                                                                \
@@ -540,11 +545,13 @@ public:
     TFuture<void> RestoreEndpoints() override
     {
         AtomicSet(RestoringStage, ReadingStorage);
-        return Executor->Execute([this] () mutable {
-            auto future = DoRestoreEndpoints();
-            AtomicSet(RestoringStage, StartingEndpoints);
-            Executor->WaitFor(future);
-            AtomicSet(RestoringStage, Completed);
+        return Executor->Execute([weak_self = weak_from_this()] () mutable {
+            if (auto self = weak_self.lock()) {
+                auto future = self->DoRestoreEndpoints();
+                AtomicSet(self->RestoringStage, self->StartingEndpoints);
+                self->Executor->WaitFor(future);
+                AtomicSet(self->RestoringStage, self->Completed);
+            }
         });
     }
 
@@ -722,8 +729,20 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
-    return Executor->Execute([this, ctx, request] () mutable {
-        return StartEndpointImpl(std::move(ctx), std::move(request), true);
+    return Executor->Execute([
+        weak_self = weak_from_this(),
+        ctx,
+        request] () mutable -> NProto::TStartEndpointResponse
+    {
+        auto self = weak_self.lock();
+        if (!self) {
+            return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
+        }
+
+        return self->StartEndpointImpl(
+            std::move(ctx),
+            std::move(request),
+            true);
     });
 }
 
@@ -1544,8 +1563,10 @@ void TEndpointManager::HandleRestoredEndpoint(
             << ", error:" << FormatError(error));
     }
 
-    Executor->Execute([socketPath, this] () mutable {
-        RestoringEndpoints.erase(socketPath);
+    Executor->Execute([socketPath, weak_self = weak_from_this()] () mutable {
+        if (auto self = weak_self.lock()) {
+            self->RestoringEndpoints.erase(socketPath);
+        }
     });
 }
 
