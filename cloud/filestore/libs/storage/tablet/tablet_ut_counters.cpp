@@ -683,7 +683,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 }
             }, TDuration::Seconds(reportInterval));
 
-        // becouse of executor sends to HIVE average value from last operations
+        // tablet executor sends the average of the last several values
         UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval * 2), sz / 100);
     }
 
