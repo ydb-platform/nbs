@@ -67,8 +67,8 @@ func getRequestContext(ctx context.Context) context.Context {
 	return ctx
 }
 
-func requestDeletionConfirmation(objectType string, objectID string) error {
-	log.Printf("confirm destruction by typing %s id to stdin", objectType)
+func requestConfirmation(objectType string, objectID string) error {
+	log.Printf("confirm command by typing %s id to stdin", objectType)
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
 	if scanner.Text() != objectID {

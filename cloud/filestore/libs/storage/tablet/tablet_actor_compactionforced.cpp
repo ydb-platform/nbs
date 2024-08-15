@@ -235,6 +235,16 @@ struct TCleanupRequestConstructor
     }
 };
 
+struct TDeleteZeroCompactionRangesRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesRequest>
+    operator()(const ui32 range) const
+    {
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesRequest>(range);
+    }
+};
+
 using TForcedCompactionActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCompactionResponse,
     TCompactionRequestConstructor>;
@@ -242,6 +252,10 @@ using TForcedCompactionActor = TForcedOperationActor<
 using TForcedCleanupActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCleanupResponse,
     TCleanupRequestConstructor>;
+
+using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
+    TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesResponse,
+    TDeleteZeroCompactionRangesRequestConstructor>;
 
 }   // namespace
 
@@ -321,6 +335,14 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 
         case TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup:
             actor = std::make_unique<TForcedCleanupActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                *GetForcedRangeOperationState(),
+                std::move(requestInfo));
+            break;
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
+            actor = std::make_unique<TDeleteRangesWithEmptyScoreActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),

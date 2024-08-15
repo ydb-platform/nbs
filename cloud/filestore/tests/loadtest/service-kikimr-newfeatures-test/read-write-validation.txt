@@ -56,3 +56,32 @@ Tests {
         TestDuration: 60
     }
 }
+Tests {
+    LoadTest {
+        Name: "smoke_large_unaligned"
+        CreateFileStoreRequest: {
+            FileSystemId: "smoke_large_unaligned"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 10241024
+            BlockSize: 65536
+        }
+        DataLoadSpec {
+            Actions {
+                Action: ACTION_READ
+                Rate: 33
+            }
+            Actions {
+                Action: ACTION_WRITE
+                Rate: 33
+            }
+            ReadBytes: 128128
+            WriteBytes: 200064
+            InitialFileSize: 104857600
+            ValidationEnabled: true
+            AppendPercentage: 10
+        }
+        IODepth: 2
+        TestDuration: 60
+    }
+}

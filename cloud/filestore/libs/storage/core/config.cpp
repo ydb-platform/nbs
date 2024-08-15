@@ -183,6 +183,8 @@ using TAliasMap = THashMap<TString, TString>;
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
     xxx(FilestoreAliases,                TAliasMap,             {}            )\
+                                                                               \
+    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \

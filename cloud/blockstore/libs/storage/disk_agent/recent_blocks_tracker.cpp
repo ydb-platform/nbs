@@ -13,7 +13,35 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
 ///////////////////////////////////////////////////////////////////////////////
+
+void LogWarn(const TString& message)
+{
+    if (NActors::TlsActivationContext &&
+        NActors::TActivationContext::ActorSystem())
+    {
+        LOG_WARN(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            message);
+    }
+}
+
+void LogError(const TString& message)
+{
+    if (NActors::TlsActivationContext &&
+        NActors::TActivationContext::ActorSystem())
+    {
+        LOG_ERROR(
+            *NActors::TActivationContext::ActorSystem(),
+            TBlockStoreComponents::DISK_AGENT,
+            message);
+    }
+}
+
+}   // namespace
 
 EWellKnownResultCodes OverlapStatusToResult(
     EOverlapStatus overlapStatus,
@@ -59,9 +87,11 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
         if (requestId < oldestRequestId) {
             *overlapDetails =
                 TStringBuilder()
+                << "[" << DeviceUUID << "] "
                 << "The request is too old. Oldest tracked id="
                 << TCompositeId::FromRaw(oldestRequestId).Print()
                 << ", requestId=" << TCompositeId::FromRaw(requestId).Print();
+            LogWarn(*overlapDetails);
             return EOverlapStatus::Unknown;
         }
     }
@@ -75,9 +105,10 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
         ReportRepeatedRequestId(requestId, range);
         // Got same requestId. Reject it.
         *overlapDetails = TStringBuilder()
-                         << "The request with id="
-                         << TCompositeId::FromRaw(requestId).Print()
-                         << " repeated";
+                          << "[" << DeviceUUID << "] The request with id="
+                          << TCompositeId::FromRaw(requestId).Print()
+                          << " repeated";
+        LogWarn(*overlapDetails);
         return EOverlapStatus::Unknown;
     }
 
@@ -86,33 +117,35 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
     const ui64 rangeSize = range.Size();
     bitmap.Reserve(rangeSize);
     bitmap.Set(0, rangeSize);
-    auto lastOverlaped = OrderedById.end();
+    auto lastOverlapped = OrderedById.end();
     for (; it != OrderedById.end(); ++it) {
         if (!range.Overlaps(it->second)) {
             continue;
         }
         foundIntersections = true;
-        lastOverlaped = it;
+        lastOverlapped = it;
         TBlockRange64 other = range.Intersect(it->second);
         bitmap.Reset(other.Start - range.Start, other.End - range.Start + 1);
     }
     if (bitmap.FirstNonZeroBit() >= rangeSize) {
         *overlapDetails = TStringBuilder()
-                         << "Complete overlapping "
+                         << "[" << DeviceUUID << "] Complete overlapping "
                          << TCompositeId::FromRaw(requestId).Print() << " "
                          << DescribeRange(range) << " with "
-                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
-                         << " " << DescribeRange(lastOverlaped->second);
+                         << TCompositeId::FromRaw(lastOverlapped->first).Print()
+                         << " " << DescribeRange(lastOverlapped->second);
+        LogWarn(*overlapDetails);
         return EOverlapStatus::Complete;
     }
 
     if (foundIntersections) {
         *overlapDetails = TStringBuilder()
-                         << "Partial overlapping "
-                         << TCompositeId::FromRaw(requestId).Print() << " "
-                         << DescribeRange(range) << " with "
-                         << TCompositeId::FromRaw(lastOverlaped->first).Print()
-                         << " " << DescribeRange(lastOverlaped->second);
+                          << "[" << DeviceUUID << "] Partial overlapping "
+                          << TCompositeId::FromRaw(requestId).Print() << " "
+                          << DescribeRange(range) << " with "
+                          << TCompositeId::FromRaw(lastOverlapped->first).Print()
+                          << " " << DescribeRange(lastOverlapped->second);
+        LogWarn(*overlapDetails);
         return EOverlapStatus::Partial;
     }
     return EOverlapStatus::NotOverlapped;
@@ -205,18 +238,11 @@ void TRecentBlocksTracker::ReportRepeatedRequestId(
 {
     ReportUnexpectedIdentifierRepetition();
 
-    if (NActors::TlsActivationContext &&
-        NActors::TActivationContext::ActorSystem())
-    {
-        LOG_ERROR(
-            *NActors::TActivationContext::ActorSystem(),
-            TBlockStoreComponents::DISK_AGENT,
-            "[%s] Duplicate saved requestId: %ld block range [%ld, %ld]",
-            DeviceUUID.c_str(),
-            TCompositeId::FromRaw(requestId).Print().c_str(),
-            range.Start,
-            range.End);
-    }
+    auto message = TStringBuilder()
+                   << "[ " << DeviceUUID << "] Duplicate with same requestId: "
+                   << TCompositeId::FromRaw(requestId).Print()
+                   << " block range " << DescribeRange(range);
+    LogError(message);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
