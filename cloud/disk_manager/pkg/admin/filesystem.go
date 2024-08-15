@@ -219,7 +219,7 @@ type deleteFilesystem struct {
 func (c *deleteFilesystem) run() error {
 	ctx := newContext(c.clientConfig)
 
-	err := requestDeletionConfirmation("filesystem", c.filesystemID)
+	err := requestConfirmation("filesystem", c.filesystemID)
 	if err != nil {
 		return err
 	}
