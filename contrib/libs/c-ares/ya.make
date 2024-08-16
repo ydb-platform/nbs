@@ -10,7 +10,7 @@ LICENSE(
     Public-Domain
 )
 
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+LICENSE_TEXTS(LICENSE.md)
 
 VERSION(1.20.1)
 
