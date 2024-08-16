@@ -43,18 +43,19 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-            // For overlay disks, we must ensure that the map of used blocks
-            // does not contain marks that the block is used, but there was no
-            // completed writes to this block. Therefore, we must update the map
-            // only after the block has been successfully written.
-            const bool needReliableTrackingUsedBlocks =
+            // For overlay disks we need to ensure that the only bits that are
+            // set in the used block map are the bits that correspond to the
+            // blocks that have been successfully written. Therefore we must
+            // update the map only after the block has been successfully
+            // written.
+            const bool needReliableUsedBlockTracking =
                 encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                needReliableTrackingUsedBlocks,
+                needReliableUsedBlockTracking,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
@@ -66,17 +67,17 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     if constexpr (IsReadMethod<TMethod>) {
         if (State->GetTrackUsedBlocks()) {
-            const bool needZeroesUnusedBlocks =
+            const bool needToZeroUnusedBlocks =
                 State->GetMaskUnusedBlocks() ||
                 encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
-            if (!needZeroesUnusedBlocks) {
-                // We don't need to zeroes unused blocks. Therefore, we can do
+            if (!needToZeroUnusedBlocks) {
+                // We don't need to mask unused blocks. Therefore, we can do
                 // the usual reading.
                 return false;
             }
 
             const bool readUsedBlocksOnly =
-                State->AccessUsedBlocks().Count(
+                State->GetUsedBlocks().Count(
                     msg->Record.GetStartIndex(),
                     msg->Record.GetStartIndex() +
                         msg->Record.GetBlocksCount()) ==
@@ -85,7 +86,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             if (readUsedBlocksOnly) {
                 // We don't need to look at the map of used blocks when
                 // reading, because all the blocks have been used.
-                // Therefore, we don't need zeroes unused blocks and can do the
+                // Therefore, we don't need to zero unused blocks and can do the
                 // usual reading.
                 return false;
             }
@@ -95,7 +96,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    State->AccessUsedBlocks(),
+                    State->GetUsedBlocks(),
                     SelfId(),
                     partActorId,
                     TabletID(),
@@ -112,8 +113,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
-                    State->AccessUsedBlocks(),
-                    needZeroesUnusedBlocks,
+                    State->GetUsedBlocks(),
+                    needToZeroUnusedBlocks,
                     encryptedDiskRegistryBasedDisk,
                     partActorId,
                     TabletID(),

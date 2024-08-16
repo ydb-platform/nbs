@@ -677,9 +677,15 @@ public:
         return MaxTimedOutDeviceStateDuration;
     }
 
-    size_t GetUsedBlocksCount() const
+    size_t GetUsedBlockCount() const
     {
         return UsedBlocks ? UsedBlocks->Count() : 0;
+    }
+
+    const TCompressedBitmap& GetUsedBlocks() const
+    {
+        Y_DEBUG_ABORT_UNLESS(UsedBlocks);
+        return *UsedBlocks;
     }
 
     TCompressedBitmap& AccessUsedBlocks()

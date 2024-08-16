@@ -123,7 +123,7 @@ void TVolumeActor::ExecuteUpdateUsedBlocks(
     TVolumeDatabase db(tx.DB);
 
     for (const auto& range: args.Ranges) {
-        auto serializer = State->AccessUsedBlocks().RangeSerializer(
+        auto serializer = State->GetUsedBlocks().RangeSerializer(
             range.Start,
             range.End + 1);
 

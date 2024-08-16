@@ -303,6 +303,10 @@ void TVolumeState::Reset()
     // this filtration is needed due to a bug that caused some disks to have
     // garbage in FreshDeviceIds list
     FilteredFreshDeviceIds = MakeFilteredDeviceIds();
+
+    if (TrackUsedBlocks) {
+        AccessUsedBlocks();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

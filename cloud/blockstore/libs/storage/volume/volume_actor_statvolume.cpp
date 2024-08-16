@@ -272,7 +272,7 @@ void TVolumeActor::HandleStatVolume(
     stats->SetWriteAndZeroRequestsInFlight(WriteAndZeroRequestsInFlight.Size());
     stats->SetBoostBudget(
         State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds());
-    stats->SetVolumeUsedBlocksCount(State->GetUsedBlocksCount());
+    stats->SetVolumeUsedBlocksCount(State->GetUsedBlockCount());
 
     auto* clients = record.MutableClients();
     for (const auto& x: State->GetClients()) {
