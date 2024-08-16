@@ -75,7 +75,7 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             handler,
             nullptr,
-            Serializer->MessageByteSize(*Request, 0),
+            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0),
             MAX_PROTO_SIZE + dataSize);
 
         if (HasError(err)) {
@@ -162,7 +162,7 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             std::move(handler),
             nullptr,
-            Serializer->MessageByteSize(*Request, dataSize),
+            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, dataSize),
             MAX_PROTO_SIZE);
 
         if (HasError(err)) {

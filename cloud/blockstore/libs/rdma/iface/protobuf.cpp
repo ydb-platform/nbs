@@ -41,6 +41,7 @@ TProtoMessagePtr TProtoMessageSerializer::CreateProto(ui32 msgId) const
     return nullptr;
 }
 
+// static
 size_t TProtoMessageSerializer::MessageByteSize(
     const TProtoMessage& proto,
     size_t dataLen)
@@ -51,6 +52,23 @@ size_t TProtoMessageSerializer::MessageByteSize(
     Y_ENSURE(dataLen < RDMA_MAX_DATA_LEN, "attached data is too big");
 
     return NRdma::MessageByteSize(protoLen, dataLen);
+}
+
+// static
+size_t TProtoMessageSerializer::Serialize(
+    TStringBuf buffer,
+    ui32 msgId,
+    ui32 flags,
+    const TProtoMessage& proto)
+{
+    char* ptr = const_cast<char*>(buffer.data());
+    ptr += Serialize(buffer, msgId, flags, proto, 0);
+
+    if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+        ptr = const_cast<char*>(buffer.data()) + buffer.length();
+    }
+
+    return ptr - buffer.data();
 }
 
 // static

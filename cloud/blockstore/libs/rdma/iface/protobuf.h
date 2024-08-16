@@ -52,14 +52,22 @@ private:
     THashMap<ui32, IProtoFactoryPtr> Messages;
 
 public:
-    static size_t MessageByteSize(const TProtoMessage& proto, size_t dataLen);
+    [[nodiscard]] static size_t MessageByteSize(
+        const TProtoMessage& proto,
+        size_t dataLen);
+
+    static size_t Serialize(
+        TStringBuf buffer,
+        ui32 msgId,
+        ui32 flags,
+        const TProtoMessage& proto);
 
     static size_t Serialize(
         TStringBuf buffer,
         ui32 msgId,
         ui32 flags,
         const TProtoMessage& proto,
-        TBlockDataRefSpan data = {});
+        TBlockDataRefSpan data);
 
     static size_t Serialize(
         TStringBuf buffer,

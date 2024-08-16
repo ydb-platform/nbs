@@ -92,7 +92,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -187,7 +187,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(
+        return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
             BlockSize * Request->BlocksCount);
     }
@@ -268,7 +268,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
