@@ -279,8 +279,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             return;
         }
 
-        TVector<IOutputStream::TPart> parts;
-        builder.BuildNextRequest(&parts);
+        TSgList sglist;
+        builder.BuildNextRequest(&sglist);
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
@@ -292,7 +292,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             deviceRequest,
-            TContIOVector(parts.data(), parts.size()));
+            sglist);
 
         requests.push_back({std::move(ep), std::move(req)});
     }
@@ -440,11 +440,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             deviceRequest,
-            // XXX (cast)
-            TContIOVector(
-                const_cast<IOutputStream::TPart*>(
-                    reinterpret_cast<const IOutputStream::TPart*>(
-                        sglist.begin() + blocks)),
+            TBlockDataRefSpan(
+                sglist.begin() + blocks,
                 r.DeviceBlockRange.Size()));
 
         blocks += r.DeviceBlockRange.Size();

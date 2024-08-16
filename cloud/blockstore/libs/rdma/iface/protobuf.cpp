@@ -59,9 +59,13 @@ size_t TProtoMessageSerializer::Serialize(
     ui32 msgId,
     ui32 flags,
     const TProtoMessage& proto,
-    TContIOVector data)
+    TBlockDataRefSpan data)
 {
-    size_t dataLen = data.Bytes();
+    const size_t dataLen = Accumulate(
+        data,
+        size_t{},
+        [](size_t acc, TBlockDataRef dataRef) { return acc + dataRef.Size(); });
+
     char* ptr = const_cast<char*>(buffer.data());
     ptr += Serialize(buffer, msgId, flags, proto, dataLen);
 
@@ -69,10 +73,13 @@ size_t TProtoMessageSerializer::Serialize(
         ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
     }
 
-    for (size_t i = 0; i < data.Count(); ++i) {
-        const auto& part = data.Parts()[i];
-        memcpy(ptr, part.buf, part.len);
-        ptr += part.len;
+    for (const auto part : data) {
+        if (part.Data()) {
+            memcpy(ptr, part.Data(), part.Size());
+        } else {
+            memset(ptr, 0, part.Size());
+        }
+        ptr += part.Size();
     }
 
     return ptr - buffer.data();

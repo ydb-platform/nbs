@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/hash.h>
@@ -58,7 +59,7 @@ public:
         ui32 msgId,
         ui32 flags,
         const TProtoMessage& proto,
-        TContIOVector data);
+        TBlockDataRefSpan data = {});
 
     static size_t Serialize(
         TStringBuf buffer,
@@ -75,7 +76,7 @@ public:
         TStringBuf Data;
     };
 
-    TResultOrError<TParseResult> Parse(TStringBuf buffer) const;
+    [[nodiscard]] TResultOrError<TParseResult> Parse(TStringBuf buffer) const;
 
 protected:
     template <typename T>

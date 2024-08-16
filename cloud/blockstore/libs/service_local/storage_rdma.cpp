@@ -93,12 +93,11 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,
-            Proto,
-            TContIOVector(nullptr, 0));
+            Proto);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -210,12 +209,12 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             Proto,
-            TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
+            sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -295,12 +294,11 @@ public:
     {
         Y_UNUSED(isAlignedDataEnabled);
 
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
-            0, // flags
-            Proto,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            Proto);
     }
 
     void HandleResponse(TStringBuf buffer) override

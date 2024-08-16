@@ -107,12 +107,11 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
-            0, // flags
-            *Request,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -210,31 +209,12 @@ public:
 
         const auto& sglist = guard.Get();
 
-        // 1. Ensure that the sglist consists of TBlockDataRef.
-        static_assert(std::is_same_v<
-                      std::remove_cvref_t<decltype(sglist.front())>,
-                      TBlockDataRef>);
-
-        // 2. Ensure IOutputStream::TPart layout compatible with TBlockDataRef
-        static_assert(sizeof(TBlockDataRef) == sizeof(IOutputStream::TPart));
-        static_assert(alignof(TBlockDataRef) == alignof(IOutputStream::TPart));
-        // Can't get offset of private member :-(
-        // static_assert(0 == offsetof(TBlockDataRef, Start));
-        static_assert(0 == offsetof(IOutputStream::TPart, buf));
-        // Can't get offset of private member :-(
-        // static_assert(8 == offsetof(TBlockDataRef, Length));
-        static_assert(8 == offsetof(IOutputStream::TPart, len));
-
-        // 3. reinterpret_cast TBlockDataRef* to IOutputStream::TPart*
-        auto* sgListAsTPart = const_cast<IOutputStream::TPart*>(
-            reinterpret_cast<const IOutputStream::TPart*>(sglist.begin()));
-
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             0, // flags
             *Request,
-            TContIOVector(sgListAsTPart, sglist.size()));
+            sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -303,12 +283,11 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
-            0, // flags
-            *Request,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override

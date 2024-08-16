@@ -226,12 +226,11 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             return;
         }
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
-            0, // flags
-            deviceRequest,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            deviceRequest);
 
         requests.push_back({std::move(ep), std::move(req)});
     }

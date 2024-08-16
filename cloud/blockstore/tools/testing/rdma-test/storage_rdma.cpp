@@ -82,12 +82,11 @@ public:
             return err;
         }
 
-        Serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadBlocksRequest,
-            0, // flags
-            *Request,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            *Request);
 
         return std::move(req);
     }
@@ -174,12 +173,12 @@ public:
         Y_ABORT_UNLESS(guard);
 
         const auto& sglist = guard.Get();
-        Serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteBlocksRequest,
-            0, // flags
+            0,   // flags
             *Request,
-            TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
+            sglist);
 
         return std::move(req);
     }
