@@ -31,7 +31,7 @@ func newYDB(
 	ctx context.Context,
 	metricsRegistry metrics.Registry,
 ) (*YDBClient, error) {
-	
+
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "disk_manager"
@@ -517,7 +517,7 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"success",
-		map[string]string{"call": "client/CreateOrAlterTable"},
+		map[string]string{"call": "session/CreateOrAlterTable"},
 	).On("Inc").Once()
 
 	metricsRegistry.GetCounter(
@@ -564,7 +564,7 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"errors",
-		map[string]string{"call": "client/CreateOrAlterTable", "type": "scheme"},
+		map[string]string{"call": "session/CreateOrAlterTable", "type": "scheme"},
 	).On("Inc").Once()
 
 	// YDB has limited length of object name. Current limit is 255.

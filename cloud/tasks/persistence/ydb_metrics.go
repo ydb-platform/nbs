@@ -54,11 +54,9 @@ func (m *ydbMetrics) StatCall(
 			case errors.Is(*err, errors.NewEmptyRetriableError()):
 				logging.Info(ctx, "Got Retriable error %v", *err)
 				errorType = "retriable"
-			default:
-				errorType = "other"
 			}
-			
-			if errorType != "other" {
+
+			if errorType != "" {
 				errorRegistry = errorRegistry.WithTags(map[string]string{
 					"type": errorType,
 				})

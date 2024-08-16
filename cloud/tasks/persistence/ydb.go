@@ -484,6 +484,50 @@ func (s *Session) execute(
 	return tx, Result{res: ydbRes}, nil
 }
 
+func (s *Session) CreateOrAlterTable(
+	ctx context.Context,
+	client *YDBClient,
+	fullPath string,
+	folderFullPath string,
+	description CreateTableDescription,
+	dropUnusedColumns bool,
+) (err error) {
+
+	defer s.metrics.StatCall(
+		ctx,
+		"session/CreateOrAlterTable",
+		fmt.Sprintf("At path: %v", fullPath),
+	)(&err)
+
+	err = client.makeDirs(ctx, folderFullPath)
+	if err != nil {
+		return err
+	}
+
+	return createOrAlterTable(
+		ctx,
+		s.session,
+		fullPath,
+		description,
+		dropUnusedColumns,
+	)
+}
+
+func (s *Session) DropTable(
+	ctx context.Context,
+	client *YDBClient,
+	fullPath string,
+) (err error) {
+
+	defer s.metrics.StatCall(
+		ctx,
+		"session/DropTable",
+		fmt.Sprintf("At path: %v", fullPath),
+	)(&err)
+
+	return dropTable(ctx, s.session, fullPath)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type YDBClient struct {
@@ -516,25 +560,13 @@ func (c *YDBClient) CreateOrAlterTable(
 	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
-			defer s.metrics.StatCall(
-				ctx,
-				"client/CreateOrAlterTable",
-				fmt.Sprintf("At path: %v", fullPath),
-			)(&err)
-
-			err = c.makeDirs(ctx, folderFullPath)
-			if err != nil {
-				return err
-			}
-
-			err = createOrAlterTable(
-				ctx,
-				s.session,
+			return s.CreateOrAlterTable(ctx,
+				c,
 				fullPath,
+				folderFullPath,
 				description,
 				dropUnusedColumns,
 			)
-			return err
 		},
 	)
 }
@@ -551,14 +583,7 @@ func (c *YDBClient) DropTable(
 	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
-			defer s.metrics.StatCall(
-				ctx,
-				"client/DropTable",
-				fmt.Sprintf("At path: %v", fullPath),
-			)(&err)
-
-			err = dropTable(ctx, s.session, fullPath)
-			return err
+			return s.DropTable(ctx, c, fullPath)
 		},
 	)
 }
