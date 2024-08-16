@@ -516,10 +516,10 @@ public:
         return Executor->Execute([                                             \
             ctx = std::move(callContext),                                      \
             req = std::move(request),                                          \
-            weak_self = weak_from_this()] () mutable                           \
+            weakSelf = weak_from_this()] () mutable                            \
         -> T##name##Method::TResponse                                          \
         {                                                                      \
-            auto self = weak_self.lock();                                      \
+            auto self = weakSelf.lock();                                       \
             if (!self) {                                                       \
                 return TErrorResponse(E_FAIL, "EndpointManager is destroyed"); \
             }                                                                  \
@@ -545,8 +545,8 @@ public:
     TFuture<void> RestoreEndpoints() override
     {
         AtomicSet(RestoringStage, ReadingStorage);
-        return Executor->Execute([weak_self = weak_from_this()] () mutable {
-            if (auto self = weak_self.lock()) {
+        return Executor->Execute([weakSelf = weak_from_this()] () mutable {
+            if (auto self = weakSelf.lock()) {
                 auto future = self->DoRestoreEndpoints();
                 AtomicSet(self->RestoringStage, self->StartingEndpoints);
                 self->Executor->WaitFor(future);
@@ -730,11 +730,11 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
     return Executor->Execute([
-        weak_self = weak_from_this(),
+        weakSelf = weak_from_this(),
         ctx,
         request] () mutable -> NProto::TStartEndpointResponse
     {
-        auto self = weak_self.lock();
+        auto self = weakSelf.lock();
         if (!self) {
             return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
         }
@@ -1563,8 +1563,8 @@ void TEndpointManager::HandleRestoredEndpoint(
             << ", error:" << FormatError(error));
     }
 
-    Executor->Execute([socketPath, weak_self = weak_from_this()] () mutable {
-        if (auto self = weak_self.lock()) {
+    Executor->Execute([socketPath, weakSelf = weak_from_this()] () mutable {
+        if (auto self = weakSelf.lock()) {
             self->RestoringEndpoints.erase(socketPath);
         }
     });
