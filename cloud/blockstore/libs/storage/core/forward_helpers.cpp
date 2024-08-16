@@ -75,15 +75,14 @@ void FillUnencryptedBlockMask(
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlockMarks MakeBlockMarks(
-    const TCompressedBitmap* usedBlocks,
+    const TCompressedBitmap& usedBlocks,
     TBlockRange64 range)
 {
     TBlockMarks blockMarks(range.Size(), TEmptyMark{});
-    if (usedBlocks) {
-        for (ui64 i = 0; i < range.Size(); ++i) {
-            if (usedBlocks->Test(i + range.Start)) {
-                blockMarks[i] = TUsedMark{};
-            }
+
+    for (ui64 i = 0; i < range.Size(); ++i) {
+        if (usedBlocks.Test(i + range.Start)) {
+            blockMarks[i] = TUsedMark{};
         }
     }
 

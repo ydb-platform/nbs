@@ -6182,11 +6182,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         };
 
         readBlocks(10, 1);
+        readBlocksLocal(10, 1);
         readBlocks(20, 4);
+        readBlocksLocal(20, 4);
         readBlocks(60, 3);
+        readBlocksLocal(60, 3);
         readBlocks(65, 6);
+        readBlocksLocal(65, 6);
         readBlocks(300, 7);
+        readBlocksLocal(300, 7);
         readBlocks(309, 7);
+        readBlocksLocal(309, 7);
 
         updateVolumeConfig("mask-unused");
         volume.ReconnectPipe();

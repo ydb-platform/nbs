@@ -169,11 +169,10 @@ struct TTestEnv
         return devices;
     }
 
-    TTestEnv(TTestActorRuntime& runtime, THashSet<TString> freshDeviceIds = {})
+    explicit TTestEnv(TTestActorRuntime& runtime, THashSet<TString> freshDeviceIds = {})
         : TTestEnv(
             runtime,
             DefaultBlockSize,
-            false,
             DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
             TVector<TDevices>{
                 DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 1),
@@ -188,7 +187,6 @@ struct TTestEnv
         : TTestEnv(
             runtime,
             blockSize,
-            false,
             DefaultDevices(runtime.GetNodeId(0), blockSize),
             TVector<TDevices>{
                 DefaultReplica(runtime.GetNodeId(0), blockSize, 1),
@@ -202,7 +200,6 @@ struct TTestEnv
     TTestEnv(
             TTestActorRuntime& runtime,
             ui32 blockSize,
-            bool markBlocksUsed,
             TDevices devices,
             TVector<TDevices> replicas,
             THashSet<TString> freshDeviceIds)
@@ -212,7 +209,7 @@ struct TTestEnv
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
-        , Replicas(replicas)
+        , Replicas(std::move(replicas))
         , ResyncController(runtime)
     {
         SetupLogging();
@@ -267,7 +264,6 @@ struct TTestEnv
                 NProto::STORAGE_MEDIA_SSD_MIRROR3},
             VolumeActorId,
             false, // muteIOErrors
-            markBlocksUsed,
             std::move(freshDeviceIds),
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

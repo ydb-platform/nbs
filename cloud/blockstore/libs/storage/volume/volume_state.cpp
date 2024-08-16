@@ -244,8 +244,11 @@ void TVolumeState::Reset()
         if (Meta.GetDevices().size()) {
             CreatePartitionStatInfo(GetDiskId(), 0);
         }
-        const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
-        if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {
+        const bool encrypted =
+            Meta.GetVolumeConfig().GetEncryptionDesc().GetMode() !=
+            NProto::NO_ENCRYPTION;
+        const bool overlay = !GetBaseDiskId().Empty();
+        if (encrypted || overlay) {
             TrackUsedBlocks = true;
         }
     } else {
@@ -282,6 +285,7 @@ void TVolumeState::Reset()
             // volumes
             TrackUsedBlocks = true;
         } else if (tag == "mask-unused") {
+            TrackUsedBlocks = true;
             MaskUnusedBlocks = true;
         } else if (tag == "use-rdma") {
             UseRdma = true;
@@ -299,6 +303,10 @@ void TVolumeState::Reset()
     // this filtration is needed due to a bug that caused some disks to have
     // garbage in FreshDeviceIds list
     FilteredFreshDeviceIds = MakeFilteredDeviceIds();
+
+    if (TrackUsedBlocks) {
+        AccessUsedBlocks();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
