@@ -188,7 +188,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFinishMigrationForMirroredDisk)
+    void ShouldFinishMigrationForMirroredDiskImpl(bool rebootTable)
     {
         const auto agent1 = CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1", "rack-1", 10_GB),
@@ -359,6 +359,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.FinishMigration("disk-1", "uuid-2", "uuid-6");
 
+        if (rebootTable) {
+            diskRegistry.RebootTablet();
+            diskRegistry.WaitReady();
+
+            RegisterAgents(*runtime, 3);
+            WaitForAgents(*runtime, 3);
+        }
+
         {
             auto response = diskRegistry.AllocateDisk(
                 "disk-1",
@@ -397,6 +405,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
         }
+    }
+
+    Y_UNIT_TEST(ShouldFinishMigrationForMirroredDisk)
+    {
+        ShouldFinishMigrationForMirroredDiskImpl(false);
+    }
+
+    Y_UNIT_TEST(ShouldFinishMigrationForMirroredDiskAfterReboot)
+    {
+        ShouldFinishMigrationForMirroredDiskImpl(true);
     }
 }
 

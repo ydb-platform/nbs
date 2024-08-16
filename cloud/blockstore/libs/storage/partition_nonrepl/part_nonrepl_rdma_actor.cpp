@@ -466,6 +466,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWakeup(
 
 void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext& ctx)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Reply and die",
+        SelfId().ToString().c_str());
+
     for (auto& [_, endpoint]: AgentId2EndpointFuture) {
         endpoint.Subscribe([](auto& future) {
             if (future.HasValue()) {
@@ -489,6 +495,12 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
         MakeIntrusive<TCallContext>());
 
     if (!RequestsInProgress.Empty()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Postpone PoisonPill response. Wait for requests in progress",
+            SelfId().ToString().c_str());
+
         return;
     }
 
