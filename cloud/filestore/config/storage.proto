@@ -329,4 +329,16 @@ message TStorageConfig
 
     // Number of ranges with zero compaction stats to delete per tx.
     optional uint32 MaxZeroCompactionRangesToDeletePerTx = 367;
+
+    // Mapping allowing for multiple fs ids to point to the same fs
+    message TFilestoreAliasEntry
+    {
+        optional string Alias = 1;
+        optional string FsId = 2;
+    }
+    message TFilestoreAliases
+    {
+        repeated TFilestoreAliasEntry Entries = 1;
+    }
+    optional TFilestoreAliases FilestoreAliases = 368;
 }
