@@ -66,6 +66,14 @@ public:
         return request;
     }
 
+    auto CreateListNodesRequest(const TString& fileSystemId, ui64 nodeId)
+    {
+        auto request = std::make_unique<TEvService::TEvListNodesRequest>();
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                     \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

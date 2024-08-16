@@ -5213,6 +5213,72 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createSessionResponse->GetErrorReason());
         service.AssertDestroyFileStoreFailed(fsId, true);
     
+    Y_UNIT_TEST(ShouldUseAliasesForRequestsForwarding)
+    {
+        const TString originalFs = "test";
+        const TString mirroredFs = "test-mirrored";
+
+        NProto::TStorageConfig::TFilestoreAliasEntry entry;
+        entry.SetAlias(mirroredFs);
+        entry.SetFsId(originalFs);
+        NProto::TStorageConfig::TFilestoreAliases aliases;
+        aliases.MutableEntries()->Add(std::move(entry));
+
+        NProto::TStorageConfig config;
+        config.MutableFilestoreAliases()->Swap(&aliases);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(originalFs, 1000);
+        service.CreateFileStore(mirroredFs, 1000);
+
+        auto originalHeaders = service.InitSession(originalFs, "client");
+        auto mirroredHeaders = service.InitSession(mirroredFs, "client");
+
+        // Create file in the original fs
+        service.CreateNode(originalHeaders, TCreateNodeArgs::File(RootNodeId, "testfile"));
+
+        // Check that the file is visible in the mirrored fs
+        auto listNodesResponse =
+            service.ListNodes(mirroredHeaders, mirroredFs, RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("testfile", listNodesResponse.GetNames(0));
+
+        auto nodeId = listNodesResponse.GetNodes(0).GetId();
+
+        // write to the file in the mirrored fs
+        auto mirroredHandle = service.CreateHandle(
+            mirroredHeaders,
+            mirroredFs,
+            nodeId,
+            "",
+            TCreateHandleArgs::WRNLY)->Record.GetHandle();
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(mirroredHeaders, mirroredFs, nodeId, mirroredHandle, 0, data);
+
+        // validate that written data can be read from the original fs
+        auto originalHandle = service.CreateHandle(
+            originalHeaders,
+            originalFs,
+            nodeId,
+            "",
+            TCreateHandleArgs::RDNLY)->Record.GetHandle();
+        auto readData = service.ReadData(
+            originalHeaders,
+            originalFs,
+            nodeId,
+            originalHandle,
+            0,
+            256_KB)->Record.GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(data, readData);
+    }
+
     Y_UNIT_TEST(ShouldWriteCompactionMap)
     {
         TTestEnv env;

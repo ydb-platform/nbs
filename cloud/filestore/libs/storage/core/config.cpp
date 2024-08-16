@@ -2,6 +2,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 
 #include <google/protobuf/text_format.h>
@@ -11,6 +12,10 @@ namespace NCloud::NFileStore::NStorage {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Type alias is used here because using THashMap<TString, TString> inside macro
+// will mess it up because of the comma in the type.
+using TAliasMap = THashMap<TString, TString>;
 
 #define FILESTORE_STORAGE_CONFIG(xxx)                                          \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
@@ -170,6 +175,8 @@ namespace {
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
+    xxx(FilestoreAliases,                TAliasMap,             {}            )\
+                                                                               \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
 
@@ -189,10 +196,38 @@ bool IsEmpty(const T& t)
     return !t;
 }
 
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
+template <>
+bool IsEmpty(const NProto::TStorageConfig::TFilestoreAliases& value)
+{
+    return value.GetEntries().empty();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
+}
+
+template <>
+TAliasMap ConvertValue(const NProto::TStorageConfig::TFilestoreAliases& value)
+{
+    TAliasMap result;
+    for (const auto& entry: value.GetEntries()) {
+        result[entry.GetAlias()] = entry.GetFsId();
+    }
+    return result;
 }
 
 template <>
@@ -219,6 +254,26 @@ template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
+}
+
+template <>
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
+}
+
+template <>
+void DumpImpl(const TAliasMap& value, IOutputStream& os)
+{
+    os << "{ ";
+    for (const auto& [alias, fsId]: value) {
+        os << alias << ": " << fsId << ", ";
+    }
+    os << " }";
 }
 
 }   // namespace
