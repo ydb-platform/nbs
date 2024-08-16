@@ -85,6 +85,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_createsession.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_deletecheckpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_deletegarbage.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_delete_zero_compaction_ranges.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_destroycheckpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_destroyhandle.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_destroysession.cpp
@@ -122,6 +123,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_writebatch.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_writeblob.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_writedata.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_write_compactionmap.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_zerorange.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_counters.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_database.cpp
