@@ -20,7 +20,6 @@ class TSyncFollowerSessionsActor final
 private:
     const TString LogTag;
     const TActorId Tablet;
-    const TString FileSystemId;
     const TVector<TString> FollowerIds;
     const TRequestInfoPtr RequestInfo;
 
@@ -31,7 +30,6 @@ public:
     TSyncFollowerSessionsActor(
         TString logTag,
         TActorId tablet,
-        TString fileSystemId,
         TVector<TString> followerIds,
         TRequestInfoPtr requestInfo);
 
@@ -65,12 +63,10 @@ private:
 TSyncFollowerSessionsActor::TSyncFollowerSessionsActor(
         TString logTag,
         TActorId tablet,
-        TString fileSystemId,
         TVector<TString> followerIds,
         TRequestInfoPtr requestInfo)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
-    , FileSystemId(std::move(fileSystemId))
     , FollowerIds(std::move(followerIds))
     , RequestInfo(std::move(requestInfo))
 {}
@@ -232,7 +228,6 @@ class TCleanupSessionsActor final
 private:
     const TString LogTag;
     const TActorId Tablet;
-    const TString FileSystemId;
     const TRequestInfoPtr RequestInfo;
     const TVector<NProto::TSession> Sessions;
 
@@ -242,7 +237,6 @@ public:
     TCleanupSessionsActor(
         TString logTag,
         TActorId tablet,
-        TString fileSystemId,
         TRequestInfoPtr requestInfo,
         TVector<NProto::TSession> sessions);
 
@@ -270,12 +264,10 @@ private:
 TCleanupSessionsActor::TCleanupSessionsActor(
         TString logTag,
         TActorId tablet,
-        TString fileSystemId,
         TRequestInfoPtr requestInfo,
         TVector<NProto::TSession> sessions)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
-    , FileSystemId(std::move(fileSystemId))
     , RequestInfo(std::move(requestInfo))
     , Sessions(std::move(sessions))
 {}
@@ -294,8 +286,8 @@ void TCleanupSessionsActor::DestroySessions(const TActorContext& ctx)
             LogTag.c_str(),
             Sessions[i].GetSessionId().c_str());
 
-        auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
-        request->CallContext = MakeIntrusive<TCallContext>(FileSystemId);
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
 
         auto* headers = request->Record.MutableHeaders();
         headers->SetSessionId(Sessions[i].GetSessionId());
@@ -387,9 +379,7 @@ void TIndexTabletActor::HandleSyncSessions(
 {
     auto* msg = ev->Get();
 
-    if (ev->Sender == ctx.SelfID) {
-        SyncSessionsScheduled = false;
-    }
+    SyncSessionsScheduled = false;
 
     TVector<TString> followerIds;
     for (const auto& followerId: GetFileSystem().GetFollowerFileSystemIds()) {
@@ -415,7 +405,6 @@ void TIndexTabletActor::HandleSyncSessions(
     auto actor = std::make_unique<TSyncFollowerSessionsActor>(
         LogTag,
         ctx.SelfID,
-        GetFileSystemId(),
         std::move(followerIds),
         std::move(requestInfo));
 
@@ -464,12 +453,10 @@ void TIndexTabletActor::HandleCleanupSessions(
 {
     auto* msg = ev->Get();
 
-    if (ev->Sender == ctx.SelfID) {
-        CleanupSessionsScheduled = false;
-    }
+    CleanupSessionsScheduled = false;
 
     auto sessions = GetTimeoutedSessions(ctx.Now());
-    if (!sessions) {
+    if (sessions.empty()) {
         // nothing to do
         using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;
         if (ev->Sender != ctx.SelfID) {
@@ -498,7 +485,6 @@ void TIndexTabletActor::HandleCleanupSessions(
     auto actor = std::make_unique<TCleanupSessionsActor>(
         LogTag,
         ctx.SelfID,
-        GetFileSystemId(),
         std::move(requestInfo),
         std::move(list));
 
