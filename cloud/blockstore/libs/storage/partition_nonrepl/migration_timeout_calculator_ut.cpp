@@ -179,7 +179,6 @@ TNonreplicatedPartitionConfigPtr MakePartitionConfig(
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
         NActors::TActorId(),
         false,                 // muteIOErrors
-        false,                 // markBlocksUsed
         THashSet<TString>(),   // freshDeviceIds
         TDuration::Zero(),     // maxTimedOutDeviceStateDuration
         false,                 // maxTimedOutDeviceStateDurationOverridden

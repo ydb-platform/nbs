@@ -44,7 +44,7 @@ public:
     TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        const TCompressedBitmap* usedBlocks,
+        const TCompressedBitmap& usedBlocks,
         bool maskUnusedBlocks,
         bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
@@ -82,7 +82,7 @@ template <ReadRequest TMethod>
 TReadMarkedActor<TMethod>::TReadMarkedActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
-        const TCompressedBitmap* usedBlocks,
+        const TCompressedBitmap& usedBlocks,
         bool maskUnusedBlocks,
         bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
