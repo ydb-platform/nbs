@@ -388,10 +388,12 @@ void TIndexTabletActor::HandleSyncSessions(
 
     if (followerIds.empty()) {
         using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
-        if (ev->Sender != ctx.SelfID) {
-            auto response = std::make_unique<TResponse>();
-            NCloud::Reply(ctx, *ev, std::move(response));
-        }
+        auto response = std::make_unique<TResponse>();
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s SyncSessions dud",
+            LogTag.c_str());
 
         ScheduleSyncSessions(ctx);
         return;
@@ -459,10 +461,8 @@ void TIndexTabletActor::HandleCleanupSessions(
     if (sessions.empty()) {
         // nothing to do
         using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;
-        if (ev->Sender != ctx.SelfID) {
-            auto response = std::make_unique<TResponse>();
-            NCloud::Reply(ctx, *ev, std::move(response));
-        }
+        auto response = std::make_unique<TResponse>();
+        NCloud::Reply(ctx, *ev, std::move(response));
 
         ScheduleCleanupSessions(ctx);
         return;

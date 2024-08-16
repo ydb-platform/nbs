@@ -26,7 +26,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, ...)                      \
     xxx(Compaction,                             __VA_ARGS__)                   \
     xxx(CollectGarbage,                         __VA_ARGS__)                   \
-    xxx(SyncSessions,                        __VA_ARGS__)                      \
+    xxx(SyncSessions,                           __VA_ARGS__)                   \
     xxx(CleanupSessions,                        __VA_ARGS__)                   \
     xxx(DeleteCheckpoint,                       __VA_ARGS__)                   \
     xxx(DumpCompactionRange,                    __VA_ARGS__)                   \

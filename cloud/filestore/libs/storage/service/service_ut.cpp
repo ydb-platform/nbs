@@ -2942,8 +2942,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    leaderActorId,
-                    leaderActorId,
+                    leaderActorId, // recipient
+                    TActorId(), // sender
                     new TRequest(),
                     0, // flags
                     0),
@@ -2951,7 +2951,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
-
         // waiting for idle session expiration
         // sending the event manually since registration observers which enable
         // scheduling for actors are reset upon tablet reboot
@@ -2964,8 +2963,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    actorId,
-                    actorId,
+                    actorId, // recipient
+                    TActorId(), // sender
                     new TRequest(),
                     0, // flags
                     0),
