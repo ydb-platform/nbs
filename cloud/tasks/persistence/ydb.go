@@ -493,6 +493,9 @@ func (s *Session) CreateOrAlterTable(
 	dropUnusedColumns bool,
 ) (err error) {
 
+	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+	defer cancel()
+
 	defer s.metrics.StatCall(
 		ctx,
 		"session/CreateOrAlterTable",
@@ -515,9 +518,11 @@ func (s *Session) CreateOrAlterTable(
 
 func (s *Session) DropTable(
 	ctx context.Context,
-	client *YDBClient,
 	fullPath string,
 ) (err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+	defer cancel()
 
 	defer s.metrics.StatCall(
 		ctx,
@@ -583,7 +588,7 @@ func (c *YDBClient) DropTable(
 	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
-			return s.DropTable(ctx, c, fullPath)
+			return s.DropTable(ctx, fullPath)
 		},
 	)
 }
