@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -25,6 +26,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, ...)                      \
     xxx(Compaction,                             __VA_ARGS__)                   \
     xxx(CollectGarbage,                         __VA_ARGS__)                   \
+    xxx(SyncSessions,                        __VA_ARGS__)                      \
     xxx(CleanupSessions,                        __VA_ARGS__)                   \
     xxx(DeleteCheckpoint,                       __VA_ARGS__)                   \
     xxx(DumpCompactionRange,                    __VA_ARGS__)                   \
@@ -46,6 +48,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
+    xxx(SyncFollowerSessions,                   __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -184,6 +187,40 @@ struct TEvIndexTabletPrivate
             , CommitId(commitId)
         {
         }
+    };
+
+    //
+    // SyncSessions
+    //
+
+    struct TFollowerSessionsInfo
+    {
+        TString FollowerId;
+        ui32 SessionCount = 0;
+    };
+
+    struct TSyncSessionsRequest
+    {
+    };
+
+    struct TSyncSessionsResponse
+    {
+    };
+
+    struct TSyncSessionsCompleted
+    {
+        TVector<TFollowerSessionsInfo> FollowerSessionsInfos;
+    };
+
+    struct TSyncFollowerSessionsRequest
+    {
+        TString FollowerId;
+        NProtoPrivate::TDescribeSessionsResponse Sessions;
+    };
+
+    struct TSyncFollowerSessionsResponse
+    {
+        TFollowerSessionsInfo Info;
     };
 
     //

@@ -225,6 +225,7 @@ private:
     NKikimr::TTabletCountersWithTxTypes* Counters = nullptr;
     bool UpdateCountersScheduled = false;
     bool UpdateLeakyBucketCountersScheduled = false;
+    bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
@@ -303,7 +304,14 @@ private:
         TThrottlingPolicy::EOpType opType,
         TDuration time);
 
+    void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
+    void CreateSessionsInFollowers(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TCreateSessionRequest request,
+        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
+        TVector<TString> followerIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
     template <typename TMethod>

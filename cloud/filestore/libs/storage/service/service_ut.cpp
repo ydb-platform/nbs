@@ -2796,8 +2796,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
+        TActorId leaderActorId;
         ui64 shard1TabletId = -1;
         ui64 shard2TabletId = -1;
+        const auto startupEventType =
+            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
         env.GetRuntime().SetEventFilter(
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
@@ -2813,6 +2816,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
                         if (desc.GetConfig().GetFileSystemId() == shard2Id) {
                             shard2TabletId = desc.GetIndexTabletId();
+                        }
+
+                        break;
+                    }
+
+                    case startupEventType: {
+                        if (!leaderActorId) {
+                            leaderActorId = event->Sender;
                         }
 
                         break;
@@ -2902,31 +2913,70 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 return false;
             });
 
-        TIndexTabletClient shard1(env.GetRuntime(), nodeIdx, shard1TabletId);
+        TIndexTabletClient shard1(
+            env.GetRuntime(),
+            nodeIdx,
+            shard1TabletId,
+            {}, // config
+            false // updateConfig
+        );
         shard1.RebootTablet();
-        TIndexTabletClient shard2(env.GetRuntime(), nodeIdx, shard2TabletId);
+
+        TIndexTabletClient shard2(
+            env.GetRuntime(),
+            nodeIdx,
+            shard2TabletId,
+            {}, // config
+            false // updateConfig
+        );
         shard2.RebootTablet();
 
-        // waiting for idle session expiration
+        // triggering follower sessions sync
+        // sending the event manually since registration observers which enable
+        // scheduling for actors are reset upon tablet reboot
 
-        env.GetRuntime().AdvanceCurrentTime(idleSessionTimeout);
+        env.GetRuntime().AdvanceCurrentTime(idleSessionTimeout / 2);
 
-        for (const auto& actorId: fsActorIds) {
-            using TCleanupSessions =
-                TEvIndexTabletPrivate::TEvCleanupSessionsRequest;
-            auto msg = std::make_unique<TCleanupSessions>();
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    actorId,
-                    actorId,
-                    msg.release(),
+                    leaderActorId,
+                    leaderActorId,
+                    new TRequest(),
                     0, // flags
                     0),
                 0);
         }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // waiting for idle session expiration
+        // sending the event manually since registration observers which enable
+        // scheduling for actors are reset upon tablet reboot
+
+        env.GetRuntime().AdvanceCurrentTime(idleSessionTimeout / 2);
+        service.PingSession(headers);
+
+        for (const auto& actorId: fsActorIds) {
+            using TRequest = TEvIndexTabletPrivate::TEvCleanupSessionsRequest;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    actorId,
+                    actorId,
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        // need to pass deadline instead of timeout here since otherwise the
+        // adjusted time gets added to the timeout
+        env.GetRuntime().DispatchEvents(
+            {},
+            TInstant::Now() + TDuration::MilliSeconds(100));
 
         // shard sessions should exist
 

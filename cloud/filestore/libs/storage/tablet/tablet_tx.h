@@ -424,21 +424,22 @@ struct TTxIndexTablet
 
     struct TCreateSession
     {
-        const TRequestInfoPtr RequestInfo;
-        const NProtoPrivate::TCreateSessionRequest Request;
+        /* const */ TRequestInfoPtr RequestInfo;
+        /* const */ NProtoPrivate::TCreateSessionRequest Request;
 
         NProto::TError Error;
         TString SessionId;
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TCreateSessionRequest& request)
+                NProtoPrivate::TCreateSessionRequest request)
             : RequestInfo(std::move(requestInfo))
-            , Request(request)
+            , Request(std::move(request))
         {}
 
         void Clear()
         {
+            Error.Clear();
             SessionId.clear();
         }
     };
