@@ -1,7 +1,5 @@
 #include "node_registration_helpers.h"
 
-#include <ydb/core/protos/node_broker.pb.h>
-#include <ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 
 namespace NCloud::NStorage {
 
