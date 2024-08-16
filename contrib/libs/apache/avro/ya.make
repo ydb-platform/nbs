@@ -8,7 +8,7 @@ LICENSE(
     FSFAP
 )
 
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+LICENSE_TEXTS(../LICENSE.txt)
 
 VERSION(1.11.3)
 

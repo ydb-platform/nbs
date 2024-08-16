@@ -8,7 +8,7 @@ LICENSE(
     Zlib
 )
 
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+LICENSE_TEXTS(../LICENSE)
 
 PEERDIR(
     contrib/libs/curl
