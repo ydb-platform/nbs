@@ -34,6 +34,7 @@ target_sources(core-libs-kikimr PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/config_initializer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/helpers.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/node_registration_helpers.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/node.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/options.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/kikimr/proxy.cpp
