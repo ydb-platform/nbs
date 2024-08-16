@@ -7,7 +7,6 @@
 
 #include <ydb/core/protos/config.pb.h>
 #include <ydb/core/protos/node_broker.pb.h>
-#include <ydb/library/actors/core/defs.h>
 
 #include <library/cpp/actors/core/defs.h>
 

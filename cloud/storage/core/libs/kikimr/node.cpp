@@ -6,7 +6,6 @@
 #include <ydb/core/base/event_filter.h>
 #include <ydb/core/base/location.h>
 #include <ydb/core/protos/config.pb.h>
-#include <ydb/core/protos/config.pb.h>
 #include <ydb/core/protos/node_broker.pb.h>
 #include <ydb/public/lib/deprecated/kicli/kicli.h>
 #include <ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
