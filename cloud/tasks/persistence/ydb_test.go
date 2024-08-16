@@ -521,6 +521,11 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 	).On("Inc").Once()
 
 	metricsRegistry.GetCounter(
+		"success",
+		map[string]string{"call": "client/MakeDirs"},
+	).On("Inc").Once()
+
+	metricsRegistry.GetCounter(
 		"errors",
 		map[string]string{"call": "session/Execute", "type": "retriable"},
 	).On("Inc").Once()
@@ -564,7 +569,7 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"errors",
-		map[string]string{"call": "session/CreateOrAlterTable", "type": "scheme"},
+		map[string]string{"call": "client/MakeDirs", "type": "scheme"},
 	).On("Inc").Once()
 
 	// YDB has limited length of object name. Current limit is 255.

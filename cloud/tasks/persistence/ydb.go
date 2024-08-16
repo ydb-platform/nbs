@@ -486,9 +486,7 @@ func (s *Session) execute(
 
 func (s *Session) CreateOrAlterTable(
 	ctx context.Context,
-	client *YDBClient,
 	fullPath string,
-	folderFullPath string,
 	description CreateTableDescription,
 	dropUnusedColumns bool,
 ) (err error) {
@@ -501,11 +499,6 @@ func (s *Session) CreateOrAlterTable(
 		"session/CreateOrAlterTable",
 		fmt.Sprintf("At path: %v", fullPath),
 	)(&err)
-
-	err = client.makeDirs(ctx, folderFullPath)
-	if err != nil {
-		return err
-	}
 
 	return createOrAlterTable(
 		ctx,
@@ -565,10 +558,19 @@ func (c *YDBClient) CreateOrAlterTable(
 	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
+			defer s.metrics.StatCall(
+				ctx,
+				"client/MakeDirs",
+				fmt.Sprintf("At path: %v", fullPath),
+			)(&err)
+
+			err = c.makeDirs(ctx, folderFullPath)
+			if err != nil {
+				return err
+			}
+
 			return s.CreateOrAlterTable(ctx,
-				c,
 				fullPath,
-				folderFullPath,
 				description,
 				dropUnusedColumns,
 			)
