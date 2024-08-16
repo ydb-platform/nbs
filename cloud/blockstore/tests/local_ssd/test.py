@@ -67,6 +67,17 @@ def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
         time.sleep(1)
 
 
+def _wait_agent_state(client, agent_id, desired_state):
+    while True:
+        bkp = _backup(client)
+        agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
+        assert len(agent) == 1
+
+        if agent[0].get("State") == desired_state:
+            break
+        time.sleep(1)
+
+
 @pytest.fixture(name='ydb')
 def start_ydb_cluster():
 
@@ -282,14 +293,13 @@ def test_add_host_with_legacy_local_ssd(
     assert not disk_agent.is_alive()
 
     # wait for DR to mark the agent as unavailable
-    while True:
-        bkp = _backup(client)
-        if bkp["Agents"][0].get("State") == 'AGENT_STATE_UNAVAILABLE':
-            break
-        time.sleep(1)
+    _wait_agent_state(client, agent_id, 'AGENT_STATE_UNAVAILABLE')
 
     disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.2')
     assert disk_agent.wait_for_registration()
+
+    # wait for DR to mark the agent as warning (back from unavailable)
+    _wait_agent_state(client, agent_id, 'AGENT_STATE_WARNING')
 
     bkp = _backup(client)
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
@@ -423,14 +433,13 @@ def test_add_host(
     assert not disk_agent.is_alive()
 
     # wait for DR to mark the agent as unavailable
-    while True:
-        bkp = _backup(client)
-        if bkp["Agents"][0].get("State") == 'AGENT_STATE_UNAVAILABLE':
-            break
-        time.sleep(1)
+    _wait_agent_state(client, agent_id, 'AGENT_STATE_UNAVAILABLE')
 
     disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.2')
     assert disk_agent.wait_for_registration()
+
+    # wait for DR to mark the agent as warning (back from unavailable)
+    _wait_agent_state(client, agent_id, 'AGENT_STATE_WARNING')
 
     bkp = _backup(client)
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
