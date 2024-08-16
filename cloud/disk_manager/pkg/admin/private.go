@@ -703,6 +703,7 @@ func newPrivateCmd(
 	}
 
 	cmd.AddCommand(
+		newReleaseBaseDiskCmd(clientConfig),
 		newRebaseOverlayDiskCmd(clientConfig),
 		newRetireBaseDiskCmd(clientConfig),
 		newRetireBaseDisksCmd(clientConfig),
