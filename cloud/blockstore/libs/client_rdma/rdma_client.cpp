@@ -217,11 +217,12 @@ public:
 
         // 2. Ensure IOutputStream::TPart layout compatible with TBlockDataRef
         static_assert(sizeof(TBlockDataRef) == sizeof(IOutputStream::TPart));
+        static_assert(alignof(TBlockDataRef) == alignof(IOutputStream::TPart));
         // Can't get offset of private member :-(
-        // static_assert(0, offsetof(TBlockDataRef, Start));
+        // static_assert(0 == offsetof(TBlockDataRef, Start));
         static_assert(0 == offsetof(IOutputStream::TPart, buf));
         // Can't get offset of private member :-(
-        // static_assert(8, offsetof(TBlockDataRef, Length));
+        // static_assert(8 == offsetof(TBlockDataRef, Length));
         static_assert(8 == offsetof(IOutputStream::TPart, len));
 
         // 3. reinterpret_cast TBlockDataRef* to IOutputStream::TPart*
