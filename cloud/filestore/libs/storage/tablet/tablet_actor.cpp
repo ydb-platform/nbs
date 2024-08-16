@@ -980,7 +980,10 @@ void TIndexTabletActor::UpdateLogTag()
 
 i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
 {
-    i64 sumRequestBytes = ReadBlob.RequestBytes + WriteBlob.RequestBytes;
+    i64 sumRequestBytes =
+        ReadBlob.RequestBytes + WriteBlob.RequestBytes +
+        WriteData.RequestBytes +
+        (DescribeData.Count + AddData.Count + ReadData.Count) * 1_KB;
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;
