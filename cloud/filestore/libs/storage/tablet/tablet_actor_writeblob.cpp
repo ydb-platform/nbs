@@ -360,6 +360,39 @@ void TIndexTabletActor::HandleWriteBlob(
     WorkerActors.insert(actorId);
 }
 
+void TIndexTabletActor::RegisterEvPutResult(
+    const TActorContext& ctx,
+    ui32 generation,
+    ui32 channel,
+    const NKikimr::TStorageStatusFlags flags)
+{
+    const auto validFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
+    if (flags.Check(validFlag)) {
+        ui32 group = Info()->GroupFor(channel, generation);
+
+        if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove)) {
+            LOG_WARN(ctx, TFileStoreComponents::TABLET,
+                "%s Yellow move flag received for channel %u and group %u",
+                LogTag.c_str(),
+                channel,
+                group);
+
+            RegisterChannelToMove(channel);
+        }
+        if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop)) {
+            LOG_WARN(ctx, TFileStoreComponents::TABLET,
+                "%s Yellow stop flag received for channel %u and group %u",
+                LogTag.c_str(),
+                channel,
+                group);
+
+            RegisterUnwritableChannel(channel);
+        }
+
+        ReassignDataChannelsIfNeeded(ctx);
+    }
+}
+
 void TIndexTabletActor::HandleWriteBlobCompleted(
     const TEvIndexTabletPrivate::TEvWriteBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
@@ -375,33 +408,12 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
 
     Metrics.WriteBlob.Update(msg->Count, msg->Size, msg->Time);
 
-    const auto validFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     for (const auto& result: msg->Results) {
-        if (result.StorageStatusFlags.Check(validFlag)) {
-            ui32 channel = result.BlobId.Channel();
-            ui32 group = Info()->GroupFor(channel, result.BlobId.Generation());
-
-            if (result.StorageStatusFlags.Check(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove)) {
-                LOG_WARN(ctx, TFileStoreComponents::TABLET,
-                    "%s Yellow move flag received for channel %u and group %u",
-                    LogTag.c_str(),
-                    channel,
-                    group);
-
-                RegisterChannelToMove(channel);
-            }
-            if (result.StorageStatusFlags.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop)) {
-                LOG_WARN(ctx, TFileStoreComponents::TABLET,
-                    "%s Yellow stop flag received for channel %u and group %u",
-                    LogTag.c_str(),
-                    channel,
-                    group);
-
-                RegisterUnwritableChannel(channel);
-            }
-
-            ReassignDataChannelsIfNeeded(ctx);
-        }
+        RegisterEvPutResult(
+            ctx,
+            result.BlobId.Generation(),
+            result.BlobId.Channel(),
+            result.StorageStatusFlags);
     }
 
     if (FAILED(msg->GetStatus())) {

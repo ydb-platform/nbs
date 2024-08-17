@@ -285,6 +285,11 @@ private:
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
     bool ReassignChannelsEnabled() const override;
+    void RegisterEvPutResult(
+        const NActors::TActorContext& ctx,
+        ui32 generation,
+        ui32 channel,
+        const NKikimr::TStorageStatusFlags flags);
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
