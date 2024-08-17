@@ -110,7 +110,8 @@ public:
             NKikimr::TTestActorRuntime& runtime,
             ui32 nodeIdx,
             ui64 tabletId,
-            const TFileSystemConfig& config = {})
+            const TFileSystemConfig& config = {},
+            bool updateConfig = true)
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , TabletId(tabletId)
@@ -120,7 +121,9 @@ public:
         ReconnectPipe();
 
         WaitReady();
-        UpdateConfig(config);
+        if (updateConfig) {
+            UpdateConfig(config);
+        }
     }
 
     TIndexTabletClient& WithSessionSeqNo(ui64 seqNo)
