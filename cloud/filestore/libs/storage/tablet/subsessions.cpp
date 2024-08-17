@@ -49,7 +49,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
     if (!readOnly) {
         MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
     }
-    auto subsession = FindIf(
+    auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;
