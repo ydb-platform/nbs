@@ -596,7 +596,7 @@ private:
 
         if (requestDetails.DataBuffer.size()) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            NRdma::TProtoMessageSerializer::Serialize(
+            NRdma::TProtoMessageSerializer::SerializeWithDataLength(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,

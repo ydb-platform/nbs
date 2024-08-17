@@ -56,7 +56,9 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
         const TBlockDataRef part[1] = {
             TBlockDataRef(data.data(), data.length())};
 
-        size_t msgByteSize = serializer->MessageByteSize(proto, data.length());
+        size_t msgByteSize = NRdma::TProtoMessageSerializer::MessageByteSize(
+            proto,
+            data.length());
         TVector testedFlags{0U, RDMA_PROTO_FLAG_DATA_AT_THE_END};
         TVector testedBufferSizes{
             msgByteSize,

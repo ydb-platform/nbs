@@ -68,7 +68,7 @@ size_t TProtoMessageSerializer::Serialize(
         [](size_t acc, TBlockDataRef dataRef) { return acc + dataRef.Size(); });
 
     char* ptr = const_cast<char*>(buffer.data());
-    ptr += Serialize(buffer, msgId, flags, proto, dataLen);
+    ptr += SerializeWithDataLength(buffer, msgId, flags, proto, dataLen);
 
     if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
         ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
@@ -87,7 +87,7 @@ size_t TProtoMessageSerializer::Serialize(
 }
 
 // static
-size_t TProtoMessageSerializer::Serialize(
+size_t TProtoMessageSerializer::SerializeWithDataLength(
     TStringBuf buffer,
     ui32 msgId,
     ui32 flags,

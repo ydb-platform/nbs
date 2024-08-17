@@ -63,7 +63,7 @@ public:
         const TProtoMessage& proto,
         TBlockDataRefSpan data);
 
-    static size_t Serialize(
+    static size_t SerializeWithDataLength(
         TStringBuf buffer,
         ui32 msgId,
         ui32 flags,
