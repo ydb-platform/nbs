@@ -203,7 +203,8 @@ private:
                         out,
                         TBlockStoreProtocol::WriteBlocksResponse,
                         0,   // flags
-                        response);
+                        response,
+                        {});
 
                 Endpoint->SendResponse(context, responseBytes);
             });

@@ -289,7 +289,8 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,
-            deviceRequest);
+            deviceRequest,
+            {});
 
         requests.push_back({std::move(ep), std::move(req)});
     }

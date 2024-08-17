@@ -167,7 +167,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::WriteDeviceBlocksResponse,
                     0,   // flags
-                    response);
+                    response,
+                    {});
 
                 break;
             }
@@ -197,7 +198,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ZeroDeviceBlocksResponse,
                     0,   // flags
-                    response);
+                    response,
+                    {});
 
                 break;
             }
@@ -230,7 +232,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
                     0,   // flags
-                    response);
+                    response,
+                    {});
 
                 break;
             }

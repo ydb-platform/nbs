@@ -111,7 +111,8 @@ public:
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             0,   // flags
-            *Request);
+            *Request,
+            {});
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -287,7 +288,8 @@ public:
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
             0,   // flags
-            *Request);
+            *Request,
+            {});
     }
 
     void HandleResponse(TStringBuf buffer) override

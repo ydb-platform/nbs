@@ -97,7 +97,8 @@ public:
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,
-            Proto);
+            Proto,
+            {});
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -298,7 +299,8 @@ public:
             buffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
             0,   // flags
-            Proto);
+            Proto,
+            {});
     }
 
     void HandleResponse(TStringBuf buffer) override

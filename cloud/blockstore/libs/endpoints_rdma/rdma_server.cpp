@@ -249,7 +249,8 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                 out,
                 TBlockStoreProtocol::WriteBlocksResponse,
                 0,   // flags
-                response);
+                response,
+                {});
 
             Endpoint->SendResponse(context, responseBytes);
         });
@@ -280,7 +281,8 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
             out,
             TBlockStoreProtocol::ZeroBlocksResponse,
             0,   // flags
-            response);
+            response,
+            {});
 
         Endpoint->SendResponse(context, responseBytes);
     });

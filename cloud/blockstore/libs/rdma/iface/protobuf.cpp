@@ -59,23 +59,6 @@ size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
     ui32 flags,
-    const TProtoMessage& proto)
-{
-    char* ptr = const_cast<char*>(buffer.data());
-    ptr += Serialize(buffer, msgId, flags, proto, 0);
-
-    if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
-        ptr = const_cast<char*>(buffer.data()) + buffer.length();
-    }
-
-    return ptr - buffer.data();
-}
-
-// static
-size_t TProtoMessageSerializer::Serialize(
-    TStringBuf buffer,
-    ui32 msgId,
-    ui32 flags,
     const TProtoMessage& proto,
     TBlockDataRefSpan data)
 {
