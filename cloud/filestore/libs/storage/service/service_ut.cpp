@@ -5212,7 +5212,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createSessionResponse->GetStatus(),
             createSessionResponse->GetErrorReason());
         service.AssertDestroyFileStoreFailed(fsId, true);
-    
+    }
+
     Y_UNIT_TEST(ShouldUseAliasesForRequestsForwarding)
     {
         const TString originalFs = "test";
