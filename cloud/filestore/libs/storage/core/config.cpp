@@ -294,7 +294,7 @@ const type& TStorageConfig::Get##name() const                                  \
 {                                                                              \
     return ProtoConfig.Get##name();                                            \
 }                                                                              \
-// FILESTORE_CONFIG_GETTER
+// FILESTORE_CONFIG_GETTER_REF
 
 FILESTORE_STORAGE_CONFIG_REF(FILESTORE_CONFIG_GETTER_REF)
 
