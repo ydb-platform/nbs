@@ -196,12 +196,6 @@ bool IsEmpty(const T& t)
 }
 
 template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
-}
-
-template <>
 bool IsEmpty(const TAliases& value)
 {
     return value.GetEntries().empty();
@@ -211,12 +205,6 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
-}
-
-template <>
-TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
-{
-    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
 template <>
@@ -243,16 +231,6 @@ template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
-}
-
-template <>
-void DumpImpl(const TCertificate& value, IOutputStream& os)
-{
-    os << "{ "
-        << value.CertFile
-        << ", "
-        << value.CertPrivateKeyFile
-        << " }";
 }
 
 template <>
