@@ -13,9 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Type alias is used here because using THashMap<TString, TString> inside macro
-// will mess it up because of the comma in the type.
-using TAliasMap = THashMap<TString, TString>;
+using TAliases = NProto::TStorageConfig::TFilestoreAliases;
 
 #define FILESTORE_STORAGE_CONFIG(xxx)                                          \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
@@ -174,10 +172,12 @@ using TAliasMap = THashMap<TString, TString>;
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
-    xxx(FilestoreAliases,                TAliasMap,             {}            )\
-                                                                               \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
+
+#define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
+    xxx(FilestoreAliases,                TAliases,              {}            )\
+// FILESTORE_STORAGE_CONFIG_REF
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
@@ -202,7 +202,7 @@ bool IsEmpty(const NCloud::NProto::TCertificate& value)
 }
 
 template <>
-bool IsEmpty(const NProto::TStorageConfig::TFilestoreAliases& value)
+bool IsEmpty(const TAliases& value)
 {
     return value.GetEntries().empty();
 }
@@ -217,16 +217,6 @@ template <>
 TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
 {
     return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
-}
-
-template <>
-TAliasMap ConvertValue(const NProto::TStorageConfig::TFilestoreAliases& value)
-{
-    TAliasMap result;
-    for (const auto& entry: value.GetEntries()) {
-        result[entry.GetAlias()] = entry.GetFsId();
-    }
-    return result;
 }
 
 template <>
@@ -266,11 +256,11 @@ void DumpImpl(const TCertificate& value, IOutputStream& os)
 }
 
 template <>
-void DumpImpl(const TAliasMap& value, IOutputStream& os)
+void DumpImpl(const TAliases& value, IOutputStream& os)
 {
     os << "{ ";
-    for (const auto& [alias, fsId]: value) {
-        os << alias << ": " << fsId << ", ";
+    for (const auto& x: value.GetEntries()) {
+        os << x.GetAlias() << ": " << x.GetFsId() << ", ";
     }
     os << " }";
 }
@@ -291,6 +281,17 @@ FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
+#define FILESTORE_CONFIG_GETTER_REF(name, type, ...)                           \
+const type& TStorageConfig::Get##name() const                                  \
+{                                                                              \
+    return ProtoConfig.Get##name();                                            \
+}                                                                              \
+// FILESTORE_CONFIG_GETTER_REF
+
+FILESTORE_STORAGE_CONFIG_REF(FILESTORE_CONFIG_GETTER_REF)
+
+#undef FILESTORE_CONFIG_GETTER_REF
+
 void TStorageConfig::Dump(IOutputStream& out) const
 {
 #define FILESTORE_DUMP_CONFIG(name, ...)                                       \
@@ -300,6 +301,7 @@ void TStorageConfig::Dump(IOutputStream& out) const
 // FILESTORE_DUMP_CONFIG
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
 
 #undef FILESTORE_DUMP_CONFIG
 }
@@ -317,6 +319,7 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
             }
         }
     }
@@ -341,6 +344,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
             }
         }
     }
@@ -384,6 +388,18 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 const NProto::TStorageConfig& TStorageConfig::GetStorageConfigProto() const
 {
     return ProtoConfig;
+}
+
+const TString* TStorageConfig::FindFileSystemIdByAlias(
+    const TString& alias) const
+{
+    const auto& entries = GetFilestoreAliases().GetEntries();
+    for (const auto& entry: entries) {
+        if (entry.GetAlias() == alias) {
+            return &entry.GetFsId();
+        }
+    }
+    return nullptr;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

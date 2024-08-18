@@ -436,7 +436,19 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     }
 
     auto* session = FindSession(args.SessionId);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = TStringBuilder() << "Session " << args.SessionId
+            << " destroyed during creation";
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        auto response =
+            std::make_unique<TResponse>(MakeError(E_REJECTED, message));
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
 
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
