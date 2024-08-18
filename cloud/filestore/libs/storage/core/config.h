@@ -240,7 +240,8 @@ public:
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 
-    THashMap<TString, TString> GetFilestoreAliases() const;
+    const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
+    const TString* FindFileSystemIdByAlias(const TString& alias) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
