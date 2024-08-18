@@ -320,9 +320,8 @@ void TIndexTabletProxyActor::HandleRequest(
 
     TString fileSystemId = GetFileSystemId(*msg);
     // Some filestore names can point to another filestore, set by storage config
-    auto it = Config->GetFilestoreAliases().find(fileSystemId);
-    if (it != Config->GetFilestoreAliases().end()) {
-        fileSystemId = it->second;
+    if (const auto* realId = Config->FindFileSystemIdByAlias(fileSystemId)) {
+        fileSystemId = *realId;
     }
 
     TConnection& conn = CreateConnection(fileSystemId);
