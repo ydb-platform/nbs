@@ -49,8 +49,8 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TNodeSessionStat
 {
-    THashMap<TString, ui64> Read;
-    THashMap<TString, ui64> Write;
+    THashMap<TString, ui64> ReadHandlesBySession;
+    THashMap<TString, ui64> WriteHandlesBySession;
 
     enum class EStatLastUsedField
     {
