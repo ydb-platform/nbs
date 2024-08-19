@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/config_initializer.h>
+#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -26,6 +27,8 @@ struct TConfigInitializerCommon
     void InitDiagnosticsConfig();
     void InitStorageConfig();
     void InitFeaturesConfig();
+
+    NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

@@ -11,6 +11,14 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCertificate
+{
+    TString CertFile;
+    TString CertPrivateKeyFile;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
@@ -215,6 +223,7 @@ public:
     bool GetAllowFileStoreForceDestroy() const;
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
+    ui64 GetTrimBytesItemCount() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
@@ -222,6 +231,10 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    TString GetNodeRegistrationToken() const;
+    TString GetNodeType() const;
+    TString GetNodeRegistrationRootCertsFile() const;
+    TCertificate GetNodeRegistrationCert() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 

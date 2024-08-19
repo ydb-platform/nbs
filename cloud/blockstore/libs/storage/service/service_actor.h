@@ -399,6 +399,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreatePartiallySuspendDiskAgentActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetStorageConfigActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

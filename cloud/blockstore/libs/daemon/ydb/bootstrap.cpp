@@ -53,6 +53,7 @@
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 
@@ -216,18 +217,28 @@ void TBootstrapYdb::InitKikimrService()
         Log,
         PostponedCriticalEvents);
 
+    NCloud::NStorage::TNodeRegistrationSettings settings {
+        .MaxAttempts =
+            Configs->ServerConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
+        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout(),
+        .PathToGrpcCaFile = Configs->ServerConfig->GetRootCertsFile(),
+        .PathToGrpcCertFile = GetCertFileFromConfig(*Configs->ServerConfig),
+        .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
+            *Configs->ServerConfig),
+        .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
+        .NodeType = Configs->ServerConfig->GetNodeType(),
+    };
+
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
-        .NodeType = Configs->ServerConfig->GetNodeType(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
-        .MaxAttempts = static_cast<int>(
-            Configs->ServerConfig->GetNodeRegistrationMaxAttempts()),
-        .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
-        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout()
+        .Settings = std::move(settings)
     };
 
     if (Configs->Options->LocationFile) {

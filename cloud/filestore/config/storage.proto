@@ -3,6 +3,7 @@ syntax = "proto2";
 package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+import "cloud/storage/core/protos/certificate.proto";
 
 option go_package = "a.yandex-team.ru/cloud/filestore/config";
 
@@ -305,6 +306,19 @@ message TStorageConfig
     // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
     // appropriate.
     optional bool GetNodeAttrBatchEnabled = 358;
+
+    // Max number of items to delete during TrimBytes.
+    optional uint64 TrimBytesItemCount = 359;
+
+    // auth token for node registration via ydb discovery api.
+    optional string NodeRegistrationToken = 360;
+
+    // Node type.
+    optional string NodeType = 361;
+
+    // TLS node registration details.
+    optional string NodeRegistrationRootCertsFile = 362;
+    optional NCloud.NProto.TCertificate NodeRegistrationCert = 363;
 
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;

@@ -10,13 +10,13 @@ from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
-from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from ydb.core.protos import console_config_pb2 as console
-from ydb.core.protos import msgbus_pb2 as msgbus
+from contrib.ydb.core.protos import console_config_pb2 as console
+from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 
-from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
@@ -56,13 +56,14 @@ def update_cms_config(client, name, config, node_type):
     assert response.Status.Code == StatusIds.SUCCESS
 
 
-def test_node_type():
-    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
+def test_secure_registration_and_config_loading():
+    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
         has_cluster_uuid=False,
+        grpc_ssl_enable=True,
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
@@ -78,15 +79,12 @@ def test_node_type():
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
+    server_app_config.ServerConfig.RootCertsFile = configurator.grpc_tls_ca_path
+    cert = server_app_config.ServerConfig.Certs.add()
+    cert.CertFile = configurator.grpc_tls_cert_path
+    cert.CertPrivateKeyFile = configurator.grpc_tls_key_path
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     server_app_config.ServerConfig.NodeType = 'nbs'
-
-    certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
-
-    server_app_config.ServerConfig.RootCertsFile = os.path.join(certs_dir, 'server.crt')
-    cert = server_app_config.ServerConfig.Certs.add()
-    cert.CertFile = os.path.join(certs_dir, 'server.crt')
-    cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
 
     pm = yatest_common.network.PortManager()
 
@@ -94,6 +92,7 @@ def test_node_type():
     nbs_secure_port = pm.get_port()
 
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_ssl_port = list(kikimr_cluster.nodes.values())[0].grpc_ssl_port
 
     # file config
     storage = TStorageServiceConfig()
@@ -108,7 +107,9 @@ def test_node_type():
         nbs_secure_port=nbs_secure_port,
         nbs_port=nbs_port,
         kikimr_binary_path=kikimr_binary_path,
-        nbs_binary_path=nbs_binary_path)
+        nbs_binary_path=nbs_binary_path,
+        use_secure_registration=True,
+        grpc_ssl_port=kikimr_ssl_port)
 
     enable_custom_cms_configs(kikimr_cluster.client)
 

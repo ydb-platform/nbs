@@ -1,12 +1,16 @@
-#include "public.h"
 #include "node.h"
+#include "node_registration_helpers.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <ydb/core/base/event_filter.h>
 #include <ydb/core/base/location.h>
 #include <ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/node_broker.pb.h>
 #include <ydb/public/lib/deprecated/kicli/kicli.h>
+#include <ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
+#include <ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/event.h>
@@ -16,6 +20,7 @@
 #include <util/network/socket.h>
 #include <util/random/shuffle.h>
 #include <util/string/join.h>
+#include <util/stream/file.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NStorage {
@@ -24,7 +29,25 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using namespace NYdb;
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString ReadFile(const TString& name)
+{
+    return TFileInput(name).ReadAll();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString ExtractYdbError(const TStatus& status)
+{
+    TStringStream out;
+    status.GetIssues().PrintTo(out, true);
+    return out.Str();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +73,291 @@ TString GetNetworkAddress(const TString& host)
         << "could not resolve address for host: " << host;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
+    const TRegisterDynamicNodeOptions& options,
+    const TString& nodeBrokerAddress)
+{
+    NGRpcProxy::TGRpcClientConfig config(
+        nodeBrokerAddress,
+        options.Settings.RegistrationTimeout);
+
+    if (options.UseNodeBrokerSsl) {
+        config.EnableSsl = true;
+        auto& sslCredentials = config.SslCredentials;
+        if (options.Settings.PathToGrpcCaFile) {
+            sslCredentials.pem_root_certs =
+                ReadFile(options.Settings.PathToGrpcCaFile);
+        }
+        if (options.Settings.PathToGrpcCertFile &&
+            options.Settings.PathToGrpcPrivateKeyFile)
+        {
+            sslCredentials.pem_cert_chain =
+                ReadFile(options.Settings.PathToGrpcCertFile);
+            sslCredentials.pem_private_key =
+                ReadFile(options.Settings.PathToGrpcPrivateKeyFile);
+        }
+    }
+
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
+    ui32 nodeId,
+    const TString& hostName,
+    const TString& nodeBrokerAddress,
+    const TRegisterDynamicNodeOptions& options,
+    NClient::TKikimr& kikimr,
+    NKikimrConfig::TStaticNameserviceConfig& nsConfig)
+{
+    TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
+
+    auto configurator = kikimr.GetNodeConfigurator();
+    auto configResult = configurator.SyncGetNodeConfig(
+        nodeId,
+        hostName,
+        options.SchemeShardDir,
+        options.Settings.NodeType,
+        options.Domain);
+
+    if (!configResult.IsSuccess()) {
+        ythrow TServiceError(E_FAIL)
+            << "Unable to get config from " << nodeBrokerAddress.Quote()
+            << ": " << configResult.GetErrorMessage();
+    }
+
+    cmsConfig = configResult.GetConfig();
+
+    if (cmsConfig->HasNameserviceConfig()) {
+        cmsConfig->MutableNameserviceConfig()
+            ->SetSuppressVersionCheck(nsConfig.GetSuppressVersionCheck());
+    }
+
+    return cmsConfig;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDriverConfig CreateDriverConfig(
+    const TRegisterDynamicNodeOptions& options,
+    const TString& addr)
+{
+    TDriverConfig config;
+
+    if (options.Settings.PathToGrpcCaFile) {
+        config.UseSecureConnection(
+            ReadFile(options.Settings.PathToGrpcCaFile).c_str());
+    }
+    if (options.Settings.PathToGrpcCertFile &&
+        options.Settings.PathToGrpcPrivateKeyFile)
+    {
+        auto certificate = ReadFile(options.Settings.PathToGrpcCertFile);
+        auto privateKey = ReadFile(options.Settings.PathToGrpcPrivateKeyFile);
+        config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
+    }
+
+    config.SetAuthToken(options.Settings.NodeRegistrationToken);
+    config.SetEndpoint(addr);
+
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
+    const TRegisterDynamicNodeOptions& options,
+    const TString& addr,
+    const NDiscovery::TNodeRegistrationSettings& settings)
+{
+    auto connection = TDriver(CreateDriverConfig(options, addr));
+
+    auto client = NDiscovery::TDiscoveryClient(connection);
+    NDiscovery::TNodeRegistrationResult result =
+        client.NodeRegistration(settings).GetValueSync();
+    connection.Stop(true);
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct INodeRegistrant
+{
+    virtual ~INodeRegistrant() = default;
+
+    virtual TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
+        const TString& nodeBrokerAddress) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TLegacyNodeRegistrant
+    : public INodeRegistrant
+{
+    const TString HostName;
+    const TString HostAddress;
+    const TRegisterDynamicNodeOptions& Options;
+    NKikimrConfig::TStaticNameserviceConfig& NsConfig;
+    NKikimrConfig::TDynamicNodeConfig& DnConfig;
+
+    const TNodeLocation Location;
+
+    TLegacyNodeRegistrant(
+            TString hostName,
+            TString hostAddress,
+            const TRegisterDynamicNodeOptions& options,
+            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        : HostName(std::move(hostName))
+        , HostAddress(std::move(hostAddress))
+        , Options(options)
+        , NsConfig(nsConfig)
+        , DnConfig(dnConfig)
+        , Location(Options.DataCenter, {}, Options.Rack, ToString(Options.Body))
+    {
+    }
+
+    TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
+        const TString& nodeBrokerAddress) override
+    {
+        NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
+
+        auto registrant = kikimr.GetNodeRegistrant();
+        auto result = registrant.SyncRegisterNode(
+            Options.Domain,
+            HostName,
+            Options.InterconnectPort,
+            HostAddress,
+            HostName,
+            Location,
+            false, //request fixed node id
+            Options.SchemeShardDir);
+
+        if (!result.IsSuccess()) {
+            return MakeError(
+                E_FAIL,
+                result.GetErrorMessage());
+        }
+
+        NsConfig.ClearNode();
+        for (const auto& node: result.Record().GetNodes()) {
+            if (node.GetNodeId() == result.GetNodeId()) {
+                // update node information based on registration response
+                *DnConfig.MutableNodeInfo() = node;
+            } else {
+                *NsConfig.AddNode() = CreateStaticNodeInfo(node);
+            }
+        }
+
+        TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
+
+        if (Options.LoadCmsConfigs) {
+            cmsConfig = GetConfigsFromCms(
+                result.GetNodeId(),
+                HostName,
+                nodeBrokerAddress,
+                Options,
+                kikimr,
+                NsConfig);
+        }
+
+        return TRegisterDynamicNodeResult {
+            result.GetNodeId(),
+            result.GetScopeId() ,
+            std::move(cmsConfig)};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TDiscoveryNodeRegistrant
+    : public INodeRegistrant
+{
+    const TString HostName;
+    const TString HostAddress;
+    const TRegisterDynamicNodeOptions& Options;
+    NKikimrConfig::TStaticNameserviceConfig& NsConfig;
+    NKikimrConfig::TDynamicNodeConfig& DnConfig;
+    const TNodeLocation Location;
+
+    NDiscovery::TNodeRegistrationSettings Settings;
+
+    TDiscoveryNodeRegistrant(
+            TString hostName,
+            TString hostAddress,
+            const TRegisterDynamicNodeOptions& options,
+            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        : HostName(std::move(hostName))
+        , HostAddress(std::move(hostAddress))
+        , Options(options)
+        , NsConfig(nsConfig)
+        , DnConfig(dnConfig)
+    {
+        NDiscovery::TNodeLocation location;
+        location.DataCenter = Options.DataCenter;
+        location.Rack = Options.Rack;
+        location.Unit = ToString(Options.Body);
+
+        Settings.Location(location);
+        Settings.Address(HostAddress);
+        Settings.ResolveHost(HostName);
+        Settings.Host(HostName);
+        Settings.DomainPath(Options.Domain);
+        Settings.Port(Options.InterconnectPort);
+        Settings.Path(Options.SchemeShardDir);
+    }
+
+    TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
+        const TString& nodeBrokerAddress) override
+    {
+        auto result = TryToRegisterDynamicNodeViaDiscoveryService(
+            Options,
+            nodeBrokerAddress,
+            Settings);
+
+        if (!result.IsSuccess()) {
+            return MakeError(
+                E_FAIL,
+                ExtractYdbError(result));
+        }
+
+        NsConfig.ClearNode();
+        for (const auto& node: result.GetNodes()) {
+            if (node.NodeId == result.GetNodeId()) {
+                // update node information based on registration response
+                *DnConfig.MutableNodeInfo() = CreateNodeInfo(node);
+            } else {
+                *NsConfig.AddNode() = CreateStaticNodeInfo(node);
+            }
+        }
+
+        TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
+
+        if (Options.LoadCmsConfigs) {
+            NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
+
+            cmsConfig = GetConfigsFromCms(
+                result.GetNodeId(),
+                HostName,
+                nodeBrokerAddress,
+                Options,
+                kikimr,
+                NsConfig);
+        }
+
+        return TRegisterDynamicNodeResult {
+            result.GetNodeId(),
+            NActors::TScopeId{
+                result.GetScopeTabletId(),
+                result.GetScopePathId()
+            },
+            std::move(cmsConfig)};
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,8 +370,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     auto& nsConfig = *appConfig->MutableNameserviceConfig();
     auto& dnConfig = *appConfig->MutableDynamicNodeConfig();
 
-    auto hostName = FQDNHostName();
-    auto hostAddress = GetNetworkAddress(hostName);
+    const auto& hostName = FQDNHostName();
+    const auto& hostAddress = GetNetworkAddress(hostName);
 
     TVector<TString> addrs;
     if (options.NodeBrokerAddress) {
@@ -81,89 +389,47 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             << "neither NodeBrokerAddress nor NodeBrokerPort specified";
     }
 
-    NActorsInterconnect::TNodeLocation proto;
-    proto.SetDataCenter(options.DataCenter);
-    proto.SetRack(options.Rack);
-    proto.SetUnit(ToString(options.Body));
-    const TNodeLocation location(proto);
+    std::unique_ptr<INodeRegistrant> registrant;
+    if (options.UseNodeBrokerSsl) {
+        registrant = std::make_unique<TDiscoveryNodeRegistrant>(
+            hostName,
+            hostAddress,
+            options,
+            nsConfig,
+            dnConfig);
+    } else {
+        registrant = std::make_unique<TLegacyNodeRegistrant>(
+            hostName,
+            hostAddress,
+            options,
+            nsConfig,
+            dnConfig);
+    }
 
-    int attempts = 0;
+    ui32 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
-        NGRpcProxy::TGRpcClientConfig config(nodeBrokerAddress, options.RegistrationTimeout);
-        NClient::TKikimr kikimr(config);
+        auto result = registrant->TryRegisterAndConfigure(nodeBrokerAddress);
 
-        STORAGE_INFO("Trying to register dynamic node at " << nodeBrokerAddress.Quote());
-
-        auto registrant = kikimr.GetNodeRegistrant();
-        auto result = registrant.SyncRegisterNode(
-            options.Domain,
-            hostName,
-            options.InterconnectPort,
-            hostAddress,
-            hostName,
-            location,
-            false,
-            options.SchemeShardDir);
-
-        if (!result.IsSuccess()) {
-            if (attempts == options.MaxAttempts) {
+        if (FAILED(result.GetError().GetCode())) {
+            const auto& msg = result.GetError().GetMessage();
+            if (++attempts == options.Settings.MaxAttempts) {
                 ythrow TServiceError(E_FAIL)
-                    << "Cannot register dynamic node: " << result.GetErrorMessage();
+                    << "Cannot register dynamic node: " << msg;
             }
 
             STORAGE_WARN("Failed to register dynamic node at " << nodeBrokerAddress.Quote()
-                << ": " << result.GetErrorMessage());
-            Sleep(options.ErrorTimeout);
+                << ": " << msg);
+            Sleep(options.Settings.ErrorTimeout);
             continue;
         }
 
         STORAGE_INFO(
             "Registered dynamic node at " << nodeBrokerAddress.Quote() <<
-            " with address " << hostAddress.Quote());
+            " with address " << hostAddress.Quote() << " with node id " << std::get<0>(result.GetResult()));
 
-        nsConfig.ClearNode();
-        for (const auto& node: result.Record().GetNodes()) {
-            if (node.GetNodeId() == result.GetNodeId()) {
-                dnConfig.MutableNodeInfo()->CopyFrom(node);
-            } else {
-                auto& info = *nsConfig.AddNode();
-                info.SetNodeId(node.GetNodeId());
-                info.SetAddress(node.GetAddress());
-                info.SetPort(node.GetPort());
-                info.SetHost(node.GetHost());
-                info.SetInterconnectHost(node.GetResolveHost());
-                info.MutableLocation()->CopyFrom(node.GetLocation());
-            }
-        }
-
-        TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
-
-        if (options.LoadCmsConfigs) {
-            auto configurator = kikimr.GetNodeConfigurator();
-            auto configResult = configurator.SyncGetNodeConfig(
-                result.GetNodeId(),
-                hostName,
-                options.SchemeShardDir,
-                options.NodeType,
-                options.Domain);
-
-            if (!configResult.IsSuccess()) {
-                ythrow TServiceError(E_FAIL)
-                    << "Unable to get config from " << nodeBrokerAddress.Quote()
-                    << ": " << configResult.GetErrorMessage();
-            }
-
-            cmsConfig = configResult.GetConfig();
-
-            if (cmsConfig->HasNameserviceConfig()) {
-                cmsConfig->MutableNameserviceConfig()
-                    ->SetSuppressVersionCheck(nsConfig.GetSuppressVersionCheck());
-            }
-        }
-
-        return { result.GetNodeId(), result.GetScopeId(), std::move(cmsConfig) };
+        return result.ExtractResult();
     }
 }
 

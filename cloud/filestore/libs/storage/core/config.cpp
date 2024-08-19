@@ -1,9 +1,12 @@
 #include "config.h"
 
+#include <cloud/storage/core/protos/certificate.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -169,10 +172,14 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
+    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
+    xxx(TrimBytesItemCount,                             ui64,      100'000    )\
+    xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
+    xxx(NodeRegistrationCert,            TCertificate,          {}            )\
+    xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
-                                                                               \
-    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -201,10 +208,21 @@ bool IsEmpty(const TAliases& value)
     return value.GetEntries().empty();
 }
 
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
 template <>
@@ -241,6 +259,15 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
         os << x.GetAlias() << ": " << x.GetFsId() << ", ";
     }
     os << " }";
+}
+
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
 }
 
 }   // namespace

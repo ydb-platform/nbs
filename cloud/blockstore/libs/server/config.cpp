@@ -98,6 +98,7 @@ constexpr TDuration Seconds(int s)
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
+    xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
 // BLOCKSTORE_SERVER_CONFIG
@@ -314,6 +315,24 @@ const NProto::TRdmaClient&
 TServerAppConfig::DeprecatedGetRdmaClientConfig() const
 {
     return ServerConfig->GetRdmaClientConfig();
+}
+
+TString GetCertFileFromConfig(const TServerAppConfig& serverConfig)
+{
+    const auto& certs = serverConfig.GetCerts();
+    if (certs.empty()) {
+        return serverConfig.GetCertFile();
+    }
+    return certs.front().CertFile;
+}
+
+TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig)
+{
+    const auto& certs = serverConfig.GetCerts();
+    if (certs.empty()) {
+        return serverConfig.GetCertPrivateKeyFile();
+    }
+    return certs.front().CertPrivateKeyFile;
 }
 
 }   // namespace NCloud::NBlockStore::NServer

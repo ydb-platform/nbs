@@ -79,6 +79,7 @@ private:
     IAllocator* Allocator;
     TDeque<TChunk, TStlAllocator> Chunks;
     ui64 LastChunkId = 0;
+    TString LogTag;
 
 public:
     TFreshBytes(IAllocator* allocator);
@@ -100,6 +101,12 @@ public:
         ui64 offset,
         TStringBuf data,
         ui64 commitId) const;
+
+    void UpdateLogTag(TString logTag)
+    {
+        LogTag = std::move(logTag);
+    }
+
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);
     void AddDeletionMarker(ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
 
@@ -109,8 +116,11 @@ public:
         ui64 commitId,
         TVector<TBytes>* entries,
         TVector<TBytes>* deletionMarkers);
-    void VisitTop(const TChunkVisitor& visitor);
-    void FinishCleanup(ui64 chunkId);
+    void VisitTop(ui64 itemLimit, const TChunkVisitor& visitor);
+    bool FinishCleanup(
+        ui64 chunkId,
+        ui64 dataItemCount,
+        ui64 deletionMarkerCount);
 
     void FindBytes(
         IFreshBytesVisitor& visitor,

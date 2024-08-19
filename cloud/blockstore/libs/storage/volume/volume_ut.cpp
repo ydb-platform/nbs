@@ -8653,6 +8653,25 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 resp->Record.GetAllZeroes());
         }
     }
+
+    Y_UNIT_TEST(ShouldGetStorageConfig)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetCompactionRangeCountPerRun(10);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        NProto::TStorageServiceConfig patch;
+        patch.SetCompactionRangeCountPerRun(11);
+        volume.ChangeStorageConfig(std::move(patch));
+
+        auto response = volume.GetStorageConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            11,
+            response->Record.GetStorageConfig().GetCompactionRangeCountPerRun());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

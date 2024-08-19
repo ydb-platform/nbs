@@ -1,15 +1,17 @@
 #pragma once
 
+#include "node_registration_settings.h"
 #include "public.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/node_broker.pb.h>
 
 #include <library/cpp/actors/core/defs.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
-
-#include <utility>
 
 namespace NCloud::NStorage {
 
@@ -19,10 +21,10 @@ struct TRegisterDynamicNodeOptions
 {
     TString Domain;
     TString SchemeShardDir;
-    TString NodeType;
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    bool UseNodeBrokerSsl = false;
 
     ui32 InterconnectPort = 0;
 
@@ -32,9 +34,7 @@ struct TRegisterDynamicNodeOptions
 
     bool LoadCmsConfigs = false;
 
-    int MaxAttempts = 0;
-    TDuration ErrorTimeout;
-    TDuration RegistrationTimeout;
+    TNodeRegistrationSettings Settings;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -284,10 +284,9 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
-    registerOpts.MaxAttempts = Configs->Options->NodeRegistrationMaxAttempts;
-    registerOpts.RegistrationTimeout = Configs->Options->NodeRegistrationTimeout;
-    registerOpts.ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
+    registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+    registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,

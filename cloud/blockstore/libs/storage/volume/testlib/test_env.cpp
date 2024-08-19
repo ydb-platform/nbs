@@ -521,6 +521,12 @@ std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> TVolumeClient::CreateC
     return request;
 }
 
+std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> TVolumeClient::CreateGetStorageConfigRequest()
+{
+    auto request = std::make_unique<TEvVolume::TEvGetStorageConfigRequest>();
+    return request;
+}
+
 std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
 TVolumeClient::CreateUpdateShadowDiskStateRequest(
     TString checkpointId,
