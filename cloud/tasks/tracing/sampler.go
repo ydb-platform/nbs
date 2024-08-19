@@ -9,7 +9,7 @@ import (
 
 // TODO:_ this sampler knows about tasks. Move it out from tracing directory.
 
-// TODO:_ should these constants be in another file?
+// TODO:_ should these constants be in another file? Or maybe we don't need them?
 const (
 	taskGenerationKey = "task_generation" // TODO:_ naming?
 	taskIdKey         = "task_id"         // TODO:_ naming?
@@ -34,6 +34,9 @@ func (s *sampler) ShouldSample(
 ) sdktrace.SamplingResult {
 	// TODO:_ parse normally
 	// TODO:_ !!! handle the case when there is no task id and generation !!!
+	if len(params.Attributes) < 2 {
+		return sdktrace.SamplingResult{Decision: sdktrace.RecordAndSample}
+	}
 	taskGeneration := uint64(params.Attributes[0].Value.AsInt64()) // TODO:_ naming: generationID?
 	taskID := params.Attributes[1].Value.AsString()                // TODO:_ integer type hell
 
@@ -41,7 +44,7 @@ func (s *sampler) ShouldSample(
 		return sdktrace.SamplingResult{Decision: sdktrace.Drop}
 	}
 	if taskGeneration > s.softBarrier {
-		hash := crc32.ChecksumIEEE([]byte(taskID + string(taskGeneration)))
+		hash := crc32.ChecksumIEEE([]byte(taskID + string(taskGeneration))) // TODO:_ make normal string, not string of one rune?
 		if hash%100 >= s.softPercentage {
 			return sdktrace.SamplingResult{Decision: sdktrace.Drop}
 		}

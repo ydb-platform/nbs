@@ -67,6 +67,7 @@ func InitTracing(
 	)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithSampler(NewSampler(config.SamplingConfig)),
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)
