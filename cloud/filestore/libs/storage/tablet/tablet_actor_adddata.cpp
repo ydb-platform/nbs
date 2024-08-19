@@ -438,6 +438,16 @@ void TIndexTabletActor::HandleAddData(
         blobIds.size(),
         unalignedMsg().c_str());
 
+    const auto evPutResultCount =
+        Min<ui32>(blobIds.size(), msg->Record.StorageStatusFlagsSize());
+    for (ui32 i = 0; i < evPutResultCount; ++i) {
+        RegisterEvPutResult(
+            ctx,
+            blobIds[i].Generation(),
+            blobIds[i].Channel(),
+            msg->Record.GetStorageStatusFlags(i));
+    }
+
     AddTransaction<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
     ExecuteTx<TAddData>(

@@ -2608,6 +2608,70 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format on
     }
 
+    Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetThreeStageWriteEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        const auto yellowFlag =
+            NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
+
+        NProtoPrivate::TAddDataRequest addData;
+        using TFlags = NKikimr::TStorageStatusFlags;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        auto* msg =
+                            event->template Get<TEvBlobStorage::TEvPutResult>();
+                        const_cast<TFlags&>(msg->StatusFlags).Raw |=
+                            ui32(yellowFlag);
+                        break;
+                    }
+
+                    case TEvIndexTablet::EvAddDataRequest: {
+                        addData = event->template Get<
+                            TEvIndexTablet::TEvAddDataRequest>()->Record;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        TString data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.BlobIdsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.StorageStatusFlagsSize());
+        UNIT_ASSERT(NKikimr::TStorageStatusFlags(
+            addData.GetStorageStatusFlags(0)).Check(yellowFlag));
+    }
+
     void ConfigureFollowers(
         TServiceClient& service,
         const TString& fsId,
