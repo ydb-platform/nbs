@@ -561,10 +561,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
     if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
         ++hdl->StatNodesWrite;
-        ++Impl->NodeToSessionStat[nodeId].Write[session->sessionid()] ;
+        ++Impl->NodeToSessionStat[nodeId].Write[session->GetSessionId()] ;
     } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
         ++hdl->StatNodesRead;
-        ++Impl->NodeToSessionStat[nodeId].Read[session->sessionid()];
+        ++Impl->NodeToSessionStat[nodeId].Read[session->GetSessionId()];
     }
 
     ResetNodeCounters(db, hdl);
@@ -575,7 +575,7 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
 void TIndexTabletState::ResetNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle)
 {
-    auto& statLastUsedField = Impl->NodeToSessionStat[handle->nodeid()].StatLastUsedField;
+    auto& statLastUsedField = Impl->NodeToSessionStat[handle->GetNodeId()].StatLastUsedField;
     if (statLastUsedField == TNodeSessionStat::EStatLastUsedField::NodesWriteMultiSessionCount) {
         DecrementNodesWriteMultiSessionCount(db);
     } else if (statLastUsedField == TNodeSessionStat::EStatLastUsedField::NodesWriteSingleSessionCount) {
@@ -590,7 +590,7 @@ void TIndexTabletState::ResetNodeCounters(TIndexTabletDatabase& db, TSessionHand
 
 void TIndexTabletState::UpdateNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle)
 {
-    auto& nodeStat = Impl->NodeToSessionStat[handle->nodeid()];
+    auto& nodeStat = Impl->NodeToSessionStat[handle->GetNodeId()];
     auto& statLastUsedField = nodeStat.StatLastUsedField;
     if (nodeStat.Write.size() > 1) {
         statLastUsedField = TNodeSessionStat::EStatLastUsedField::NodesWriteMultiSessionCount;
@@ -625,22 +625,23 @@ void TIndexTabletState::DestroyHandle(
 
     ResetNodeCounters(db, handle);
 
-    auto& nodeStat = Impl->NodeToSessionStat[handle->nodeid()];
-
-    nodeStat.Write[handle->sessionid()] -= handle->StatNodesWrite;
+    auto& nodeStat = Impl->NodeToSessionStat[handle->GetNodeId()];
+    const auto& sessionId = handle->GetSessionId();
+    nodeStat.Write[sessionId] -= handle->StatNodesWrite;
     handle->StatNodesWrite = 0;
-    nodeStat.Read[handle->sessionid()] -= handle->StatNodesRead;
+    nodeStat.Read[sessionId] -= handle->StatNodesRead;
     handle->StatNodesRead = 0;
 
-    if (!nodeStat.Write[handle->sessionid()]) {
-        nodeStat.Write.erase(handle->sessionid());
+    if (!nodeStat.Write[sessionId]) {
+        nodeStat.Write.erase(sessionId);
     }
-    if (!nodeStat.Read[handle->sessionid()]) {
-        nodeStat.Read.erase(handle->sessionid());
+    if (!nodeStat.Read[sessionId]) {
+        nodeStat.Read.erase(sessionId);
     }
     if (nodeStat.Write.empty() && nodeStat.Read.empty()) {
         Impl->NodeToSessionStat.erase(handle->nodeid());
     }
+
     UpdateNodeCounters(db, handle);
 
     RemoveHandle(handle);
