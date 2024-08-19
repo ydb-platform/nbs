@@ -26,7 +26,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
-    xxx(IdleSessionTimeout,            TDuration, TDuration::Minutes(5)       )\
+    xxx(IdleSessionTimeout,            TDuration, TDuration::Hours(1)         )\
                                                                                \
     xxx(WriteBatchEnabled,             bool,      false                       )\
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
