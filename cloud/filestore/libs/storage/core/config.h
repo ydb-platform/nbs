@@ -214,6 +214,8 @@ public:
 
     bool GetAllowFileStoreForceDestroy() const;
 
+    ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
@@ -222,6 +224,9 @@ public:
     TString GetBlobCompressionCodec() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
+
+    const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
+    const TString* FindFileSystemIdByAlias(const TString& alias) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

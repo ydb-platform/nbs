@@ -2,6 +2,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 
 #include <google/protobuf/text_format.h>
@@ -11,6 +12,8 @@ namespace NCloud::NFileStore::NStorage {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TAliases = NProto::TStorageConfig::TFilestoreAliases;
 
 #define FILESTORE_STORAGE_CONFIG(xxx)                                          \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
@@ -168,7 +171,13 @@ namespace {
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
+                                                                               \
+    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
 // FILESTORE_STORAGE_CONFIG
+
+#define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
+    xxx(FilestoreAliases,                TAliases,              {}            )\
+// FILESTORE_STORAGE_CONFIG_REF
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
@@ -184,6 +193,12 @@ template <typename T>
 bool IsEmpty(const T& t)
 {
     return !t;
+}
+
+template <>
+bool IsEmpty(const TAliases& value)
+{
+    return value.GetEntries().empty();
 }
 
 template <typename TTarget, typename TSource>
@@ -218,6 +233,16 @@ void DumpImpl(const T& t, IOutputStream& os)
     os << t;
 }
 
+template <>
+void DumpImpl(const TAliases& value, IOutputStream& os)
+{
+    os << "{ ";
+    for (const auto& x: value.GetEntries()) {
+        os << x.GetAlias() << ": " << x.GetFsId() << ", ";
+    }
+    os << " }";
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -234,6 +259,17 @@ FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
+#define FILESTORE_CONFIG_GETTER_REF(name, type, ...)                           \
+const type& TStorageConfig::Get##name() const                                  \
+{                                                                              \
+    return ProtoConfig.Get##name();                                            \
+}                                                                              \
+// FILESTORE_CONFIG_GETTER_REF
+
+FILESTORE_STORAGE_CONFIG_REF(FILESTORE_CONFIG_GETTER_REF)
+
+#undef FILESTORE_CONFIG_GETTER_REF
+
 void TStorageConfig::Dump(IOutputStream& out) const
 {
 #define FILESTORE_DUMP_CONFIG(name, ...)                                       \
@@ -243,6 +279,7 @@ void TStorageConfig::Dump(IOutputStream& out) const
 // FILESTORE_DUMP_CONFIG
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
 
 #undef FILESTORE_DUMP_CONFIG
 }
@@ -260,6 +297,7 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
             }
         }
     }
@@ -284,6 +322,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
             }
         }
     }
@@ -327,6 +366,18 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 const NProto::TStorageConfig& TStorageConfig::GetStorageConfigProto() const
 {
     return ProtoConfig;
+}
+
+const TString* TStorageConfig::FindFileSystemIdByAlias(
+    const TString& alias) const
+{
+    const auto& entries = GetFilestoreAliases().GetEntries();
+    for (const auto& entry: entries) {
+        if (entry.GetAlias() == alias) {
+            return &entry.GetFsId();
+        }
+    }
+    return nullptr;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -257,6 +257,8 @@ private:
 
     const NBlockCodecs::ICodec* BlobCodec;
 
+    TVector<ui32> RangesWithEmptyCompactionScore;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,

@@ -652,7 +652,12 @@ void TStorageServiceActor::HandleCreateSession(
     const auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
-    const auto& fileSystemId = msg->Record.GetFileSystemId();
+    TString fileSystemId = msg->Record.GetFileSystemId();
+    if (const auto* realId =
+            StorageConfig->FindFileSystemIdByAlias(fileSystemId))
+    {
+        fileSystemId = *realId;
+    }
     const auto& checkpointId = msg->Record.GetCheckpointId();
     auto originFqdn = GetOriginFqdn(msg->Record);
 
