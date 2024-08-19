@@ -430,6 +430,32 @@ void TIndexTabletState::AddSessionHistoryEntry(
     }
 }
 
+TIndexTabletState::TCreateSessionRequests
+TIndexTabletState::BuildCreateSessionRequests(
+    const THashSet<TString>& filter) const
+{
+    TCreateSessionRequests requests;
+    for (const auto& s: Impl->Sessions) {
+        if (filter.contains(s.GetSessionId())) {
+            continue;
+        }
+
+        NProtoPrivate::TCreateSessionRequest request;
+        request.MutableHeaders()->SetSessionId(s.GetSessionId());
+        request.MutableHeaders()->SetClientId(s.GetClientId());
+        // FileSystemId is deliberately not set
+        request.SetCheckpointId(s.GetCheckpointId());
+        // being explicit about our intentions
+        request.SetReadOnly(false);
+        // we are passing SessionId, no need for the restore flag
+        request.SetRestoreClientSession(false);
+        request.SetMountSeqNumber(s.GetMaxRwSeqNo());
+
+        requests.push_back(std::move(request));
+    }
+    return requests;
+}
+
 TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessions() const
 {
     TVector<TMonSessionInfo> sessions;

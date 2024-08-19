@@ -225,6 +225,7 @@ private:
     NKikimr::TTabletCountersWithTxTypes* Counters = nullptr;
     bool UpdateCountersScheduled = false;
     bool UpdateLeakyBucketCountersScheduled = false;
+    bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
@@ -284,6 +285,11 @@ private:
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
     bool ReassignChannelsEnabled() const override;
+    void RegisterEvPutResult(
+        const NActors::TActorContext& ctx,
+        ui32 generation,
+        ui32 channel,
+        const NKikimr::TStorageStatusFlags flags);
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
@@ -305,7 +311,14 @@ private:
         TThrottlingPolicy::EOpType opType,
         TDuration time);
 
+    void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
+    void CreateSessionsInFollowers(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TCreateSessionRequest request,
+        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
+        TVector<TString> followerIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
     template <typename TMethod>

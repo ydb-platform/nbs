@@ -293,6 +293,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
+    ScheduleSyncSessions(ctx);
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);

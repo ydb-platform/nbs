@@ -9,21 +9,22 @@ import yatest.common as common
 logger = logging.getLogger(__name__)
 
 KB = 1024
-MB = 1024*1024
+MB = 1024 * 1024
 
 
 def _print_size(size):
     if size < KB:
         return str(size)
     elif size < MB:
-        return "{}K".format(int(size/KB))
+        return "{}K".format(int(size / KB))
     else:
-        return "{}M".format(int(size/MB))
+        return "{}M".format(int(size / MB))
 
 
 class TestCase:
     def __init__(self, scenario, size, request_size, iodepth, sync, duration, compress_percentage,
-                 verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier):
+                 verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier, unique_name,
+                 offset):
         self._scenario = scenario
         self._size = size
         self._request_size = request_size
@@ -38,6 +39,8 @@ class TestCase:
         self._fdatasync = fdatasync
         self._end_fsync = end_fsync
         self._write_barrier = write_barrier
+        self._unique_name = unique_name
+        self._offset = offset
 
     @property
     def scenario(self):
@@ -96,6 +99,14 @@ class TestCase:
         return self._write_barrier
 
     @property
+    def unique_name(self):
+        return self._unique_name
+
+    @property
+    def offset(self):
+        return self._offset
+
+    @property
     def name(self):
         parts = [
             self.scenario,
@@ -116,37 +127,104 @@ class TestCase:
             parts += ['unlink']
         if self.end_fsync:
             parts += ['end-fsync']
-        return "_".join(parts)
+        name = "_".join(parts)
+        if self.unique_name:
+            name += "_" + str(uuid.uuid4())
+        return name
+
+    def get_common_fio_cmd(self, fio_bin):
+        cmd = [
+            fio_bin,
+            "--name", self.name,
+            "--rw", str(self.scenario),
+            "--size", str(self.size),
+            "--bs", str(self.request_size),
+            "--buffer_compress_percentage", str(self.compress_percentage),
+            "--runtime", str(self.duration),
+            "--time_based",
+            "--output-format", "json",
+        ]
+        if self.offset:
+            cmd += ["--offset", str(self.offset)]
+        if self.verify and 'read' not in self.scenario:
+            cmd += [
+                "--verify", "md5",
+                "--verify_backlog", "8192",  # 32MiB
+                # "--verify_fatal", "1",
+                "--serialize_overlap", "1",
+                "--verify_dump", "1",
+
+            ]
+        if self.sync:
+            cmd += [
+                "--buffered", "1",
+                "--ioengine", "sync",
+                "--numjobs", str(self.iodepth),
+            ]
+        else:
+            cmd += [
+                "--direct", "1",
+                "--ioengine", "libaio",
+                "--iodepth", str(self.iodepth),
+            ]
+        return cmd
+
+    def get_fio_cmd(self, fio_bin, file_name):
+        cmd = self.get_common_fio_cmd(fio_bin)
+        cmd += ["--filename", file_name]
+        return cmd
+
+    def get_index_fio_cmd(self, fio_bin, directory):
+        cmd = self.get_common_fio_cmd(fio_bin)
+        cmd += [
+            "--directory", directory,
+            "--numjobs", str(self.numjobs)
+        ]
+        if self.fsync > 0:
+            cmd += ["--fsync", str(self.fsync)]
+        if self.fdatasync > 0:
+            cmd += ["--fdatasync", str(self.fdatasync)]
+        if self.write_barrier > 0:
+            cmd += ["--write_barrier", str(self.write_barrier)]
+        if self.unlink:
+            cmd += ["--unlink", "1"]
+        if self.end_fsync:
+            cmd += ["--end_fsync", "1"]
+        return cmd
 
 
 def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage, verify,
-                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers):
+                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset):
     return [
         TestCase(scenario, size, request_size, iodepth, sync, duration, compress_percentage, verify,
-                 unlink, numjob, fsync, fdatasync, end_fsync, write_barrier)
+                 unlink, numjob, fsync, fdatasync, end_fsync, write_barrier, unique_name,
+                 offset)
         for scenario, request_size, iodepth, unlink, numjob, fsync, fdatasync, end_fsync, write_barrier
         in itertools.product(scenarios, sizes, iodepths, unlinks, numjobs, fsyncs, fdatasyncs,
                              end_fsyncs, write_barriers)
     ]
 
 
-def generate_tests(size=100*MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
-                   sizes=[4*KB, 4*MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
-                   numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0]):
+def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
+                   sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
+                   numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
+                   unique_name=False, offset=0):
     return {
         test.name: test
         for test in _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage,
-                                    verify, unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers)
+                                    verify, unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers,
+                                    unique_name, offset)
     }
 
 
 def generate_default_test():
-    return generate_tests(size=100*MB, duration=60, sync=False, scenarios=['randrw'],
-                          sizes=[4*KB], iodepths=[32], compress_percentage=90, verify=True, unlinks=[False],
-                          numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0])
+    return generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randrw'],
+                          sizes=[4 * KB], iodepths=[32], compress_percentage=90, verify=True, unlinks=[False],
+                          numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
+                          unique_name=False)
 
 
-def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodepths=[16], unlinks=[False, True],
+def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4 * KB], iodepths=[16], unlinks=[False, True],
                          numjobs=[1, 4], fsyncs=[0, 16], fdatasyncs=[0, 8], end_fsyncs=[False, True],
                          write_barriers=[0, 4]):
     return generate_tests(duration=duration, scenarios=scenarios, sizes=sizes, iodepths=iodepths, unlinks=unlinks,
@@ -155,8 +233,9 @@ def generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodept
 
 
 def generate_default_index_test():
-    return generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4*KB], iodepths=[16], unlinks=[True],
-                                numjobs=[4], fsyncs=[16], fdatasyncs=[8], end_fsyncs=[True], write_barriers=[4])
+    return generate_index_tests(duration=30, scenarios=['randrw'], sizes=[4 * KB], iodepths=[16], unlinks=[True],
+                                numjobs=[4], fsyncs=[16], fdatasyncs=[8], end_fsyncs=[True], write_barriers=[4],
+                                unique_name=False)
 
 
 def _get_fio_bin():
