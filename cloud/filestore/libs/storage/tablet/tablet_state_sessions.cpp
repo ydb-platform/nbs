@@ -561,69 +561,74 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
     if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
         ++handle->StatNodesWrite;
-        ++Impl->NodeToSessionStat[nodeId].Write[session->GetSessionId()] ;
+        ++Impl->NodeToSessionStat[nodeId].Write[session->GetSessionId()];
     } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
         ++handle->StatNodesRead;
         ++Impl->NodeToSessionStat[nodeId].Read[session->GetSessionId()];
     }
 
-    ResetNodeCounters(db, handle);
-    UpdateNodeCounters(db, handle);
+    ResetNodeCounters(handle->GetNodeId());
+    UpdateNodeCounters(handle->GetNodeId());
 
     return handle;
 }
 
-void TIndexTabletState::ResetNodeCounters(
-    TIndexTabletDatabase& db,
-    TSessionHandle* handle)
+void TIndexTabletState::ResetNodeCounters(ui64 nodeId)
 {
-    auto& statLastUsedField =
-        Impl->NodeToSessionStat[handle->GetNodeId()].StatLastUsedField;
+    auto& statLastUsedField = Impl->NodeToSessionStat[nodeId].StatLastUsedField;
     if (statLastUsedField ==
         TNodeSessionStat::EStatLastUsedField::NodesWriteMultiSessionCount)
     {
-        DecrementNodesWriteMultiSessionCount(db);
+        FileSystemStats.SetNodesWriteMultiSessionCount(
+            SafeDecrement(FileSystemStats.GetNodesWriteMultiSessionCount(), 1));
     } else if (
         statLastUsedField ==
         TNodeSessionStat::EStatLastUsedField::NodesWriteSingleSessionCount)
     {
-        DecrementNodesWriteSingleSessionCount(db);
+        FileSystemStats.SetNodesWriteSingleSessionCount(SafeDecrement(
+            FileSystemStats.GetNodesWriteSingleSessionCount(),
+            1));
     } else if (
         statLastUsedField ==
         TNodeSessionStat::EStatLastUsedField::NodesReadMultiSessionCount)
     {
-        DecrementNodesReadMultiSessionCount(db);
+        FileSystemStats.SetNodesReadMultiSessionCount(
+            SafeDecrement(FileSystemStats.GetNodesReadMultiSessionCount(), 1));
     } else if (
         statLastUsedField ==
         TNodeSessionStat::EStatLastUsedField::NodesReadSingleSessionCount)
     {
-        DecrementNodesReadSingleSessionCount(db);
+        FileSystemStats.SetNodesReadSingleSessionCount(
+            SafeDecrement(FileSystemStats.GetNodesReadSingleSessionCount(), 1));
     }
     statLastUsedField = TNodeSessionStat::EStatLastUsedField::None;
 }
 
-void TIndexTabletState::UpdateNodeCounters(
-    TIndexTabletDatabase& db,
-    TSessionHandle* handle)
+void TIndexTabletState::UpdateNodeCounters(ui64 nodeId)
 {
-    auto& nodeStat = Impl->NodeToSessionStat[handle->GetNodeId()];
+    auto& nodeStat = Impl->NodeToSessionStat[nodeId];
     auto& statLastUsedField = nodeStat.StatLastUsedField;
     if (nodeStat.Write.size() > 1) {
         statLastUsedField =
             TNodeSessionStat::EStatLastUsedField::NodesWriteMultiSessionCount;
-        IncrementNodesWriteMultiSessionCount(db);
+        FileSystemStats.SetNodesWriteMultiSessionCount(
+            SafeIncrement(FileSystemStats.GetNodesWriteMultiSessionCount(), 1));
     } else if (nodeStat.Write.size() == 1) {
         statLastUsedField =
             TNodeSessionStat::EStatLastUsedField::NodesWriteSingleSessionCount;
-        IncrementNodesWriteSingleSessionCount(db);
+        FileSystemStats.SetNodesWriteSingleSessionCount(SafeIncrement(
+            FileSystemStats.GetNodesWriteSingleSessionCount(),
+            1));
     } else if (nodeStat.Read.size() > 1) {
         statLastUsedField =
             TNodeSessionStat::EStatLastUsedField::NodesReadMultiSessionCount;
-        IncrementNodesReadMultiSessionCount(db);
+        FileSystemStats.SetNodesReadMultiSessionCount(
+            SafeIncrement(FileSystemStats.GetNodesReadMultiSessionCount(), 1));
     } else if (nodeStat.Read.size() == 1) {
         statLastUsedField =
             TNodeSessionStat::EStatLastUsedField::NodesReadSingleSessionCount;
-        IncrementNodesReadSingleSessionCount(db);
+        FileSystemStats.SetNodesReadSingleSessionCount(
+            SafeIncrement(FileSystemStats.GetNodesReadSingleSessionCount(), 1));
     }
 }
 
@@ -643,7 +648,7 @@ void TIndexTabletState::DestroyHandle(
         handle->GetNodeId(),
         handle->GetHandle());
 
-    ResetNodeCounters(db, handle);
+    ResetNodeCounters(handle->GetNodeId());
 
     auto& nodeStat = Impl->NodeToSessionStat[handle->GetNodeId()];
     const auto& sessionId = handle->GetSessionId();
@@ -662,7 +667,7 @@ void TIndexTabletState::DestroyHandle(
         Impl->NodeToSessionStat.erase(handle->nodeid());
     }
 
-    UpdateNodeCounters(db, handle);
+    UpdateNodeCounters(handle->GetNodeId());
 
     RemoveHandle(handle);
 }

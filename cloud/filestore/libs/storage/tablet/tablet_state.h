@@ -310,8 +310,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void ResetNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle);
-    void UpdateNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle);
+    void ResetNodeCounters(ui64 nodeId);
+    void UpdateNodeCounters(ui64 nodeId);
 
     //
     // Throttling

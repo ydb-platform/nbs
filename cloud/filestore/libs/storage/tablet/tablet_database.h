@@ -48,11 +48,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FreshBytesCount,        __VA_ARGS__)                                   \
     xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
     xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
-                                                                               \
-    xxx(NodesWriteSingleSessionCount, __VA_ARGS__)                             \
-    xxx(NodesWriteMultiSessionCount,  __VA_ARGS__)                             \
-    xxx(NodesReadSingleSessionCount,  __VA_ARGS__)                             \
-    xxx(NodesReadMultiSessionCount,   __VA_ARGS__)                             \
 // FILESTORE_FILESYSTEM_STATS
 
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \

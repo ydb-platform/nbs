@@ -33,11 +33,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FreshBytesCount,        __VA_ARGS__)                                   \
     xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
     xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
-                                                                               \
-    xxx(NodesWriteSingleSessionCount, __VA_ARGS__)                             \
-    xxx(NodesWriteMultiSessionCount,  __VA_ARGS__)                             \
-    xxx(NodesReadSingleSessionCount,  __VA_ARGS__)                             \
-    xxx(NodesReadMultiSessionCount,   __VA_ARGS__)                             \
 // FILESTORE_TABLET_STATS
 
 #define FILESTORE_TABLET_SIMPLE_COUNTERS(xxx)                                  \

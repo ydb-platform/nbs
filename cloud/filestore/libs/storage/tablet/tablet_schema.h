@@ -60,11 +60,6 @@ struct TIndexTabletSchema
         struct DeletedFreshBytesCount
             : Column<24, NKikimr::NScheme::NTypeIds::Uint64> {};
 
-        struct NodesWriteSingleSessionCount : Column<25, NKikimr::NScheme::NTypeIds::Uint64> {};
-        struct NodesWriteMultiSessionCount  : Column<26, NKikimr::NScheme::NTypeIds::Uint64> {};
-        struct NodesReadSingleSessionCount  : Column<27, NKikimr::NScheme::NTypeIds::Uint64> {};
-        struct NodesReadMultiSessionCount   : Column<28, NKikimr::NScheme::NTypeIds::Uint64> {};
-
         using TKey = TableKey<Id>;
 
         using TColumns = TableColumns<
@@ -91,11 +86,7 @@ struct TIndexTabletSchema
             UsedBlocksCount,
             AttrsUsedBytesCount,
             StorageConfig,
-            DeletedFreshBytesCount,
-            NodesWriteSingleSessionCount,
-            NodesWriteMultiSessionCount,
-            NodesReadSingleSessionCount,
-            NodesReadMultiSessionCount  
+            DeletedFreshBytesCount
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
