@@ -6,7 +6,14 @@ option go_package = "github.com/ydb-platform/nbs/cloud/tasks/tracing/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message SamplingConfig {
+    optional uint64 SoftBarrier = 1 [default = 40];
+    optional uint64 HardBarrier = 2 [default = 200];
+    optional uint32 SoftPercentage = 3 [default = 20];
+}
+
 message TracingConfig {
     optional string ServiceName = 1 [default = "disk-manager"];
     optional uint32 Port = 2 [default = 7881];
+    optional SamplingConfig SamplingConfig = 3;  // TODO:_ optional?
 }
