@@ -17,9 +17,9 @@ const (
 
 func NewSampler(config *tracing_config.SamplingConfig) sdktrace.Sampler {
 	return &sampler{
-		softBarrier:    config.SoftBarrier,
-		hardBarrier:    config.HardBarrier,
-		softPercentage: config.SoftPercentage,
+		softBarrier:    *config.SoftBarrier,
+		hardBarrier:    *config.HardBarrier,
+		softPercentage: *config.SoftPercentage,
 	}
 }
 
