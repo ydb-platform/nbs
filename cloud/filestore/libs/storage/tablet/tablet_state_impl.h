@@ -44,6 +44,7 @@ struct TIndexTabletState::TImpl
     ui64 MaxSessionHistoryEntryId = 1;
 
     TNodeToSessionStat NodeToSessionStat;
+
     TWriteRequestList WriteBatch;
 
     TRangeLocks RangeLocks;
