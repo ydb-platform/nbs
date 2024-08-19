@@ -297,6 +297,11 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(NodesWriteSingleSessionCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(NodesWriteMultiSessionCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(NodesReadSingleSessionCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(NodesReadMultiSessionCount, EMetricType::MT_ABSOLUTE);
+
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);
@@ -431,6 +436,11 @@ void TIndexTabletActor::TMetrics::Update(
     Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
     Store(ReadAheadCacheNodeCount, readAheadStats.NodeCount);
     Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
+
+    Store(NodesWriteSingleSessionCount, stats.GetNodesWriteSingleSessionCount());
+    Store(NodesWriteMultiSessionCount, stats.GetNodesWriteMultiSessionCount());
+    Store(NodesReadSingleSessionCount, stats.GetNodesReadSingleSessionCount());
+    Store(NodesReadMultiSessionCount, stats.GetNodesReadMultiSessionCount());
 
     BusyIdleCalc.OnUpdateStats();
 }

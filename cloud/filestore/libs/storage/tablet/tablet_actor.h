@@ -137,6 +137,11 @@ private:
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
+        std::atomic<i64> NodesWriteSingleSessionCount{0};
+        std::atomic<i64> NodesWriteMultiSessionCount{0};
+        std::atomic<i64> NodesReadSingleSessionCount{0};
+        std::atomic<i64> NodesReadMultiSessionCount{0};
+
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;

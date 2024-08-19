@@ -1201,6 +1201,109 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(StatOpenedFiles)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNodeIndexCacheMaxNodes(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto countersValidate = [&](const TVector<std::pair<TVector<NMetrics::TLabel>, i64>>& expectedCounters)
+        {
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            {
+                TTestRegistryVisitor visitor;
+                registry->Visit(TInstant::Zero(), visitor);
+                visitor.ValidateExpectedCounters(expectedCounters);
+            }
+        };
+        const auto countersValidateWoWmRoWm = [&](const auto& wo, const auto& wm, const auto& ro, const auto& rm)
+        {
+            return countersValidate({
+                {{{"filesystem", "test"}, {"sensor", "NodesWriteSingleSessionCount"}}, wo},
+                {{{"filesystem", "test"}, {"sensor", "NodesWriteMultiSessionCount"}}, wm},
+                {{{"filesystem", "test"}, {"sensor", "NodesReadSingleSessionCount"}}, ro},
+                {{{"filesystem", "test"}, {"sensor", "NodesReadMultiSessionCount"}}, rm},
+            });
+        };
+
+        {
+            auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            auto handleS1W = CreateHandle(tablet, id);
+
+            tablet.WriteData(handleS1W, 0, 1, '1');
+            tablet.WriteData(handleS1W, 1, 1024, '2');
+
+            {
+                auto handleS1R = CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+                tablet.ReadData(handleS1R, 10, 10);
+                countersValidateWoWmRoWm(1, 0, 0, 0);
+                tablet.DestroyHandle(handleS1R);
+            }
+
+            countersValidateWoWmRoWm(1, 0, 0, 0);
+            tablet.DestroyHandle(handleS1W);
+
+            {
+                auto handleS1R = CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+                tablet.ReadData(handleS1R, 10, 10);
+                countersValidateWoWmRoWm(0, 0, 1, 0);
+
+                auto handleS1W = CreateHandle(tablet, id);
+                countersValidateWoWmRoWm(1, 0, 0, 0);
+
+                {
+                    TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+                    tablet2.InitSession("client2", "session2");
+                    auto handleS2R = CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+                    countersValidateWoWmRoWm(1, 0, 0, 0);
+
+                    tablet2.DestroyHandle(handleS2R);
+                    auto handleS2W = CreateHandle(tablet2, id, {});
+                    countersValidateWoWmRoWm(0, 1, 0, 0);
+                    tablet2.DestroyHandle(handleS2W);
+                }
+
+                tablet.DestroyHandle(handleS1W);
+                countersValidateWoWmRoWm(0, 0, 1, 0);
+
+                {
+                    auto node2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+                    auto handleS1W2 = CreateHandle(tablet, node2);
+                    tablet.WriteData(handleS1W2, 0, 1, '1');
+                    countersValidateWoWmRoWm(1, 0, 1, 0);
+                    tablet.DestroyHandle(handleS1W2);
+
+                    {
+                        auto handleS1R = CreateHandle(tablet, node2, {}, TCreateHandleArgs::RDNLY);
+                        countersValidateWoWmRoWm(0, 0, 2, 0);
+                        tablet.DestroyHandle(handleS1R);
+                    }
+                }
+
+                {
+                    TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+                    tablet2.InitSession("client2", "session2");
+                    auto handleS2R = CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+                    countersValidateWoWmRoWm(0, 0, 0, 1);
+                    tablet2.DestroyHandle(handleS2R);
+                }
+
+                tablet.DestroyHandle(handleS1R);
+            }
+        }
+
+        countersValidateWoWmRoWm(0, 0, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)
     {
         NProto::TStorageConfig storageConfig;

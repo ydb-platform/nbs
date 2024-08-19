@@ -28,6 +28,9 @@ struct TSessionHandle
         : NProto::TSessionHandle(proto)
         , Session(session)
     {}
+
+    ui64 StatNodesWrite = 0;
+    ui64 StatNodesRead = 0;
 };
 
 using TSessionHandleList =

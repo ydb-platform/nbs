@@ -47,6 +47,24 @@ class TProfileLogRequestInfo;
 
 namespace NCloud::NFileStore::NStorage {
 
+struct TNodeSessionStat
+{
+    THashMap<TString, ui64> Read;
+    THashMap<TString, ui64> Write;
+
+    enum class EStatLastUsedField
+    {
+        None,
+        NodesWriteSingleSessionCount,
+        NodesWriteMultiSessionCount,
+        NodesReadSingleSessionCount,
+        NodesReadMultiSessionCount,
+    };
+
+    EStatLastUsedField StatLastUsedField {};   
+};
+using TNodeToSessionStat = THashMap<ui64, TNodeSessionStat>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCompactionInfo
@@ -291,6 +309,9 @@ private:                                                                       \
 FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
+
+    void ResetNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle);
+    void UpdateNodeCounters(TIndexTabletDatabase& db, TSessionHandle* handle);
 
     //
     // Throttling
