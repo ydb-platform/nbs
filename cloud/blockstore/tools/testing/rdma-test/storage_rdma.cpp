@@ -86,8 +86,7 @@ public:
             req->RequestBuffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             0,   // flags
-            *Request,
-            {});
+            *Request);
 
         return std::move(req);
     }
@@ -174,7 +173,7 @@ public:
         Y_ABORT_UNLESS(guard);
 
         const auto& sglist = guard.Get();
-        NRdma::TProtoMessageSerializer::Serialize(
+        NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             0,   // flags

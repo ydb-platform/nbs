@@ -97,8 +97,7 @@ public:
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,
-            Proto,
-            {});
+            Proto);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -210,7 +209,7 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        return NRdma::TProtoMessageSerializer::Serialize(
+        return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
@@ -299,8 +298,7 @@ public:
             buffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
             0,   // flags
-            Proto,
-            {});
+            Proto);
     }
 
     void HandleResponse(TStringBuf buffer) override

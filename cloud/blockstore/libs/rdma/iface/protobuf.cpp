@@ -59,6 +59,16 @@ size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
     ui32 flags,
+    const TProtoMessage& proto)
+{
+    return SerializeWithDataLength(buffer, msgId, flags, proto, 0);
+}
+
+// static
+size_t TProtoMessageSerializer::SerializeWithData(
+    TStringBuf buffer,
+    ui32 msgId,
+    ui32 flags,
     const TProtoMessage& proto,
     TBlockDataRefSpan data)
 {

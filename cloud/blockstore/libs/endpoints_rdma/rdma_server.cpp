@@ -203,12 +203,13 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
             Y_ENSURE(guard);
 
             const auto& sglist = guard.Get();
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreProtocol::ReadBlocksResponse,
-                0,   // flags
-                response,
-                sglist);
+            size_t responseBytes =
+                NRdma::TProtoMessageSerializer::SerializeWithData(
+                    out,
+                    TBlockStoreProtocol::ReadBlocksResponse,
+                    0,   // flags
+                    response,
+                    sglist);
 
             Endpoint->SendResponse(context, responseBytes);
         });
@@ -249,8 +250,7 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                 out,
                 TBlockStoreProtocol::WriteBlocksResponse,
                 0,   // flags
-                response,
-                {});
+                response);
 
             Endpoint->SendResponse(context, responseBytes);
         });
@@ -281,8 +281,7 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
             out,
             TBlockStoreProtocol::ZeroBlocksResponse,
             0,   // flags
-            response,
-            {});
+            response);
 
         Endpoint->SendResponse(context, responseBytes);
     });

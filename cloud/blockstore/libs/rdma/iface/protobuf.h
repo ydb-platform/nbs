@@ -60,6 +60,12 @@ public:
         TStringBuf buffer,
         ui32 msgId,
         ui32 flags,
+        const TProtoMessage& proto);
+
+    static size_t SerializeWithData(
+        TStringBuf buffer,
+        ui32 msgId,
+        ui32 flags,
         const TProtoMessage& proto,
         TBlockDataRefSpan data);
 

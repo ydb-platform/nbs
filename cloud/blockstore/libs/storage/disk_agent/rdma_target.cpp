@@ -611,7 +611,7 @@ private:
                 parts.emplace_back(TBlockDataRef(buffer.data(), buffer.size()));
             }
 
-            bytes = NRdma::TProtoMessageSerializer::Serialize(
+            bytes = NRdma::TProtoMessageSerializer::SerializeWithData(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,
@@ -748,8 +748,7 @@ private:
             requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
             0,   // flags
-            proto,
-            {});
+            proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -869,8 +868,7 @@ private:
             requestDetails.Out,
             TBlockStoreProtocol::ZeroDeviceBlocksResponse,
             0,   // flags
-            proto,
-            {});
+            proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -949,8 +947,7 @@ private:
             requestDetails.Out,
             TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
             0,   // flags
-            proto,
-            {});
+            proto);
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);

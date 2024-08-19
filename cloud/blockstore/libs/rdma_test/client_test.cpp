@@ -128,12 +128,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                    0,   // flags
-                    response,
-                    sglist);
+                responseBytes =
+                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                        0,   // flags
+                        response,
+                        sglist);
 
                 break;
             }
@@ -167,8 +168,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::WriteDeviceBlocksResponse,
                     0,   // flags
-                    response,
-                    {});
+                    response);
 
                 break;
             }
@@ -198,8 +198,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ZeroDeviceBlocksResponse,
                     0,   // flags
-                    response,
-                    {});
+                    response);
 
                 break;
             }
@@ -232,8 +231,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
                     0,   // flags
-                    response,
-                    {});
+                    response);
 
                 break;
             }

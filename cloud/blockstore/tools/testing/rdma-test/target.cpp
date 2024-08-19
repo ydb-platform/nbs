@@ -158,7 +158,7 @@ private:
 
                 const auto& sglist = guard.Get();
                 size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
+                    NRdma::TProtoMessageSerializer::SerializeWithData(
                         out,
                         TBlockStoreProtocol::ReadBlocksResponse,
                         0,   // flags
@@ -203,8 +203,7 @@ private:
                         out,
                         TBlockStoreProtocol::WriteBlocksResponse,
                         0,   // flags
-                        response,
-                        {});
+                        response);
 
                 Endpoint->SendResponse(context, responseBytes);
             });

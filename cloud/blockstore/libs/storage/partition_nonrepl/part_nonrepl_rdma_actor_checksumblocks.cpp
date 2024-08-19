@@ -257,8 +257,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             req->RequestBuffer,
             TBlockStoreProtocol::ChecksumDeviceBlocksRequest,
             0,   // flags
-            deviceRequest,
-            {});
+            deviceRequest);
 
         requests.push_back({std::move(ep), std::move(req)});
     }

@@ -287,7 +287,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
@@ -435,7 +435,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,

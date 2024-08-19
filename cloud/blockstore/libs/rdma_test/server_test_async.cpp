@@ -138,12 +138,13 @@ public:
                 request,
                 SgListGetSize(sglist));
         wrapper->Serialized = TString(expectedSerializedSize, 0);
-        const size_t serializedSize = NRdma::TProtoMessageSerializer::Serialize(
-            wrapper->Serialized,
-            messageType,
-            0,   // flags
-            request,
-            sglist);
+        const size_t serializedSize =
+            NRdma::TProtoMessageSerializer::SerializeWithData(
+                wrapper->Serialized,
+                messageType,
+                0,   // flags
+                request,
+                sglist);
         UNIT_ASSERT(expectedSerializedSize >= serializedSize);
 
         // Prepare buffer for response message

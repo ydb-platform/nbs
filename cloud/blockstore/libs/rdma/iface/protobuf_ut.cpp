@@ -74,12 +74,13 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
 
                 auto buffer = TString::Uninitialized(bufferSize);
 
-                size_t serializedBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    buffer,
-                    TBlockStoreProtocol::ReadBlocksRequest,
-                    flags,
-                    proto,
-                    part);
+                size_t serializedBytes =
+                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                        buffer,
+                        TBlockStoreProtocol::ReadBlocksRequest,
+                        flags,
+                        proto,
+                        part);
 
                 if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
                     UNIT_ASSERT_VALUES_EQUAL(bufferSize, serializedBytes);

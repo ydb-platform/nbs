@@ -111,8 +111,7 @@ public:
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             0,   // flags
-            *Request,
-            {});
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -210,7 +209,7 @@ public:
 
         const auto& sglist = guard.Get();
 
-        return NRdma::TProtoMessageSerializer::Serialize(
+        return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             0, // flags
@@ -288,8 +287,7 @@ public:
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
             0,   // flags
-            *Request,
-            {});
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override
