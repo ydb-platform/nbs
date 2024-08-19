@@ -57,6 +57,7 @@ var (
 		{name: "PlacementGroupService.Describe", permission: "disk-manager.disks.get"},
 
 		{name: "PrivateService.ScheduleBlankOperation", permission: "disk-manager.operations.create"},
+		{name: "PrivateService.ReleaseBaseDisk", permission: "disk-manager.disks.delete"},
 		{name: "PrivateService.RebaseOverlayDisk", permission: "disk-manager.disks.update"},
 		{name: "PrivateService.RetireBaseDisk", permission: "disk-manager.disks.delete"},
 		{name: "PrivateService.RetireBaseDisks", permission: "disk-manager.disks.delete"},
