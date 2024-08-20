@@ -191,6 +191,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheNodeAttrsVerCapacity,         ui64,       0         )\
     xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
     xxx(InMemoryIndexCacheNodeRefsVerCapacity,          ui64,       0         )\
+    xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

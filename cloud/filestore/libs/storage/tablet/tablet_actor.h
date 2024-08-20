@@ -179,7 +179,7 @@ private:
 
         i64 LastNetworkMetric = 0;
 
-        i64 TakeTotalRequestBytes();
+        i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
