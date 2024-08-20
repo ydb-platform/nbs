@@ -51,17 +51,6 @@ struct TNodeSessionStat
 {
     THashMap<TString, THashSet<ui64>> ReadHandlesBySession;
     THashMap<TString, THashSet<ui64>> WriteHandlesBySession;
-
-    enum class EStatLastUsedField
-    {
-        None,
-        NodesWriteSingleSessionCount,
-        NodesWriteMultiSessionCount,
-        NodesReadSingleSessionCount,
-        NodesReadMultiSessionCount,
-    };
-
-    EStatLastUsedField StatLastUsedField {};   
 };
 class TNodeToSessionStat
 {
