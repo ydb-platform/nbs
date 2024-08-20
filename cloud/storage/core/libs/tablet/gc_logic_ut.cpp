@@ -383,12 +383,12 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         };
 
         RemoveDuplicates(newBlobs, garbageBlobs, MakeCommitId(3, 0));
-        UNIT_ASSERT_VALUES_EQUAL(newBlobs.size(), 1);
-        UNIT_ASSERT_EQUAL(newBlobs[0], blob3);
+        UNIT_ASSERT_VALUES_EQUAL(1, newBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(ToString(blob3), ToString(newBlobs[0]));
 
-        UNIT_ASSERT_VALUES_EQUAL(garbageBlobs.size(), 2);
-        UNIT_ASSERT_EQUAL(garbageBlobs[0], blob1);
-        UNIT_ASSERT_EQUAL(garbageBlobs[1], blob4);
+        UNIT_ASSERT_VALUES_EQUAL(2, garbageBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(ToString(blob1), ToString(garbageBlobs[0]));
+        UNIT_ASSERT_VALUES_EQUAL(ToString(blob4), ToString(garbageBlobs[1]));
     }
 }
 

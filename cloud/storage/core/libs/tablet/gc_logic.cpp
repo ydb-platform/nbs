@@ -174,16 +174,15 @@ void RemoveDuplicates(
         }
     }
 
-    const auto isInvalid = [](const auto& blob)
-    {
-        return blob == InvalidPartialBlobId;
-    };
+    auto it =
+        std::remove(newBlobs.begin(), newBlobs.end(), InvalidPartialBlobId);
+    newBlobs.erase(it, newBlobs.end());
 
-    auto it = std::remove_if(newBlobs.begin(), newBlobs.end(), isInvalid);
-    newBlobs.resize(it - newBlobs.begin());
-
-    it = std::remove_if(garbageBlobs.begin(), garbageBlobs.end(), isInvalid);
-    garbageBlobs.resize(it - garbageBlobs.begin());
+    it = std::remove(
+        garbageBlobs.begin(),
+        garbageBlobs.end(),
+        InvalidPartialBlobId);
+    garbageBlobs.erase(it, garbageBlobs.end());
 }
 
 void FindGarbageVersions(
