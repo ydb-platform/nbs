@@ -11,19 +11,19 @@ import (
 
 // TODO:_ do we need separate struct for this?
 type tasksTracingSampler struct {
-	config tasks_config.SamplingConfigForTracing
+	config *tasks_config.SamplingConfigForTracing
 }
 
 func (s *tasksTracingSampler) ShouldSample(
 	taskID string,
 	generationID uint64, // TODO:_ generation id -- ok name?
 ) bool {
-	if generationID > s.config.hardBarrier {
+	if generationID > *s.config.HardBarrier { // TODO:_ Get...?
 		return false
 	}
-	if generationID > s.config.softBarrier {
+	if generationID > *s.config.SoftBarrier {
 		hash := crc32.ChecksumIEEE([]byte(taskID + string(generationID))) // TODO:_ make normal string, not string of one rune?
-		return hash%100 < s.config.softPercentage
+		return hash%100 < *s.config.SoftPercentage
 	}
 	return true
 }

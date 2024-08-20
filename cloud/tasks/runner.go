@@ -76,7 +76,7 @@ type runnerForRun struct {
 	storage                storage.Storage
 	registry               *Registry
 	metrics                runnerMetrics
-	tracingSampler         tasksTracingSampler
+	tracingSampler         *tasksTracingSampler
 	channel                *channel
 	pingPeriod             time.Duration
 	pingTimeout            time.Duration
@@ -333,7 +333,7 @@ type runnerForCancel struct {
 	storage        storage.Storage
 	registry       *Registry
 	metrics        runnerMetrics
-	tracingSampler tasksTracingSampler
+	tracingSampler *tasksTracingSampler
 	channel        *channel
 	pingPeriod     time.Duration
 	pingTimeout    time.Duration
@@ -651,7 +651,7 @@ func startRunner(
 	idForCancel string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
+	samplingConfigForTracing *tasks_config.SamplingConfigForTracing,
 ) error {
 
 	// TODO: More granular control on runners and cancellers.
@@ -669,7 +669,7 @@ func startRunner(
 		storage:                taskStorage,
 		registry:               registry,
 		metrics:                runnerForRunMetrics,
-		tracingSampler:         samplerForTracing,
+		tracingSampler:         &samplerForTracing,
 		channel:                channelForRun,
 		pingPeriod:             pingPeriod,
 		pingTimeout:            pingTimeout,
@@ -690,7 +690,7 @@ func startRunner(
 		storage:        taskStorage,
 		registry:       registry,
 		metrics:        runnerForCancelMetrics,
-		tracingSampler: samplerForTracing,
+		tracingSampler: &samplerForTracing,
 		channel:        channelForCancel,
 		pingPeriod:     pingPeriod,
 		pingTimeout:    pingTimeout,
@@ -716,7 +716,7 @@ func startRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
+	samplingConfigForTracing *tasks_config.SamplingConfigForTracing,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -761,7 +761,7 @@ func startStalkingRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
+	samplingConfigForTracing *tasks_config.SamplingConfigForTracing,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -932,7 +932,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.SamplingConfigForTracing(), // TODO:_ Get... vs ... (everywhere)?
+		config.GetSamplingConfigForTracing(), // TODO:_ Get... vs ... (everywhere)?
 	)
 	if err != nil {
 		return err
@@ -984,7 +984,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.SamplingConfigForTracing(),
+		config.GetSamplingConfigForTracing(),
 	)
 	if err != nil {
 		return err

@@ -17,4 +17,5 @@ message SamplingConfig {
 message TracingConfig {
     optional string ServiceName = 1 [default = "disk-manager"];
     optional uint32 Port = 2 [default = 7881];
+    optional SamplingConfig SamplingConfig = 3;
 }

@@ -14,6 +14,7 @@ SRCS(
     scheduler_impl.go
     storage_folder.go
     task.go
+    tracing_sampling.go
 )
 
 GO_TEST_SRCS(
