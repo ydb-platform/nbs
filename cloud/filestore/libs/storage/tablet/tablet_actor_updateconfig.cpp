@@ -153,7 +153,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,
-            "%s Failed to update config [txId: %d]: %s",
+            "%s Failed to update config [txId: %lu]: %s",
             LogTag.c_str(),
             txId,
             error.c_str());
@@ -177,7 +177,7 @@ void TIndexTabletActor::HandleUpdateConfig(
 
     if (oldBlockCount > newBlockCount) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
-            "%s BlocksCount will be decreased %lu -> %lu [txId: %d]",
+            "%s BlocksCount will be decreased %lu -> %lu [txId: %lu]",
             LogTag.c_str(),
             oldBlockCount,
             newBlockCount,
