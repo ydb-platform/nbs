@@ -542,6 +542,8 @@ private:
 
     NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 
+    bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
