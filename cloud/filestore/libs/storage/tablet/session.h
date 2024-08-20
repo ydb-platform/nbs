@@ -28,7 +28,6 @@ struct TSessionHandle
         : NProto::TSessionHandle(proto)
         , Session(session)
     {}
-
 };
 
 using TSessionHandleList =
