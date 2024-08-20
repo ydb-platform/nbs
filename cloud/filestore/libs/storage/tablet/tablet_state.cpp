@@ -152,47 +152,61 @@ void TIndexTabletState::DumpStats(IOutputStream& os) const
     );
 }
 
-TNodeSessionStat& TNodeToSessionStat::Get(ui64 nodeId)
+TNodeToSessionStat::EStatField
+TNodeToSessionStat::AddRead(ui64 nodeId, const TString& sessionId, ui64 handle)
 {
-    return Stat[nodeId];
+    Stat[nodeId].ReadSessionToHandle[sessionId].emplace(handle);
+    return CurrentField(nodeId);
 }
 
-void TNodeToSessionStat::AddRead(
-    ui64 nodeId,
-    const TString& sessionId,
-    ui64 handle)
+TNodeToSessionStat::EStatField
+TNodeToSessionStat::AddWrite(ui64 nodeId, const TString& sessionId, ui64 handle)
 {
-    Get(nodeId).ReadHandlesBySession[sessionId].emplace(handle);
+    Stat[nodeId].WriteSessionToHandle[sessionId].emplace(handle);
+    return CurrentField(nodeId);
 }
 
-void TNodeToSessionStat::AddWrite(
-    ui64 nodeId,
-    const TString& sessionId,
-    ui64 handle)
+TNodeToSessionStat::EStatField
+TNodeToSessionStat::Remove(ui64 nodeId, const TString& sessionId, ui64 handle)
 {
-    Get(nodeId).WriteHandlesBySession[sessionId].emplace(handle);
-}
+    auto& nodeStat = Stat[nodeId];
+    nodeStat.WriteSessionToHandle[sessionId].erase(handle);
+    nodeStat.ReadSessionToHandle[sessionId].erase(handle);
 
-void TNodeToSessionStat::Remove(
-    ui64 nodeId,
-    const TString& sessionId,
-    ui64 handle)
-{
-    auto& nodeStat = Get(nodeId);
-    nodeStat.WriteHandlesBySession[sessionId].erase(handle);
-    nodeStat.ReadHandlesBySession[sessionId].erase(handle);
-
-    if (nodeStat.WriteHandlesBySession[sessionId].empty()) {
-        nodeStat.WriteHandlesBySession.erase(sessionId);
+    if (nodeStat.WriteSessionToHandle[sessionId].empty()) {
+        nodeStat.WriteSessionToHandle.erase(sessionId);
     }
-    if (nodeStat.ReadHandlesBySession[sessionId].empty()) {
-        nodeStat.ReadHandlesBySession.erase(sessionId);
+    if (nodeStat.ReadSessionToHandle[sessionId].empty()) {
+        nodeStat.ReadSessionToHandle.erase(sessionId);
     }
-    if (nodeStat.WriteHandlesBySession.empty() &&
-        nodeStat.ReadHandlesBySession.empty())
+    if (nodeStat.WriteSessionToHandle.empty() &&
+        nodeStat.ReadSessionToHandle.empty())
     {
         Stat.erase(nodeId);
     }
+    return CurrentField(nodeId);
+}
+
+TNodeToSessionStat::EStatField TNodeToSessionStat::CurrentField(
+    ui64 nodeId) const
+{
+    if (!Stat.contains(nodeId)) {
+        return {};
+    }
+    const auto& nodeStat = Stat.at(nodeId);
+    if (nodeStat.WriteSessionToHandle.size() > 1) {
+        return EStatField::NodesWriteMultiSessionCount;
+    }
+    if (nodeStat.WriteSessionToHandle.size() == 1) {
+        return EStatField::NodesWriteSingleSessionCount;
+    }
+    if (nodeStat.ReadSessionToHandle.size() > 1) {
+        return EStatField::NodesReadMultiSessionCount;
+    }
+    if (nodeStat.ReadSessionToHandle.size() == 1) {
+        return EStatField::NodesReadSingleSessionCount;
+    }
+    return {};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

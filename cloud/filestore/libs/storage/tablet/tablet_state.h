@@ -47,22 +47,30 @@ class TProfileLogRequestInfo;
 
 namespace NCloud::NFileStore::NStorage {
 
-struct TNodeSessionStat
-{
-    THashMap<TString, THashSet<ui64>> ReadHandlesBySession;
-    THashMap<TString, THashSet<ui64>> WriteHandlesBySession;
-};
 class TNodeToSessionStat
 {
-    THashMap<ui64, TNodeSessionStat> Stat;
+    struct TSessionStat
+    {
+        THashMap<TString, THashSet<ui64>> ReadSessionToHandle;
+        THashMap<TString, THashSet<ui64>> WriteSessionToHandle;
+    };
+    THashMap<ui64, TSessionStat> Stat;
 
 public:
-    TNodeSessionStat& Get(ui64 nodeId);
-    void AddRead(ui64 nodeId, const TString& sessionId, ui64 handle);
-    void AddWrite(ui64 nodeId, const TString& sessionId, ui64 handle);
-    void Remove(ui64 nodeId, const TString& sessionId, ui64 handle);
-};
+    enum class EStatField
+    {
+        None,
+        NodesWriteSingleSessionCount,
+        NodesWriteMultiSessionCount,
+        NodesReadSingleSessionCount,
+        NodesReadMultiSessionCount,
+    };
 
+    [[nodiscard]] EStatField CurrentField(ui64 nodeId) const;
+    EStatField AddRead(ui64 nodeId, const TString& sessionId, ui64 handle);
+    EStatField AddWrite(ui64 nodeId, const TString& sessionId, ui64 handle);
+    EStatField Remove(ui64 nodeId, const TString& sessionId, ui64 handle);
+};
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCompactionInfo
@@ -308,8 +316,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void ResetNodeCounters(ui64 nodeId);
-    void UpdateNodeCounters(ui64 nodeId);
+    void ResetNodeCounters(const TNodeToSessionStat::EStatField field);
+    void UpdateNodeCounters(const TNodeToSessionStat::EStatField field);
 
     //
     // Throttling
