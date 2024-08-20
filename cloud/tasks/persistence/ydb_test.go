@@ -504,19 +504,6 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	metricsRegistry := mocks.NewRegistryMock()
-
-	db, err := newYDB(ctx, metricsRegistry)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	metricsRegistry.AssertAllExpectations(t)
-}
-
 func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -529,11 +516,11 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"errors",
-		map[string]string{"call": "client/MakeDirs", "type": "scheme"},
+		map[string]string{"call": "client/CreateOrAlterTable", "type": "scheme"},
 	).On("Inc").Once()
 
 	// YDB has limited length of object name. Current limit is 255.
-	extraLargeString := strings.Repeat("x", 257)
+	extraLargeString := strings.Repeat("x", 100500)
 	folder := fmt.Sprintf("ydb_test/%v/%v", extraLargeString, t.Name())
 	table := "table"
 

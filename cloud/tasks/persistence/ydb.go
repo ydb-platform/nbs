@@ -560,7 +560,7 @@ func (c *YDBClient) CreateOrAlterTable(
 		func(ctx context.Context, s *Session) (err error) {
 			defer s.metrics.StatCall(
 				ctx,
-				"client/MakeDirs",
+				"client/CreateOrAlterTable",
 				fmt.Sprintf("At path: %v", fullPath),
 			)(&err)
 

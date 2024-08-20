@@ -48,7 +48,7 @@ func (m *ydbMetrics) StatCall(
 			errorRegistry := subRegistry
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
-				errorType = "tli"
+				errorType = "TLI"
 			case ydb.IsOperationErrorSchemeError(*err):
 				errorType = "scheme"
 			case ydb.IsTransportError(*err):
