@@ -16,6 +16,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -127,7 +128,7 @@ func (s *scheduler) ScheduleRegularTasks(
 		for {
 			select {
 			case <-ctx.Done():
-				logging.Info(ctx, "sheduling regular task %v stopped", taskType)
+				logging.Info(ctx, "scheduling regular task %v stopped", taskType)
 				return
 			case <-time.After(
 				common.RandomDuration(
@@ -150,9 +151,9 @@ func (s *scheduler) ScheduleRegularTasks(
 				continue
 			}
 
-			metadata := tasks_storage.NewMetadata(map[string]string{
-				"x-request-id": requestID.String(),
-			})
+			ctx = headers.SetIncomingRequestID(ctx, requestID.String())
+			ctx = tracing.InjectTracingContext(ctx)
+			metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
 
 			schedule := tasks_storage.TaskSchedule{
 				ScheduleInterval: schedule.ScheduleInterval,
