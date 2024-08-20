@@ -82,10 +82,14 @@ public:
         }
     }
 
-    size_t GetSessionCount()
-    {
-        with_lock (Lock) {
-            return Sessions.size();
+    void WaitForSessionCount(ui32 sessionCount) {
+        while (true) {
+            with_lock (Lock) {
+                if (Sessions.size() == sessionCount) {
+                    break;
+                }
+            }
+            Sleep(TDuration::MilliSeconds(100));
         }
     }
 };
@@ -372,8 +376,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
             client->Stop();
         };
 
-        Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientStorage->GetSessionCount() == 1);
+        clientStorage->WaitForSessionCount(1);
 
         {
             auto future = listener->StopEndpoint(unixSocket.GetPath());
@@ -381,8 +384,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
             UNIT_ASSERT_C(!HasError(error), error);
         }
 
-        Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientStorage->GetSessionCount() == 0);
+        clientStorage->WaitForSessionCount(0);
     }
 
     Y_UNIT_TEST(ShouldHandleClientDisconnection)
@@ -420,14 +422,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
             }
         };
 
-        const auto waitIters = 10;
-        for (ui32 i = 0; i < waitIters; ++i) {
-            if (clientStorage->GetSessionCount()) {
-                break;
-            }
-            Sleep(TDuration::MilliSeconds(100));
-        }
-        UNIT_ASSERT_VALUES_EQUAL(1, clientStorage->GetSessionCount());
+        clientStorage->WaitForSessionCount(1);
 
         clientEndpoint->Stop();
         clientEndpoint.reset();
@@ -435,13 +430,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         client->Stop();
         client.reset();
 
-        for (ui32 i = 0; i < waitIters; ++i) {
-            if (!clientStorage->GetSessionCount()) {
-                break;
-            }
-            Sleep(TDuration::MilliSeconds(100));
-        }
-        UNIT_ASSERT_VALUES_EQUAL(0, clientStorage->GetSessionCount());
+        clientStorage->WaitForSessionCount(0);
     }
 
     Y_UNIT_TEST(ShouldNotAcceptClientAfterServerStopped)
