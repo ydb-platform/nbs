@@ -1577,6 +1577,26 @@ void TEndpointManager::DetachFileDevice(const TString& device)
     }
 }
 
+NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TResizeDeviceRequest> request)
+{
+    Y_UNUSED(ctx);
+    const auto& socketPath = request->GetUnixSocketPath();
+    const auto& deviceSize = request->GetDeviceSizeInBytes();
+
+    auto it = Endpoints.find(socketPath);
+    if (it == Endpoints.end()) {
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not started");
+    }
+
+    auto ret = it->second.Device->Resize(deviceSize);
+    return TErrorResponse(ret);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NProto::TStartEndpointResponse> TRestoringClient::StartEndpoint(

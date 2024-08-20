@@ -38,6 +38,7 @@ SRCS(
     query_available_storage.cpp
     read_blocks.cpp
     refresh_endpoint.cpp
+    resize_device.cpp
     resize_volume.cpp
     resume_device.cpp
     start_endpoint.cpp

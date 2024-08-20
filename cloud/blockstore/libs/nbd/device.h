@@ -26,6 +26,8 @@ struct IDevice
     // cases when user explicitly asked us to stop the device and it being
     // stopped for technical reasons like service restart
     virtual NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) = 0;
+
+    virtual NProto::TError Resize(ui64 deviceSizeInBytes) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

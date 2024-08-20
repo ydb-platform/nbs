@@ -255,6 +255,37 @@ public:
         return StopResult.GetFuture();
     }
 
+    NProto::TError Resize(ui64 deviceSizeInBytes) override
+    {
+        if (!StartResult.HasValue() || StartResult.GetValue().GetCode() != S_OK)
+        {
+            return MakeError(E_FAIL, "Device is not open");
+        }
+
+        try {
+            TNetlinkSocket socket;
+            TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
+
+            message.Put(NBD_ATTR_INDEX, DeviceIndex);
+            message.Put(NBD_ATTR_SIZE_BYTES, deviceSizeInBytes);
+
+            {
+                auto attr = message.Nest(NBD_ATTR_SOCKETS);
+                auto item = message.Nest(NBD_SOCK_ITEM);
+                message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
+            }
+
+            message.Send(socket);
+        } catch (const TServiceError& e) {
+            return MakeError(
+                e.GetCode(),
+                TStringBuilder() << "unable to resize " << DeviceName << ": "
+                                 << e.what());
+        }
+
+        return MakeError(S_OK);
+    }
+
 private:
     void ParseIndex();
 

@@ -332,3 +332,21 @@ message TListProxyEndpointsResponse
     // List of proxy endpoints.
     repeated TProxyEndpoint Endpoints = 2;
 }
+
+message TResizeDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // BlockStore unix-socket path.
+    string UnixSocketPath = 2;
+
+    // New size in bytes.
+    uint64 DeviceSizeInBytes = 3;
+}
+
+message TResizeDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

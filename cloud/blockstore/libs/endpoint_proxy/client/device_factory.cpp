@@ -88,6 +88,12 @@ struct TProxyDevice: NBD::IDevice
                 return f.GetValue().GetError();
             });
     }
+
+    NProto::TError Resize(ui64 deviceSizeInBytes) override
+    {
+        Y_UNUSED(deviceSizeInBytes);
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
 };
 
 struct TProxyFactory: NBD::IDeviceFactory
