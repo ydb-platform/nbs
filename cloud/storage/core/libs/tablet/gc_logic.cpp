@@ -166,13 +166,24 @@ void RemoveDuplicates(
             // we should leave it in garbageBlobs to be sure it is
             // finally collected
             if (nit->Generation() == genstep.first) {
-                git = garbageBlobs.erase(git);
-                gend = garbageBlobs.end();
+                *git = InvalidPartialBlobId;
+                ++git;
             }
-            nit = newBlobs.erase(nit);
-            nend = newBlobs.end();
+            *nit = InvalidPartialBlobId;
+            ++nit;
         }
     }
+
+    const auto isInvalid = [](const auto& blob)
+    {
+        return blob == InvalidPartialBlobId;
+    };
+
+    auto it = std::remove_if(newBlobs.begin(), newBlobs.end(), isInvalid);
+    newBlobs.resize(it - newBlobs.begin());
+
+    it = std::remove_if(garbageBlobs.begin(), garbageBlobs.end(), isInvalid);
+    garbageBlobs.resize(it - garbageBlobs.begin());
 }
 
 void FindGarbageVersions(

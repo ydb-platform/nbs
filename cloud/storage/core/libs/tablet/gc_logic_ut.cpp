@@ -356,6 +356,40 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(NumberOfNewBlobs, 0);
         UNIT_ASSERT_VALUES_EQUAL(NumberOfGarbageBlobs, 0);
     }
+
+    Y_UNIT_TEST(ShouldRemoveDuplicates)
+    {
+        auto blob1 = TPartialBlobId(2, 10, 3, 4*1024*1024, 0, 0);
+        auto blob2 = TPartialBlobId(3, 10, 2, 4*1024*1024, 0, 0);
+        auto blob3 = TPartialBlobId(3, 10, 4, 4*1024*1024, 0, 0);
+        auto blob4 = TPartialBlobId(3, 11, 6, 4*1024*1024, 0, 0);
+
+        TVector<TPartialBlobId> newBlobs = {
+            // previous generation, should only be present in garbageBlobs
+            blob1,
+            // present in both newBlobs and garbageBlobs, should be excluded from both
+            blob2,
+            // present only in newBlobs, should be kept
+            blob3,
+        };
+
+        TVector<TPartialBlobId> garbageBlobs = {
+            // previous generation, should only be present in garbageBlobs
+            blob1,
+            // present in both newBlobs and garbageBlobs, should be excluded from both
+            blob2,
+            // present only in garbageBlobs, should be kept
+            blob4,
+        };
+
+        RemoveDuplicates(newBlobs, garbageBlobs, MakeCommitId(3, 0));
+        UNIT_ASSERT_VALUES_EQUAL(newBlobs.size(), 1);
+        UNIT_ASSERT_EQUAL(newBlobs[0], blob3);
+
+        UNIT_ASSERT_VALUES_EQUAL(garbageBlobs.size(), 2);
+        UNIT_ASSERT_EQUAL(garbageBlobs[0], blob1);
+        UNIT_ASSERT_EQUAL(garbageBlobs[1], blob4);
+    }
 }
 
 }   // namespace NCloud::NStorage
