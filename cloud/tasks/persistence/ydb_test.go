@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
@@ -514,45 +513,6 @@ func TestYDBShouldSendRetriableErrorMetric(t *testing.T) {
 	db, err := newYDB(ctx, metricsRegistry)
 	require.NoError(t, err)
 	defer db.Close(ctx)
-
-	metricsRegistry.GetCounter(
-		"success",
-		map[string]string{"call": "session/CreateOrAlterTable"},
-	).On("Inc").Once()
-
-	metricsRegistry.GetCounter(
-		"success",
-		map[string]string{"call": "client/MakeDirs"},
-	).On("Inc").Once()
-
-	metricsRegistry.GetCounter(
-		"errors",
-		map[string]string{"call": "session/Execute", "type": "retriable"},
-	).On("Inc").Once()
-
-	folder := fmt.Sprintf("ydb_test/%v", t.Name())
-	table := "table"
-	fullPath := db.AbsolutePath(folder)
-
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		table,
-		tableV1TableDescription(),
-		false, // dropUnusedColumns
-	)
-	require.NoError(t, err)
-
-	// Wrong query request causes non-retriable error, that wrapped as Retriable.
-	// Table has 2 columns, requested value has 3.
-	val2 := TableV2{
-		id:   "id2",
-		val1: "val2",
-		val2: "other2",
-	}
-
-	err = insertTableV2(ctx, db, fullPath, table, val2)
-	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
 
 	metricsRegistry.AssertAllExpectations(t)
 }

@@ -51,9 +51,14 @@ func (m *ydbMetrics) StatCall(
 				errorType = "tli"
 			case ydb.IsOperationErrorSchemeError(*err):
 				errorType = "scheme"
-			case errors.Is(*err, errors.NewEmptyRetriableError()):
-				logging.Info(ctx, "Got Retriable error %v", *err)
-				errorType = "retriable"
+			case ydb.IsTransportError(*err):
+				errorType = "transport"
+			case ydb.IsOperationErrorOverloaded(*err):
+				errorType = "overloaded"
+			case ydb.IsOperationErrorUnavailable(*err):
+				errorType = "unavailable"
+			case ydb.IsRatelimiterAcquireError(*err):
+				errorType = "ratelimiterAcquire"
 			}
 
 			if errorType != "" {
