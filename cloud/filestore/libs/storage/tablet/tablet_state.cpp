@@ -152,4 +152,47 @@ void TIndexTabletState::DumpStats(IOutputStream& os) const
     );
 }
 
+TNodeSessionStat& TNodeToSessionStat::Get(ui64 nodeId)
+{
+    return Stat[nodeId];
+}
+
+void TNodeToSessionStat::AddRead(
+    ui64 nodeId,
+    const TString& sessionId,
+    ui64 handle)
+{
+    Get(nodeId).ReadHandlesBySession[sessionId].emplace(handle);
+}
+
+void TNodeToSessionStat::AddWrite(
+    ui64 nodeId,
+    const TString& sessionId,
+    ui64 handle)
+{
+    Get(nodeId).WriteHandlesBySession[sessionId].emplace(handle);
+}
+
+void TNodeToSessionStat::Remove(
+    ui64 nodeId,
+    const TString& sessionId,
+    ui64 handle)
+{
+    auto& nodeStat = Get(nodeId);
+    nodeStat.WriteHandlesBySession[sessionId].erase(handle);
+    nodeStat.ReadHandlesBySession[sessionId].erase(handle);
+
+    if (nodeStat.WriteHandlesBySession[sessionId].empty()) {
+        nodeStat.WriteHandlesBySession.erase(sessionId);
+    }
+    if (nodeStat.ReadHandlesBySession[sessionId].empty()) {
+        nodeStat.ReadHandlesBySession.erase(sessionId);
+    }
+    if (nodeStat.WriteHandlesBySession.empty() &&
+        nodeStat.ReadHandlesBySession.empty())
+    {
+        Stat.erase(nodeId);
+    }
+}
+
 }   // namespace NCloud::NFileStore::NStorage
