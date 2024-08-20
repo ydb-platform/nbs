@@ -183,11 +183,12 @@ void TCommand::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
-    NProto::TClientConfig config;
+    NProto::TClientAppConfig appConfig;
     if (NFs::Exists(ConfigFile)) {
-        ParseFromTextFormat(ConfigFile, config);
+        ParseFromTextFormat(ConfigFile, appConfig);
     }
 
+    auto& config = *appConfig.MutableClientConfig();
     if (ServerAddress) {
         config.SetHost(ServerAddress);
     }
