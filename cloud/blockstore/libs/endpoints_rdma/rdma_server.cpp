@@ -199,18 +199,17 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         auto response = ExtractResponse(future);
 
         TaskQueue->ExecuteSimple([=] {
-            Y_UNUSED(buffer);
-
             auto guard = guardedSgList.Acquire();
             Y_ENSURE(guard);
 
             const auto& sglist = guard.Get();
-            size_t responseBytes = Serializer->Serialize(
-                out,
-                TBlockStoreProtocol::ReadBlocksResponse,
-                0, // flags
-                response,
-                TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
+            size_t responseBytes =
+                NRdma::TProtoMessageSerializer::SerializeWithData(
+                    out,
+                    TBlockStoreProtocol::ReadBlocksResponse,
+                    0,   // flags
+                    response,
+                    sglist);
 
             Endpoint->SendResponse(context, responseBytes);
         });
@@ -247,12 +246,11 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
         TaskQueue->ExecuteSimple([=] {
             Y_UNUSED(guardedSgList);
 
-            size_t responseBytes = Serializer->Serialize(
+            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                 out,
                 TBlockStoreProtocol::WriteBlocksResponse,
-                0, // flags
-                response,
-                TContIOVector(nullptr, 0));
+                0,   // flags
+                response);
 
             Endpoint->SendResponse(context, responseBytes);
         });
@@ -279,12 +277,11 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
     future.Subscribe([=] (auto future) {
         auto response = ExtractResponse(future);
 
-        size_t responseBytes = Serializer->Serialize(
+        size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
             out,
             TBlockStoreProtocol::ZeroBlocksResponse,
-            0, // flags
-            response,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            response);
 
         Endpoint->SendResponse(context, responseBytes);
     });
