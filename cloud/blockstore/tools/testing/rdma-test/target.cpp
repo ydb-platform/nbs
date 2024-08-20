@@ -157,12 +157,13 @@ private:
                 Y_ABORT_UNLESS(guard);
 
                 const auto& sglist = guard.Get();
-                size_t responseBytes = Serializer->Serialize(
-                    out,
-                    TBlockStoreProtocol::ReadBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                        out,
+                        TBlockStoreProtocol::ReadBlocksResponse,
+                        0,   // flags
+                        response,
+                        sglist);
 
                 Endpoint->SendResponse(context, responseBytes);
             });
@@ -197,12 +198,12 @@ private:
             TaskQueue->ExecuteSimple([=] {
                 Y_UNUSED(guardedSgList);
 
-                size_t responseBytes = Serializer->Serialize(
-                    out,
-                    TBlockStoreProtocol::WriteBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector(nullptr, 0));
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreProtocol::WriteBlocksResponse,
+                        0,   // flags
+                        response);
 
                 Endpoint->SendResponse(context, responseBytes);
             });

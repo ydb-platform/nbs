@@ -88,7 +88,7 @@ public:
     }
 
 public:
-    void BuildNextRequest(TVector<IOutputStream::TPart>* parts)
+    void BuildNextRequest(TSgList* sglist)
     {
         Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
 
@@ -96,10 +96,8 @@ public:
         for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
             const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
             Y_ABORT_UNLESS(rem >= BlockSize);
-            parts->push_back({
-                Buffer().data() + CurrentOffsetInBuffer,
-                BlockSize
-            });
+            sglist->push_back(
+                {Buffer().data() + CurrentOffsetInBuffer, BlockSize});
             CurrentOffsetInBuffer += BlockSize;
             if (CurrentOffsetInBuffer == Buffer().size()) {
                 CurrentOffsetInBuffer = 0;
