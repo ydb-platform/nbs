@@ -1059,10 +1059,15 @@ void TPartitionActor::CompleteReadBlocks(
     RemoveTransaction(*args.RequestInfo);
 
     if (args.Interrupted) {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        auto error = MakeError(
+            E_REJECTED,
+            "ReadBlocks transaction was interrupted",
+            flags);
         auto response = CreateReadBlocksResponse(
             args.ReplyLocal,
-            MakeError(E_REJECTED, "ReadBlocks transaction was interrupted")
-        );
+            std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,
