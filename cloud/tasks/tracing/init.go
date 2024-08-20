@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -25,6 +24,7 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ pass should_sample attribute here?
 func StartSpan(
 	ctx context.Context,
 	spanName string,
@@ -58,8 +58,6 @@ func InitTracing(
 ) (shutdown func(context.Context) error, err error) {
 
 	fmt.Println("CHECK: InitTracing")
-	fmt.Printf("CHECK: soft barrier: %v", *config.SamplingConfig.SoftBarrier)
-	logging.Info(ctx, "CHECK: soft barrier: %v", *config.SamplingConfig.SoftBarrier)
 
 	traceExporter, err := newTraceExporter(ctx, config)
 	if err != nil {

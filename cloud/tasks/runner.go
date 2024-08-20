@@ -67,6 +67,7 @@ type runner interface {
 	lockTask(context.Context, storage.TaskInfo) (storage.TaskState, error)
 	executeTask(context.Context, *executionContext, Task)
 	lockAndExecuteTask(context.Context, storage.TaskInfo) error
+	shouldSampleForTracing(taskID string, generationID uint64) bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,6 +76,7 @@ type runnerForRun struct {
 	storage                storage.Storage
 	registry               *Registry
 	metrics                runnerMetrics
+	tracingSampler         tasksTracingSampler
 	channel                *channel
 	pingPeriod             time.Duration
 	pingTimeout            time.Duration
@@ -321,17 +323,22 @@ func (r *runnerForRun) lockAndExecuteTask(
 	)
 }
 
+func (r *runnerForRun) shouldSampleForTracing(taskID string, generationID uint64) bool {
+	return r.tracingSampler.ShouldSample(taskID, generationID)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage     storage.Storage
-	registry    *Registry
-	metrics     runnerMetrics
-	channel     *channel
-	pingPeriod  time.Duration
-	pingTimeout time.Duration
-	host        string
-	id          string
+	storage        storage.Storage
+	registry       *Registry
+	metrics        runnerMetrics
+	tracingSampler tasksTracingSampler
+	channel        *channel
+	pingPeriod     time.Duration
+	pingTimeout    time.Duration
+	host           string
+	id             string
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -441,6 +448,10 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r,
 		taskInfo,
 	)
+}
+
+func (r *runnerForCancel) shouldSampleForTracing(taskID string, generationID uint64) bool {
+	return r.tracingSampler.ShouldSample(taskID, generationID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -561,6 +572,10 @@ func lockAndExecuteTask(
 		runCtx,
 		fmt.Sprintf("%v_%v_%v", taskInfo.ID, taskInfo.GenerationID, taskInfo.TaskType),
 		trace.WithAttributes(
+			attribute.Bool("should_sample", runner.shouldSampleForTracing(
+				taskInfo.ID,
+				taskInfo.GenerationID,
+			)),
 			attribute.String("task_id", taskInfo.ID),
 			attribute.Int64("generation_id", int64(taskInfo.GenerationID)), // TODO:_ integer type hell
 			attribute.String("task_type", taskInfo.TaskType),
@@ -636,6 +651,7 @@ func startRunner(
 	idForCancel string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
 ) error {
 
 	// TODO: More granular control on runners and cancellers.
@@ -647,10 +663,13 @@ func startRunner(
 		exceptHangingTaskTypes,
 	)
 
+	samplerForTracing := tasksTracingSampler{samplingConfigForTracing}
+
 	go runnerLoop(ctx, registry, &runnerForRun{
 		storage:                taskStorage,
 		registry:               registry,
 		metrics:                runnerForRunMetrics,
+		tracingSampler:         samplerForTracing,
 		channel:                channelForRun,
 		pingPeriod:             pingPeriod,
 		pingTimeout:            pingTimeout,
@@ -668,14 +687,15 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:     taskStorage,
-		registry:    registry,
-		metrics:     runnerForCancelMetrics,
-		channel:     channelForCancel,
-		pingPeriod:  pingPeriod,
-		pingTimeout: pingTimeout,
-		host:        host,
-		id:          idForCancel,
+		storage:        taskStorage,
+		registry:       registry,
+		metrics:        runnerForCancelMetrics,
+		tracingSampler: samplerForTracing,
+		channel:        channelForCancel,
+		pingPeriod:     pingPeriod,
+		pingTimeout:    pingTimeout,
+		host:           host,
+		id:             idForCancel,
 	})
 
 	return nil
@@ -696,6 +716,7 @@ func startRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -715,6 +736,7 @@ func startRunners(
 			fmt.Sprintf("cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
+			samplingConfigForTracing,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start runner #%d: %w", i, err)
@@ -739,6 +761,7 @@ func startStalkingRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	samplingConfigForTracing tasks_config.SamplingConfigForTracing,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -758,6 +781,7 @@ func startStalkingRunners(
 			fmt.Sprintf("stalker_cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
+			samplingConfigForTracing,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start stalking runner #%d: %w", i, err)
@@ -908,6 +932,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
+		config.SamplingConfigForTracing(), // TODO:_ Get... vs ... (everywhere)?
 	)
 	if err != nil {
 		return err
@@ -959,6 +984,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
+		config.SamplingConfigForTracing(),
 	)
 	if err != nil {
 		return err
