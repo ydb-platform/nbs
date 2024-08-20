@@ -10,7 +10,7 @@ TProcessingBlocks::TProcessingBlocks(
         ui64 initialProcessingIndex)
     : BlockCount(blockCount)
     , BlockSize(blockSize)
-    , BlockMap(std::make_unique<TCompressedBitmap>(BlockCount))
+    , BlockMap(BlockCount)
     , LastReportedProcessingIndex(initialProcessingIndex)
     , CurrentProcessingIndex(initialProcessingIndex)
     , NextProcessingIndex(CalculateNextProcessingIndex())
@@ -20,28 +20,44 @@ TProcessingBlocks::TProcessingBlocks(
     }
 }
 
+TProcessingBlocks::TProcessingBlocks(
+    ui64 blockCount,
+    ui32 blockSize,
+    TCompressedBitmap blockMap)
+    : BlockCount(blockCount)
+    , BlockSize(blockSize)
+    , BlockMap(std::move(blockMap))
+{
+    SkipProcessedRanges();
+}
+
+TProcessingBlocks::TProcessingBlocks(
+    TProcessingBlocks&& other) noexcept = default;
+
+TProcessingBlocks& TProcessingBlocks::operator=(
+    TProcessingBlocks&& other) noexcept = default;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TProcessingBlocks::AbortProcessing()
 {
-    BlockMap.reset();
     CurrentProcessingIndex = 0;
     NextProcessingIndex = 0;
 }
 
 bool TProcessingBlocks::IsProcessing() const
 {
-    return !!BlockMap;
+    return CurrentProcessingIndex != NextProcessingIndex;
 }
 
 bool TProcessingBlocks::IsProcessed(TBlockRange64 range) const
 {
-    return BlockMap->Count(range.Start, range.End + 1) == range.Size();
+    return BlockMap.Count(range.Start, range.End + 1) == range.Size();
 }
 
 void TProcessingBlocks::MarkProcessed(TBlockRange64 range)
 {
-    BlockMap->Set(
+    BlockMap.Set(
         range.Start,
         Min(BlockCount, range.End + 1)
     );
@@ -63,7 +79,7 @@ bool TProcessingBlocks::SkipProcessedRanges()
         ui64 chunkEnd = AlignDown<ui64>(
             CurrentProcessingIndex + TCompressedBitmap::CHUNK_SIZE,
             TCompressedBitmap::CHUNK_SIZE);
-        const auto bits = BlockMap->Count(CurrentProcessingIndex, chunkEnd);
+        const auto bits = BlockMap.Count(CurrentProcessingIndex, chunkEnd);
         if (bits != chunkEnd - CurrentProcessingIndex) {
             break;
         }
@@ -72,19 +88,13 @@ bool TProcessingBlocks::SkipProcessedRanges()
     }
 
     while (CurrentProcessingIndex < BlockCount
-            && BlockMap->Test(CurrentProcessingIndex))
+            && BlockMap.Test(CurrentProcessingIndex))
     {
         ++CurrentProcessingIndex;
     }
 
     NextProcessingIndex = CalculateNextProcessingIndex();
-    if (NextProcessingIndex == CurrentProcessingIndex) {
-        // processing finished
-        BlockMap.reset();
-        return false;
-    }
-
-    return true;
+    return IsProcessing();
 }
 
 TBlockRange64 TProcessingBlocks::BuildProcessingRange() const
@@ -102,8 +112,8 @@ ui64 TProcessingBlocks::GetBlockCountNeedToBeProcessed() const
 
 ui64 TProcessingBlocks::GetProcessedBlockCount() const
 {
-    if (BlockMap) {
-        return BlockMap->Count();
+    if (IsProcessing()) {
+        return BlockMap.Count();
     }
     return BlockCount;
 }

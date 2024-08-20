@@ -1096,9 +1096,11 @@ TCompressedBitmap::TCompressedBitmap(size_t size)
 
 TCompressedBitmap::~TCompressedBitmap() = default;
 
-TCompressedBitmap::TCompressedBitmap(TCompressedBitmap&& other) = default;
+TCompressedBitmap::TCompressedBitmap(
+    TCompressedBitmap&& other) noexcept = default;
 
-TCompressedBitmap& TCompressedBitmap::operator=(TCompressedBitmap&& other) = default;
+TCompressedBitmap& TCompressedBitmap::operator=(
+    TCompressedBitmap&& other) noexcept = default;
 
 void TCompressedBitmap::Clear()
 {

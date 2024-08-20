@@ -106,7 +106,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     );
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        ChangedRangesMap.MarkChanged(range);
+        NonZeroRangesMap.MarkChanged(range);
     }
 }
 

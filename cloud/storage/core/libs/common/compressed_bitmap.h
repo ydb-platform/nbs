@@ -50,11 +50,11 @@ private:
     size_t Size = 0;
 
 public:
-    TCompressedBitmap(size_t size);
+    explicit TCompressedBitmap(size_t size);
     ~TCompressedBitmap();
 
-    TCompressedBitmap(TCompressedBitmap&& other);
-    TCompressedBitmap& operator=(TCompressedBitmap&& other);
+    TCompressedBitmap(TCompressedBitmap&& other) noexcept;
+    TCompressedBitmap& operator=(TCompressedBitmap&& other) noexcept;
 
     void Clear();
 

@@ -37,10 +37,52 @@ TNonreplicatedPartitionMigrationCommonActor::
     , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
-    , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
-{}
+{
+}
+
+TNonreplicatedPartitionMigrationCommonActor::
+    TNonreplicatedPartitionMigrationCommonActor(
+        IMigrationOwner* migrationOwner,
+        TStorageConfigPtr config,
+        TString diskId,
+        ui64 blockCount,
+        ui64 blockSize,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr digestGenerator,
+        TCompressedBitmap migrationBlockMap,
+        TString rwClientId,
+        NActors::TActorId statActorId,
+        ui32 maxIoDepth)
+    // : TNonreplicatedPartitionMigrationCommonActor(
+    //       migrationOwner,
+    //       std::move(config),
+    //       std::move(diskId),
+    //       blockCount,
+    //       blockSize,
+    //       std::move(profileLog),
+    //       std::move(digestGenerator),
+    //       0,
+    //       std::move(rwClientId),
+    //       statActorId,
+    //       maxIoDepth)
+    : MigrationOwner(migrationOwner)
+    , Config(std::move(config))
+    , ProfileLog(std::move(profileLog))
+    , DiskId(std::move(diskId))
+    , BlockSize(blockSize)
+    , BlockCount(blockCount)
+    , BlockDigestGenerator(std::move(digestGenerator))
+    , MaxIoDepth(maxIoDepth)
+    , RWClientId(std::move(rwClientId))
+    , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
+    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , StatActorId(statActorId)
+    , PoisonPillHelper(this)
+{
+}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;

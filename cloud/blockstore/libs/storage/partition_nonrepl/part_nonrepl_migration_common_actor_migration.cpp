@@ -263,7 +263,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         DescribeRange(msg->Range).c_str());
 
     if (msg->AllZeroes) {
-        ChangedRangesMap.MarkNotChanged(msg->Range);
+        NonZeroRangesMap.MarkNotChanged(msg->Range);
     }
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
@@ -318,10 +318,10 @@ void TNonreplicatedPartitionMigrationCommonActor::
     MigrationOwner->OnMigrationFinished(ctx);
 }
 
-TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
+TString TNonreplicatedPartitionMigrationCommonActor::GetNonZeroBlocks(
     TBlockRange64 range) const
 {
-    return ChangedRangesMap.GetChangedBlocks(range);
+    return NonZeroRangesMap.GetChangedBlocks(range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

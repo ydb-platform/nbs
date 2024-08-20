@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
+#include <util/generic/bitmap.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -15,9 +17,9 @@ constexpr ui64 ProcessingRangeSize = 4_MB;
 class TProcessingBlocks
 {
 private:
-    const ui64 BlockCount;
-    const ui32 BlockSize;
-    std::unique_ptr<TCompressedBitmap> BlockMap;
+    ui64 BlockCount;
+    ui32 BlockSize;
+    TCompressedBitmap BlockMap;
     ui64 LastReportedProcessingIndex = 0;
     ui64 CurrentProcessingIndex = 0;
     ui64 NextProcessingIndex = 0;
@@ -27,6 +29,14 @@ public:
         ui64 blockCount,
         ui32 blockSize,
         ui64 initialProcessingIndex);
+
+    TProcessingBlocks(
+        ui64 blockCount,
+        ui32 blockSize,
+        TCompressedBitmap blockMap);
+
+    TProcessingBlocks(TProcessingBlocks&& other) noexcept;
+    TProcessingBlocks& operator=(TProcessingBlocks&& other) noexcept;
 
 public:
     void AbortProcessing();

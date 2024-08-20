@@ -104,7 +104,7 @@ private:
     TMap<ui64, TBlockRange64> MigrationsInProgress;
     TMap<ui64, TBlockRange64> DeferredMigrations;
 
-    TChangedRangesMap ChangedRangesMap;
+    TChangedRangesMap NonZeroRangesMap;
 
     // When we migrated a block whose range contains or exceeds a persistently
     // stored offset of the progress of the entire migration, we remember this
@@ -148,6 +148,19 @@ public:
         NActors::TActorId statActorId,
         ui32 maxIoDepth);
 
+    TNonreplicatedPartitionMigrationCommonActor(
+        IMigrationOwner* migrationOwner,
+        TStorageConfigPtr config,
+        TString diskId,
+        ui64 blockCount,
+        ui64 blockSize,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr digestGenerator,
+        TCompressedBitmap migrationBlockMap,
+        TString rwClientId,
+        NActors::TActorId statActorId,
+        ui32 maxIoDepth);
+
     ~TNonreplicatedPartitionMigrationCommonActor() override;
 
     virtual void Bootstrap(const NActors::TActorContext& ctx);
@@ -176,7 +189,7 @@ public:
     }
 
 protected:
-    [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
+    [[nodiscard]] TString GetNonZeroBlocks(TBlockRange64 range) const;
 
 private:
     bool IsMigrationAllowed() const;
