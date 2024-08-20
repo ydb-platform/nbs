@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -56,6 +57,10 @@ func InitTracing(
 	config *tracing_config.TracingConfig,
 ) (shutdown func(context.Context) error, err error) {
 
+	fmt.Println("CHECK: InitTracing")
+	fmt.Printf("CHECK: soft barrier: %v", *config.SamplingConfig.SoftBarrier)
+	logging.Info(ctx, "CHECK: soft barrier: %v", *config.SamplingConfig.SoftBarrier)
+
 	traceExporter, err := newTraceExporter(ctx, config)
 	if err != nil {
 		return nil, errors.NewNonRetriableErrorf("failed to create trace exporter: %w", err)
@@ -67,7 +72,7 @@ func InitTracing(
 	)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
-		sdktrace.WithSampler(NewSampler(config.SamplingConfig)),
+		sdktrace.WithSampler(NewSampler(config.SamplingConfig)), // TODO:_ what if no sampling config passed?
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)

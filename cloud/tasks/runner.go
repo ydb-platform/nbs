@@ -12,6 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -555,11 +557,21 @@ func lockAndExecuteTask(
 
 	logging.Info(ctx, "CHECK lockAndExecuteTask starting span for task %v", taskInfo)
 	spanName := fmt.Sprintf("%v_%v_%v", taskInfo.ID, taskInfo.GenerationID, taskInfo.TaskType)
-	runCtx, span := tracing.StartSpan(runCtx, spanName)
-	logging.Info(ctx, "CHECK lockAndExecuteTask started span")
+	runCtx, span := tracing.StartSpan(
+		runCtx,
+		fmt.Sprintf("%v_%v_%v", taskInfo.ID, taskInfo.GenerationID, taskInfo.TaskType),
+		trace.WithAttributes(
+			attribute.String("task_id", taskInfo.ID),
+			attribute.Int64("generation_id", int64(taskInfo.GenerationID)), // TODO:_ integer type hell
+			attribute.String("task_type", taskInfo.TaskType),
+			attribute.Bool("regular", taskState.Regular),
+		),
+	)
+	logging.Info(ctx, "CHECK lockAndExecuteTask started span %v", spanName)
 	// TODO:_ remove func
 	defer func() {
-		fmt.Printf("CHECK ending span %v\n", spanName)
+		logging.Info(ctx, "CHECK lockAndExecuteTask ending span %v", spanName)
+		fmt.Printf("ending span %v\n", spanName)
 		span.End()
 	}()
 

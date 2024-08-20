@@ -70,6 +70,8 @@ func GetTracingHeaders(ctx context.Context) map[string]string {
 		"x-operation-id",
 		"x-request-id",
 		"x-request-uid",
+		"traceparent",
+		"tracestate",
 	}
 	return GetFromIncomingContext(ctx, allowedKeys)
 }
