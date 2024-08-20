@@ -51,13 +51,15 @@ class TNodeToSessionStat
 {
     struct TSessionStat
     {
-        THashMap<TString, THashSet<ui64>> ReadSessionToHandle;
-        THashMap<TString, THashSet<ui64>> WriteSessionToHandle;
+        THashMap<TString, ui64> ReadSessions;
+        THashMap<TString, ui64> WriteSessions;
     };
     THashMap<ui64, TSessionStat> Stat;
 
+    void Clean(ui64 nodeId, const TString& sessionId);
+
 public:
-    enum class EStatField
+    enum class EKind
     {
         None,
         NodesWriteSingleSessionCount,
@@ -66,10 +68,11 @@ public:
         NodesReadMultiSessionCount,
     };
 
-    [[nodiscard]] EStatField CurrentField(ui64 nodeId) const;
-    EStatField AddRead(ui64 nodeId, const TString& sessionId, ui64 handle);
-    EStatField AddWrite(ui64 nodeId, const TString& sessionId, ui64 handle);
-    EStatField Remove(ui64 nodeId, const TString& sessionId, ui64 handle);
+    [[nodiscard]] EKind GetKind(ui64 nodeId) const;
+    EKind AddRead(ui64 nodeId, const TString& sessionId);
+    EKind AddWrite(ui64 nodeId, const TString& sessionId);
+    EKind RemoveRead(ui64 nodeId, const TString& sessionId);
+    EKind RemoveWrite(ui64 nodeId, const TString& sessionId);
 };
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -316,8 +319,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void ResetNodeCounters(const TNodeToSessionStat::EStatField field);
-    void UpdateNodeCounters(const TNodeToSessionStat::EStatField field);
+    void ResetNodeCounters(const TNodeToSessionStat::EKind field);
+    void UpdateNodeCounters(const TNodeToSessionStat::EKind field);
 
     //
     // Throttling
