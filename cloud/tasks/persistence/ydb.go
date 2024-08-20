@@ -558,12 +558,6 @@ func (c *YDBClient) CreateOrAlterTable(
 	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
-			defer s.metrics.StatCall(
-				ctx,
-				"client/CreateOrAlterTable",
-				fmt.Sprintf("At path: %v", fullPath),
-			)(&err)
-
 			err = c.makeDirs(ctx, folderFullPath)
 			if err != nil {
 				return err
@@ -653,7 +647,13 @@ func (c *YDBClient) ExecuteRW(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) error {
+func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) (err error) {
+	defer c.metrics.StatCall(
+		ctx,
+		"client/MakeDirs",
+		fmt.Sprintf("At path: %v", absolutePath),
+	)(&err)
+
 	if !strings.HasPrefix(absolutePath, c.database) {
 		return errors.NewNonRetriableErrorf(
 			"'%v' is expected to be rooted at '%v'",
@@ -672,7 +672,7 @@ func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) error {
 		}
 
 		dirPath = path.Join(dirPath, part)
-		err := c.db.Scheme().MakeDirectory(ctx, dirPath)
+		err = c.db.Scheme().MakeDirectory(ctx, dirPath)
 		if err != nil {
 			return errors.NewNonRetriableErrorf(
 				"cannot make directory %v: %w",
