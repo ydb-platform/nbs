@@ -176,12 +176,12 @@ void TNodeToSessionStat::Clean(ui64 nodeId, const TString& sessionId)
 
     auto& nodeStat = Stat[nodeId];
     if (nodeStat.WriteSessions.contains(sessionId) &&
-        !nodeStat.WriteSessions[sessionId])
+        nodeStat.WriteSessions[sessionId] <= 0)
     {
         nodeStat.WriteSessions.erase(sessionId);
     }
     if (nodeStat.ReadSessions.contains(sessionId) &&
-        !nodeStat.ReadSessions[sessionId])
+        nodeStat.ReadSessions[sessionId] <= 0)
     {
         nodeStat.ReadSessions.erase(sessionId);
     }

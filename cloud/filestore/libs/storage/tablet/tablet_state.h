@@ -51,8 +51,8 @@ class TNodeToSessionStat
 {
     struct TSessionStat
     {
-        THashMap<TString, ui64> ReadSessions;
-        THashMap<TString, ui64> WriteSessions;
+        THashMap<TString, i64> ReadSessions;
+        THashMap<TString, i64> WriteSessions;
     };
     THashMap<ui64, TSessionStat> Stat;
 
