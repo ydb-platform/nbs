@@ -24,6 +24,8 @@ from google.protobuf.text_format import MessageToString
 
 
 BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+NETLINK_REQUEST_TIMEOUT = 120
+NETLINK_CONNECTION_TIMEOUT = 120
 
 
 class CsiLoadTest(LocalLoadTest):
@@ -47,9 +49,13 @@ class CsiLoadTest(LocalLoadTest):
         self.sockets_temporary_directory.cleanup()
 
 
-def init():
+def init(enableNetlink=True):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
+    if enableNetlink:
+        server_config_patch.NbdNetlink = True
+        server_config_patch.NbdRequestTimeout = NETLINK_REQUEST_TIMEOUT
+        server_config_patch.NbdConnectionTimeout = NETLINK_CONNECTION_TIMEOUT
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
