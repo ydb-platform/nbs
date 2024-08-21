@@ -712,23 +712,7 @@ func (s *nodeService) NodeGetVolumeStats(
 		return nil, fmt.Errorf("NBS client is not available")
 	}
 
-	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
-		DiskId: req.VolumeId,
-	}
-
-	_, err := s.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
-	if err != nil {
-		if nbsclient.IsDiskNotFoundError(err) {
-			return nil, s.statusError(
-				codes.NotFound,
-				"Volume is not found")
-		}
-		return nil, s.statusErrorf(
-			codes.Internal,
-			"Failed to get volume stats: %v", err)
-	}
-
-	_, err = s.mounter.IsMountPoint(req.VolumePath)
+	_, err := s.mounter.IsMountPoint(req.VolumePath)
 	if err != nil {
 		return nil, s.statusError(
 			codes.NotFound,
