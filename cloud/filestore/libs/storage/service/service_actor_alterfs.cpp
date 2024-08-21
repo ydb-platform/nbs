@@ -25,7 +25,8 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
-    const bool Alter = false;
+    const bool Alter;
+    const bool Force;
 
     NKikimrFileStore::TConfig Config;
 
@@ -81,6 +82,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
+    , Force(false)
 {
     Config.SetCloudId(request.GetCloudId());
     Config.SetFolderId(request.GetFolderId());
@@ -96,6 +98,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , PerformanceProfile(request.GetPerformanceProfile())
+    , Alter(false)
+    , Force(request.GetForce())
 {
     Config.SetBlocksCount(request.GetBlocksCount());
     Config.SetVersion(request.GetConfigVersion());
@@ -137,7 +141,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     const bool allocateMixed0 = thirdChannelDataKind == EChannelDataKind::Mixed0;
 
     if (!Alter) {
-        if (config.GetBlocksCount() > Config.GetBlocksCount()) {
+        if (config.GetBlocksCount() > Config.GetBlocksCount() && !Force) {
             ReplyAndDie(
                 ctx,
                 MakeError(E_ARGUMENT, "Cannot decrease filestore size"));

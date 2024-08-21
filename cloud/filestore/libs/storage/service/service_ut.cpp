@@ -60,28 +60,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1'000);
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 1);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 100);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 300);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 400);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(100, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(300, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
 
         service.DestroyFileStore("test");
         service.AssertGetFileStoreInfoFailed("test");
@@ -99,28 +107,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AlterFileStore("test", "yyyy", "zzzz");
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "yyyy");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "zzzz");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 2);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("yyyy", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("zzzz", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 100);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 300);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 400);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(100, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(300, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
     }
 
     Y_UNIT_TEST(ShouldResizeFileStore)
@@ -135,31 +151,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ResizeFileStore("test", 100'000'000);
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 100'000'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 2);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(100'000'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 200);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 600);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 60_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 60_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 200);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(600, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
 
         service.AssertResizeFileStoreFailed("test", 1'000);
         service.AssertResizeFileStoreFailed("test", 0);
+    }
+
+    Y_UNIT_TEST(ShouldDownsizeFileStore)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 100'000'000);
+
+        {
+            service.SendResizeFileStoreRequest("test", 10'000'000);
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            service.SendResizeFileStoreRequest("test", 10'000'000, true);
+            response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(100'000'00, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
+
+        const auto& profile = response.GetPerformanceProfile();
+        UNIT_ASSERT(!profile.GetThrottlingEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(600, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
     }
 
     Y_UNIT_TEST(ShouldResizeFileStoreWithCustomPerformanceProfile)

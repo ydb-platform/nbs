@@ -220,6 +220,9 @@ message TResizeFileStoreRequest
 
     // File system performance profile.
     TFileStorePerformanceProfile PerformanceProfile = 5;
+
+    // Bypass some checks.
+    bool Force = 6;
 }
 
 message TResizeFileStoreResponse

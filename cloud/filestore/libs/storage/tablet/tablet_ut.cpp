@@ -190,15 +190,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         });
         UNIT_ASSERT_VALUES_EQUAL(1, tabletUpdateConfigCounter->Val());
 
+        // BlockCount can actually be decreased without problems
         tablet.UpdateConfig({
             .BlockCount = 1, .ChannelCount = channelCount
         });
-        UNIT_ASSERT_VALUES_EQUAL(2, tabletUpdateConfigCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, tabletUpdateConfigCounter->Val());
 
         tablet.UpdateConfig({
             .ChannelCount = channelCount - 1
         });
-        UNIT_ASSERT_VALUES_EQUAL(3, tabletUpdateConfigCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, tabletUpdateConfigCounter->Val());
         {
             auto stats = GetStorageStats(tablet);
             UNIT_ASSERT_VALUES_EQUAL(
