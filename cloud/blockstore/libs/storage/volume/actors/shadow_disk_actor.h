@@ -101,7 +101,6 @@ private:
     ui64 ProcessedBlockCount = 0;
 
     EActorState State = EActorState::Error;
-    std::optional<TMigrationTimeoutCalculator> TimeoutCalculator;
 
     NActors::TActorId AcquireActorId;
     // The list of devices received on first acquire.
@@ -130,7 +129,6 @@ public:
     bool OnMessage(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) override;
-    TDuration CalculateMigrationTimeout(TBlockRange64 range) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
@@ -138,6 +136,11 @@ public:
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:
+    enum EShadowDiskWakeupReason
+    {
+        REACQUIRE = TNonreplicatedPartitionMigrationCommonActor::REASON_COUNT,
+    };
+
     void AcquireShadowDisk(
         const NActors::TActorContext& ctx,
         EAcquireReason acquireReason);
@@ -151,8 +154,6 @@ private:
         const TDevices& acquiredShadowDiskDevices);
     void SetErrorState(const NActors::TActorContext& ctx);
     void SchedulePeriodicalReAcquire(const NActors::TActorContext& ctx);
-
-    void DoRegisterTrafficSource(const NActors::TActorContext& ctx);
 
     // If we haven't started migrating to the shadow disk yet, we can send
     // write and zero requests directly to the source disk.
@@ -206,7 +207,7 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWakeup(
+    bool HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -224,11 +225,6 @@ private:
 
     void HandleGetChangedBlocks(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleUpdateBandwidthLimit(
-        const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::TPtr&
-            ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -18,7 +18,6 @@ private:
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
-    TMigrationTimeoutCalculator TimeoutCalculator;
 
     bool UpdatingMigrationState = false;
     bool MigrationFinished = false;
@@ -39,7 +38,6 @@ public:
     void OnBootstrap(const NActors::TActorContext& ctx) override;
     bool OnMessage(const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) override;
-    TDuration CalculateMigrationTimeout(TBlockRange64 range) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
@@ -67,10 +65,6 @@ private:
 
     void HandlePreparePartitionMigrationResponse(
         const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleWakeup(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
