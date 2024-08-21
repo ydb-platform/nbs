@@ -4,41 +4,48 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NBlobMarkers;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+void ZeroBlock(TString& block)
+{
+    memset(&block[0], 0, block.size());
+}
+
+void ZeroBlock(TBlockDataRef block)
+{
+    memset(const_cast<char*>(block.Data()), 0, block.Size());
+}
+
+template <typename TBlocks>
+void ZeroBlocks(const TBlockMarks& usedBlocks, TBlocks& blocks)
+{
+    const size_t blockCount = Min<size_t>(usedBlocks.size(), blocks.size());
+    for (size_t i = 0; i < blockCount; ++i) {
+        auto& block = blocks[i];
+        if (block && std::holds_alternative<TEmptyMark>(usedBlocks[i])) {
+            ZeroBlock(block);
+        }
+    }
+}
+
+}   // namespace
 
 void ClearEmptyBlocks(
     const TBlockMarks& usedBlocks,
     NProto::TReadBlocksResponse& response)
 {
-    auto& buffers = *response.MutableBlocks()->MutableBuffers();
-    const size_t blockCount = Min<size_t>(usedBlocks.size(), buffers.size());
-    for (size_t i = 0; i < blockCount; ++i) {
-        auto& buffer = buffers[i];
-        if (buffer.data() && std::holds_alternative<TEmptyMark>(usedBlocks[i]))
-        {
-            memset(buffer.begin(), 0, buffer.size());
-        }
-    }
+    NProto::TIOVector& blocks = *response.MutableBlocks();
+    ZeroBlocks(usedBlocks, *blocks.MutableBuffers());
 }
 
 void ClearEmptyBlocks(
     const TBlockMarks& usedBlocks,
     const TGuardedSgList& sglist)
 {
-    auto guard = sglist.Acquire();
-    if (!guard) {
-        return;
-    }
-
-    const auto& buffers = guard.Get();
-
-    const size_t blockCount = Min(usedBlocks.size(), buffers.size());
-    for (size_t i = 0; i < blockCount; ++i) {
-        const auto& buffer = buffers[i];
-        if (buffer.Data() && std::holds_alternative<TEmptyMark>(usedBlocks[i]))
-        {
-            memset(const_cast<char*>(buffer.Data()), 0, buffer.Size());
-        }
+    if (auto guard = sglist.Acquire()) {
+        ZeroBlocks(usedBlocks, guard.Get());
     }
 }
 
