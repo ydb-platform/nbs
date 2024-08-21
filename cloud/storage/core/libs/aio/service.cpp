@@ -49,7 +49,7 @@ public:
     {
         int code = 0;
         int iterations = 0;
-        const int maxIterations = 100;
+        const int maxIterations = 1000;
         const auto waitTime = TDuration::MilliSeconds(100);
         while (iterations < maxIterations) {
             ++iterations;
