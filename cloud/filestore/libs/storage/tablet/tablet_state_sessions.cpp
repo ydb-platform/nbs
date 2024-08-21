@@ -538,15 +538,16 @@ TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
     return nullptr;
 }
 
-void TIndexTabletState::ResetNodeCounters(const TNodeToSessionStat::EKind field)
+void TIndexTabletState::ResetNodeCounters(
+    const TNodeToSessionStat::EKind nodeKind)
 {
-    switch (field) {
+    switch (nodeKind) {
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesWriteSingleSessionCount:
-        FileSystemStats.SetNodesWriteSingleSessionCount(SafeDecrement(
-            FileSystemStats.GetNodesWriteSingleSessionCount(),
-            1));
+            FileSystemStats.SetNodesWriteSingleSessionCount(SafeDecrement(
+                FileSystemStats.GetNodesWriteSingleSessionCount(),
+                1));
             break;
         case TNodeToSessionStat::EKind::NodesWriteMultiSessionCount:
             FileSystemStats.SetNodesWriteMultiSessionCount(SafeDecrement(
@@ -567,15 +568,15 @@ void TIndexTabletState::ResetNodeCounters(const TNodeToSessionStat::EKind field)
 }
 
 void TIndexTabletState::UpdateNodeCounters(
-    const TNodeToSessionStat::EKind field)
+    const TNodeToSessionStat::EKind nodeKind)
 {
-    switch (field) {
+    switch (nodeKind) {
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesWriteSingleSessionCount:
-        FileSystemStats.SetNodesWriteSingleSessionCount(SafeIncrement(
-            FileSystemStats.GetNodesWriteSingleSessionCount(),
-            1));
+            FileSystemStats.SetNodesWriteSingleSessionCount(SafeIncrement(
+                FileSystemStats.GetNodesWriteSingleSessionCount(),
+                1));
             break;
         case TNodeToSessionStat::EKind::NodesWriteMultiSessionCount:
             FileSystemStats.SetNodesWriteMultiSessionCount(SafeIncrement(
@@ -648,7 +649,7 @@ void TIndexTabletState::DestroyHandle(
     ResetNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
     if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
         UpdateNodeCounters(Impl->NodeToSessionStat.RemoveWrite(
-        nodeId,
+            nodeId,
             handle->GetSessionId()));
     } else if (
         HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
