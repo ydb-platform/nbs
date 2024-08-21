@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/thread.h>
 
+#include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
@@ -55,7 +56,10 @@ public:
             ++iterations;
             code = io_setup(nr, &Context);
             if (code == -EAGAIN) {
-                Cerr << "retrying EAGAIN from io_setup" << Endl;
+                const auto aioMaxNr =
+                    TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
+                Cerr << "retrying EAGAIN from io_setup, aio-max-nr: "
+                    << aioMaxNr << Endl;
                 Sleep(waitTime);
             } else {
                 break;
