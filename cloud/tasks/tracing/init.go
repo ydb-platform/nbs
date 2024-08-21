@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -24,7 +25,6 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ pass should_sample attribute here?
 func StartSpan(
 	ctx context.Context,
 	spanName string,
@@ -32,6 +32,24 @@ func StartSpan(
 ) (context.Context, trace.Span) {
 
 	return otel.Tracer(tracerName).Start(ctx, spanName, opts...)
+}
+
+func StartSpanWithSampling(
+	ctx context.Context,
+	spanName string,
+	sampled bool,
+	opts ...trace.SpanStartOption,
+) (context.Context, trace.Span) {
+
+	opts = append(opts, trace.WithAttributes(
+		attribute.Bool(shouldSampleAttributeKey, sampled),
+	))
+
+	return StartSpan(
+		ctx,
+		spanName,
+		opts...,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,9 +86,10 @@ func InitTracing(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(*config.ServiceName),
 	)
+	sampler := sdktrace.ParentBased(NewSampler(config.SamplingConfig)) // TODO:_ what if no sampling config provided?
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
-		sdktrace.WithSampler(NewSampler(config.SamplingConfig)), // TODO:_ what if no sampling config passed?
+		sdktrace.WithSampler(sampler),
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)

@@ -2,7 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     init.go
-    sampler.go
+    sampling.go
     tracing_context.go
 )
 

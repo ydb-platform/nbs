@@ -568,14 +568,11 @@ func lockAndExecuteTask(
 
 	logging.Info(ctx, "CHECK lockAndExecuteTask starting span for task %v", taskInfo)
 	spanName := fmt.Sprintf("%v_%v_%v", taskInfo.ID, taskInfo.GenerationID, taskInfo.TaskType)
-	runCtx, span := tracing.StartSpan(
+	runCtx, span := tracing.StartSpanWithSampling(
 		runCtx,
 		fmt.Sprintf("%v_%v_%v", taskInfo.ID, taskInfo.GenerationID, taskInfo.TaskType),
+		runner.shouldSampleForTracing(taskInfo.ID, taskInfo.GenerationID),
 		trace.WithAttributes(
-			attribute.Bool("should_sample", runner.shouldSampleForTracing(
-				taskInfo.ID,
-				taskInfo.GenerationID,
-			)),
 			attribute.String("task_id", taskInfo.ID),
 			attribute.Int64("generation_id", int64(taskInfo.GenerationID)), // TODO:_ integer type hell
 			attribute.String("task_type", taskInfo.TaskType),
