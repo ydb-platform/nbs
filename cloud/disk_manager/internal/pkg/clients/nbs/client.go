@@ -18,6 +18,10 @@ import (
 	core_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	tracing_codes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -604,7 +608,12 @@ func (c *client) Create(
 	params CreateDiskParams,
 ) (err error) {
 
-	defer c.metrics.StatRequest("Create")(&err)
+	requestName := "Create"
+	defer c.metrics.StatRequest(requestName)(&err)
+
+	ctx, span := tracing.StartSpan(ctx, makeSpanName(requestName), makeSpanAttributes()...)
+	defer span.End()
+	defer span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
 
 	kind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
@@ -616,8 +625,7 @@ func (c *client) Create(
 		return err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateVolume(
+	return c.createVolume(
 		ctx,
 		params.ID,
 		params.BlocksCount,
@@ -638,7 +646,6 @@ func (c *client) Create(
 			EncryptionSpec:          encryptionSpec,
 		},
 	)
-	return wrapError(err)
 }
 
 func (c *client) CreateProxyOverlayDisk(
@@ -1508,15 +1515,6 @@ func (c *client) GetScanDiskStatus(
 	return fromScanDiskProgress(response.Progress), err
 }
 
-func (c *client) withTimeoutHeader(ctx context.Context) context.Context {
-	//nolint:SA1029
-	return context.WithValue(
-		ctx,
-		nbs_client.RequestTimeoutHeaderKey,
-		c.serverRequestTimeout,
-	)
-}
-
 func (c *client) FinishFillDisk(
 	ctx context.Context,
 	saveState func() error,
@@ -1539,4 +1537,69 @@ func (c *client) FinishFillDisk(
 			response,
 		)
 	})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) withTimeoutHeader(ctx context.Context) context.Context {
+	//nolint:SA1029
+	return context.WithValue(
+		ctx,
+		nbs_client.RequestTimeoutHeaderKey,
+		c.serverRequestTimeout,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) createVolume(
+	ctx context.Context,
+	diskId string,
+	blocksCount uint64,
+	opts *nbs_client.CreateVolumeOpts,
+) error {
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		makeSpanNameSDK("CreateVolume"),
+		makeSpanAttributesSDK()...,
+	)
+	defer span.End()
+
+	err := c.nbs.CreateVolume(ctx, diskId, blocksCount, opts)
+	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err)) // TODO:_ we duplicate this error in parent span
+	}
+
+	return wrapError(err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func makeSpanAttributes() []trace.SpanStartOption {
+	return []trace.SpanStartOption{
+		trace.WithAttributes( // TODO:_ which attributes?
+			attribute.String("LOL", "KEK"),
+		),
+	}
+}
+
+// TODO:_ naming of this and previous function. Do we need separate functions?
+func makeSpanAttributesSDK() []trace.SpanStartOption {
+	return []trace.SpanStartOption{
+		trace.WithAttributes( // TODO:_ which attributes?
+			attribute.String("NOOB", "HMM"),
+		),
+	}
+}
+
+// TODO:_ naming? do we need this function?
+func makeSpanName(requestName string) string {
+	return "NbsClient." + requestName // TODO:_ better name? NBS?
+}
+
+// TODO:_ naming? do we need this function?
+func makeSpanNameSDK(requestName string) string {
+	return "NbsSDK." + requestName // TODO:_ better name? NBS?
 }
