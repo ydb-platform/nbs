@@ -1,13 +1,13 @@
 #pragma once
 
+#include "commit.h"
+
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <util/digest/multi.h>
 #include <util/generic/hash_set.h>
 #include <util/stream/output.h>
 #include <util/system/defaults.h>
-
-#include <utility>
 
 namespace NCloud {
 
@@ -187,6 +187,10 @@ inline TPartialBlobId NextBlobId(TPartialBlobId blobId, ui64 maxUniqueId)
     }
     return MakePartialBlobId(blobId.CommitId(), blobId.UniqueId() + 1);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TPartialBlobId InvalidPartialBlobId = TPartialBlobId(InvalidCommitId, 0);
 
 }   // namespace NCloud
 
