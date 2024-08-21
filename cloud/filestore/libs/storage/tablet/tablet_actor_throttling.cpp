@@ -43,7 +43,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        static_cast<ui32>(CalculateByteCount(request.Record)),
+        CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
         policyVersion
     };
@@ -55,7 +55,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        static_cast<ui32>(CalculateByteCount(request.Record)),
+        CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
         policyVersion
     };

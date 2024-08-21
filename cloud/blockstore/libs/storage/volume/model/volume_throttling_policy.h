@@ -97,7 +97,7 @@ public:
 
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
-    ui32 CalculatePostponedWeight() const;
+    ui64 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;
