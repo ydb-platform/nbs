@@ -682,11 +682,6 @@ public:
         return UsedBlocks ? UsedBlocks->Count() : 0;
     }
 
-    bool HasUsedBlocksMap() const
-    {
-        return UsedBlocks != nullptr;
-    }
-
     const TCompressedBitmap& GetUsedBlocks() const
     {
         Y_DEBUG_ABORT_UNLESS(UsedBlocks);
