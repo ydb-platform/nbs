@@ -45,12 +45,27 @@ private:
     io_context* Context = nullptr;
 
 public:
-    explicit TAsyncIOContext(size_t nr)
+    explicit TAsyncIOContext(int nr)
     {
-        int ret = io_setup(nr, &Context);
-        Y_ABORT_UNLESS(ret == 0,
-            "unable to initialize context: %s",
-            LastSystemErrorText(-ret));
+        int code = 0;
+        int iterations = 0;
+        const int maxIterations = 100;
+        const auto waitTime = TDuration::MilliSeconds(100);
+        while (iterations < maxIterations) {
+            ++iterations;
+            code = io_setup(nr, &Context);
+            if (code == -EAGAIN) {
+                Cerr << "retrying EAGAIN from io_setup" << Endl;
+                Sleep(waitTime);
+            } else {
+                break;
+            }
+        }
+
+        Y_ABORT_UNLESS(code == 0,
+            "unable to initialize context: %s, iterations: %d",
+            LastSystemErrorText(-code),
+            iterations);
     }
 
     ~TAsyncIOContext()
