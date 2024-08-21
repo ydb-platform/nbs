@@ -26,7 +26,10 @@ public:
     TResizeDeviceCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
-        Opts.AddLongOption("socket", "unix socket path")
+        Opts.AddLongOption(
+                "socket",
+                "unix socket path of the endpoint associated with the device "
+                "we are resizing")
             .RequiredArgument("STR")
             .Required()
             .StoreResult(&UnixSocketPath);
