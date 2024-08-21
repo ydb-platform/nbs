@@ -167,7 +167,8 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const NActors::TActorContext& ctx)
 {
     if (!Config->GetThrottlingEnabled() ||
-        !GetPerformanceProfile().GetThrottlingEnabled())
+        !GetPerformanceProfile().GetThrottlingEnabled() ||
+        ev->Get()->Record.GetHeaders().GetThrottled())
     {
         return false;
     }

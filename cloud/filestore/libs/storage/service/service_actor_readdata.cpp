@@ -268,6 +268,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     if (FAILED(msg->GetStatus())) {
+        ReadRequest.MutableHeaders()->SetThrottled(true);
         ReadData(ctx, FormatError(msg->GetError()));
         return;
     }
