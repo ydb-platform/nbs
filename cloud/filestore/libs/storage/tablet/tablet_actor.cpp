@@ -978,7 +978,8 @@ void TIndexTabletActor::UpdateLogTag()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor)
+i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
+    ui32 nonNetworkMetricsBalancingFactor)
 {
     i64 sumRequestBytes =
         ReadBlob.RequestBytes + WriteBlob.RequestBytes +
