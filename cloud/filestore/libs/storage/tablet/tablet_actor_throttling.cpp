@@ -55,10 +55,31 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        static_cast<ui32>(CalculateByteCount(request.Record)),
+        CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion
-    };
+        policyVersion};
+}
+
+template <>
+TThrottlingRequestInfo BuildRequestInfo(
+    const TEvIndexTablet::TEvDescribeDataRequest& request,
+    ui32 policyVersion)
+{
+    return {
+        CalculateByteCount(request.Record),
+        static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
+        policyVersion};
+}
+
+template <>
+TThrottlingRequestInfo BuildRequestInfo(
+    const TEvIndexTablet::TEvGenerateBlobIdsRequest& request,
+    ui32 policyVersion)
+{
+    return {
+        CalculateByteCount(request.Record),
+        static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
+        policyVersion};
 }
 
 }   // namespace
@@ -185,6 +206,8 @@ template bool TIndexTabletActor::ThrottleIfNeeded<ns::T##name##Method>(        \
 
 GENERATE_IMPL(ReadData,  TEvService)
 GENERATE_IMPL(WriteData, TEvService)
+GENERATE_IMPL(DescribeData, TEvIndexTablet)
+GENERATE_IMPL(GenerateBlobIds, TEvIndexTablet)
 
 #undef GENERATE_IMPL
 
