@@ -102,6 +102,22 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleUpdateCounters(
     ScheduleCountersUpdate(ctx);
 }
 
+void TNonreplicatedPartitionMigrationCommonActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    switch (msg->Tag) {
+        case REGISTER_TRAFFIC_SOURCE:
+            DoRegisterTrafficSource(ctx);
+            break;
+        default:
+            // It should be unreachable.
+            Y_DEBUG_ABORT_UNLESS(false);
+            break;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)           \
@@ -178,6 +194,11 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
+        HFunc(
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
+            TimeoutCalculator->HandleUpdateBandwidthLimit);
+
+        HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -228,6 +249,7 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
+        IgnoreFunc(NActors::TEvents::TEvWakeup);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
