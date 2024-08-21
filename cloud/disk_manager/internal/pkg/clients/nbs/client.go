@@ -24,6 +24,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// TODO:_ is it ok to depend on otel go.opentelemetry.io/otel here?
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -430,21 +432,14 @@ func (c *client) updateVolume(
 	do func(volume *protos.TVolume) error,
 ) error {
 
+	ctx, span := tracing.StartSpan(ctx, makeSpanNameSDK("updateVolume")) // TODO:_ attributes?
+	defer span.End()
+
 	retries := 0
 	for {
-		ctx = c.withTimeoutHeader(ctx)
-		volume, err := c.nbs.DescribeVolume(ctx, diskID)
+		err := c.tryUpdateVolume(ctx, saveState, diskID, do)
 		if err != nil {
-			return wrapError(err)
-		}
-
-		err = saveState()
-		if err != nil {
-			return err
-		}
-
-		err = do(volume)
-		if err != nil {
+			// TODO:_ some events? And/or some logs?
 			if !isAbortedError(err) {
 				return err
 			}
@@ -459,6 +454,30 @@ func (c *client) updateVolume(
 
 		return nil
 	}
+}
+
+func (c *client) tryUpdateVolume(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	do func(volume *protos.TVolume) error,
+) error {
+
+	ctx, span := tracing.StartSpan(ctx, makeSpanNameSDK("tryUpdateVolume")) // TODO:_ attributes?
+	defer span.End()
+
+	ctx = c.withTimeoutHeader(ctx)
+	volume, err := c.nbs.DescribeVolume(ctx, diskID)
+	if err != nil {
+		return wrapError(err)
+	}
+
+	err = saveState()
+	if err != nil {
+		return err
+	}
+
+	return do(volume)
 }
 
 // TODO: unify with updateVolume.
