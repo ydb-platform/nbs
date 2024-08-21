@@ -14,6 +14,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	tracing_codes "go.opentelemetry.io/otel/codes"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,9 +339,9 @@ func (s *Session) closeImpl(ctx context.Context) {
 
 // Not thread-safe.
 func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error) {
-	client, host, err := s.nbs.DiscoverInstance(ctx)
+	client, host, err := s.discoverInstance(ctx)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, err
 	}
 
 	s.client = client
@@ -398,4 +400,30 @@ func (s *Session) closeSession(ctx context.Context) {
 
 func (s *Session) withClientID(ctx context.Context) context.Context {
 	return nbs_client.WithClientID(ctx, s.clientID)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+//	client, host, err := s.nbs.DiscoverInstance(ctx)
+//	if err != nil {
+//		return nil, wrapError(err)
+//	}
+
+func (s *Session) discoverInstance(
+	ctx context.Context,
+) (*nbs_client.Client, string, error) {
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		makeSpanNameSDK("DiscoverInstance"),
+		makeSpanAttributesSDK()...,
+	)
+	defer span.End()
+
+	client, host, err := s.nbs.DiscoverInstance(ctx)
+	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	}
+
+	return client, host, wrapError(err)
 }
