@@ -41,6 +41,11 @@ TasksConfig: <
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
     HangingTaskTimeout: "100s"
+    SamplingConfigForTracing: <
+       SoftBarrier: 10
+       HardBarrier: 50
+       SoftPercentage: 20
+    >
 >
 NfsConfig: <
     Zones: <
@@ -186,6 +191,14 @@ PlacementGroupConfig: <
     DeletedPlacementGroupExpirationTimeout: "1s"
     ClearDeletedPlacementGroupsTaskScheduleInterval: "2s"
 >
+TracingConfig: <
+    ServiceName: "disk-manager"
+    Port: 7881
+    SamplingConfig: <
+        Hmm: "kek"
+        Noob: "lol"
+    >
+>
 """
 
 
@@ -210,6 +223,11 @@ TasksConfig: <
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
     HangingTaskTimeout: "100s"
+    SamplingConfigForTracing: <
+       SoftBarrier: 10
+       HardBarrier: 50
+       SoftPercentage: 20
+    >
 >
 NbsConfig: <
     Zones: <
@@ -290,6 +308,14 @@ DataplaneConfig: <
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
+>
+TracingConfig: <
+    ServiceName: "disk-manager"
+    Port: 7881
+    SamplingConfig: <
+        Hmm: "kek"
+        Noob: "lol"
+    >
 >
 """
 

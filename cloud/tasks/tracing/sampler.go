@@ -28,8 +28,14 @@ func (s *sampler) ShouldSample(
 	params sdktrace.SamplingParameters,
 ) sdktrace.SamplingResult {
 	// TODO:_
-	aaa := params.Attributes[0].Value.AsString()
-	fmt.Println(aaa)
+	// aaa := params.Attributes[0].Value.AsString()
+	// fmt.Println(aaa)
+	fmt.Printf(
+		"hmm: %v, noob: %v\n",
+		*s.config.Hmm,
+		*s.config.Noob,
+	)
+
 	return sdktrace.SamplingResult{Decision: sdktrace.RecordAndSample}
 }
 

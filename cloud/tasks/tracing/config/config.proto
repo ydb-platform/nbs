@@ -12,6 +12,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/tasks/tracing/config";
 // TODO:_
 message SamplingConfig {
     optional string Hmm = 1 [default = "hmm"];
+    optional string Noob = 2 [default = "noob"];
 }
 
 message TracingConfig {
