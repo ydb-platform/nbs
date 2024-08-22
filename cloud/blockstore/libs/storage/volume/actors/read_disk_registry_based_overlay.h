@@ -57,7 +57,7 @@ public:
     TReadDiskRegistryBasedOverlayActor(
         TRequestInfoPtr requestInfo,
         TRequest originalRequest,
-        const TCompressedBitmap* usedBlocks,
+        const TCompressedBitmap& usedBlocks,
         TActorId volumeActorId,
         TActorId partActorId,
         ui64 volumeTabletId,

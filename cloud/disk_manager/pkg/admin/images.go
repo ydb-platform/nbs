@@ -231,7 +231,7 @@ type deleteImage struct {
 func (c *deleteImage) run() error {
 	ctx := newContext(c.clientConfig)
 
-	err := requestDeletionConfirmation("image", c.imageID)
+	err := requestConfirmation("image", c.imageID)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/block_data_ref.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/hash.h>
@@ -51,16 +52,24 @@ private:
     THashMap<ui32, IProtoFactoryPtr> Messages;
 
 public:
-    static size_t MessageByteSize(const TProtoMessage& proto, size_t dataLen);
+    [[nodiscard]] static size_t MessageByteSize(
+        const TProtoMessage& proto,
+        size_t dataLen);
 
     static size_t Serialize(
         TStringBuf buffer,
         ui32 msgId,
         ui32 flags,
-        const TProtoMessage& proto,
-        TContIOVector data);
+        const TProtoMessage& proto);
 
-    static size_t Serialize(
+    static size_t SerializeWithData(
+        TStringBuf buffer,
+        ui32 msgId,
+        ui32 flags,
+        const TProtoMessage& proto,
+        TBlockDataRefSpan data);
+
+    static size_t SerializeWithDataLength(
         TStringBuf buffer,
         ui32 msgId,
         ui32 flags,
@@ -75,7 +84,7 @@ public:
         TStringBuf Data;
     };
 
-    TResultOrError<TParseResult> Parse(TStringBuf buffer) const;
+    [[nodiscard]] TResultOrError<TParseResult> Parse(TStringBuf buffer) const;
 
 protected:
     template <typename T>

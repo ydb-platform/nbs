@@ -471,6 +471,9 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		})
 	assert.NotEqual(t, -1, capabilityIndex)
 
+	nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: diskID}).Return(&nbs.TDescribeVolumeResponse{}, nil)
+	mounter.On("IsMountPoint", targetPath).Return(true, nil)
+
 	stat, err := nodeService.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
 		VolumeId:   diskID,
 		VolumePath: targetPath,

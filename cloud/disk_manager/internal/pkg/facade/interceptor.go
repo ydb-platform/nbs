@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
@@ -57,6 +58,7 @@ var (
 		{name: "PlacementGroupService.Describe", permission: "disk-manager.disks.get"},
 
 		{name: "PrivateService.ScheduleBlankOperation", permission: "disk-manager.operations.create"},
+		{name: "PrivateService.ReleaseBaseDisk", permission: "disk-manager.disks.delete"},
 		{name: "PrivateService.RebaseOverlayDisk", permission: "disk-manager.disks.update"},
 		{name: "PrivateService.RetireBaseDisk", permission: "disk-manager.disks.delete"},
 		{name: "PrivateService.RetireBaseDisks", permission: "disk-manager.disks.delete"},
@@ -203,6 +205,10 @@ func (i *interceptor) intercept(
 		logging.Warn(ctx, "Failed to get request metrics: %v", err)
 		return nil, err
 	}
+
+	ctx = tracing.ExtractTracingContext(ctx)
+	ctx, span := tracing.StartSpan(ctx, requestName)
+	defer span.End()
 
 	start := time.Now()
 

@@ -20,6 +20,8 @@ on:
           - relwithdebinfo
           - release-asan
           - release-tsan
+          - release-msan
+          - release-ubsan
       cache_update:
         type: boolean
         default: false

@@ -338,7 +338,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
-            CreateSchedulerStub(),
+            scheduler,
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),

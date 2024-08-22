@@ -92,7 +92,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -107,12 +107,11 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
-            0, // flags
-            *Request,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -188,7 +187,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(
+        return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
             BlockSize * Request->BlocksCount);
     }
@@ -209,12 +208,13 @@ public:
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
-        return Serializer->Serialize(
+
+        return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             0, // flags
             *Request,
-            TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
+            sglist);
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -268,7 +268,7 @@ public:
 
     size_t GetRequestSize() const
     {
-        return Serializer->MessageByteSize(*Request, 0);
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
     }
 
     size_t GetResponseSize() const
@@ -283,12 +283,11 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
-        return Serializer->Serialize(
+        return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
-            0, // flags
-            *Request,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            *Request);
     }
 
     void HandleResponse(TStringBuf buffer) override

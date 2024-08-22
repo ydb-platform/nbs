@@ -128,15 +128,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = serializer->Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector(
-                        (IOutputStream::TPart*)sglist.begin(),
-                        sglist.size()
-                    ));
+                responseBytes =
+                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                        0,   // flags
+                        response,
+                        sglist);
 
                 break;
             }
@@ -166,12 +164,11 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = serializer->Serialize(
+                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::WriteDeviceBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector(nullptr, 0));
+                    0,   // flags
+                    response);
 
                 break;
             }
@@ -197,12 +194,11 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = serializer->Serialize(
+                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ZeroDeviceBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector(nullptr, 0));
+                    0,   // flags
+                    response);
 
                 break;
             }
@@ -231,12 +227,11 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     response.SetChecksum(checksum.GetValue());
                 }
 
-                responseBytes = serializer->Serialize(
+                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
-                    0, // flags
-                    response,
-                    TContIOVector(nullptr, 0));
+                    0,   // flags
+                    response);
 
                 break;
             }

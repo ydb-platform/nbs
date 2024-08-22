@@ -8,7 +8,7 @@ LICENSE(
     NCSA
 )
 
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+LICENSE_TEXTS(LICENSE.TXT)
 
 VERSION(14.0.6)
 

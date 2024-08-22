@@ -1,6 +1,9 @@
 package client
 
 import (
+	"errors"
+	"strings"
+
 	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"golang.org/x/net/context"
 )
@@ -233,6 +236,27 @@ func (client *Client) RefreshEndpoint(
 
 	_, err := client.Impl.RefreshEndpoint(ctx, req)
 	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskNotFoundError(e error) bool {
+	var clientErr *ClientError
+	if errors.As(e, &clientErr) {
+		if clientErr.Facility() == FACILITY_SCHEMESHARD {
+			// TODO: remove support for PathDoesNotExist.
+			if clientErr.Status() == 2 {
+				return true
+			}
+
+			// Hack for NBS-3162.
+			if strings.Contains(clientErr.Error(), "Another drop in progress") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////

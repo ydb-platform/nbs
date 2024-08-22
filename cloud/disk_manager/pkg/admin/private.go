@@ -106,6 +106,80 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type releaseBaseDisk struct {
+	config        *client_config.ClientConfig
+	zoneID        string
+	overlayDiskID string
+}
+
+func (c *releaseBaseDisk) run() error {
+	ctx := newContext(c.config)
+
+	err := requestConfirmation("overlay disk", c.overlayDiskID)
+	if err != nil {
+		return err
+	}
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	req := &api.ReleaseBaseDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: c.zoneID,
+			DiskId: c.overlayDiskID,
+		},
+	}
+
+	resp, err := client.ReleaseBaseDisk(getRequestContext(ctx), req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
+}
+
+func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
+	c := &releaseBaseDisk{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use: "release_base_disk",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.zoneID,
+		"zone-id",
+		"",
+		"overlay disk zone ID where disk is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.overlayDiskID,
+		"overlay-disk-id",
+		"",
+		"overlay disk ID; required",
+	)
+	if err := cmd.MarkFlagRequired("overlay-disk-id"); err != nil {
+		log.Fatalf("Error setting flag overlay-disk-id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type retireBaseDisk struct {
 	config        *client_config.ClientConfig
 	baseDiskID    string
@@ -629,6 +703,7 @@ func newPrivateCmd(
 	}
 
 	cmd.AddCommand(
+		newReleaseBaseDiskCmd(clientConfig),
 		newRebaseOverlayDiskCmd(clientConfig),
 		newRetireBaseDiskCmd(clientConfig),
 		newRetireBaseDisksCmd(clientConfig),

@@ -36,23 +36,26 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         State->IsDiskRegistryMediaKind() &&
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
     const bool overlayDiskRegistryBasedDisk =
-        State->IsDiskRegistryMediaKind() &&
-        !State->GetBaseDiskId().Empty();
+        State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().Empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks() ||
-            State->HasCheckpointLight() ||
-            overlayDiskRegistryBasedDisk)
-        {
+        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight()) {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
+            // For overlay disks we need to ensure that the only bits that are
+            // set in the used block map are the bits that correspond to the
+            // blocks that have been successfully written. Therefore we must
+            // update the map only after the block has been successfully
+            // written.
+            const bool needReliableUsedBlockTracking =
+                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk,
+                needReliableUsedBlockTracking,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
@@ -63,19 +66,28 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     }
 
     if constexpr (IsReadMethod<TMethod>) {
-        if (State->GetMaskUnusedBlocks() && State->GetUsedBlocks() ||
-            encryptedDiskRegistryBasedDisk ||
-            overlayDiskRegistryBasedDisk)
-        {
-            const TCompressedBitmap* usedBlocks = State->GetUsedBlocks();
-            const bool isOnlyOverlayDisk = usedBlocks
-                ? usedBlocks->Count(
-                    msg->Record.GetStartIndex(),
-                    msg->Record.GetStartIndex() + msg->Record.GetBlocksCount())
-                        == msg->Record.GetBlocksCount()
-                : false;
+        if (State->GetTrackUsedBlocks()) {
+            const bool needToZeroUnusedBlocks =
+                State->GetMaskUnusedBlocks() ||
+                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
+            if (!needToZeroUnusedBlocks) {
+                // We don't need to mask unused blocks. Therefore, we can do
+                // the usual reading.
+                return false;
+            }
 
-            if (isOnlyOverlayDisk) {
+            const bool readUsedBlocksOnly =
+                State->GetUsedBlocks().Count(
+                    msg->Record.GetStartIndex(),
+                    msg->Record.GetStartIndex() +
+                        msg->Record.GetBlocksCount()) ==
+                msg->Record.GetBlocksCount();
+
+            if (readUsedBlocksOnly) {
+                // We don't need to look at the map of used blocks when
+                // reading, because all the blocks have been used.
+                // Therefore, we don't need to zero unused blocks and can do the
+                // usual reading.
                 return false;
             }
 
@@ -96,21 +108,18 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     GetDowntimeThreshold(
                         *DiagnosticsConfig,
                         NProto::STORAGE_MEDIA_SSD));
-
-                return true;
+            } else {
+                NCloud::Register<TReadMarkedActor<TMethod>>(
+                    ctx,
+                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                    std::move(msg->Record),
+                    State->GetUsedBlocks(),
+                    needToZeroUnusedBlocks,
+                    encryptedDiskRegistryBasedDisk,
+                    partActorId,
+                    TabletID(),
+                    SelfId());
             }
-
-            NCloud::Register<TReadMarkedActor<TMethod>>(
-                ctx,
-                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-                std::move(msg->Record),
-                State->GetUsedBlocks(),
-                State->GetMaskUnusedBlocks(),
-                encryptedDiskRegistryBasedDisk,
-                partActorId,
-                TabletID(),
-                SelfId());
-
             return true;
         }
     }

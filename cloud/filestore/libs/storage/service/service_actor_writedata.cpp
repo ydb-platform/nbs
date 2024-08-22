@@ -50,6 +50,7 @@ private:
     // in flight
     TMaybe<TInFlightRequest> InFlightRequest;
     TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
+    TVector<ui32> StorageStatusFlags;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
@@ -173,6 +174,7 @@ private:
 
         RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteBlob;
         InFlightBSRequests.reserve(RemainingBlobsToWrite);
+        StorageStatusFlags.resize(GenerateBlobIdsResponse.BlobsSize());
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -249,11 +251,14 @@ private:
         ui64 blobIdx = msg->Id.Cookie();
         // It is implicitly expected that cookies are generated in increasing
         // order starting from 0.
+        // TODO: replace this TABLET_VERIFY with a critical event + WriteData
+        // fallback
         TABLET_VERIFY(
             blobIdx < InFlightBSRequests.size() &&
             InFlightBSRequests[blobIdx] &&
             !InFlightBSRequests[blobIdx]->IsCompleted());
         InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
+        StorageStatusFlags[blobIdx] = msg->StatusFlags.Raw;
 
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
@@ -277,6 +282,11 @@ private:
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
         request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
+        request->Record.MutableStorageStatusFlags()->Reserve(
+            StorageStatusFlags.size());
+        for (const auto flags: StorageStatusFlags) {
+            request->Record.AddStorageStatusFlags(flags);
+        }
 
         if (Range.Offset < BlobRange.Offset) {
             auto& unalignedHead = *request->Record.AddUnalignedDataRanges();

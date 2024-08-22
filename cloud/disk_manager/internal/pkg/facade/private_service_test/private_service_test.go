@@ -299,6 +299,7 @@ func TestPrivateServiceRetireBaseDiskInParallelWithOverlayDiskDeleting(t *testin
 		require.NoError(t, err)
 	}
 
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, "disk")
 	testcommon.CheckConsistency(t, ctx)
 }
 

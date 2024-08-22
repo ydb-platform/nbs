@@ -327,13 +327,28 @@ message TStorageConfig
     // Enables ThreeStageWrite for unaligned requests.
     optional bool UnalignedThreeStageWriteEnabled = 366;
 
+    // Number of ranges with zero compaction stats to delete per tx.
+    optional uint32 MaxZeroCompactionRangesToDeletePerTx = 367;
+
+    // Mapping allowing for multiple fs ids to point to the same fs
+    message TFilestoreAliasEntry
+    {
+        optional string Alias = 1;
+        optional string FsId = 2;
+    }
+    message TFilestoreAliases
+    {
+        repeated TFilestoreAliasEntry Entries = 1;
+    }
+    optional TFilestoreAliases FilestoreAliases = 368;
+
     // Enables in-memory index cache for all index-related requests
-    optional bool InMemoryIndexCacheEnabled = 367;
+    optional bool InMemoryIndexCacheEnabled = 369;
     // Capacity of in-memory index cache, in number of entries per each table
-    optional uint64 InMemoryIndexCacheNodesCapacity = 368;
-    optional uint64 InMemoryIndexCacheNodesVerCapacity = 369;
-    optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 370;
-    optional uint64 InMemoryIndexCacheNodeAttrsVerCapacity = 371;
-    optional uint64 InMemoryIndexCacheNodeRefsCapacity = 372;
-    optional uint64 InMemoryIndexCacheNodeRefsVerCapacity = 373;
+    optional uint64 InMemoryIndexCacheNodesCapacity = 370;
+    optional uint64 InMemoryIndexCacheNodesVerCapacity = 371;
+    optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 372;
+    optional uint64 InMemoryIndexCacheNodeAttrsVerCapacity = 373;
+    optional uint64 InMemoryIndexCacheNodeRefsCapacity = 374;
+    optional uint64 InMemoryIndexCacheNodeRefsVerCapacity = 375;
 }

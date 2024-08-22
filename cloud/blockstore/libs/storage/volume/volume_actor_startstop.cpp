@@ -177,7 +177,6 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             mediaKind},
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
-        State->GetTrackUsedBlocks(),
         State->GetFilteredFreshDevices(),
         maxTimedOutDeviceStateDuration,
         maxTimedOutDeviceStateDurationOverridden,

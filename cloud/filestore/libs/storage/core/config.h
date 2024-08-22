@@ -224,6 +224,8 @@ public:
 
     ui64 GetTrimBytesItemCount() const;
 
+    ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
+
     bool GetInMemoryIndexCacheEnabled() const;
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
     ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
@@ -232,6 +234,7 @@ public:
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
 
+  
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
@@ -245,6 +248,9 @@ public:
     TString GetBlobCompressionCodec() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
+
+    const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
+    const TString* FindFileSystemIdByAlias(const TString& alias) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

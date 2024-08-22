@@ -438,6 +438,19 @@ func (s *storageYDB) CheckBaseDisksConsistency(ctx context.Context) error {
 	)
 }
 
+func (s *storageYDB) CheckBaseDiskSlotReleased(
+	ctx context.Context,
+	overlayDiskID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkBaseDiskSlotReleased(ctx, session, overlayDiskID)
+		},
+	)
+}
+
 func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	return s.db.Execute(
 		ctx,

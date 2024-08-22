@@ -7,7 +7,7 @@ LICENSE(
     MIT
 )
 
-LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+LICENSE_TEXTS(../../LICENSE.TXT)
 
 PEERDIR(
     contrib/libs/llvm14

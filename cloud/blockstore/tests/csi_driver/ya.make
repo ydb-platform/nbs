@@ -15,6 +15,7 @@ TEST_SRCS(
 DEPENDS(
     cloud/blockstore/tools/csi_driver/cmd/nbs-csi-driver
     cloud/blockstore/tools/csi_driver/client
+    cloud/blockstore/tools/testing/csi-sanity/bin
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/endpoint_proxy

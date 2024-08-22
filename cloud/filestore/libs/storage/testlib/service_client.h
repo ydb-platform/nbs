@@ -131,11 +131,13 @@ public:
 
     auto CreateResizeFileStoreRequest(
         const TString& fileSystemId,
-        ui64 blocksCount)
+        ui64 blocksCount,
+        bool force = false)
     {
         auto request = std::make_unique<TEvService::TEvResizeFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetBlocksCount(blocksCount);
+        request->Record.SetForce(force);
         return request;
     }
 

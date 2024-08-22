@@ -484,6 +484,48 @@ func (s *Session) execute(
 	return tx, Result{res: ydbRes}, nil
 }
 
+func (s *Session) CreateOrAlterTable(
+	ctx context.Context,
+	fullPath string,
+	description CreateTableDescription,
+	dropUnusedColumns bool,
+) (err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+	defer cancel()
+
+	defer s.metrics.StatCall(
+		ctx,
+		"session/CreateOrAlterTable",
+		fmt.Sprintf("At path: %v", fullPath),
+	)(&err)
+
+	return createOrAlterTable(
+		ctx,
+		s.session,
+		fullPath,
+		description,
+		dropUnusedColumns,
+	)
+}
+
+func (s *Session) DropTable(
+	ctx context.Context,
+	fullPath string,
+) (err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+	defer cancel()
+
+	defer s.metrics.StatCall(
+		ctx,
+		"session/DropTable",
+		fmt.Sprintf("At path: %v", fullPath),
+	)(&err)
+
+	return dropTable(ctx, s.session, fullPath)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type YDBClient struct {
@@ -515,15 +557,13 @@ func (c *YDBClient) CreateOrAlterTable(
 
 	return c.Execute(
 		ctx,
-		func(ctx context.Context, s *Session) error {
-			err := c.makeDirs(ctx, folderFullPath)
+		func(ctx context.Context, s *Session) (err error) {
+			err = c.makeDirs(ctx, folderFullPath)
 			if err != nil {
 				return err
 			}
 
-			return createOrAlterTable(
-				ctx,
-				s.session,
+			return s.CreateOrAlterTable(ctx,
 				fullPath,
 				description,
 				dropUnusedColumns,
@@ -543,8 +583,8 @@ func (c *YDBClient) DropTable(
 
 	return c.Execute(
 		ctx,
-		func(ctx context.Context, s *Session) error {
-			return dropTable(ctx, s.session, fullPath)
+		func(ctx context.Context, s *Session) (err error) {
+			return s.DropTable(ctx, fullPath)
 		},
 	)
 }
@@ -607,7 +647,13 @@ func (c *YDBClient) ExecuteRW(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) error {
+func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) (err error) {
+	defer c.metrics.StatCall(
+		ctx,
+		"client/MakeDirs",
+		fmt.Sprintf("At path: %v", absolutePath),
+	)(&err)
+
 	if !strings.HasPrefix(absolutePath, c.database) {
 		return errors.NewNonRetriableErrorf(
 			"'%v' is expected to be rooted at '%v'",
@@ -626,7 +672,7 @@ func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) error {
 		}
 
 		dirPath = path.Join(dirPath, part)
-		err := c.db.Scheme().MakeDirectory(ctx, dirPath)
+		err = c.db.Scheme().MakeDirectory(ctx, dirPath)
 		if err != nil {
 			return errors.NewNonRetriableErrorf(
 				"cannot make directory %v: %w",
