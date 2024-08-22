@@ -558,12 +558,6 @@ NKikimr::NMetrics::TResourceMetrics* TVolumeActor::GetResourceMetrics()
     return Executor()->GetResourceMetrics();
 }
 
-bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
-{
-    return TBlockRange64::WithLength(0, State->GetBlocksCount())
-        .Contains(range);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(
