@@ -1,5 +1,6 @@
 import logging
 import os
+import pytest
 import subprocess
 import tempfile
 import time
@@ -47,9 +48,13 @@ class CsiLoadTest(LocalLoadTest):
         self.sockets_temporary_directory.cleanup()
 
 
-def init():
+def init(enableNetlink=True):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
+    if enableNetlink:
+        server_config_patch.NbdNetlink = True
+        server_config_patch.NbdRequestTimeout = 120
+        server_config_patch.NbdConnectionTimeout = 120
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
@@ -100,6 +105,9 @@ def init():
             input=script_input,
             text=True,
         )
+
+        logging.info("Stdout: %s", result.stdout)
+        logging.info("Stderr: %s", result.stderr)
         return result
     return env, run
 
@@ -246,8 +254,6 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
             input=volume_name,
             code=1,
         )
-        logging.info("Stdout: %s", result.stdout)
-        logging.info("Stderr: %s", result.stderr)
         if result.returncode != 1:
             raise AssertionError("Destroyvolume must return exit code 1")
         assert "E_REJECTED" in result.stdout
@@ -317,6 +323,14 @@ def test_nbs_csi_driver_volume_stat():
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
 
+        try:
+            env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.delete_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
@@ -357,6 +371,78 @@ def test_csi_sanity_nbs_backend():
             capture_output=True,
             text=True,
         )
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        cleanup_after_test(env)
+
+
+@pytest.mark.parametrize('enableNetlink', [True, False])
+def test_resize_device(enableNetlink):
+    env, run = init(enableNetlink)
+    volume_name = "example-disk"
+    block_size = 4096
+    volume_size = 10000 * block_size
+    pod_name = "example-pod"
+    pod_id = "deadbeef"
+    nbd_device = "/dev/nbd0"
+    try:
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.publish_volume(pod_id, volume_name, pod_name)
+
+        result = common.execute(
+            ["blockdev", "--getsize64", nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        assert result.returncode == 0
+        disk_size = int(result.stdout)
+        assert volume_size == disk_size
+
+        new_volume_size = 2 * volume_size
+        result = run(
+            "resizevolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(new_volume_size // block_size)
+        )
+        assert result.returncode == 0
+
+        socket_path = Path(env.sockets_temporary_directory.name)
+        result = run(
+            "resizedevice",
+            "--socket",
+            socket_path / pod_id / volume_name / "nbs.sock",
+            "--device-size",
+            str(new_volume_size)
+        )
+        assert result.returncode == 0
+
+        result = common.execute(
+            ["blockdev", "--getsize64", nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        assert result.returncode == 0
+        disk_size = int(result.stdout)
+        assert new_volume_size == disk_size
+
+        result = common.execute(
+            ["resize2fs", nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
+        try:
+            env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.delete_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise

@@ -1588,7 +1588,7 @@ NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
         return TErrorResponse(
-            S_FALSE,
+            E_NOT_FOUND,
             TStringBuilder()
                 << "endpoint " << socketPath.Quote() << " not started");
     }
