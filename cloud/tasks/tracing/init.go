@@ -42,9 +42,9 @@ func newTraceExporter(
 
 	return otlptracegrpc.New(
 		ctx,
-		otlptracegrpc.WithEndpoint(fmt.Sprintf(
-			"localhost:%v",
-			*config.Port)),
+		otlptracegrpc.WithEndpoint(
+			fmt.Sprintf("localhost:%v", *config.Port),
+		),
 		otlptracegrpc.WithInsecure(),
 	)
 }
