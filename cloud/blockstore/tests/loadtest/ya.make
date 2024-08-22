@@ -3,6 +3,7 @@ RECURSE(
 
     local
     local-auth
+    local-bsgroup-failure
     local-change-device
     local-checkpoint
     local-discovery
