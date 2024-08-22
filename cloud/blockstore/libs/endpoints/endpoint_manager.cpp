@@ -1593,8 +1593,7 @@ NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
                 << "endpoint " << socketPath.Quote() << " not started");
     }
 
-    auto ret = it->second.Device->Resize(deviceSize);
-    return TErrorResponse(ret);
+    return TErrorResponse(it->second.Device->Resize(deviceSize));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

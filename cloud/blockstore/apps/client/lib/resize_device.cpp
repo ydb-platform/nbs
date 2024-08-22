@@ -28,8 +28,8 @@ public:
     {
         Opts.AddLongOption(
                 "socket",
-                "unix socket path of the endpoint associated with the device "
-                "we are resizing")
+                "Unix socket path of the endpoint associated with the device "
+                "being resized")
             .RequiredArgument("STR")
             .Required()
             .StoreResult(&UnixSocketPath);

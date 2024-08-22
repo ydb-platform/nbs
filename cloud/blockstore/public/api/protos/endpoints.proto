@@ -338,7 +338,7 @@ message TResizeDeviceRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // BlockStore unix-socket path.
+    // Unix socket path of the endpoint associated with the device being resized
     string UnixSocketPath = 2;
 
     // New size in bytes.
