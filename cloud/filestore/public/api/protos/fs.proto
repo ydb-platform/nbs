@@ -57,8 +57,8 @@ message TFileStorePerformanceProfile
     uint32 MaxWriteIops = 2;
 
     // Bytes per sec.
-    uint32 MaxReadBandwidth = 3;
-    uint32 MaxWriteBandwidth = 4;
+    uint64 MaxReadBandwidth = 3;
+    uint64 MaxWriteBandwidth = 4;
 
     // Max sum of all postponed requests weights (in bytes).
     uint32 MaxPostponedWeight = 5;

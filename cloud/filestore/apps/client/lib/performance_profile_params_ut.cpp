@@ -20,9 +20,9 @@ namespace {
 struct TAppOpts
     : public NUnitTest::TBaseFixture
 {
-    const ui32 MaxReadBandwidth = 1;
+    const ui64 MaxReadBandwidth = 1;
     const ui32 MaxReadIops = 2;
-    const ui32 MaxWriteBandwidth = 3;
+    const ui64 MaxWriteBandwidth = 3;
     const ui32 MaxWriteIops = 4;
     const ui32 BoostTime = 5;
     const ui32 BoostRefillTime = 6;

@@ -429,9 +429,9 @@ Y_UNIT_TEST_SUITE(TModel)
         TString PoolType;
         ui64 Size;
         ui32 ReadIops;
-        ui32 ReadBandwidth;
+        ui64 ReadBandwidth;
         ui32 WriteIops;
-        ui32 WriteBandwidth;
+        ui64 WriteBandwidth;
     };
 
     void TestChannels(

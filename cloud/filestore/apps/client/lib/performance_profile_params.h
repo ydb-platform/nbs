@@ -14,9 +14,9 @@ class TPerformanceProfileParams
 {
 private:
     bool ThrottlingEnabled = false;
-    ui32 MaxReadBandwidth = 0;
+    ui64 MaxReadBandwidth = 0;
     ui32 MaxReadIops = 0;
-    ui32 MaxWriteBandwidth = 0;
+    ui64 MaxWriteBandwidth = 0;
     ui32 MaxWriteIops = 0;
     ui32 BoostTime = 0;
     ui32 BoostRefillTime = 0;

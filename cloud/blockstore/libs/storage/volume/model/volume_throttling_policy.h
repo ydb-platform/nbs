@@ -108,8 +108,8 @@ public:
     }
 
     // the following funcs were made public to display the results on monpages
-    ui32 C1(EOpType opType) const;
-    ui32 C2(EOpType opType) const;
+    ui64 C1(EOpType opType) const;
+    ui64 C2(EOpType opType) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

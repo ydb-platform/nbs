@@ -400,12 +400,12 @@ const NProto::TVolumePerformanceProfile& TVolumeThrottlingPolicy::GetConfig() co
     return Impl->Config;
 }
 
-ui32 TVolumeThrottlingPolicy::C1(EOpType opType) const
+ui64 TVolumeThrottlingPolicy::C1(EOpType opType) const
 {
     return CalculateThrottlerC1(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
 }
 
-ui32 TVolumeThrottlingPolicy::C2(EOpType opType) const
+ui64 TVolumeThrottlingPolicy::C2(EOpType opType) const
 {
     return CalculateThrottlerC2(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
 }

@@ -157,7 +157,7 @@ void TVolumeClient::RebootSysTablet()
 }
 
 std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdateVolumeConfigRequest(
-    ui32 maxBandwidth ,
+    ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
     ui32 maxPostponedWeight,

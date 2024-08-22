@@ -54,8 +54,8 @@ class TVolumeModelParams
 private:
     ui64 BlocksCount = 0;
 
-    ui32 PerformanceProfileMaxReadBandwidth = 0;
-    ui32 PerformanceProfileMaxWriteBandwidth = 0;
+    ui64 PerformanceProfileMaxReadBandwidth = 0;
+    ui64 PerformanceProfileMaxWriteBandwidth = 0;
     ui32 PerformanceProfileMaxReadIops = 0;
     ui32 PerformanceProfileMaxWriteIops = 0;
     ui32 PerformanceProfileBurstPercentage = 0;

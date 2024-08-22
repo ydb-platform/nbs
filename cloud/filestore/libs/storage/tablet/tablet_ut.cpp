@@ -84,8 +84,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         constexpr bool throttlingEnabled = true;
         constexpr ui32 maxReadIops = 10;
         constexpr ui32 maxWriteIops = 15;
-        constexpr ui32 maxReadBandwidth = 20;
-        constexpr ui32 maxWriteBandwidth = 25;
+        constexpr ui64 maxReadBandwidth = 20;
+        constexpr ui64 maxWriteBandwidth = 25;
         constexpr ui32 boostTime = 1'000; // 1 second
         constexpr ui32 boostRefillTime = 5'000; // 5 seconds
         constexpr ui32 boostPercentage = 75;

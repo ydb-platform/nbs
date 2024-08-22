@@ -149,7 +149,7 @@ struct TThrottlingPolicy::TImpl
         return Config.DefaultParameters.MaxReadIops;
     }
 
-    ui32 MaxBandwidth(EOpType opType) const
+    ui64 MaxBandwidth(EOpType opType) const
     {
         if (opType == EOpType::Write &&
             Config.DefaultParameters.MaxWriteBandwidth) {
@@ -252,14 +252,14 @@ double TThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant now) const
     return Impl->CalculateCurrentSpentBudgetShare(now);
 }
 
-ui32 TThrottlingPolicy::C1(EOpType opType) const
+ui64 TThrottlingPolicy::C1(EOpType opType) const
 {
     return CalculateThrottlerC1(
         Impl->MaxIops(opType),
         Impl->MaxBandwidth(opType));
 }
 
-ui32 TThrottlingPolicy::C2(EOpType opType) const
+ui64 TThrottlingPolicy::C2(EOpType opType) const
 {
     return CalculateThrottlerC2(
         Impl->MaxIops(opType),

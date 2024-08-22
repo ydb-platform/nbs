@@ -21,8 +21,9 @@ struct TDefaultParameters
     ui32 MaxReadIops = Max<ui32>();
     ui32 MaxWriteIops = Max<ui32>();
 
-    ui32 MaxReadBandwidth = Max<ui32>();
-    ui32 MaxWriteBandwidth = Max<ui32>();
+    // Use max of signed to match i64 metric counters
+    ui64 MaxReadBandwidth = Max<i64>();
+    ui64 MaxWriteBandwidth = Max<i64>();
 };
 
 struct TBoostParameters
@@ -94,8 +95,8 @@ public:
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
     double CalculateCurrentSpentBudgetShare(TInstant now) const;
-    ui32 C1(EOpType opType) const;
-    ui32 C2(EOpType opType) const;
+    ui64 C1(EOpType opType) const;
+    ui64 C2(EOpType opType) const;
 };
 
 using TThrottlingPolicyPtr = std::shared_ptr<TThrottlingPolicy>;

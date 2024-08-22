@@ -11,8 +11,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 TThrottlerConfig MakeConfig(
-    ui32 maxReadBandwidth,
-    ui32 maxWriteBandwidth,
+    ui64 maxReadBandwidth,
+    ui64 maxWriteBandwidth,
     ui32 maxReadIops,
     ui32 maxWriteIops,
     ui32 burstPercentage,
