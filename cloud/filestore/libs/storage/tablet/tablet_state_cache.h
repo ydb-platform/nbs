@@ -143,12 +143,14 @@ private:
 
     THashMap<ui64, TNodeRow> Nodes;
 
-    struct TWriteNodeRequest {
+    struct TWriteNodeRequest
+    {
         ui64 NodeId;
         TNodeRow Row;
     };
 
-    struct TDeleteNodeRequest {
+    struct TDeleteNodeRequest
+    {
         ui64 NodeId;
     };
 
@@ -179,12 +181,14 @@ private:
         NProto::TNode Node;
     };
 
-    struct TWriteNodeVerRequest {
+    struct TWriteNodeVerRequest
+    {
         TNodesVerKey NodesVerKey;
         TNodesVerRow NodesVerRow;
     };
 
-    struct TDeleteNodeVerRequest {
+    struct TDeleteNodeVerRequest
+    {
         TNodesVerKey NodesVerKey;
     };
 
@@ -226,12 +230,14 @@ private:
         ui64 Version = 0;
     };
 
-    struct TWriteNodeAttrsRequest {
+    struct TWriteNodeAttrsRequest
+    {
         TNodeAttrsKey NodeAttrsKey;
         TNodeAttrsRow NodeAttrsRow;
     };
 
-    struct TDeleteNodeAttrsRequest {
+    struct TDeleteNodeAttrsRequest
+    {
         TNodeAttrsKey NodeAttrsKey;
     };
 
@@ -267,12 +273,14 @@ private:
         ui64 Version = 0;
     };
 
-    struct TWriteNodeAttrsVerRequest {
+    struct TWriteNodeAttrsVerRequest
+    {
         TNodeAttrsVerKey NodeAttrsVerKey;
         TNodeAttrsVerRow NodeAttrsVerRow;
     };
 
-    struct TDeleteNodeAttrsVerRequest {
+    struct TDeleteNodeAttrsVerRequest
+    {
         TNodeAttrsVerKey NodeAttrsVerKey;
     };
 
@@ -315,12 +323,14 @@ private:
         TString FollowerName;
     };
 
-    struct TWriteNodeRefsRequest {
+    struct TWriteNodeRefsRequest
+    {
         TNodeRefsKey NodeRefsKey;
         TNodeRefsRow NodeRefsRow;
     };
 
-    struct TDeleteNodeRefsRequest {
+    struct TDeleteNodeRefsRequest
+    {
         TNodeRefsKey NodeRefsKey;
     };
 
@@ -357,12 +367,14 @@ private:
         TString FollowerName;
     };
 
-    struct TWriteNodeRefsVerRequest {
+    struct TWriteNodeRefsVerRequest
+    {
         TNodeRefsVerKey NodeRefsVerKey;
         TNodeRefsVerRow NodeRefsVerRow;
     };
 
-    struct TDeleteNodeRefsVerRequest {
+    struct TDeleteNodeRefsVerRequest
+    {
         TNodeRefsVerKey NodeRefsVerKey;
     };
 
