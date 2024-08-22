@@ -56,10 +56,12 @@ public:
             ++iterations;
             code = io_setup(nr, &Context);
             if (code == -EAGAIN) {
+                const auto aioNr =
+                    TIFStream("/proc/sys/fs/aio-nr").ReadLine();
                 const auto aioMaxNr =
                     TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
-                Cerr << "retrying EAGAIN from io_setup, aio-max-nr: "
-                    << aioMaxNr << Endl;
+                Cerr << "retrying EAGAIN from io_setup, aio-nr/max: "
+                    << aioNr << "/" << aioMaxNr << Endl;
                 Sleep(waitTime);
             } else {
                 break;
