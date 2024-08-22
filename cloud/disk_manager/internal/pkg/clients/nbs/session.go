@@ -422,8 +422,9 @@ func (s *Session) discoverInstance(
 
 	client, host, err := s.nbs.DiscoverInstance(ctx)
 	if err != nil {
+		err = wrapError(err)
 		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
 	}
 
-	return client, host, wrapError(err)
+	return client, host, err
 }

@@ -1588,10 +1588,11 @@ func (c *client) createVolume(
 
 	err := c.nbs.CreateVolume(ctx, diskId, blocksCount, opts)
 	if err != nil {
+		err = wrapError(err)
 		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err)) // TODO:_ we duplicate this error in parent span
 	}
 
-	return wrapError(err)
+	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////
