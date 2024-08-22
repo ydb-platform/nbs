@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,7 +40,28 @@ func (t *deleteSnapshotTask) deletingSnapshot(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.storage.DeletingSnapshot(ctx, t.request.SnapshotId)
+	snapshotMeta, err := t.storage.DeletingSnapshot(ctx, t.request.SnapshotId, execCtx.GetTaskID())
+	if err != nil {
+		return err
+	}
+
+	if len(snapshotMeta.BaseSnapshotID) != 0 {
+		err := t.storage.UnlockSnapshot(
+			ctx,
+			snapshotMeta.BaseSnapshotID,
+			snapshotMeta.CreateTaskID,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(
+			ctx,
+			"Successfully unlocked snapshot with id %v",
+			snapshotMeta.BaseSnapshotID,
+		)
+	}
+
+	return nil
 }
 
 func (t *deleteSnapshotTask) Run(

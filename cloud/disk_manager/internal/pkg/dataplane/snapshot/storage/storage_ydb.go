@@ -73,18 +73,25 @@ func (s *storageYDB) SnapshotCreated(
 func (s *storageYDB) DeletingSnapshot(
 	ctx context.Context,
 	snapshotID string,
-) error {
+	taskID string,
+) (*SnapshotMeta, error) {
 
-	return s.db.Execute(
+	var deleting *SnapshotMeta
+
+	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.deletingSnapshot(
+			var err error
+			deleting, err = s.deletingSnapshot(
 				ctx,
 				session,
 				snapshotID,
+				taskID,
 			)
+			return err
 		},
 	)
+	return deleting, err
 }
 
 func (s *storageYDB) DeleteSnapshotData(
@@ -176,6 +183,36 @@ func (s *storageYDB) DeleteDiskFromIncremental(
 				zoneID,
 				diskID,
 			)
+		},
+	)
+}
+
+func (s *storageYDB) LockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
+) (locked bool, err error) {
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			locked, err = s.lockSnapshot(ctx, session, snapshotID, lockTaskID)
+			return err
+		},
+	)
+	return locked, err
+}
+
+func (s *storageYDB) UnlockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.unlockSnapshot(ctx, session, snapshotID, lockTaskID)
 		},
 	)
 }
