@@ -168,7 +168,7 @@ bool TIndexTabletActor::ThrottleIfNeeded(
 {
     if (!Config->GetThrottlingEnabled() ||
         !GetPerformanceProfile().GetThrottlingEnabled() ||
-        ev->Get()->Record.GetHeaders().GetThrottled())
+        ev->Get()->Record.GetHeaders().ThrottlingDisabled())
     {
         return false;
     }

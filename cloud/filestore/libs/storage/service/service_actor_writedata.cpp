@@ -239,7 +239,6 @@ private:
                 msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
-            WriteRequest.MutableHeaders()->SetThrottled(true);
             return WriteData(ctx, error);
         }
 
