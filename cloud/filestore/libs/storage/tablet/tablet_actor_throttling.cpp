@@ -55,9 +55,10 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        CalculateByteCount(request.Record),
+        static_cast<ui32>(CalculateByteCount(request.Record)),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion};
+        policyVersion
+    };
 }
 
 template <>
@@ -66,9 +67,10 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        CalculateByteCount(request.Record),
+         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
-        policyVersion};
+        policyVersion
+    };
 }
 
 template <>
@@ -79,7 +81,8 @@ TThrottlingRequestInfo BuildRequestInfo(
     return {
         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion};
+        policyVersion
+    };
 }
 
 }   // namespace
