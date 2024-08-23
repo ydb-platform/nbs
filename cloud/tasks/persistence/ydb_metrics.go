@@ -35,6 +35,7 @@ func (m *ydbMetrics) StatCall(
 
 		// Should initialize all counters before using them, to avoid 'no data'.
 		hangingCounter := subRegistry.Counter("hanging")
+		errorCounter := subRegistry.Counter("errors")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
 
@@ -44,31 +45,6 @@ func (m *ydbMetrics) StatCall(
 		}
 
 		if *err != nil {
-			var errorType string
-			errorRegistry := subRegistry
-			switch {
-			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
-				errorType = "TLI"
-			case ydb.IsOperationErrorSchemeError(*err):
-				errorType = "scheme"
-			case ydb.IsTransportError(*err):
-				errorType = "transport"
-			case ydb.IsOperationErrorOverloaded(*err):
-				errorType = "overloaded"
-			case ydb.IsOperationErrorUnavailable(*err):
-				errorType = "unavailable"
-			case ydb.IsRatelimiterAcquireError(*err):
-				errorType = "ratelimiterAcquire"
-			}
-
-			if errorType != "" {
-				errorRegistry = errorRegistry.WithTags(map[string]string{
-					"type": errorType,
-				})
-			}
-
-			// Should initialize all counters before using them, to avoid 'no data'.
-			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
