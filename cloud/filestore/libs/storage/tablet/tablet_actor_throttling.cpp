@@ -67,7 +67,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-         CalculateByteCount(request.Record),
+        static_cast<ui32>(CalculateByteCount(request.Record)),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
         policyVersion
     };
@@ -79,7 +79,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        CalculateByteCount(request.Record),
+        static_cast<ui32>(CalculateByteCount(request.Record)),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
         policyVersion
     };
@@ -171,7 +171,7 @@ bool TIndexTabletActor::ThrottleIfNeeded(
 {
     if (!Config->GetThrottlingEnabled() ||
         !GetPerformanceProfile().GetThrottlingEnabled() ||
-        ev->Get()->Record.GetHeaders().ThrottlingDisabled())
+        ev->Get()->Record.GetHeaders().GetThrottlingDisabled())
     {
         return false;
     }
