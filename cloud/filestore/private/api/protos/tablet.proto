@@ -453,8 +453,11 @@ message TAddDataRequest
     // Unaligned data parts - supposed to contain unaligned head and tail.
     repeated TFreshDataRange UnalignedDataRanges = 9;
 
-    // StorageStatusFlags for the written blobs.
+    // StorageStatusFlags for the written blobs' channels.
     repeated uint32 StorageStatusFlags = 10;
+
+    // ApproximateFreeSpace shares for the written blobs' channels.
+    repeated double ApproximateFreeSpaceShares = 11;
 }
 
 message TAddDataResponse

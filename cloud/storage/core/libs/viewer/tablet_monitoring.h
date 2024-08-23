@@ -15,6 +15,7 @@ struct TChannelMonInfo
     TString DataKind;
     bool Writable = false;
     bool SystemWritable = false;
+    double FreeSpaceShare = 0;
 };
 
 using TGetMonitoringYDBGroupUrl = std::function<TString(

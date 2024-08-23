@@ -124,6 +124,7 @@ void DumpChannels(
             TStringBuilder() << dataKind,
             state.CheckPermissions(c, EChannelPermission::UserWritesAllowed),
             state.CheckPermissions(c, EChannelPermission::SystemWritesAllowed),
+            state.GetFreeSpaceShare(c),
         });
     }
     NCloud::NStorage::DumpChannels(

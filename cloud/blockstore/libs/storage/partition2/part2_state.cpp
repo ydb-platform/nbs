@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/partition2/model/rebase_logic.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -37,19 +38,6 @@ TJsonValue ToJson(const TOperationState& op)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-double Normalize(double x, double lo, double hi)
-{
-    if (x > hi) {
-        return 1;
-    }
-
-    if (x < lo) {
-        return 0;
-    }
-
-    return (x - lo) / (hi - lo);
-}
 
 double BPFeature(const TBackpressureFeatureConfig& c, double x)
 {
@@ -375,19 +363,14 @@ bool TPartitionState::CheckChannelFreeSpaceShare(ui32 channel) const
     const auto& fsc = FreeSpaceConfig;
     const auto* ch = GetChannel(channel);
 
-    if (!ch || !ch->ApproximateFreeSpaceShare) {
+    if (!ch) {
         return true;
     }
 
-    // fss will be something like O(exp(-t)), where t is time
-    // so fss(t) > 0 for any t and lim(fss) = 0 as t approaches +inf
-    const auto fss = Normalize(
+    return NCloud::CheckChannelFreeSpaceShare(
         ch->ApproximateFreeSpaceShare,
         fsc.ChannelMinFreeSpace,
-        fsc.ChannelFreeSpaceThreshold
-    );
-
-    return RandomNumber<double>() < fss;
+        fsc.ChannelFreeSpaceThreshold);
 }
 
 bool TPartitionState::IsCompactionAllowed() const
