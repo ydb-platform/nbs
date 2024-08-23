@@ -34,7 +34,7 @@ func getEndpoint() string {
 
 func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
 	insecure := true
-	factory := nfs.NewFactory(
+	return nfs.NewFactory(
 		ctx,
 		&config.ClientConfig{
 			Zones: map[string]*config.Zone{
@@ -46,7 +46,6 @@ func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
 		},
 		metrics.NewEmptyRegistry(),
 	)
-	return factory
 }
 
 func newClient(t *testing.T, ctx context.Context) nfs.Client {
@@ -58,14 +57,16 @@ func newClient(t *testing.T, ctx context.Context) nfs.Client {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreate(t *testing.T) {
+func TestCreateFilesystem(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)
 
 	filesystemID := t.Name()
 
 	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
-		BlocksCount: 10,
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
 		BlockSize:   4096,
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
@@ -73,7 +74,9 @@ func TestCreate(t *testing.T) {
 
 	// Creating the same filesystem twice is not an error
 	err = client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
-		BlocksCount: 10,
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
 		BlockSize:   4096,
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
@@ -87,7 +90,9 @@ func TestDeleteFilesystem(t *testing.T) {
 	filesystemID := t.Name()
 
 	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
-		BlocksCount: 10,
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
 		BlockSize:   4096,
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
