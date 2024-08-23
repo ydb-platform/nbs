@@ -26,9 +26,9 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 			ZoneId:       "zone-a",
 			FilesystemId: filesystemID,
 		},
-		BlockSize:   4096,
-		Size:        4096000,
-		StorageKind: disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD,
+		BlockSize: 4096,
+		Size:      4096000,
+		Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
