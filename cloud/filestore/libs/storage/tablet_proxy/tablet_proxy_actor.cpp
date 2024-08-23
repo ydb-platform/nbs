@@ -318,7 +318,11 @@ void TIndexTabletProxyActor::HandleRequest(
 
     const auto* msg = ev->Get();
 
-    const TString& fileSystemId = GetFileSystemId(*msg);
+    TString fileSystemId = GetFileSystemId(*msg);
+    // Some filestore names can point to another filestore, set by storage config
+    if (const auto* realId = Config->FindFileSystemIdByAlias(fileSystemId)) {
+        fileSystemId = *realId;
+    }
 
     TConnection& conn = CreateConnection(fileSystemId);
     switch (conn.State) {

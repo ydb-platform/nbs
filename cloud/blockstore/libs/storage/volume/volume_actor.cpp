@@ -26,6 +26,7 @@
 #include <library/cpp/lwtrace/signature.h>
 
 #include <util/string/builder.h>
+#include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -557,6 +558,12 @@ NKikimr::NMetrics::TResourceMetrics* TVolumeActor::GetResourceMetrics()
     return Executor()->GetResourceMetrics();
 }
 
+bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
+{
+    return TBlockRange64::WithLength(0, State->GetBlocksCount())
+        .Contains(range);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(
@@ -597,11 +604,30 @@ void TVolumeActor::HandlePoisonTaken(
         }
     }
 
+    const auto removed = std::distance(WaitForPartitions.begin(), it);
+
     WaitForPartitions.erase(WaitForPartitions.begin(), it);
 
     if (WaitForPartitions.empty()) {
         StoppedPartitions.clear();
     }
+
+    TStringStream waitList;
+    for (const auto& [p, _]: WaitForPartitions) {
+        waitList << p.ToString() << " ";
+    }
+
+    TStringStream stoppedList;
+    for (const auto& p: StoppedPartitions) {
+        stoppedList << p.ToString() << " ";
+    }
+
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] Partitions removed from the wait list: %lu. W: [ %s], S: [ %s]",
+        TabletID(),
+        removed,
+        waitList.Str().c_str(),
+        stoppedList.Str().c_str());
 }
 
 void TVolumeActor::HandleUpdateThrottlerState(

@@ -5604,16 +5604,20 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        auto request = volume.CreateWriteBlocksRequest(
-            TBlockRange64::MakeClosedInterval(1024 * 0, 1024 * 24),
+        // PartitionRequestActor should return an error,
+        // to do this we will try to write data to disk using a buffer of the
+        // incorrect size
+        TString data(10u, 1);
+        auto request = volume.CreateWriteBlocksLocalRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 5),
             clientInfo.GetClientId(),
-            1
+            data
         );
         request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
 
         volume.SendToPipe(std::move(request));
 
-        auto response = volume.RecvWriteBlocksResponse();
+        auto response = volume.RecvWriteBlocksLocalResponse();
 
         UNIT_ASSERT(FAILED(response->GetStatus()));
 
@@ -6182,11 +6186,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         };
 
         readBlocks(10, 1);
+        readBlocksLocal(10, 1);
         readBlocks(20, 4);
+        readBlocksLocal(20, 4);
         readBlocks(60, 3);
+        readBlocksLocal(60, 3);
         readBlocks(65, 6);
+        readBlocksLocal(65, 6);
         readBlocks(300, 7);
+        readBlocksLocal(300, 7);
         readBlocks(309, 7);
+        readBlocksLocal(309, 7);
 
         updateVolumeConfig("mask-unused");
         volume.ReconnectPipe();
@@ -8201,6 +8211,100 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RecvReadBlocksResponse();
 
         UNIT_ASSERT(describeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorOnInvalidBlockRange)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,                 // maxBandwidth
+            0,                 // maxIops
+            0,                 // burstPercentage
+            0,                 // maxPostponedWeight
+            false,             // throttlingEnabled
+            1,                 // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            2048,              // block count per partition
+            "vol0",            // diskId
+            "cloud",           // cloudId
+            "folder",          // folderId
+            1,                 // partition count
+            2,                 // blocksPerStripe
+            "track-used",      // tags
+            "base_disk",       // baseDiskId
+            "checkpoint"       // baseDiskCheckpointId
+        );
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        // WriteBlocks
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(2048, 1024),
+                clientInfo.GetClientId(),
+                1
+            );
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        // WriteBlocksLocal
+        {
+            TString data(DefaultBlockSize, 2);
+            auto request = volume.CreateWriteBlocksLocalRequest(
+                TBlockRange64::WithLength(1024 * 6, 1024),
+                clientInfo.GetClientId(),
+                data);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        // ReadBlocks
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(2048, 1024),
+                clientInfo.GetClientId()
+            );
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        // ReadBlocksLocal
+        {
+            TGuardedSgList list;
+            auto request = volume.CreateReadBlocksLocalRequest(
+                TBlockRange64::WithLength(2048, 1024),
+                list,
+                clientInfo.GetClientId()
+            );
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        // ZeroRequest
+        {
+            auto request = volume.CreateZeroBlocksRequest(
+                TBlockRange64::WithLength(1024 * 10, 1048),
+                clientInfo.GetClientId());
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvZeroBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)

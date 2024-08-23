@@ -7,3 +7,4 @@ NodeIndexCacheMaxNodes: 128
 PreferredBlockSizeMultiplier: 64
 MultiTabletForwardingEnabled: true
 GetNodeAttrBatchEnabled: true
+UnalignedThreeStageWriteEnabled: true

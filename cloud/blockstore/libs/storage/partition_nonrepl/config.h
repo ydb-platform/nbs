@@ -60,7 +60,6 @@ private:
     const TVolumeInfo VolumeInfo;
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
-    const bool MarkBlocksUsed;
     const THashSet<TString> FreshDeviceIds;
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
@@ -77,7 +76,6 @@ public:
             TVolumeInfo volumeInfo,
             NActors::TActorId parentActorId,
             bool muteIOErrors,
-            bool markBlocksUsed,
             THashSet<TString> freshDeviceIds,
             TDuration maxTimedOutDeviceStateDuration,
             bool maxTimedOutDeviceStateDurationOverridden,
@@ -89,7 +87,6 @@ public:
         , VolumeInfo(volumeInfo)
         , ParentActorId(std::move(parentActorId))
         , MuteIOErrors(muteIOErrors)
-        , MarkBlocksUsed(markBlocksUsed)
         , FreshDeviceIds(std::move(freshDeviceIds))
         , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
         , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
@@ -122,7 +119,6 @@ public:
             VolumeInfo,
             ParentActorId,
             MuteIOErrors,
-            false,  // markBlocksUsed
             std::move(freshDeviceIds),
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
@@ -148,11 +144,6 @@ public:
     bool GetMuteIOErrors() const
     {
         return MuteIOErrors;
-    }
-
-    bool GetMarkBlocksUsed() const
-    {
-        return MarkBlocksUsed;
     }
 
     const auto& GetName() const

@@ -356,22 +356,7 @@ func isAbortedError(e error) bool {
 }
 
 func IsDiskNotFoundError(e error) bool {
-	var clientErr *nbs_client.ClientError
-	if errors.As(e, &clientErr) {
-		if clientErr.Facility() == nbs_client.FACILITY_SCHEMESHARD {
-			// TODO: remove support for PathDoesNotExist.
-			if clientErr.Status() == 2 {
-				return true
-			}
-
-			// Hack for NBS-3162.
-			if strings.Contains(clientErr.Error(), "Another drop in progress") {
-				return true
-			}
-		}
-	}
-
-	return false
+	return nbs_client.IsDiskNotFoundError(e)
 }
 
 func IsNotFoundError(e error) bool {

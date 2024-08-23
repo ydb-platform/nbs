@@ -452,6 +452,9 @@ message TAddDataRequest
 
     // Unaligned data parts - supposed to contain unaligned head and tail.
     repeated TFreshDataRange UnalignedDataRanges = 9;
+
+    // StorageStatusFlags for the written blobs.
+    repeated uint32 StorageStatusFlags = 10;
 }
 
 message TAddDataResponse
@@ -469,6 +472,7 @@ message TForcedOperationRequest
     {
         E_COMPACTION = 0;
         E_CLEANUP = 1;
+        E_DELETE_EMPTY_RANGES = 2;
     };
 
     // Optional request headers.
@@ -577,4 +581,19 @@ message TGetNodeAttrBatchResponse
 
     // Individual node responses.
     repeated NProto.TGetNodeAttrResponse Responses = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// WriteCompactionMap request/response.
+
+message TWriteCompactionMapRequest
+{
+    string FileSystemId = 1;
+    repeated TCompactionRangeStats Ranges = 2;
+}
+
+message TWriteCompactionMapResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }

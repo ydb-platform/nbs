@@ -41,18 +41,17 @@ func Append(ctx context.Context, headers map[string]string) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetTracingHeaders(ctx context.Context) map[string]string {
+func GetFromIncomingContext(
+	ctx context.Context,
+	allowedKeys []string,
+) map[string]string {
+
 	md, ok := grpc_metadata.FromIncomingContext(ctx)
 	if !ok {
 		return map[string]string{}
 	}
 
 	headers := make(map[string]string)
-	allowedKeys := []string{
-		"x-operation-id",
-		"x-request-id",
-		"x-request-uid",
-	}
 
 	for _, key := range allowedKeys {
 		vals := md.Get(key)
@@ -62,6 +61,17 @@ func GetTracingHeaders(ctx context.Context) map[string]string {
 	}
 
 	return headers
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetTracingHeaders(ctx context.Context) map[string]string {
+	allowedKeys := []string{
+		"x-operation-id",
+		"x-request-id",
+		"x-request-uid",
+	}
+	return GetFromIncomingContext(ctx, allowedKeys)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

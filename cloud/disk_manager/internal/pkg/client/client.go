@@ -163,6 +163,11 @@ type PrivateClient interface {
 	// Used for testing.
 	ScheduleBlankOperation(ctx context.Context) (*disk_manager.Operation, error)
 
+	ReleaseBaseDisk(
+		ctx context.Context,
+		req *api.ReleaseBaseDiskRequest,
+	) (*disk_manager.Operation, error)
+
 	RebaseOverlayDisk(
 		ctx context.Context,
 		req *api.RebaseOverlayDiskRequest,
@@ -267,6 +272,14 @@ func (c *privateClient) ScheduleBlankOperation(
 ) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.ScheduleBlankOperation(ctx, &empty.Empty{})
+}
+
+func (c *privateClient) ReleaseBaseDisk(
+	ctx context.Context,
+	req *api.ReleaseBaseDiskRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.privateServiceClient.ReleaseBaseDisk(ctx, req)
 }
 
 func (c *privateClient) RebaseOverlayDisk(

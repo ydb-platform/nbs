@@ -207,7 +207,7 @@ type deleteSnapshot struct {
 func (c *deleteSnapshot) run() error {
 	ctx := newContext(c.clientConfig)
 
-	err := requestDeletionConfirmation("snapshot", c.snapshotID)
+	err := requestConfirmation("snapshot", c.snapshotID)
 	if err != nil {
 		return err
 	}

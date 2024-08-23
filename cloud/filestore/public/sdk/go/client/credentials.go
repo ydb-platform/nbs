@@ -17,6 +17,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const authHeader = "authorization"
+const authMethod = "Bearer"
 
 type ClientCredentials struct {
 	RootCertsFile      string
@@ -39,7 +40,7 @@ func (p *grpcTokenProvider) GetRequestMetadata(ctx context.Context, _ ...string)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]string{authHeader: token}, nil
+	return map[string]string{authHeader: authMethod + " " + token}, nil
 }
 
 func (p *grpcTokenProvider) RequireTransportSecurity() bool {

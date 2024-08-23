@@ -1109,8 +1109,8 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                     }
                 }
 
-                if (State->GetUsedBlocks()) {
-                    const auto used = State->GetUsedBlocks()->Count();
+                if (State->GetTrackUsedBlocks()) {
+                    const auto used = State->GetUsedBlockCount();
 
                     TABLER() {
                         TABLED() { out << "Used blocks count"; }

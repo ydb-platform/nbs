@@ -13,7 +13,7 @@ IF (SANITIZER_TYPE)
         sb:logs_ttl=3
         sb:ssd
         sb:MULTISLOT
-        sb:cores=16
+        sb:cores=64
     )
 ELSE()
     TAG(

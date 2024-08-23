@@ -130,7 +130,9 @@ class NbsCsiDriverRunner:
                 "--node-id=localhost",
                 "--nbs-socket", self._grpc_unix_socket_path,
                 f"--sockets-dir={self._sockets_dir}",
-                f"--endpoint={str(self._endpoint)}"
+                f"--endpoint={str(self._endpoint)}",
+                "--nfs-vhost-port=0",
+                "--nfs-server-port=0",
             ],
             stdout=self._log_file,
             stderr=self._log_file,
@@ -315,6 +317,46 @@ def test_nbs_csi_driver_volume_stat():
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
 
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        cleanup_after_test(env)
+
+
+def test_csi_sanity_nbs_backend():
+    env, run = init()
+    podId = "123"
+    nodeId = "456"
+    backend = "nbs"
+
+    try:
+        CSI_SANITY_BINARY_PATH = common.binary_path("cloud/blockstore/tools/testing/csi-sanity/bin/csi-sanity")
+        mount_dir = Path("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish") / podId
+        mount_dir.mkdir(parents=True, exist_ok=True)
+
+        params_file = Path(os.getcwd()) / "params.yaml"
+        params_file.write_text(f"backend: {backend}")
+
+        skipTests = ["should fail when the node does not exist"]
+
+        args = [CSI_SANITY_BINARY_PATH,
+                "-csi.endpoint",
+                env.csi._endpoint,
+                "--csi.mountdir",
+                mount_dir / nodeId,
+                "-csi.testvolumeparameters",
+                params_file,
+                "-csi.testvolumeaccesstype",
+                "block",
+                "--ginkgo.skip",
+                '|'.join(skipTests)]
+        subprocess.run(
+            args,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise

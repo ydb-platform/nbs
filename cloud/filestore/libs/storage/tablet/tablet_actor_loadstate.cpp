@@ -293,6 +293,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
+    ScheduleSyncSessions(ctx);
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
@@ -464,6 +465,9 @@ void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
     LoadCompactionMap(args.CompactionMap);
     for (const auto& x: args.CompactionMap) {
         args.LastRangeId = Max(args.LastRangeId, x.RangeId);
+        if (!x.Stats.BlobsCount && !x.Stats.DeletionsCount) {
+            RangesWithEmptyCompactionScore.push_back(x.RangeId);
+        }
     }
 
     using TNotification =

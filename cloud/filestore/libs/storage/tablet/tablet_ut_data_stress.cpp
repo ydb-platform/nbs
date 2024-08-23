@@ -9,6 +9,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/system/env.h>
 
@@ -354,7 +355,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const auto sanitizerType = GetEnv("SANITIZER_TYPE");
         // temporary logging
         Cerr << "sanitizer: " << sanitizerType << Endl;
-        const ui32 d = sanitizerType == "thread" ? 20 : 1;
+        THashSet<TString> slowSanitizers({"thread", "undefined"});
+        const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
 
         PERFORM_TEST(5'000 / d);
         PERFORM_TEST(1'000 / d);

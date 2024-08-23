@@ -542,6 +542,8 @@ private:
 
     NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 
+    bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -828,7 +830,7 @@ private:
     bool SendRequestToPartitionWithUsedBlockTracking(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorId& partitions,
+        const NActors::TActorId& partActorId,
         const ui64 volumeRequestId);
 
     template <typename TMethod>

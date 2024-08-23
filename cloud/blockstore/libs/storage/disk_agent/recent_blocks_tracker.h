@@ -52,7 +52,7 @@ private:
     TMap<ui64, TBlockRange64> InflightBlocks;
 
 public:
-    TRecentBlocksTracker(
+    explicit TRecentBlocksTracker(
         const TString& deviceUUID,
         size_t trackDepth = DEFAULT_TRACKING_DEPTH);
 
