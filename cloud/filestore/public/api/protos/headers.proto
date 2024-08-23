@@ -58,7 +58,7 @@ message THeaders
     bool DisableMultiTabletForwarding = 11;
 
     // Throttle already performed
-    bool Throttled = 12;
+    bool ThrottlingDisabled = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
