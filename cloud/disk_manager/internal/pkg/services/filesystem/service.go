@@ -34,24 +34,24 @@ func getBlocksCountForSize(size uint64, blockSize uint32) (uint64, error) {
 	return size / uint64(blockSize), nil
 }
 
-func fsKindToString(kind types.FilesystemStorageKind) string {
+func fsKindToString(kind types.FilesystemKind) string {
 	switch kind {
-	case types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD:
+	case types.FilesystemKind_FILESYSTEM_KIND_SSD:
 		return "ssd"
-	case types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD:
+	case types.FilesystemKind_FILESYSTEM_KIND_HDD:
 		return "hdd"
 	}
 	return "unknown"
 }
 
-func prepareFilesystemKind(kind disk_manager.FilesystemStorageKind) (types.FilesystemStorageKind, error) {
+func prepareFilesystemKind(kind disk_manager.FilesystemKind) (types.FilesystemKind, error) {
 	switch kind {
-	case disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_UNSPECIFIED:
+	case disk_manager.FilesystemKind_FILESYSTEM_KIND_UNSPECIFIED:
 		fallthrough
-	case disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD:
-		return types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD, nil
-	case disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD:
-		return types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD, nil
+	case disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD:
+		return types.FilesystemKind_FILESYSTEM_KIND_HDD, nil
+	case disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD:
+		return types.FilesystemKind_FILESYSTEM_KIND_SSD, nil
 	default:
 		return 0, errors.NewInvalidArgumentError(
 			"unknown filesystem storage kind %v",
@@ -105,7 +105,7 @@ func (s *service) CreateFilesystem(
 		return "", err
 	}
 
-	kind, err := prepareFilesystemKind(req.StorageKind)
+	kind, err := prepareFilesystemKind(req.Kind)
 	if err != nil {
 		return "", err
 	}
@@ -123,7 +123,7 @@ func (s *service) CreateFilesystem(
 			FolderId:    req.FolderId,
 			BlockSize:   blockSize,
 			BlocksCount: blocksCount,
-			StorageKind: kind,
+			Kind:        kind,
 		},
 	)
 }
@@ -218,7 +218,7 @@ func (s *service) DescribeFilesystemModel(
 		blockSize = s.config.GetDefaultBlockSize()
 	}
 
-	kind, err := prepareFilesystemKind(req.StorageKind)
+	kind, err := prepareFilesystemKind(req.Kind)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *service) DescribeFilesystemModel(
 		BlockSize:     int64(model.BlockSize),
 		Size:          int64(uint64(model.BlockSize) * model.BlocksCount),
 		ChannelsCount: int64(model.ChannelsCount),
-		StorageKind:   req.StorageKind,
+		Kind:          req.Kind,
 		PerformanceProfile: &disk_manager.FilesystemPerformanceProfile{
 			MaxReadBandwidth:  int64(model.PerformanceProfile.MaxReadBandwidth),
 			MaxReadIops:       int64(model.PerformanceProfile.MaxReadIops),
