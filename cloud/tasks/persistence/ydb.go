@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
@@ -24,6 +25,9 @@ import (
 	ydb_named "github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	ydb_types "github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+	"go.opentelemetry.io/otel/attribute"
+	tracing_codes "go.opentelemetry.io/otel/codes"
+	otel_trace "go.opentelemetry.io/otel/trace"
 	grpc_codes "google.golang.org/grpc/codes"
 )
 
@@ -510,10 +514,21 @@ func (c *YDBClient) CreateOrAlterTable(
 	dropUnusedColumns bool,
 ) error {
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"YDB.CreateOrAlterTable",
+		otel_trace.WithAttributes(
+			attribute.String("folder", folder),
+			attribute.String("name", name),
+			attribute.Bool("dropUnusedColumns", dropUnusedColumns),
+		),
+	)
+	defer span.End()
+
 	folderFullPath := c.AbsolutePath(folder)
 	fullPath := path.Join(folderFullPath, name)
 
-	return c.Execute(
+	err := c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) error {
 			err := c.makeDirs(ctx, folderFullPath)
@@ -530,6 +545,8 @@ func (c *YDBClient) CreateOrAlterTable(
 			)
 		},
 	)
+	span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	return err
 }
 
 func (c *YDBClient) DropTable(
@@ -538,15 +555,27 @@ func (c *YDBClient) DropTable(
 	name string,
 ) error {
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"YDB.DropTable",
+		otel_trace.WithAttributes(
+			attribute.String("folder", folder),
+			attribute.String("name", name),
+		),
+	)
+	defer span.End()
+
 	folderFullPath := c.AbsolutePath(folder)
 	fullPath := path.Join(folderFullPath, name)
 
-	return c.Execute(
+	err := c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) error {
 			return dropTable(ctx, s.session, fullPath)
 		},
 	)
+	span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	return err
 }
 
 func (c *YDBClient) Execute(
@@ -577,6 +606,16 @@ func (c *YDBClient) ExecuteRO(
 	params ...ydb_table.ParameterOption,
 ) (Result, error) {
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"YDB.ExecuteRO",
+		otel_trace.WithAttributes(
+			attribute.String("query", query),
+		),
+	)
+
+	defer span.End()
+
 	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
@@ -584,6 +623,9 @@ func (c *YDBClient) ExecuteRO(
 		res, err = session.ExecuteRO(ctx, query, params...)
 		return err
 	})
+	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	}
 
 	return res, err
 }
@@ -594,6 +636,14 @@ func (c *YDBClient) ExecuteRW(
 	params ...ydb_table.ParameterOption,
 ) (Result, error) {
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"YDB.ExecuteRW",
+		otel_trace.WithAttributes(
+			attribute.String("query", query),
+		),
+	)
+
 	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
@@ -601,6 +651,9 @@ func (c *YDBClient) ExecuteRW(
 		res, err = session.ExecuteRW(ctx, query, params...)
 		return err
 	})
+	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	}
 
 	return res, err
 }

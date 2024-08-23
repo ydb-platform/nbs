@@ -10,6 +10,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	tracing_codes "go.opentelemetry.io/otel/codes"
+	otel_trace "go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,7 +224,7 @@ func diskStateStructTypeString() string {
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
-		
+
 		fill_generation: Uint64>`
 }
 
@@ -922,6 +926,17 @@ func (s *storageYDB) CreateDisk(
 	disk DiskMeta,
 ) (*DiskMeta, error) {
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"storageYDB.CreateDisk",
+		otel_trace.WithAttributes(
+			attribute.String("disk_id", disk.ID),
+			attribute.String("zone_id", disk.ZoneID),
+			// TODO:_ some other fields from meta?
+		),
+	)
+	defer span.End()
+
 	var created *DiskMeta
 
 	err := s.db.Execute(
@@ -932,6 +947,9 @@ func (s *storageYDB) CreateDisk(
 			return err
 		},
 	)
+	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+	}
 	return created, err
 }
 
