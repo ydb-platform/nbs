@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
@@ -19,6 +20,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	tracing_codes "go.opentelemetry.io/otel/codes"
+	otel_trace "go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,6 +131,15 @@ func (c *S3Client) CreateBucket(
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "creating bucket %v in s3", bucket)
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"S3.CreateBucket",
+		otel_trace.WithAttributes(
+			attribute.String("bucket", bucket),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
@@ -143,6 +157,7 @@ func (c *S3Client) CreateBucket(
 			}
 		}
 
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
 		return errors.NewRetriableError(err)
 	}
 
