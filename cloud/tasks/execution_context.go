@@ -23,6 +23,11 @@ type ExecutionContext interface {
 		callback func(context.Context, *persistence.Transaction) error,
 	) error
 
+	SaveStateViaCallback(
+		ctx context.Context,
+		callback func(context.Context, *persistence.Transaction) error,
+	) error
+
 	GetTaskType() string
 
 	GetTaskID() string
@@ -70,6 +75,28 @@ func (c *executionContext) SaveStateWithCallback(
 	}
 
 	return c.updateStateWithCallback(
+		ctx,
+		func(taskState storage.TaskState) storage.TaskState {
+			logging.Info(ctx, "saving state for task %v", taskState.ID)
+
+			taskState.State = state
+			return taskState
+		},
+		callback,
+	)
+}
+
+func (c *executionContext) SaveStateViaCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	state, err := c.task.Save()
+	if err != nil {
+		return err
+	}
+
+	return c.updateStateViaCallback(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			logging.Info(ctx, "saving state for task %v", taskState.ID)
@@ -198,6 +225,34 @@ func (c *executionContext) updateStateWithCallback(
 	if err != nil {
 		return err
 	}
+
+	c.taskState = newTaskState
+	return nil
+}
+
+func (c *executionContext) updateStateViaCallback(
+	ctx context.Context,
+	transition func(storage.TaskState) storage.TaskState,
+	callback func(context.Context, *persistence.Transaction) error,
+) (err error) {
+
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	taskState := transition(c.taskState)
+	taskState = taskState.DeepCopy()
+
+	taskState.ModifiedAt = time.Now()
+
+	var newTaskState storage.TaskState
+	newTaskState, err = c.storage.UpdateTaskWithCallback(ctx, taskState, callback)
+
+	if err != nil {
+		return err
+	}
+
+	taskState = c.taskState.DeepCopy()
+	newTaskState, err = c.storage.UpdateTask(ctx, taskState)
 
 	c.taskState = newTaskState
 	return nil
