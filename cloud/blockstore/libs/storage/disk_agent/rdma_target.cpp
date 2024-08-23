@@ -596,7 +596,7 @@ private:
 
         if (requestDetails.DataBuffer.size()) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            NRdma::TProtoMessageSerializer::SerializeWithDataLength(
+            NRdma::TProtoMessageSerializer::Serialize(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,
@@ -604,19 +604,19 @@ private:
                 requestDetails.DataBuffer.size());
             bytes = requestDetails.Out.size();
         } else {
-            TStackVec<TBlockDataRef> parts;
+            TStackVec<IOutputStream::TPart> parts;
             parts.reserve(blocks.BuffersSize());
 
             for (const auto& buffer: blocks.GetBuffers()) {
-                parts.emplace_back(TBlockDataRef(buffer.data(), buffer.size()));
+                parts.emplace_back(TStringBuf(buffer));
             }
 
-            bytes = NRdma::TProtoMessageSerializer::SerializeWithData(
+            bytes = NRdma::TProtoMessageSerializer::Serialize(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
                 flags,
                 proto,
-                parts);
+                TContIOVector(parts.data(), parts.size()));
         }
 
         if (auto ep = Endpoint.lock()) {
@@ -747,8 +747,9 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
-            0,   // flags
-            proto);
+            0, // flags
+            proto,
+            TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -867,8 +868,9 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ZeroDeviceBlocksResponse,
-            0,   // flags
-            proto);
+            0, // flags
+            proto,
+            TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -946,8 +948,9 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
-            0,   // flags
-            proto);
+            0, // flags
+            proto,
+            TContIOVector(nullptr, 0));
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);

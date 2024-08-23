@@ -53,12 +53,9 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
         proto.SetDiskId("test");
 
         auto data = TString(1024, 'A');
-        const TBlockDataRef part[1] = {
-            TBlockDataRef(data.data(), data.length())};
+        IOutputStream::TPart part(data.data(), data.length());
 
-        size_t msgByteSize = NRdma::TProtoMessageSerializer::MessageByteSize(
-            proto,
-            data.length());
+        size_t msgByteSize = serializer->MessageByteSize(proto, data.length());
         TVector testedFlags{0U, RDMA_PROTO_FLAG_DATA_AT_THE_END};
         TVector testedBufferSizes{
             msgByteSize,
@@ -74,13 +71,12 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
 
                 auto buffer = TString::Uninitialized(bufferSize);
 
-                size_t serializedBytes =
-                    NRdma::TProtoMessageSerializer::SerializeWithData(
-                        buffer,
-                        TBlockStoreProtocol::ReadBlocksRequest,
-                        flags,
-                        proto,
-                        part);
+                size_t serializedBytes = serializer->Serialize(
+                    buffer,
+                    TBlockStoreProtocol::ReadBlocksRequest,
+                    flags,
+                    proto,
+                    TContIOVector(&part, 1));
 
                 if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
                     UNIT_ASSERT_VALUES_EQUAL(bufferSize, serializedBytes);

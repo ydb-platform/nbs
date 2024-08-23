@@ -7,8 +7,6 @@
 #include <util/generic/string.h>
 #include <util/stream/output.h>
 
-#include <span>
-
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,8 +89,6 @@ public:
         return ComputeHash(TStringBuf(Start, Length));
     }
 };
-
-using TBlockDataRefSpan = std::span<const TBlockDataRef>;
 
 }   // namespace NCloud
 

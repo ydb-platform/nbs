@@ -279,20 +279,20 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             return;
         }
 
-        TSgList sglist;
-        builder.BuildNextRequest(&sglist);
+        TVector<IOutputStream::TPart> parts;
+        builder.BuildNextRequest(&parts);
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             deviceRequest,
-            sglist);
+            TContIOVector(parts.data(), parts.size()));
 
         requests.push_back({std::move(ep), std::move(req)});
     }
@@ -435,13 +435,16 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             deviceRequest,
-            TBlockDataRefSpan(
-                sglist.begin() + blocks,
+            // XXX (cast)
+            TContIOVector(
+                const_cast<IOutputStream::TPart*>(
+                    reinterpret_cast<const IOutputStream::TPart*>(
+                        sglist.begin() + blocks)),
                 r.DeviceBlockRange.Size()));
 
         blocks += r.DeviceBlockRange.Size();

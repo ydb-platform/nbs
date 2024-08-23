@@ -75,18 +75,19 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             handler,
             nullptr,
-            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0),
+            Serializer->MessageByteSize(*Request, 0),
             MAX_PROTO_SIZE + dataSize);
 
         if (HasError(err)) {
             return err;
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        Serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadBlocksRequest,
-            0,   // flags
-            *Request);
+            0, // flags
+            *Request,
+            TContIOVector(nullptr, 0));
 
         return std::move(req);
     }
@@ -162,7 +163,7 @@ public:
         auto [req, err] = endpoint.AllocateRequest(
             std::move(handler),
             nullptr,
-            NRdma::TProtoMessageSerializer::MessageByteSize(*Request, dataSize),
+            Serializer->MessageByteSize(*Request, dataSize),
             MAX_PROTO_SIZE);
 
         if (HasError(err)) {
@@ -173,12 +174,12 @@ public:
         Y_ABORT_UNLESS(guard);
 
         const auto& sglist = guard.Get();
-        NRdma::TProtoMessageSerializer::SerializeWithData(
+        Serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteBlocksRequest,
-            0,   // flags
+            0, // flags
             *Request,
-            sglist);
+            TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
 
         return std::move(req);
     }

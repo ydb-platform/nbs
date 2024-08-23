@@ -121,30 +121,29 @@ public:
         auto wrapper = std::make_unique<TRequestWrapper<TResponse>>();
 
         // Serialize request
-        TSgList sglist;
+        TContIOVector ioVector(nullptr, 0);
         NBlockStore::NProto::TIOVector tempBlocks;
+        TVector<IOutputStream::TPart> parts;
         constexpr bool hasMutableBlocks = requires { request.MutableBlocks(); };
         if constexpr (hasMutableBlocks) {
             tempBlocks.Swap(request.MutableBlocks());
             request.ClearBlocks();
 
             for (const auto& b: tempBlocks.GetBuffers()) {
-                sglist.push_back({b.data(), b.size()});
+                parts.push_back({b.data(), b.size()});
             }
+            ioVector = TContIOVector(parts.data(), parts.size());
         }
 
         const size_t expectedSerializedSize =
-            NRdma::TProtoMessageSerializer::MessageByteSize(
-                request,
-                SgListGetSize(sglist));
+            Serializer->MessageByteSize(request, ioVector.Bytes());
         wrapper->Serialized = TString(expectedSerializedSize, 0);
-        const size_t serializedSize =
-            NRdma::TProtoMessageSerializer::SerializeWithData(
-                wrapper->Serialized,
-                messageType,
-                0,   // flags
-                request,
-                sglist);
+        const size_t serializedSize = Serializer->Serialize(
+            wrapper->Serialized,
+            messageType,
+            0, // flags
+            request,
+            ioVector);
         UNIT_ASSERT(expectedSerializedSize >= serializedSize);
 
         // Prepare buffer for response message

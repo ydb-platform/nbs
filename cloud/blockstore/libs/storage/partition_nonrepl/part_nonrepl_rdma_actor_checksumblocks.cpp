@@ -211,6 +211,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         SelfId(),
         requestId);
 
+    auto* serializer = TBlockStoreProtocol::Serializer();
+
     struct TDeviceRequestInfo
     {
         NRdma::IClientEndpointPtr Endpoint;
@@ -236,7 +238,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(dc),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            serializer->MessageByteSize(deviceRequest, 0),
             4_KB);
 
         if (HasError(err)) {
@@ -253,11 +255,12 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             return;
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ChecksumDeviceBlocksRequest,
-            0,   // flags
-            deviceRequest);
+            0, // flags
+            deviceRequest,
+            TContIOVector(nullptr, 0));
 
         requests.push_back({std::move(ep), std::move(req)});
     }

@@ -41,7 +41,6 @@ TProtoMessagePtr TProtoMessageSerializer::CreateProto(ui32 msgId) const
     return nullptr;
 }
 
-// static
 size_t TProtoMessageSerializer::MessageByteSize(
     const TProtoMessage& proto,
     size_t dataLen)
@@ -59,45 +58,28 @@ size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
     ui32 flags,
-    const TProtoMessage& proto)
-{
-    return SerializeWithDataLength(buffer, msgId, flags, proto, 0);
-}
-
-// static
-size_t TProtoMessageSerializer::SerializeWithData(
-    TStringBuf buffer,
-    ui32 msgId,
-    ui32 flags,
     const TProtoMessage& proto,
-    TBlockDataRefSpan data)
+    TContIOVector data)
 {
-    const size_t dataLen = Accumulate(
-        data,
-        size_t{},
-        [](size_t acc, TBlockDataRef dataRef) { return acc + dataRef.Size(); });
-
+    size_t dataLen = data.Bytes();
     char* ptr = const_cast<char*>(buffer.data());
-    ptr += SerializeWithDataLength(buffer, msgId, flags, proto, dataLen);
+    ptr += Serialize(buffer, msgId, flags, proto, dataLen);
 
     if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
         ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
     }
 
-    for (const auto part : data) {
-        if (part.Data()) {
-            memcpy(ptr, part.Data(), part.Size());
-        } else {
-            memset(ptr, 0, part.Size());
-        }
-        ptr += part.Size();
+    for (size_t i = 0; i < data.Count(); ++i) {
+        const auto& part = data.Parts()[i];
+        memcpy(ptr, part.buf, part.len);
+        ptr += part.len;
     }
 
     return ptr - buffer.data();
 }
 
 // static
-size_t TProtoMessageSerializer::SerializeWithDataLength(
+size_t TProtoMessageSerializer::Serialize(
     TStringBuf buffer,
     ui32 msgId,
     ui32 flags,
