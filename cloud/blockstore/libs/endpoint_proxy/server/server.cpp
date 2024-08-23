@@ -138,6 +138,28 @@ struct TListRequestContext: TRequestContextBase
     }
 };
 
+struct TResizeRequestContext: TRequestContextBase
+{
+    NProto::TResizeProxyDeviceRequest Request;
+    NProto::TResizeProxyDeviceResponse Response;
+    grpc::ServerContext ServerContext;
+    grpc::ServerAsyncResponseWriter<NProto::TResizeProxyDeviceResponse> Writer;
+
+    TResizeRequestContext(
+        NProto::TBlockStoreEndpointProxy::AsyncService& service,
+        grpc::ServerCompletionQueue& cq)
+        : Writer(&ServerContext)
+    {
+        service.RequestResizeProxyDevice(
+            &ServerContext,
+            &Request,
+            &Writer,
+            &cq,
+            &cq,
+            this);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TClientStorage: NStorage::NServer::IClientStorage
@@ -391,6 +413,7 @@ struct TServer: IEndpointProxyServer
         new TStartRequestContext(Service, *CQ);
         new TStopRequestContext(Service, *CQ);
         new TListRequestContext(Service, *CQ);
+        new TResizeRequestContext(Service, *CQ);
 
         void* tag;
         bool ok;
@@ -423,6 +446,14 @@ struct TServer: IEndpointProxyServer
             if (listRequestContext) {
                 new TListRequestContext(Service, *CQ);
                 ProcessRequest(listRequestContext);
+                continue;
+            }
+
+            auto* resizeRequestContext =
+                dynamic_cast<TResizeRequestContext*>(requestContext);
+            if (resizeRequestContext) {
+                new TResizeRequestContext(Service, *CQ);
+                ProcessRequest(resizeRequestContext);
                 continue;
             }
         }
@@ -783,6 +814,66 @@ struct TServer: IEndpointProxyServer
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
+    }
+
+    void DoProcessRequest(
+        const NProto::TResizeProxyDeviceRequest& request,
+        TEndpoint& ep,
+        NProto::TResizeProxyDeviceResponse& response) const
+    {
+        if (ep.NbdDevice) {
+            auto err = ep.NbdDevice->Resize(request.GetDeviceSizeInBytes())
+                           .GetValueSync();
+            if (HasError(err)) {
+                *response.MutableError() = err;
+                STORAGE_ERROR(
+                    request.ShortDebugString().Quote()
+                    << " - Failed to resize NBD device: " << err.GetCode());
+                return;
+            }
+
+            if (ep.NbdOptions.BlockSize == 0) {
+                STORAGE_ERROR(
+                    request.ShortDebugString().Quote()
+                    << " - Failed to update NBD device options: invalid "
+                       "block size");
+                return;
+            }
+
+            ep.NbdOptions.BlocksCount =
+                request.GetDeviceSizeInBytes() / ep.NbdOptions.BlockSize;
+            STORAGE_INFO(
+                request.ShortDebugString().Quote()
+                << " - NBD device was resized");
+        }
+    }
+
+    void ProcessRequest(TResizeRequestContext* requestContext)
+    {
+        const auto& request = requestContext->Request;
+        auto& response = requestContext->Response;
+
+        RequestReceived(request);
+
+        auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
+        if (ep) {
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
+        } else {
+            Already(request, "Endpoint not found", response);
+        }
+
+        requestContext->Done = true;
+
+        requestContext->Writer.Finish(
+            response,
+            grpc::Status::OK,
+            requestContext);
 
         ResponseSent(request);
     }

@@ -116,19 +116,21 @@ public:
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 
-    NProto::TError Resize(ui64 deviceSizeInBytes) override
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
     {
         if (!Device.IsOpen()) {
-            return MakeError(E_FAIL, "Device is not open");
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Device is not open"));
         }
 
         STORAGE_DEBUG("NBD_SET_SIZE " << deviceSizeInBytes);
         auto ret = ioctl(Device, NBD_SET_SIZE, deviceSizeInBytes);
         if (ret < 0) {
-            return MakeError(E_FAIL, "Could not setup device size");
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Could not setup device size"));
         }
 
-        return MakeError(S_OK);
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
 private:
@@ -277,10 +279,10 @@ public:
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 
-    NProto::TError Resize(ui64 deviceSizeInBytes) override
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
     {
         Y_UNUSED(deviceSizeInBytes);
-        return MakeError(S_OK);
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 };
 

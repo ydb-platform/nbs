@@ -255,11 +255,12 @@ public:
         return StopResult.GetFuture();
     }
 
-    NProto::TError Resize(ui64 deviceSizeInBytes) override
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
     {
         if (!StartResult.HasValue() || StartResult.GetValue().GetCode() != S_OK)
         {
-            return MakeError(E_FAIL, "Device is not open");
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Device is not open"));
         }
 
         try {
@@ -277,13 +278,13 @@ public:
 
             message.Send(socket);
         } catch (const TServiceError& e) {
-            return MakeError(
+            return NThreading::MakeFuture(MakeError(
                 e.GetCode(),
-                TStringBuilder() << "unable to resize " << DeviceName << ": "
-                                 << e.what());
+                TStringBuilder()
+                    << "unable to resize " << DeviceName << ": " << e.what()));
         }
 
-        return MakeError(S_OK);
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
 private:
