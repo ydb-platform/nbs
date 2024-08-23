@@ -216,7 +216,6 @@ private:
 
     struct TNodeAttrsKeyHash
     {
-    public:
         size_t operator()(const TNodeAttrsKey& key) const
         {
             return MultiHash(key.NodeId, key.Name);
@@ -308,7 +307,6 @@ private:
 
     struct TNodeRefsKeyHash
     {
-    public:
         size_t operator()(const TNodeRefsKey& key) const
         {
             return MultiHash(key.NodeId, key.Name);
