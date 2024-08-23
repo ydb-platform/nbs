@@ -218,7 +218,7 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		err := execCtx.SaveStateWithCallback(
+		err := execCtx.SaveStateViaCallback(
 			ctx,
 			func(ctx context.Context, tx *persistence.Transaction) error {
 				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
@@ -236,15 +236,10 @@ func (t *migrateDiskTask) start(
 					TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
 					SlotGeneration:   relocateInfo.SlotGeneration,
 				}
-				return nil
+
+				return err
 			},
 		)
-		if err != nil {
-			return err
-		}
-
-		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
-		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
 		}

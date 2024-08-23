@@ -29,6 +29,15 @@ func (c *ExecutionContextMock) SaveStateWithCallback(
 	return args.Error(0)
 }
 
+func (c *ExecutionContextMock) SaveStateViaCallback(
+	ctx context.Context,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, callback)
+	return args.Error(0)
+}
+
 func (c *ExecutionContextMock) GetTaskType() string {
 	args := c.Called()
 	return args.String(0)
