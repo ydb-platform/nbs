@@ -52,7 +52,7 @@ func (c *ClientMock) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,
 	blockSize uint32,
-	kind types.FilesystemStorageKind,
+	kind types.FilesystemKind,
 ) (nfs.FilesystemModel, error) {
 
 	args := c.Called(ctx, blocksCount, blockSize, kind)

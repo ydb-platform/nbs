@@ -24,10 +24,10 @@ service FilesystemService {
     rpc DescribeModel(DescribeFilesystemModelRequest) returns (FilesystemModel) {}
 }
 
-enum FilesystemStorageKind {
-    FILESYSTEM_STORAGE_KIND_UNSPECIFIED = 0;
-    FILESYSTEM_STORAGE_KIND_HDD = 1;
-    FILESYSTEM_STORAGE_KIND_SSD = 2;
+enum FilesystemKind {
+    FILESYSTEM_KIND_UNSPECIFIED = 0;
+    FILESYSTEM_KIND_HDD = 1;
+    FILESYSTEM_KIND_SSD = 2;
 }
 
 message FilesystemId {
@@ -46,7 +46,7 @@ message FilesystemModel {
     int64 block_size = 1;
     int64 size = 2;
     int64 channels_count = 3;
-    FilesystemStorageKind storage_kind = 4;
+    FilesystemKind kind = 4;
     FilesystemPerformanceProfile performance_profile = 5;
 }
 
@@ -56,7 +56,7 @@ message CreateFilesystemRequest {
     string folder_id = 3;
     int64 block_size = 4;
     int64 size = 5;
-    FilesystemStorageKind storage_kind = 6;
+    FilesystemKind kind = 6;
 }
 
 message DeleteFilesystemRequest {
@@ -76,5 +76,5 @@ message DescribeFilesystemModelRequest {
     string zone_id = 1;
     int64 block_size = 2;
     int64 size = 3;
-    FilesystemStorageKind storage_kind = 4;
+    FilesystemKind kind = 4;
 }

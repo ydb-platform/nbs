@@ -16,7 +16,7 @@ message CreateFilesystemRequest {
     string FolderId = 4;
     uint32 BlockSize = 5;
     uint64 BlocksCount = 6;
-    types.FilesystemStorageKind StorageKind = 7;
+    types.FilesystemKind Kind = 7;
 }
 
 message CreateFilesystemTaskState {}

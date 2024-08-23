@@ -291,9 +291,9 @@ func TestCreateDeleteFilesystem(t *testing.T) {
 			ZoneId:       "zone",
 			FilesystemId: "filesystem",
 		},
-		CloudId:     "cloud",
-		FolderId:    "folder",
-		StorageKind: disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD,
+		CloudId:  "cloud",
+		FolderId: "folder",
+		Kind:     disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, taskID)
@@ -331,9 +331,9 @@ func TestCreateResizeFilesystem(t *testing.T) {
 			ZoneId:       "zone",
 			FilesystemId: "filesystem",
 		},
-		CloudId:     "cloud",
-		FolderId:    "folder",
-		StorageKind: disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD,
+		CloudId:  "cloud",
+		FolderId: "folder",
+		Kind:     disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, taskID)
@@ -379,10 +379,10 @@ func TestDescribeModel(t *testing.T) {
 
 	reqCtx := getRequestContext(t, ctx)
 	model, err := service.DescribeFilesystemModel(reqCtx, &disk_manager.DescribeFilesystemModelRequest{
-		ZoneId:      "zone",
-		BlockSize:   4096,
-		Size:        100500 * 4096,
-		StorageKind: disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD,
+		ZoneId:    "zone",
+		BlockSize: 4096,
+		Size:      100500 * 4096,
+		Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
 
 	require.NoError(t, err)
@@ -391,7 +391,7 @@ func TestDescribeModel(t *testing.T) {
 	require.Equal(t, model.Size, int64(100500*4096))
 	require.Equal(t, model.BlockSize, int64(4096))
 	require.NotEqual(t, model.ChannelsCount, int64(0))
-	require.Equal(t, model.StorageKind, disk_manager.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD)
+	require.Equal(t, model.Kind, disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD)
 
 	require.NotEqual(t, model.PerformanceProfile.MaxReadBandwidth, int64(0))
 	require.NotEqual(t, model.PerformanceProfile.MaxReadIops, int64(0))
