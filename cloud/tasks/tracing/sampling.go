@@ -20,6 +20,9 @@ type sampler struct {
 	config *tracing_config.SamplingConfig
 }
 
+// TODO:_ maybe we don't even need sampling with should_sample flag?
+// TODO:_ this flag looks strange, we can don't start span instead passing this flag.
+// TODO:_ BUT! think about children spans. They should see that parent is not sampled.
 func (s *sampler) ShouldSample(
 	params sdktrace.SamplingParameters,
 ) sdktrace.SamplingResult {

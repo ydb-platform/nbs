@@ -28,6 +28,9 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ move to config
+const sampleProbability = 0.01
+
 func withComponentLoggingField(ctx context.Context) context.Context {
 	return logging.WithComponent(ctx, logging.ComponentS3)
 }
@@ -175,6 +178,17 @@ func (c *S3Client) GetObject(
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
 
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"S3.GetObject",
+		sampleProbability,
+		otel_trace.WithAttributes(
+			attribute.String("bucket", bucket),
+			attribute.String("key", key),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
@@ -185,6 +199,9 @@ func (c *S3Client) GetObject(
 		Key:    &key,
 	})
 	if err != nil {
+		// TODO:_ move to separate func? call in defer?
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchKey:
@@ -202,6 +219,7 @@ func (c *S3Client) GetObject(
 
 	objData, err := ioutil.ReadAll(res.Body)
 	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
 		return S3Object{}, errors.NewRetriableError(err)
 	}
 
@@ -221,6 +239,17 @@ func (c *S3Client) PutObject(
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "putting object to s3, bucket %v, key %v", bucket, key)
 
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"S3.PutObject",
+		sampleProbability,
+		otel_trace.WithAttributes(
+			attribute.String("bucket", bucket),
+			attribute.String("key", key),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
@@ -234,6 +263,8 @@ func (c *S3Client) PutObject(
 		ContentEncoding: aws.String("application/octet-stream"),
 	})
 	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchBucket:
@@ -261,6 +292,17 @@ func (c *S3Client) DeleteObject(
 		key,
 	)
 
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"S3.DeleteObject",
+		sampleProbability,
+		otel_trace.WithAttributes(
+			attribute.String("bucket", bucket),
+			attribute.String("key", key),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
@@ -271,6 +313,8 @@ func (c *S3Client) DeleteObject(
 		Key:    &key,
 	})
 	if err != nil {
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchBucket:

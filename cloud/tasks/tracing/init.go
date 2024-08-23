@@ -3,6 +3,7 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
@@ -41,6 +42,25 @@ func StartSpanWithSampling(
 	opts ...trace.SpanStartOption,
 ) (context.Context, trace.Span) {
 
+	opts = append(opts, trace.WithAttributes(
+		attribute.Bool(shouldSampleAttributeKey, sampled),
+	))
+
+	return StartSpan(
+		ctx,
+		spanName,
+		opts...,
+	)
+}
+
+func StartSpanWithProbabilisticSampling(
+	ctx context.Context,
+	spanName string,
+	p_sampled float32,
+	opts ...trace.SpanStartOption,
+) (context.Context, trace.Span) {
+
+	sampled := rand.Float32() < p_sampled
 	opts = append(opts, trace.WithAttributes(
 		attribute.Bool(shouldSampleAttributeKey, sampled),
 	))
