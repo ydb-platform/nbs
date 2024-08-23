@@ -245,6 +245,9 @@ public:
     TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
+    ui32 GetNodeRegistrationMaxAttempts() const;
+    TDuration GetNodeRegistrationTimeout() const;
+    TDuration GetNodeRegistrationErrorTimeout() const;
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;

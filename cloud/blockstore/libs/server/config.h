@@ -95,9 +95,6 @@ public:
     ui64 GetMaxInFlightBytesPerThread() const;
     TAffinity GetVhostAffinity() const;
     TAffinity GetNbdAffinity() const;
-    ui32 GetNodeRegistrationMaxAttempts() const;
-    TDuration GetNodeRegistrationTimeout() const;
-    TDuration GetNodeRegistrationErrorTimeout() const;
     TString GetNbdSocketSuffix() const;
     ui32 GetGrpcKeepAliveTime() const;
     ui32 GetGrpcKeepAliveTimeout() const;
@@ -134,7 +131,6 @@ public:
     bool GetAllowAllRequestsViaUDS() const;
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
     TDuration GetVhostServerTimeoutAfterParentExit() const;
-    TString GetNodeRegistrationToken() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
@@ -142,10 +138,5 @@ public:
 private:
     bool GetRdmaClientEnabled() const;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetCertFileFromConfig(const TServerAppConfig& serverConfig);
-TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig);
 
 }   // namespace NCloud::NBlockStore::NServer

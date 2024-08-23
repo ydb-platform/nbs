@@ -56,6 +56,21 @@ void TConfigInitializerCommon::InitStorageConfig()
         storageConfig.SetDisableLocalService(true);
     }
 
+    if (Options->NodeRegistrationErrorTimeout) {
+        storageConfig.SetNodeRegistrationErrorTimeout(
+            Options->NodeRegistrationErrorTimeout.MilliSeconds());
+    }
+
+    if (Options->NodeRegistrationMaxAttempts) {
+        storageConfig.SetNodeRegistrationMaxAttempts(
+            Options->NodeRegistrationMaxAttempts);
+    }
+
+    if (Options->NodeRegistrationTimeout) {
+        storageConfig.SetNodeRegistrationTimeout(
+            Options->NodeRegistrationTimeout.MilliSeconds());
+    }
+
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig);
 }
@@ -75,9 +90,9 @@ TNodeRegistrationSettings
     TConfigInitializerCommon::GetNodeRegistrationSettings()
 {
     TNodeRegistrationSettings settings;
-    settings.MaxAttempts = Options->NodeRegistrationMaxAttempts;
-    settings.RegistrationTimeout = Options->NodeRegistrationTimeout;
-    settings.ErrorTimeout = Options->NodeRegistrationErrorTimeout;
+    settings.MaxAttempts = StorageConfig->GetNodeRegistrationMaxAttempts();
+    settings.RegistrationTimeout = StorageConfig->GetNodeRegistrationTimeout();
+    settings.ErrorTimeout = StorageConfig->GetNodeRegistrationErrorTimeout();
     settings.PathToGrpcCaFile = StorageConfig->GetNodeRegistrationRootCertsFile();
     settings.NodeRegistrationToken = StorageConfig->GetNodeRegistrationToken();
     settings.NodeType = StorageConfig->GetNodeType();

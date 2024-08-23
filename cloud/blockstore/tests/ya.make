@@ -26,8 +26,8 @@ RECURSE(
     python_client
     rdma
     recipes
+    registration
     resize-disk
-    secure-registration
     session_cache
     spare_node
     stats_aggregator_perf
