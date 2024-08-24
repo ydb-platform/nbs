@@ -10,6 +10,7 @@ RECURSE(
     cms
     csi_driver
     external_endpoint
+    e2e-tests
     fio
     functional
     fuzzing
