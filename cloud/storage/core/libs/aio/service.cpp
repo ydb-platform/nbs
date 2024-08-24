@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/thread.h>
 
+#include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
@@ -45,12 +46,32 @@ private:
     io_context* Context = nullptr;
 
 public:
-    explicit TAsyncIOContext(size_t nr)
+    explicit TAsyncIOContext(int nr)
     {
-        int ret = io_setup(nr, &Context);
-        Y_ABORT_UNLESS(ret == 0,
-            "unable to initialize context: %s",
-            LastSystemErrorText(-ret));
+        int code = 0;
+        int iterations = 0;
+        const int maxIterations = 1000;
+        const auto waitTime = TDuration::MilliSeconds(100);
+        while (iterations < maxIterations) {
+            ++iterations;
+            code = io_setup(nr, &Context);
+            if (code == -EAGAIN) {
+                const auto aioNr =
+                    TIFStream("/proc/sys/fs/aio-nr").ReadLine();
+                const auto aioMaxNr =
+                    TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
+                Cerr << "retrying EAGAIN from io_setup, aio-nr/max: "
+                    << aioNr << "/" << aioMaxNr << Endl;
+                Sleep(waitTime);
+            } else {
+                break;
+            }
+        }
+
+        Y_ABORT_UNLESS(code == 0,
+            "unable to initialize context: %s, iterations: %d",
+            LastSystemErrorText(-code),
+            iterations);
     }
 
     ~TAsyncIOContext()
