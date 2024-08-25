@@ -1,5 +1,7 @@
 #include "channels.h"
 
+#include <cloud/storage/core/libs/tablet/model/channels.h>
+
 #include <util/generic/deque.h>
 #include <util/generic/vector.h>
 
@@ -18,6 +20,7 @@ struct TChannelMeta
     TString PoolKind;
     bool Writable = true;
     bool ToMove = false;
+    double FreeSpaceShare = 0;
 
     TChannelMeta() = default;
 
@@ -35,17 +38,35 @@ struct TChannelRegistry
     TVector<TChannelMeta*> ChannelMetas;
     ui32 ChannelIndex = 0;
 
-    const TChannelMeta* SelectChannel()
+    const TChannelMeta* SelectChannel(
+        double minFreeSpace,
+        double freeSpaceThreshold)
     {
+        const TChannelMeta* bestMeta = nullptr;
+        double bestSpaceShare = 0;
         for (ui32 i = 0; i < ChannelMetas.size(); ++i) {
             const auto* meta = ChannelMetas[ChannelIndex % ChannelMetas.size()];
             ++ChannelIndex;
-            if (meta->Writable) {
+            if (!meta->Writable) {
+                continue;
+            }
+
+            const bool ok = CheckChannelFreeSpaceShare(
+                meta->FreeSpaceShare,
+                minFreeSpace,
+                freeSpaceThreshold);
+
+            if (ok) {
                 return meta;
+            }
+
+            if (meta->FreeSpaceShare > bestSpaceShare) {
+                bestMeta = meta;
+                bestSpaceShare = meta->FreeSpaceShare;
             }
         }
 
-        return nullptr;
+        return bestMeta;
     }
 
     TVector<ui32> GetChannels() const
@@ -75,9 +96,15 @@ struct TChannels::TImpl
     TChannelsByDataKind ByDataKind;
 
     void AddChannel(ui32 channel, EChannelDataKind dataKind, TString poolKind);
-    void RegisterUnwritableChannel(ui32 channel);
-    void RegisterChannelToMove(ui32 channel);
-    TMaybe<ui32> SelectChannel(EChannelDataKind dataKind);
+    void UpdateChannelStats(
+        ui32 channel,
+        bool writable,
+        bool toMove,
+        double freeSpaceShare);
+    TMaybe<ui32> SelectChannel(
+        EChannelDataKind dataKind,
+        double minFreeSpace,
+        double freeSpaceThreshold);
 
     TVector<ui32> GetChannels(EChannelDataKind dataKind) const;
     TVector<ui32> GetUnwritableChannels() const;
@@ -107,18 +134,20 @@ void TChannels::TImpl::AddChannel(
     byDataKind.ChannelMetas.push_back(&AllChannels.back());
 }
 
-void TChannels::TImpl::RegisterUnwritableChannel(ui32 channel)
+void TChannels::TImpl::UpdateChannelStats(
+    ui32 channel,
+    bool writable,
+    bool toMove,
+    double freeSpaceShare)
 {
     Y_ABORT_UNLESS(channel < AllChannels.size());
 
-    AllChannels[channel].Writable = false;
-}
-
-void TChannels::TImpl::RegisterChannelToMove(ui32 channel)
-{
-    Y_ABORT_UNLESS(channel < AllChannels.size());
-
-    AllChannels[channel].ToMove = true;
+    AllChannels[channel].Writable = writable;
+    AllChannels[channel].ToMove = toMove;
+    // a value which is exactly 0 is equivalent to "no data"
+    if (freeSpaceShare != 0.) {
+        AllChannels[channel].FreeSpaceShare = freeSpaceShare;
+    }
 }
 
 TVector<ui32> TChannels::TImpl::GetChannels(EChannelDataKind dataKind) const
@@ -139,7 +168,8 @@ TVector<ui32> TChannels::TImpl::GetUnwritableChannels() const
     return result;
 }
 
-TVector<ui32> TChannels::TImpl::GetChannelsToMove(ui32 percentageThreshold) const
+TVector<ui32> TChannels::TImpl::GetChannelsToMove(
+    ui32 percentageThreshold) const
 {
     TVector<ui32> result;
 
@@ -169,6 +199,7 @@ TChannels::TImpl::MakeChannelMonInfos() const
             TStringBuilder() << meta.DataKind,
             meta.Writable,
             meta.Writable, // TODO: SystemWritable
+            meta.FreeSpaceShare,
         });
     }
 
@@ -188,10 +219,15 @@ TChannelsStats TChannels::TImpl::CalculateChannelsStats() const
     return stats;
 }
 
-TMaybe<ui32> TChannels::TImpl::SelectChannel(EChannelDataKind dataKind)
+TMaybe<ui32> TChannels::TImpl::SelectChannel(
+    EChannelDataKind dataKind,
+    double minFreeSpace,
+    double freeSpaceThreshold)
 {
     auto& byDataKind = ByDataKind[static_cast<ui32>(dataKind)];
-    if (const auto* meta = byDataKind.SelectChannel()) {
+    const auto* meta =
+        byDataKind.SelectChannel(minFreeSpace, freeSpaceThreshold);
+    if (meta) {
         return meta->Channel;
     }
 
@@ -226,14 +262,13 @@ void TChannels::AddChannel(
     GetImpl().AddChannel(channel, dataKind, std::move(poolKind));
 }
 
-void TChannels::RegisterUnwritableChannel(ui32 channel)
+void TChannels::UpdateChannelStats(
+    ui32 channel,
+    bool writable,
+    bool toMove,
+    double freeSpaceShare)
 {
-    GetImpl().RegisterUnwritableChannel(channel);
-}
-
-void TChannels::RegisterChannelToMove(ui32 channel)
-{
-    GetImpl().RegisterChannelToMove(channel);
+    GetImpl().UpdateChannelStats(channel, writable, toMove, freeSpaceShare);
 }
 
 TVector<ui32> TChannels::GetChannels(EChannelDataKind dataKind) const
@@ -261,9 +296,12 @@ TChannelsStats TChannels::CalculateChannelsStats() const
     return GetImpl().CalculateChannelsStats();
 }
 
-TMaybe<ui32> TChannels::SelectChannel(EChannelDataKind dataKind)
+TMaybe<ui32> TChannels::SelectChannel(
+    EChannelDataKind dataKind,
+    double minFreeSpace,
+    double freeSpaceThreshold)
 {
-    return GetImpl().SelectChannel(dataKind);
+    return GetImpl().SelectChannel(dataKind, minFreeSpace, freeSpaceThreshold);
 }
 
 ui32 TChannels::Size() const

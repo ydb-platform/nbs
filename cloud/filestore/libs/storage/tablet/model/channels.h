@@ -34,9 +34,15 @@ public:
     ~TChannels();
 
     void AddChannel(ui32 channel, EChannelDataKind dataKind, TString poolKind);
-    void RegisterUnwritableChannel(ui32 channel);
-    void RegisterChannelToMove(ui32 channel);
-    TMaybe<ui32> SelectChannel(EChannelDataKind dataKind);
+    void UpdateChannelStats(
+        ui32 channel,
+        bool writable,
+        bool toMove,
+        double freeSpaceShare);
+    TMaybe<ui32> SelectChannel(
+        EChannelDataKind dataKind,
+        double minFreeSpace,
+        double freeSpaceThreshold);
 
     TVector<ui32> GetChannels(EChannelDataKind dataKind) const;
     TVector<ui32> GetUnwritableChannels() const;

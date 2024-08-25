@@ -341,4 +341,9 @@ message TStorageConfig
         repeated TFilestoreAliasEntry Entries = 1;
     }
     optional TFilestoreAliases FilestoreAliases = 368;
+
+    // Channel free space threshold - used for write request balancing.
+    optional uint32 ChannelFreeSpaceThreshold = 369;
+    // Channel min free space - used for write request balancing.
+    optional uint32 ChannelMinFreeSpace = 370;
 }

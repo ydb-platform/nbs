@@ -242,6 +242,9 @@ public:
 
     const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
     const TString* FindFileSystemIdByAlias(const TString& alias) const;
+
+    ui32 GetChannelFreeSpaceThreshold() const;
+    ui32 GetChannelMinFreeSpace() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
