@@ -59,6 +59,11 @@ void DumpChannel(
                     TStringBuilder() << "background-color: " << color)
                 {
                     out << label;
+                    const auto freePercentage =
+                        static_cast<ui32>(channelInfo.FreeSpaceShare * 100);
+                    if (freePercentage) {
+                        out << " free=" << freePercentage << "%";
+                    }
                 }
             }
             TABLED() {

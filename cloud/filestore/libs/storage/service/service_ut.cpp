@@ -2725,6 +2725,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         NProtoPrivate::TAddDataRequest addData;
         using TFlags = NKikimr::TStorageStatusFlags;
+        const float freeSpaceShare = 0.22;
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
             {
@@ -2736,6 +2737,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             event->template Get<TEvBlobStorage::TEvPutResult>();
                         const_cast<TFlags&>(msg->StatusFlags).Raw |=
                             ui32(yellowFlag);
+                        const_cast<float&>(msg->ApproximateFreeSpaceShare) =
+                            freeSpaceShare;
                         break;
                     }
 
@@ -2754,6 +2757,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, addData.StorageStatusFlagsSize());
         UNIT_ASSERT(NKikimr::TStorageStatusFlags(
             addData.GetStorageStatusFlags(0)).Check(yellowFlag));
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.ApproximateFreeSpaceSharesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            freeSpaceShare,
+            addData.GetApproximateFreeSpaceShares(0));
     }
 
     void ConfigureFollowers(

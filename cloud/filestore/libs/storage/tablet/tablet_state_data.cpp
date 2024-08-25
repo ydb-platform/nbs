@@ -55,7 +55,10 @@ bool TIndexTabletState::GenerateBlobId(
 {
     auto [gen, step] = ParseCommitId(commitId);
 
-    const auto channel = Impl->Channels.SelectChannel(EChannelDataKind::Mixed);
+    const auto channel = Impl->Channels.SelectChannel(
+        EChannelDataKind::Mixed,
+        ChannelMinFreeSpace,
+        ChannelFreeSpaceThreshold);
     if (!channel) {
         return false;
     }
