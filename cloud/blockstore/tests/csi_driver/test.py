@@ -100,9 +100,6 @@ def init():
             input=script_input,
             text=True,
         )
-
-        logging.info("Stdout: %s", result.stdout)
-        logging.info("Stderr: %s", result.stderr)
         return result
     return env, run
 
@@ -249,6 +246,8 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
             input=volume_name,
             code=1,
         )
+        logging.info("Stdout: %s", result.stdout)
+        logging.info("Stderr: %s", result.stderr)
         if result.returncode != 1:
             raise AssertionError("Destroyvolume must return exit code 1")
         assert "E_REJECTED" in result.stdout
@@ -318,14 +317,6 @@ def test_nbs_csi_driver_volume_stat():
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
 
-        try:
-            env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
-            env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise

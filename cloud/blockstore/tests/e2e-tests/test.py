@@ -21,13 +21,19 @@ from cloud.storage.core.protos.endpoints_pb2 import (
 from google.protobuf.text_format import MessageToString
 
 
-BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+BLOCKSTORE_CLIENT_PATH = common.binary_path(
+    "cloud/blockstore/apps/client/blockstore-client")
+ENDPOINT_PROXY_PATH = common.binary_path(
+    "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
 
 
-def init(withNetlink=True):
+def init(with_netlink=True, with_endpoint_proxy=True):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
-    if withNetlink:
+    if with_endpoint_proxy:
+        ep_socket = "ep-%s.sock" % hash(common.context.test_name)
+        server_config_patch.EndpointProxySocketPath = ep_socket
+    elif with_netlink:
         server_config_patch.NbdNetlink = True
         server_config_patch.NbdRequestTimeout = 120
         server_config_patch.NbdConnectionTimeout = 120
@@ -53,7 +59,9 @@ def init(withNetlink=True):
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
-        use_in_memory_pdisks=True)
+        use_in_memory_pdisks=True,
+        with_endpoint_proxy=with_endpoint_proxy,
+        with_netlink=with_netlink)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -64,7 +72,7 @@ def init(withNetlink=True):
     client_config_path.write_text(MessageToString(client_config))
 
     def run(*args, **kwargs):
-        args = [BINARY_PATH, *args, "--config", str(client_config_path)]
+        args = [BLOCKSTORE_CLIENT_PATH, *args, "--config", str(client_config_path)]
         script_input = kwargs.get("input")
         if script_input is not None:
             script_input = script_input + "\n"
@@ -82,6 +90,7 @@ def init(withNetlink=True):
         logging.info("Stdout: %s", result.stdout)
         logging.info("Stderr: %s", result.stderr)
         return result
+
     return env, run
 
 
@@ -101,9 +110,10 @@ def log_called_process_error(exc):
     )
 
 
-@pytest.mark.parametrize('withNetlink', [True, False])
-def test_resize_device(withNetlink):
-    env, run = init(withNetlink)
+@pytest.mark.parametrize('with_netlink,with_endpoint_proxy',
+                         [(True, True), (False, True), (True, False), (False, False)])
+def test_resize_device(with_netlink, with_endpoint_proxy):
+    env, run = init(with_netlink, with_endpoint_proxy)
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 10000
