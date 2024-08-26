@@ -232,7 +232,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto currentIndex = State.GetLastReportedResyncIndex();
     const auto step = Config->GetResyncIndexCachingInterval();
 
-    if (currentIndex + step < resyncRange.Start) {
+    if (!currentIndex || *currentIndex + step < resyncRange.Start) {
         State.SetLastReportedResyncIndex(resyncRange.Start);
 
         NCloud::Send(

@@ -45,6 +45,7 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
     const NActors::TActorContext& ctx)
 {
     MigrationEnabled = true;
+    MigrationBlockCount = ProcessingBlocks.GetBlockCountNeedToBeProcessed();
     DoRegisterTrafficSource(ctx);
     ScheduleRangeMigration(ctx);
 }
@@ -81,7 +82,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
         DiskId.c_str(),
         DescribeRange(range).c_str());
 
-    auto [_, inserted] = MigrationsInProgress.emplace(range.Start, range);
+    auto [_, inserted] = MigrationsInProgress.emplace(range);
     Y_DEBUG_ABORT_UNLESS(inserted);
 
     NCloud::Register<TCopyRangeActor>(
@@ -143,7 +144,7 @@ TNonreplicatedPartitionMigrationCommonActor::GetNextMigrationRange() const
     // First of all, we are trying to continue the migration range from
     // DeferredMigrations.
     if (!DeferredMigrations.empty()) {
-        return DeferredMigrations.begin()->second;
+        return *DeferredMigrations.begin();
     }
 
     // Secondly, we are trying to migrate a new range.
@@ -167,11 +168,11 @@ TNonreplicatedPartitionMigrationCommonActor::TakeNextMigrationRange(
 
     // First of all, we are trying to continue the migration range from
     // DeferredMigrations.
-    for (auto [key, range]: DeferredMigrations) {
+    for (auto range: DeferredMigrations) {
         // We can only perform migration that does not overlap with user
         // requests.
         if (!OverlapsWithInflightWriteAndZero(range)) {
-            DeferredMigrations.erase(key);
+            DeferredMigrations.erase(range);
             return range;
         }
     }
@@ -242,7 +243,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         });
     }
 
-    size_t erasedCount = MigrationsInProgress.erase(msg->Range.Start);
+    size_t erasedCount = MigrationsInProgress.erase(msg->Range);
     Y_DEBUG_ABORT_UNLESS(erasedCount == 1);
 
     if (HasError(msg->GetError())) {
@@ -260,7 +261,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         }
 
         // Schedule to retry the migration of the failed range.
-        DeferredMigrations.emplace(msg->Range.Start, msg->Range);
+        DeferredMigrations.emplace(msg->Range);
         ScheduleRangeMigration(ctx);
         return;
     }
@@ -285,35 +286,33 @@ void TNonreplicatedPartitionMigrationCommonActor::
         const TActorContext& ctx,
         TBlockRange64 migratedRange)
 {
-    const ui64 nextCachedProgress =
-        ProcessingBlocks.GetLastReportedProcessingIndex() +
-        Config->GetMigrationIndexCachingInterval();
+    MigratedBlockCount += migratedRange.Size();
 
-    if (migratedRange.Contains(nextCachedProgress - 1) ||
-        migratedRange.Start > nextCachedProgress)
-    {
-        CachedMigrationProgressAchieved = nextCachedProgress;
-    }
-
-    if (!CachedMigrationProgressAchieved) {
+    const bool shouldNotify =
+        !LastReportedMigratedBlockCount.has_value() ||
+        MigratedBlockCount - *LastReportedMigratedBlockCount >=
+            Config->GetMigrationIndexCachingInterval();
+    if (!shouldNotify) {
         return;
     }
 
-    for (const auto& [id, range]: MigrationsInProgress) {
-        if (range.End < *CachedMigrationProgressAchieved) {
-            return;
-        }
+    ui64 migrationProgressAchieved = migratedRange.End + 1;
+    // Migration ranges are stored in the ascending order of start block and
+    // their sizes are equal. Thus the range in the begin is leftmost.
+    if (!DeferredMigrations.empty()) {
+        migrationProgressAchieved = std::min(
+            migrationProgressAchieved,
+            DeferredMigrations.begin()->End + 1);
     }
-    for (const auto& [id, range]: DeferredMigrations) {
-        if (range.End < *CachedMigrationProgressAchieved) {
-            return;
-        }
+    if (!MigrationsInProgress.empty()) {
+        migrationProgressAchieved = std::min(
+            migrationProgressAchieved,
+            MigrationsInProgress.begin()->End + 1);
     }
 
-    ProcessingBlocks.SetLastReportedProcessingIndex(
-        *CachedMigrationProgressAchieved);
-    MigrationOwner->OnMigrationProgress(ctx, *CachedMigrationProgressAchieved);
-    CachedMigrationProgressAchieved = std::nullopt;
+    LastReportedMigratedBlockCount = MigratedBlockCount;
+    ProcessingBlocks.SetLastReportedProcessingIndex(migrationProgressAchieved);
+    MigrationOwner->OnMigrationProgress(ctx, migrationProgressAchieved);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::

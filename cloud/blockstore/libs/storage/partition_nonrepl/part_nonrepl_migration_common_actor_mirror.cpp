@@ -71,7 +71,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     };
 
     // Check overlapping with inflight migrations.
-    for (const auto [_, migrationRange]: MigrationsInProgress) {
+    for (const auto migrationRange: MigrationsInProgress) {
         if (checkOverlapsWithMigration(migrationRange)) {
             return;
         }

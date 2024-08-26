@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,7 +20,7 @@ private:
     const ui64 BlockCount;
     const ui32 BlockSize;
     std::unique_ptr<TCompressedBitmap> BlockMap;
-    ui64 LastReportedProcessingIndex = 0;
+    std::optional<ui64> LastReportedProcessingIndex;
     ui64 CurrentProcessingIndex = 0;
     ui64 NextProcessingIndex = 0;
 
@@ -39,7 +41,7 @@ public:
     ui64 GetBlockCountNeedToBeProcessed() const;
     ui64 GetProcessedBlockCount() const;
 
-    ui64 GetLastReportedProcessingIndex() const
+    std::optional<ui64> GetLastReportedProcessingIndex() const
     {
         return LastReportedProcessingIndex;
     }

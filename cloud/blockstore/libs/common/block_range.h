@@ -170,6 +170,14 @@ struct TBlockRange
         return lhs.Start == rhs.Start && lhs.End == rhs.End;
     }
 
+    friend bool operator<(const TBlockRange& lhs, const TBlockRange& rhs)
+    {
+        auto tie = [](const TBlockRange& blockRange) {
+            return std::tie(blockRange.Start, blockRange.End);
+        };
+        return tie(lhs) < tie(rhs);
+    }
+
 private:
     TBlockRange(TBlockIndex start, TBlockIndex end)
         : Start(start)
