@@ -168,25 +168,28 @@ TNodeToSessionStat::EKind TNodeToSessionStat::AddWrite(
     return GetKind(nodeId);
 }
 
-void TNodeToSessionStat::Clean(ui64 nodeId, const TString& sessionId)
+void TNodeToSessionStat::Clean(
+    const TStat::iterator& nodeStatIterator,
+    const TString& sessionId)
 {
-    if (!Stat.contains(nodeId)) {
-        return;
+    auto& nodeStat = nodeStatIterator->second;
+
+    {
+        const auto it = nodeStat.WriteSessions.find(sessionId);
+        if (it != nodeStat.WriteSessions.end() && it->second <= 0) {
+            nodeStat.WriteSessions.erase(it);
+        }
     }
 
-    auto& nodeStat = Stat[nodeId];
-    if (nodeStat.WriteSessions.contains(sessionId) &&
-        nodeStat.WriteSessions[sessionId] <= 0)
     {
-        nodeStat.WriteSessions.erase(sessionId);
+        const auto it = nodeStat.ReadSessions.find(sessionId);
+        if (it != nodeStat.ReadSessions.end() && it->second <= 0) {
+            nodeStat.ReadSessions.erase(it);
+        }
     }
-    if (nodeStat.ReadSessions.contains(sessionId) &&
-        nodeStat.ReadSessions[sessionId] <= 0)
-    {
-        nodeStat.ReadSessions.erase(sessionId);
-    }
+
     if (nodeStat.WriteSessions.empty() && nodeStat.ReadSessions.empty()) {
-        Stat.erase(nodeId);
+        Stat.erase(nodeStatIterator);
     }
 }
 
@@ -194,28 +197,39 @@ TNodeToSessionStat::EKind TNodeToSessionStat::RemoveRead(
     ui64 nodeId,
     const TString& sessionId)
 {
-    auto& nodeStat = Stat[nodeId];
-    --nodeStat.ReadSessions[sessionId];
-    Clean(nodeId, sessionId);
-    return GetKind(nodeId);
+    const auto& nodeStatIterator = Stat.find(nodeId);
+    if (nodeStatIterator != Stat.end()) {
+        --nodeStatIterator->second.ReadSessions[sessionId];
+        Clean(nodeStatIterator, sessionId);
+    }
+    return GetKind(nodeStatIterator);
 }
 
 TNodeToSessionStat::EKind TNodeToSessionStat::RemoveWrite(
     ui64 nodeId,
     const TString& sessionId)
 {
-    auto& nodeStat = Stat[nodeId];
-    --nodeStat.WriteSessions[sessionId];
-    Clean(nodeId, sessionId);
-    return GetKind(nodeId);
+    const auto& nodeStatIterator = Stat.find(nodeId);
+    if (nodeStatIterator != Stat.end()) {
+        --nodeStatIterator->second.WriteSessions[sessionId];
+        Clean(nodeStatIterator, sessionId);
+    }
+    return GetKind(nodeStatIterator);
 }
 
 TNodeToSessionStat::EKind TNodeToSessionStat::GetKind(ui64 nodeId) const
 {
-    if (!Stat.contains(nodeId)) {
+    const auto& nodeStatIterator = Stat.find(nodeId);
+    return GetKind(nodeStatIterator);
+}
+
+TNodeToSessionStat::EKind TNodeToSessionStat::GetKind(
+    const TStat::const_iterator& nodeStatIterator) const
+{
+    if (nodeStatIterator == Stat.end()) {
         return EKind::None;
     }
-    const auto& nodeStat = Stat.at(nodeId);
+    const auto& nodeStat = nodeStatIterator->second;
     if (nodeStat.WriteSessions.size() > 1) {
         return EKind::NodesOpenForWritingByMultipleSessions;
     }
