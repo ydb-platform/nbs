@@ -14,14 +14,17 @@ ui64 TIndexTabletState::GetConfigChannelCount() const
     return FileSystem.ExplicitChannelProfilesSize();
 }
 
-void TIndexTabletState::RegisterUnwritableChannel(ui32 channel)
+void TIndexTabletState::UpdateChannelStats(
+    ui32 channel,
+    bool writable,
+    bool toMove,
+    double freeSpaceShare)
 {
-    Impl->Channels.RegisterUnwritableChannel(channel);
-}
-
-void TIndexTabletState::RegisterChannelToMove(ui32 channel)
-{
-    Impl->Channels.RegisterChannelToMove(channel);
+    Impl->Channels.UpdateChannelStats(
+        channel,
+        writable,
+        toMove,
+        freeSpaceShare);
 }
 
 TVector<ui32> TIndexTabletState::GetChannels(EChannelDataKind kind) const

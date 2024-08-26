@@ -341,4 +341,19 @@ message TStorageConfig
         repeated TFilestoreAliasEntry Entries = 1;
     }
     optional TFilestoreAliases FilestoreAliases = 368;
+
+    // Channel free space threshold - used for write request balancing.
+    optional uint32 ChannelFreeSpaceThreshold = 369;
+    // Channel min free space - used for write request balancing.
+    optional uint32 ChannelMinFreeSpace = 370;
+
+    // Enables in-memory index cache for all index-related requests
+    optional bool InMemoryIndexCacheEnabled = 371;
+    // Capacity of in-memory index cache, in number of entries per each table
+    optional uint64 InMemoryIndexCacheNodesCapacity = 372;
+    optional uint64 InMemoryIndexCacheNodesVerCapacity = 373;
+    optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 374;
+    optional uint64 InMemoryIndexCacheNodeAttrsVerCapacity = 375;
+    optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
+    optional uint64 InMemoryIndexCacheNodeRefsVerCapacity = 377;
 }

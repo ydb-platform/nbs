@@ -178,6 +178,8 @@ private:
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
+    /*const*/ double ChannelMinFreeSpace = 0;
+    /*const*/ double ChannelFreeSpaceThreshold = 1;
 
     bool StateLoaded = false;
 
@@ -354,8 +356,11 @@ public:
 
     TChannelsStats CalculateChannelsStats() const;
 
-    void RegisterUnwritableChannel(ui32 channel);
-    void RegisterChannelToMove(ui32 channel);
+    void UpdateChannelStats(
+        ui32 channel,
+        bool writable,
+        bool toMove,
+        double freeSpaceShare);
 
 private:
     void LoadChannels();

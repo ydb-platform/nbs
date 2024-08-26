@@ -441,6 +441,7 @@ public:
 
     bool UpdatePermissions(ui32 channel, EChannelPermissions permissions);
     bool CheckPermissions(ui32 channel, EChannelPermissions permissions) const;
+    double GetFreeSpaceShare(ui32 channel) const;
     bool UpdateChannelFreeSpaceShare(ui32 channel, double share);
     bool CheckChannelFreeSpaceShare(ui32 channel) const;
     bool IsCompactionAllowed() const;

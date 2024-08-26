@@ -327,8 +327,8 @@ void TFileSystem::ReadDir(
                     const auto error = MakeError(
                         E_IO,
                         TStringBuilder() << "#" << fuse_req_unique(req)
-                        << " listed invalid entry: name " << name.Quote()
-                        << ", stat " << DumpMessage(attr));
+                        << " listed invalid entry: parent " << ino << ", name "
+                        << name.Quote() << ", stat " << DumpMessage(attr));
 
                     STORAGE_ERROR(error.GetMessage());
                     self->ReplyError(

@@ -18,13 +18,13 @@ const (
 )
 
 func getStorageMediaKind(
-	kind types.FilesystemStorageKind,
+	kind types.FilesystemKind,
 ) (coreprotos.EStorageMediaKind, error) {
 
 	switch kind {
-	case types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_SSD:
+	case types.FilesystemKind_FILESYSTEM_KIND_SSD:
 		return coreprotos.EStorageMediaKind_STORAGE_MEDIA_SSD, nil
-	case types.FilesystemStorageKind_FILESYSTEM_STORAGE_KIND_HDD:
+	case types.FilesystemKind_FILESYSTEM_KIND_HDD:
 		return coreprotos.EStorageMediaKind_STORAGE_MEDIA_HDD, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
@@ -108,7 +108,7 @@ func (c *client) Create(
 	params CreateFilesystemParams,
 ) error {
 
-	mediaKind, err := getStorageMediaKind(params.StorageKind)
+	mediaKind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (c *client) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,
 	blockSize uint32,
-	kind types.FilesystemStorageKind,
+	kind types.FilesystemKind,
 ) (FilesystemModel, error) {
 
 	mediaKind, err := getStorageMediaKind(kind)

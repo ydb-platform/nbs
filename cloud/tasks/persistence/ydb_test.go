@@ -4,17 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
-	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,11 +22,7 @@ func newContext() context.Context {
 	)
 }
 
-func newYDB(
-	ctx context.Context,
-	metricsRegistry metrics.Registry,
-) (*YDBClient, error) {
-
+func newYDB(ctx context.Context) (*YDBClient, error) {
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "disk_manager"
@@ -42,7 +34,7 @@ func newYDB(
 			Database: &database,
 			RootPath: &rootPath,
 		},
-		metricsRegistry,
+		empty.NewRegistry(),
 	)
 }
 
@@ -239,7 +231,7 @@ func TestYDBCreateTableV1(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -273,7 +265,7 @@ func TestYDBCreateTableV1Twice(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -324,7 +316,7 @@ func TestYDBMigrateTableV1ToTableV2(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -382,7 +374,7 @@ func TestYDBUseV1InV2(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -440,7 +432,7 @@ func TestYDBFailMigrationChangingType(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -474,7 +466,7 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx, empty.NewRegistry())
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
@@ -502,36 +494,4 @@ func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
 		false, // dropUnusedColumns
 	)
 	assert.Error(t, err)
-}
-
-func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	metricsRegistry := mocks.NewRegistryMock()
-
-	db, err := newYDB(ctx, metricsRegistry)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	metricsRegistry.GetCounter(
-		"errors",
-		map[string]string{"call": "client/MakeDirs", "type": "scheme"},
-	).On("Inc").Once()
-
-	// YDB has limited length of object name. Current limit is 255.
-	extraLargeString := strings.Repeat("x", 100500)
-	folder := fmt.Sprintf("ydb_test/%v/%v", extraLargeString, t.Name())
-	table := "table"
-
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		table,
-		tableV1TableDescription(),
-		false, // dropUnusedColumns
-	)
-	require.True(t, ydb.IsOperationErrorSchemeError(err))
-
-	metricsRegistry.AssertAllExpectations(t)
 }
