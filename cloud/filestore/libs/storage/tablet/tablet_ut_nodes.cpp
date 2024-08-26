@@ -1215,7 +1215,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-#define COUNTERS_VALIDATE_WS_WM_RS_WM(wo, wm, ro, rm)               \
+#define COUNTERS_VALIDATE_WS_WM_RS_RM(wo, wm, ro, rm)               \
     {                                                               \
         tablet.SendRequest(tablet.CreateUpdateCounters());          \
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1)); \
@@ -1249,21 +1249,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                 auto handleS1R =
                     CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
                 tablet.ReadData(handleS1R, 10, 10);
-                COUNTERS_VALIDATE_WS_WM_RS_WM(1, 0, 0, 0);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
                 tablet.DestroyHandle(handleS1R);
             }
 
-            COUNTERS_VALIDATE_WS_WM_RS_WM(1, 0, 0, 0);
+            COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
             tablet.DestroyHandle(handleS1W);
 
             {
                 auto handleS1R =
                     CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
                 tablet.ReadData(handleS1R, 10, 10);
-                COUNTERS_VALIDATE_WS_WM_RS_WM(0, 0, 1, 0);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
 
                 auto handleS1W = CreateHandle(tablet, id);
-                COUNTERS_VALIDATE_WS_WM_RS_WM(1, 0, 0, 0);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
 
                 {
                     TIndexTabletClient tablet2(
@@ -1273,16 +1273,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                     tablet2.InitSession("client2", "session2");
                     auto handleS2R =
                         CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
-                    COUNTERS_VALIDATE_WS_WM_RS_WM(1, 0, 0, 0);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
 
                     tablet2.DestroyHandle(handleS2R);
                     auto handleS2W = CreateHandle(tablet2, id, {});
-                    COUNTERS_VALIDATE_WS_WM_RS_WM(0, 1, 0, 0);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(0, 1, 0, 0);
                     tablet2.DestroyHandle(handleS2W);
                 }
 
                 tablet.DestroyHandle(handleS1W);
-                COUNTERS_VALIDATE_WS_WM_RS_WM(0, 0, 1, 0);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
 
                 {
                     auto node2 = CreateNode(
@@ -1290,7 +1290,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                         TCreateNodeArgs::File(RootNodeId, "test2"));
                     auto handleS1W2 = CreateHandle(tablet, node2);
                     tablet.WriteData(handleS1W2, 0, 1, '1');
-                    COUNTERS_VALIDATE_WS_WM_RS_WM(1, 0, 1, 0);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 1, 0);
                     tablet.DestroyHandle(handleS1W2);
 
                     {
@@ -1299,7 +1299,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                             node2,
                             {},
                             TCreateHandleArgs::RDNLY);
-                        COUNTERS_VALIDATE_WS_WM_RS_WM(0, 0, 2, 0);
+                        COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 2, 0);
                         tablet.DestroyHandle(handleS1R);
                     }
                 }
@@ -1312,7 +1312,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                     tablet2.InitSession("client2", "session2");
                     auto handleS2R =
                         CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
-                    COUNTERS_VALIDATE_WS_WM_RS_WM(0, 0, 0, 1);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 1);
                     tablet2.DestroyHandle(handleS2R);
                 }
 
@@ -1320,9 +1320,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             }
         }
 
-        COUNTERS_VALIDATE_WS_WM_RS_WM(0, 0, 0, 0);
+        COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 0);
 
-#undef COUNTERS_VALIDATE_WS_WM_RS_WM
+#undef COUNTERS_VALIDATE_WS_WM_RS_RM
     }
 
     Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)

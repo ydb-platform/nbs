@@ -57,7 +57,9 @@ class TNodeToSessionStat
     using TStat = THashMap<ui64, TSessionStat>;
     TStat Stat;
 
-    void Clean(const TStat::iterator& nodeStatIterator, const TString& sessionId);
+    void Clean(
+        const TStat::iterator& nodeStatIterator,
+        const TString& sessionId);
 
 public:
     enum class EKind
@@ -69,12 +71,16 @@ public:
         NodesOpenForReadingByMultipleSessions,
     };
 
-    [[nodiscard]] EKind GetKind(ui64 nodeId) const;
-    [[nodiscard]] EKind GetKind(const TStat::const_iterator& nodeStatIterator) const;
+public:
     EKind AddRead(ui64 nodeId, const TString& sessionId);
     EKind AddWrite(ui64 nodeId, const TString& sessionId);
     EKind RemoveRead(ui64 nodeId, const TString& sessionId);
     EKind RemoveWrite(ui64 nodeId, const TString& sessionId);
+    [[nodiscard]] EKind GetKind(ui64 nodeId) const;
+
+private:
+    [[nodiscard]] EKind GetKind(
+        const TStat::const_iterator& nodeStatIterator) const;
 };
 ////////////////////////////////////////////////////////////////////////////////
 
