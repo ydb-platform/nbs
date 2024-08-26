@@ -225,6 +225,14 @@ public:
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
     ui64 GetTrimBytesItemCount() const;
 
+    bool GetInMemoryIndexCacheEnabled() const;
+    ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
