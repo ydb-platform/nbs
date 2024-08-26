@@ -1237,9 +1237,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         });                                                         \
     }
 
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         {
-            auto id =
-                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
             auto handleS1W = CreateHandle(tablet, id);
 
             tablet.WriteData(handleS1W, 0, 1, '1');
@@ -1321,6 +1320,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
 
         COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 0);
+
+        {
+            auto handleS1R =
+                CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+            tablet.ReadData(handleS1R, 10, 10);
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+            tablet.RebootTablet();
+            tablet.RecoverSession();
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+            tablet.DestroyHandle(handleS1R);
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 0);
+        }
 
 #undef COUNTERS_VALIDATE_WS_WM_RS_RM
     }

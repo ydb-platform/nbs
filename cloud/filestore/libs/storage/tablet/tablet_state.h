@@ -47,6 +47,8 @@ class TProfileLogRequestInfo;
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TNodeToSessionStat
 {
     struct TSessionStat
@@ -71,7 +73,6 @@ public:
         NodesOpenForReadingByMultipleSessions,
     };
 
-public:
     EKind AddRead(ui64 nodeId, const TString& sessionId);
     EKind AddWrite(ui64 nodeId, const TString& sessionId);
     EKind RemoveRead(ui64 nodeId, const TString& sessionId);
@@ -82,6 +83,7 @@ private:
     [[nodiscard]] EKind GetKind(
         const TStat::const_iterator& nodeStatIterator) const;
 };
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCompactionInfo

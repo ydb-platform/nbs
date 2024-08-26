@@ -509,6 +509,21 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
+    {
+        const auto& nodeId = handle->GetNodeId();
+        const auto& flags = handle->GetFlags();
+        DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
+        if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
+            IncrementNodeCounters(Impl->NodeToSessionStat.AddWrite(
+                nodeId,
+                session->GetSessionId()));
+        } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
+            IncrementNodeCounters(Impl->NodeToSessionStat.AddRead(
+                nodeId,
+                session->GetSessionId()));
+        }
+    }
+
     return handle.release();
 }
 
@@ -525,6 +540,23 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 
     if (--(it->second) == 0) {
         Impl->NodeRefsByHandle.erase(it);
+    }
+
+    {
+        const auto nodeId = handle->GetNodeId();
+        DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
+        if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
+        {
+            IncrementNodeCounters(Impl->NodeToSessionStat.RemoveWrite(
+                nodeId,
+                handle->GetSessionId()));
+        } else if (
+            HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
+        {
+            IncrementNodeCounters(Impl->NodeToSessionStat.RemoveRead(
+                nodeId,
+                handle->GetSessionId()));
+        }
     }
 }
 
@@ -545,23 +577,21 @@ void TIndexTabletState::DecrementNodeCounters(
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
-            FileSystemStats.SetNodesOpenForWritingBySingleSession(SafeDecrement(
-                FileSystemStats.GetNodesOpenForWritingBySingleSession(),
-                1));
+            FileSystemStats.SetNodesOpenForWritingBySingleSession(
+                FileSystemStats.GetNodesOpenForWritingBySingleSession() - 1);
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(SafeDecrement(
-                FileSystemStats.GetNodesOpenForWritingByMultipleSessions(),
+            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(
+                (FileSystemStats.GetNodesOpenForWritingByMultipleSessions() -
                 1));
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
-            FileSystemStats.SetNodesOpenForReadingBySingleSession(SafeDecrement(
-                FileSystemStats.GetNodesOpenForReadingBySingleSession(),
-                1));
+            FileSystemStats.SetNodesOpenForReadingBySingleSession(
+                (FileSystemStats.GetNodesOpenForReadingBySingleSession() - 1));
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(SafeDecrement(
-                FileSystemStats.GetNodesOpenForReadingByMultipleSessions(),
+            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(
+                (FileSystemStats.GetNodesOpenForReadingByMultipleSessions() -
                 1));
             break;
     }
@@ -574,23 +604,21 @@ void TIndexTabletState::IncrementNodeCounters(
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
-            FileSystemStats.SetNodesOpenForWritingBySingleSession(SafeIncrement(
-                FileSystemStats.GetNodesOpenForWritingBySingleSession(),
-                1));
+            FileSystemStats.SetNodesOpenForWritingBySingleSession(
+                (FileSystemStats.GetNodesOpenForWritingBySingleSession() + 1));
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(SafeIncrement(
-                FileSystemStats.GetNodesOpenForWritingByMultipleSessions(),
+            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(
+                (FileSystemStats.GetNodesOpenForWritingByMultipleSessions() +
                 1));
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
-            FileSystemStats.SetNodesOpenForReadingBySingleSession(SafeIncrement(
-                FileSystemStats.GetNodesOpenForReadingBySingleSession(),
-                1));
+            FileSystemStats.SetNodesOpenForReadingBySingleSession(
+                (FileSystemStats.GetNodesOpenForReadingBySingleSession() + 1));
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(SafeIncrement(
-                FileSystemStats.GetNodesOpenForReadingByMultipleSessions(),
+            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(
+                (FileSystemStats.GetNodesOpenForReadingByMultipleSessions() +
                 1));
             break;
     }
@@ -617,15 +645,6 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
     auto* const handle = CreateHandle(session, proto);
 
-    DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
-    if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
-        IncrementNodeCounters(
-            Impl->NodeToSessionStat.AddWrite(nodeId, session->GetSessionId()));
-    } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
-        IncrementNodeCounters(
-            Impl->NodeToSessionStat.AddRead(nodeId, session->GetSessionId()));
-    }
-
     return handle;
 }
 
@@ -644,19 +663,6 @@ void TIndexTabletState::DestroyHandle(
     Impl->ReadAheadCache.OnDestroyHandle(
         handle->GetNodeId(),
         handle->GetHandle());
-
-    const auto nodeId = handle->GetNodeId();
-    DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
-    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-        IncrementNodeCounters(Impl->NodeToSessionStat.RemoveWrite(
-            nodeId,
-            handle->GetSessionId()));
-    } else if (
-        HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
-    {
-        IncrementNodeCounters(
-            Impl->NodeToSessionStat.RemoveRead(nodeId, handle->GetSessionId()));
-    }
 
     RemoveHandle(handle);
 }
