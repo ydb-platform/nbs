@@ -90,7 +90,6 @@ class TestWithMultipleAgents(object):
         self.server_app_config.ServerConfig.CopyFrom(TServerConfig())
         self.server_app_config.ServerConfig.ThreadsCount = thread_count()
         self.server_app_config.ServerConfig.StrictContractValidation = False
-        self.server_app_config.ServerConfig.NodeType = 'main'
         self.server_app_config.ServerConfig.NbdEnabled = True
         self.server_app_config.ServerConfig.NbdSocketSuffix = NBD_SOCKET_SUFFIX
         self.server_app_config.KikimrServiceConfig.CopyFrom(
@@ -109,6 +108,7 @@ class TestWithMultipleAgents(object):
         self.storage_config.MaxMigrationBandwidth = 1024 * 1024 * 1024
         self.storage_config.UseMirrorResync = True
         self.storage_config.MirroredMigrationStartAllowed = True
+        self.storage.NodeType = 'main'
 
     def run_disk_agent(self, index, temporary=False):
         storage = TStorageServiceConfig()

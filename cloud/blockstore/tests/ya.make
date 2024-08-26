@@ -7,7 +7,6 @@ ENDIF()
 
 RECURSE(
     client
-    cms
     csi_driver
     disk_agent_config
     external_endpoint
