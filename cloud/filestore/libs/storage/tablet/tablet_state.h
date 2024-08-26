@@ -331,8 +331,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void DecrementNodeCounters(const TNodeToSessionStat::EKind field);
-    void IncrementNodeCounters(const TNodeToSessionStat::EKind field);
+    void ChangeNodeCounters(const TNodeToSessionStat::EKind nodeKind, i64 amount);
 
     //
     // Throttling
