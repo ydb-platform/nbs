@@ -58,7 +58,7 @@ message DiskPool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum FilesystemStorageKind {
-    FILESYSTEM_STORAGE_KIND_SSD = 0;
-    FILESYSTEM_STORAGE_KIND_HDD = 1;
+enum FilesystemKind {
+    FILESYSTEM_KIND_SSD = 0;
+    FILESYSTEM_KIND_HDD = 1;
 }

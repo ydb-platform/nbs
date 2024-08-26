@@ -55,7 +55,7 @@ func (t *createFilesystemTask) Run(
 		ZoneID:      t.request.Filesystem.ZoneId,
 		BlocksCount: t.request.BlocksCount,
 		BlockSize:   t.request.BlockSize,
-		Kind:        fsKindToString(t.request.StorageKind),
+		Kind:        fsKindToString(t.request.Kind),
 		CloudID:     t.request.CloudId,
 		FolderID:    t.request.FolderId,
 
@@ -80,7 +80,7 @@ func (t *createFilesystemTask) Run(
 		FolderID:    t.request.FolderId,
 		BlocksCount: t.request.BlocksCount,
 		BlockSize:   t.request.BlockSize,
-		StorageKind: t.request.StorageKind,
+		Kind:        t.request.Kind,
 	})
 	if err != nil {
 		return err

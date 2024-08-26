@@ -18,4 +18,9 @@ PEERDIR(
 
 END()
 
+# see https://github.com/ydb-platform/ydb/issues/8170
+IF (SANITIZER_TYPE != "undefined")
+
 RECURSE_FOR_TESTS(ut)
+
+ENDIF()

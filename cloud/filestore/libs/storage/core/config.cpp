@@ -181,6 +181,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
+    xxx(ChannelFreeSpaceThreshold,                      ui32,      25         )\
+    xxx(ChannelMinFreeSpace,                            ui32,      10         )\
                                                                                \
     xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
     xxx(InMemoryIndexCacheNodesCapacity,                ui64,       0         )\

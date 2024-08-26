@@ -289,7 +289,8 @@ private:
         const NActors::TActorContext& ctx,
         ui32 generation,
         ui32 channel,
-        const NKikimr::TStorageStatusFlags flags);
+        const NKikimr::TStorageStatusFlags flags,
+        double freeSpaceShare);
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,

@@ -93,6 +93,9 @@ void TIndexTabletState::LoadState(
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
+    ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
+    ChannelFreeSpaceThreshold = config.GetChannelFreeSpaceThreshold() / 100.;
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
