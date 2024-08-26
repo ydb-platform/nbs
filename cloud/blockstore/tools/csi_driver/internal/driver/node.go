@@ -191,6 +191,20 @@ func (s *nodeService) NodePublishVolume(
 			codes.InvalidArgument,
 			"VolumeCapability is missing in NodePublishVolumeRequest")
 	}
+
+	accessMode := req.VolumeCapability.AccessMode
+	if accessMode == nil {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"AccessMode is missing in NodePublishVolumeRequest")
+	}
+
+	if accessMode.GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"ReadWriteMany acccess mode is not supported")
+	}
+
 	if req.VolumeContext == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
