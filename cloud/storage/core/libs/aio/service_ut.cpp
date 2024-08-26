@@ -92,7 +92,7 @@ Y_UNIT_TEST_SUITE(TAioTest)
         auto service1 = CreateAIOService(service1EventCount);
         auto promise1 = NThreading::NewPromise<void>();
         auto promise2 = NThreading::NewPromise<void>();
-        SystemThreadFactory()->Run([&] () {
+        SystemThreadFactory()->Run([=] () mutable {
             promise1.SetValue();
 
             const auto service2EventCount =
