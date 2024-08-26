@@ -15,10 +15,16 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	tracing_codes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// TODO:_ move to config
+const dataplaneSamplingProbability = 0.01
+const rediscoverSamplingProbability = 0.1
 
 type Session struct {
 	nbs                 *nbs_client.DiscoveryClient
@@ -216,6 +222,7 @@ func (s *Session) BlockSize() uint32 {
 	return s.volume.BlockSize
 }
 
+// TODO:_ BlocksCount
 func (s *Session) BlockCount() uint64 {
 	return s.volume.BlocksCount
 }
@@ -231,11 +238,29 @@ func (s *Session) IsDiskRegistryBasedDisk() bool {
 func (s *Session) Read(
 	ctx context.Context,
 	startIndex uint64,
-	blockCount uint32,
+	blocksCount uint32,
 	checkpointID string,
 	data []byte,
 	zero *bool,
 ) (err error) {
+
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"NBS.Session.Read",
+		dataplaneSamplingProbability,
+		trace.WithAttributes(
+			attribute.Int64("start_index", int64(startIndex)),
+			attribute.Int("blocks_count", int(blocksCount)),
+			attribute.String("checkpoint_id", checkpointID),
+		),
+	)
+	defer span.End()
+	defer func() {
+		// TODO:_ what if error is S_ALREADY? (not here, but in similar cases)
+		if err != nil {
+			span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+		}
+	}()
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -249,7 +274,7 @@ func (s *Session) Read(
 	blocks, err := s.session.ReadBlocks(
 		s.withClientID(ctx),
 		startIndex,
-		blockCount,
+		blocksCount,
 		checkpointID,
 	)
 	if err != nil {
@@ -261,7 +286,7 @@ func (s *Session) Read(
 		return nil
 	}
 
-	return nbs_client.JoinBlocks(s.BlockSize(), blockCount, blocks, data)
+	return nbs_client.JoinBlocks(s.BlockSize(), blocksCount, blocks, data)
 }
 
 func (s *Session) Write(
@@ -270,6 +295,24 @@ func (s *Session) Write(
 	data []byte,
 ) (err error) {
 
+	blocksCount := uint32(len(data)) / s.BlockSize()
+
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"NBS.Session.Write",
+		dataplaneSamplingProbability,
+		trace.WithAttributes(
+			attribute.Int64("start_index", int64(startIndex)), // TODO:_ integer types hell
+			attribute.Int("blocks_count", int(blocksCount)),
+		),
+	)
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+		}
+	}()
+
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -277,7 +320,6 @@ func (s *Session) Write(
 		return errors.NewRetriableErrorf("last rediscover was failed")
 	}
 
-	blocksCount := uint32(len(data)) / s.BlockSize()
 	logging.Debug(
 		ctx,
 		"WriteBlocks on disk %v, offset %v, blocks count %v",
@@ -299,8 +341,24 @@ func (s *Session) Write(
 func (s *Session) Zero(
 	ctx context.Context,
 	startIndex uint64,
-	blockCount uint32,
+	blocksCount uint32,
 ) (err error) {
+
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		"NBS.Session.Zero",
+		dataplaneSamplingProbability,
+		trace.WithAttributes(
+			attribute.Int64("start_index", int64(startIndex)),
+			attribute.Int("blocks_count", int(blocksCount)),
+		),
+	)
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+		}
+	}()
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -314,7 +372,7 @@ func (s *Session) Zero(
 	err = s.session.ZeroBlocks(
 		s.withClientID(ctx),
 		startIndex,
-		blockCount,
+		blocksCount,
 	)
 	return wrapError(err)
 }
@@ -351,19 +409,26 @@ func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error)
 	)
 	s.metrics = newSessionMetrics(s.metricsRegistry, host)
 
-	err = s.session.MountVolume(
-		s.withClientID(ctx),
-		s.diskID,
-		&s.mountOpts,
-	)
+	err = s.mountVolume(ctx)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, err
 	}
 
 	return s.session.Volume(), nil
 }
 
 func (s *Session) rediscover(ctx context.Context) {
+	ctx, span := tracing.StartSpanWithProbabilisticSampling(
+		ctx,
+		makeSpanNameSDK("NBS.Session.rediscover"),
+		rediscoverSamplingProbability,
+		trace.WithAttributes(
+			attribute.String("disk_id", s.diskID),
+			attribute.String("client_id", s.clientID),
+		),
+	)
+	defer span.End()
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -376,6 +441,7 @@ func (s *Session) rediscover(ctx context.Context) {
 	_, err := s.discoverAndMount(ctx)
 	if err != nil {
 		logging.Warn(ctx, "rediscover failed: %v", err)
+		span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
 		// Stop subsequent rediscovers.
 		s.closeImpl(ctx)
 		return
@@ -390,7 +456,7 @@ func (s *Session) closeSession(ctx context.Context) {
 		return
 	}
 
-	_ = s.session.UnmountVolume(s.withClientID(ctx))
+	_ = s.unmountVolume(ctx)
 	s.session.Close()
 	_ = s.client.Close()
 
@@ -427,4 +493,64 @@ func (s *Session) discoverInstance(
 	}
 
 	return client, host, err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *Session) mountVolume(ctx context.Context) (err error) {
+	ctx, span := tracing.StartSpan(
+		ctx,
+		makeSpanNameSDK("MountVolume"),
+		trace.WithAttributes(
+			attribute.String("disk_id", s.diskID),
+			attribute.String("client_id", s.clientID),
+			attribute.String(
+				"access_mode",
+				protos.EVolumeAccessMode_name[int32(s.mountOpts.AccessMode)],
+			),
+			attribute.String(
+				"mount_mode",
+				protos.EVolumeAccessMode_name[int32(s.mountOpts.MountMode)],
+			),
+		),
+	)
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+		}
+	}()
+
+	err = s.session.MountVolume(
+		s.withClientID(ctx),
+		s.diskID,
+		&s.mountOpts,
+	)
+	if err != nil {
+		err = wrapError(err) // TODO:_ put wrapped error into span (in other places)
+	}
+	return
+}
+
+func (s *Session) unmountVolume(ctx context.Context) (err error) {
+	ctx, span := tracing.StartSpan(
+		ctx,
+		makeSpanNameSDK("MountVolume"),
+		trace.WithAttributes( // TODO:_ should we write access mode and mount mode?
+			attribute.String("disk_id", s.diskID),
+			attribute.String("client_id", s.clientID),
+		),
+	)
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.SetStatus(tracing_codes.Error, fmt.Sprintf("%v", err))
+		}
+	}()
+
+	err = s.session.UnmountVolume(s.withClientID(ctx))
+	if err != nil {
+		err = wrapError(err) // TODO:_ should we wrap error for unmount?
+	}
+	return
 }
