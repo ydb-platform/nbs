@@ -11,6 +11,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -549,6 +552,18 @@ func lockAndExecuteTask(
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
 	runCtx = logging.WithCommonFields(runCtx)
+
+	runCtx, span := tracing.StartSpan(
+		runCtx,
+		fmt.Sprintf(taskInfo.TaskType),
+		trace.WithAttributes(
+			attribute.String("task_id", taskInfo.ID),
+			attribute.Int64("generation_id", int64(taskInfo.GenerationID)),
+			attribute.String("task_type", taskInfo.TaskType),
+			attribute.Bool("regular", taskState.Regular),
+		),
+	)
+	defer span.End()
 
 	execCtx := newExecutionContext(task, taskStorage, taskState)
 
