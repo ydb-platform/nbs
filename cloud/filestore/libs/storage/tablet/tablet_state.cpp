@@ -217,16 +217,16 @@ TNodeToSessionStat::EKind TNodeToSessionStat::GetKind(ui64 nodeId) const
     }
     const auto& nodeStat = Stat.at(nodeId);
     if (nodeStat.WriteSessions.size() > 1) {
-        return EKind::NodesWriteMultiSessionCount;
+        return EKind::NodesOpenForWritingByMultipleSessions;
     }
     if (nodeStat.WriteSessions.size() == 1) {
-        return EKind::NodesWriteSingleSessionCount;
+        return EKind::NodesOpenForWritingBySingleSession;
     }
     if (nodeStat.ReadSessions.size() > 1) {
-        return EKind::NodesReadMultiSessionCount;
+        return EKind::NodesOpenForReadingByMultipleSessions;
     }
     if (nodeStat.ReadSessions.size() == 1) {
-        return EKind::NodesReadSingleSessionCount;
+        return EKind::NodesOpenForReadingBySingleSession;
     }
     return EKind::None;
 }

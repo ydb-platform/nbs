@@ -62,10 +62,10 @@ public:
     enum class EKind
     {
         None,
-        NodesWriteSingleSessionCount,
-        NodesWriteMultiSessionCount,
-        NodesReadSingleSessionCount,
-        NodesReadMultiSessionCount,
+        NodesOpenForWritingBySingleSession,
+        NodesOpenForWritingByMultipleSessions,
+        NodesOpenForReadingBySingleSession,
+        NodesOpenForReadingByMultipleSessions,
     };
 
     [[nodiscard]] EKind GetKind(ui64 nodeId) const;
@@ -319,8 +319,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void ResetNodeCounters(const TNodeToSessionStat::EKind field);
-    void UpdateNodeCounters(const TNodeToSessionStat::EKind field);
+    void DecrementNodeCounters(const TNodeToSessionStat::EKind field);
+    void IncrementNodeCounters(const TNodeToSessionStat::EKind field);
 
     //
     // Throttling

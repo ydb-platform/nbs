@@ -137,10 +137,10 @@ private:
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
-        std::atomic<i64> NodesWriteSingleSessionCount{0};
-        std::atomic<i64> NodesWriteMultiSessionCount{0};
-        std::atomic<i64> NodesReadSingleSessionCount{0};
-        std::atomic<i64> NodesReadMultiSessionCount{0};
+        std::atomic<i64> NodesOpenForWritingBySingleSession{0};
+        std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
+        std::atomic<i64> NodesOpenForReadingBySingleSession{0};
+        std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =

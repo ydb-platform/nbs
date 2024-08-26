@@ -538,59 +538,59 @@ TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
     return nullptr;
 }
 
-void TIndexTabletState::ResetNodeCounters(
+void TIndexTabletState::DecrementNodeCounters(
     const TNodeToSessionStat::EKind nodeKind)
 {
     switch (nodeKind) {
         case TNodeToSessionStat::EKind::None:
             break;
-        case TNodeToSessionStat::EKind::NodesWriteSingleSessionCount:
-            FileSystemStats.SetNodesWriteSingleSessionCount(SafeDecrement(
-                FileSystemStats.GetNodesWriteSingleSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
+            FileSystemStats.SetNodesOpenForWritingBySingleSession(SafeDecrement(
+                FileSystemStats.GetNodesOpenForWritingBySingleSession(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesWriteMultiSessionCount:
-            FileSystemStats.SetNodesWriteMultiSessionCount(SafeDecrement(
-                FileSystemStats.GetNodesWriteMultiSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
+            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(SafeDecrement(
+                FileSystemStats.GetNodesOpenForWritingByMultipleSessions(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesReadSingleSessionCount:
-            FileSystemStats.SetNodesReadSingleSessionCount(SafeDecrement(
-                FileSystemStats.GetNodesReadSingleSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
+            FileSystemStats.SetNodesOpenForReadingBySingleSession(SafeDecrement(
+                FileSystemStats.GetNodesOpenForReadingBySingleSession(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesReadMultiSessionCount:
-            FileSystemStats.SetNodesReadMultiSessionCount(SafeDecrement(
-                FileSystemStats.GetNodesReadMultiSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
+            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(SafeDecrement(
+                FileSystemStats.GetNodesOpenForReadingByMultipleSessions(),
                 1));
             break;
     }
 }
 
-void TIndexTabletState::UpdateNodeCounters(
+void TIndexTabletState::IncrementNodeCounters(
     const TNodeToSessionStat::EKind nodeKind)
 {
     switch (nodeKind) {
         case TNodeToSessionStat::EKind::None:
             break;
-        case TNodeToSessionStat::EKind::NodesWriteSingleSessionCount:
-            FileSystemStats.SetNodesWriteSingleSessionCount(SafeIncrement(
-                FileSystemStats.GetNodesWriteSingleSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
+            FileSystemStats.SetNodesOpenForWritingBySingleSession(SafeIncrement(
+                FileSystemStats.GetNodesOpenForWritingBySingleSession(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesWriteMultiSessionCount:
-            FileSystemStats.SetNodesWriteMultiSessionCount(SafeIncrement(
-                FileSystemStats.GetNodesWriteMultiSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
+            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(SafeIncrement(
+                FileSystemStats.GetNodesOpenForWritingByMultipleSessions(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesReadSingleSessionCount:
-            FileSystemStats.SetNodesReadSingleSessionCount(SafeIncrement(
-                FileSystemStats.GetNodesReadSingleSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
+            FileSystemStats.SetNodesOpenForReadingBySingleSession(SafeIncrement(
+                FileSystemStats.GetNodesOpenForReadingBySingleSession(),
                 1));
             break;
-        case TNodeToSessionStat::EKind::NodesReadMultiSessionCount:
-            FileSystemStats.SetNodesReadMultiSessionCount(SafeIncrement(
-                FileSystemStats.GetNodesReadMultiSessionCount(),
+        case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
+            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(SafeIncrement(
+                FileSystemStats.GetNodesOpenForReadingByMultipleSessions(),
                 1));
             break;
     }
@@ -617,12 +617,12 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
     auto* const handle = CreateHandle(session, proto);
 
-    ResetNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
+    DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
     if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
-        UpdateNodeCounters(
+        IncrementNodeCounters(
             Impl->NodeToSessionStat.AddWrite(nodeId, session->GetSessionId()));
     } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
-        UpdateNodeCounters(
+        IncrementNodeCounters(
             Impl->NodeToSessionStat.AddRead(nodeId, session->GetSessionId()));
     }
 
@@ -646,15 +646,15 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     const auto nodeId = handle->GetNodeId();
-    ResetNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
+    DecrementNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId));
     if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-        UpdateNodeCounters(Impl->NodeToSessionStat.RemoveWrite(
+        IncrementNodeCounters(Impl->NodeToSessionStat.RemoveWrite(
             nodeId,
             handle->GetSessionId()));
     } else if (
         HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
     {
-        UpdateNodeCounters(
+        IncrementNodeCounters(
             Impl->NodeToSessionStat.RemoveRead(nodeId, handle->GetSessionId()));
     }
 

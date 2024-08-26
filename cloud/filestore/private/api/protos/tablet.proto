@@ -121,10 +121,10 @@ message TStorageStats
     uint64 LastCollectCommitId = 112;
     uint64 DeletedFreshBytesCount = 113;
 
-    uint64 NodesWriteSingleSessionCount = 114;
-    uint64 NodesWriteMultiSessionCount  = 115; 
-    uint64 NodesReadSingleSessionCount  = 116;
-    uint64 NodesReadMultiSessionCount   = 117;
+    uint64 NodesOpenForWritingBySingleSession = 114;
+    uint64 NodesOpenForWritingByMultipleSessions = 115; 
+    uint64 NodesOpenForReadingBySingleSession = 116;
+    uint64 NodesOpenForReadingByMultipleSessions = 117;
 
     // channel stats
     uint64 TabletChannelCount = 1000;
