@@ -29,7 +29,7 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     SrcActorId = srcActorId;
     DstActorId = dstActorId;
     TimeoutCalculator = std::move(timeoutCalculator);
-    Y_DEBUG_ABORT_UNLESS(TimeoutCalculator);
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
     PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
@@ -337,7 +337,7 @@ TDuration
 TNonreplicatedPartitionMigrationCommonActor::CalculateMigrationTimeout(
     TBlockRange64 range) const
 {
-    Y_DEBUG_ABORT_UNLESS(TimeoutCalculator);
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
     return TimeoutCalculator->CalculateTimeout(range);
 }
 
@@ -348,7 +348,7 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
         return;
     }
 
-    Y_DEBUG_ABORT_UNLESS(TimeoutCalculator);
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
     TimeoutCalculator->RegisterTrafficSource(ctx);
     ctx.Schedule(
         RegisterBackgroundTrafficDuration,
