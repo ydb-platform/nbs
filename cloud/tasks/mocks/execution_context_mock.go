@@ -66,6 +66,16 @@ func (c *ExecutionContextMock) FinishWithCallback(
 	return args.Error(0)
 }
 
+func (c *ExecutionContextMock) UpdateStateWithCallback(
+	ctx context.Context,
+	transition func(context.Context) error,
+	callback func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, transition, callback)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewExecutionContextMock() *ExecutionContextMock {

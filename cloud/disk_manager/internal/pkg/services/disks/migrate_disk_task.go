@@ -455,16 +455,26 @@ func (t *migrateDiskTask) finishMigration(
 	}
 
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
-		err = t.poolStorage.OverlayDiskRebased(
+		err = execCtx.UpdateStateWithCallback(
 			ctx,
-			storage.RebaseInfo{
-				OverlayDisk:      t.request.Disk,
-				BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
-				TargetZoneID:     t.request.DstZoneId,
-				TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
-				SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+			func(context.Context) (err error) {
+				t.state.RelocateInfo.TargetBaseDiskID = ""
+				return nil
+			},
+			func(context.Context, *persistence.Transaction) (err error) {
+				return t.poolStorage.OverlayDiskRebased(
+					ctx,
+					storage.RebaseInfo{
+						OverlayDisk:      t.request.Disk,
+						BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+						TargetZoneID:     t.request.DstZoneId,
+						TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+					},
+				)
 			},
 		)
+
 		if err != nil {
 			return err
 		}
