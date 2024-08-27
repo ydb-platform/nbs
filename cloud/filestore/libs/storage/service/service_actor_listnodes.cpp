@@ -47,7 +47,6 @@ public:
     TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled,
@@ -89,14 +88,13 @@ private:
 TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled,
         bool getNodeAttrBatchEnabled)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
-    , LogTag(std::move(logTag))
+    , LogTag(ListNodesRequest.GetFileSystemId())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
@@ -510,7 +508,6 @@ void TStorageServiceActor::HandleListNodes(
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
         multiTabletForwardingEnabled,
