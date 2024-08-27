@@ -493,6 +493,18 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     }
 
     if (++CheckedNodeCount == MissingNodeIndices.size()) {
+        // If all response nodes are missing, we can't respond with an ok
+        // status because the client will think that it's the end of the
+        // directory stream (recall that directory listing is done in windows
+        // specified by an offset + size pair which is converted to a "Cookie"
+        // + size pair by our vfs_fuse layer)
+        // If all missing nodes are permanently lost, retrying this ListNodes
+        // request won't lead to a different result => E_IO
+        // If some of the missing nodes are missing because they were supposedly
+        // unlinked after the ListNodes call to the leader and before the
+        // GetNodeAttr[Batch] calls to the followers, a retry of such a request
+        // will cause a different set of nodes to be read from the leader =>
+        // E_REJECTED.
         if (MissingNodeIndices.size() == Response.NodesSize()) {
             NProto::TError error;
             if (MissingNodeIndices.size() == LostNodeCount) {
@@ -509,6 +521,10 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
             return;
         }
 
+        // Here we need to remove the Names and Nodes corresponding to the
+        // missing nodes from the response. Plain Erase/EraseIf don't seem to
+        // be applicable since we need to do this operation over 2 repeated
+        // fields - not over a single stl-like container.
         auto& nodes = *Response.MutableNodes();
         auto& names = *Response.MutableNames();
 
@@ -542,6 +558,12 @@ void TListNodesActor::CheckResponseAndReply(const TActorContext& ctx)
         return;
     }
 
+    // Some of the nodes are missing - i.e. they are present in the leader's
+    // ListNodesResponse but absent from the corresponding followers. We need
+    // to check whether they are still present in leader (they might've been
+    // deleted after we got the ListNodesResponse from the leader). If they are,
+    // it's an error which we should report (log + critical events). And in some
+    // cases it affects the error code that we return to the client.
     CheckNodeAttrs(ctx);
 }
 

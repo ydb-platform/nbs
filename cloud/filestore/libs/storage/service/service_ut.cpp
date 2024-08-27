@@ -3997,9 +3997,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             names.size() / 2,
             listNodesResponse.NamesSize());
-        const ui32 idxToUnlink = 13;
-        const auto shard1NodeName = listNodesResponse.GetNames(idxToUnlink);
-        const ui64 unlinkedId = listNodesResponse.GetNodes(idxToUnlink).GetId();
+        const ui32 idxToUnlink1 = 13;
+        const ui32 idxToUnlink2 = 17;
+        const auto shard1NodeName1 = listNodesResponse.GetNames(idxToUnlink1);
+        const ui64 unlinkedId1 = listNodesResponse.GetNodes(idxToUnlink1).GetId();
+        const auto shard1NodeName2 = listNodesResponse.GetNames(idxToUnlink2);
+        const ui64 unlinkedId2 = listNodesResponse.GetNodes(idxToUnlink2).GetId();
 
         listNodesResponse = service.ListNodes(
             headers,
@@ -4014,18 +4017,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 listNodesResponse.GetNodes(i).GetId());
         }
 
-        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName1);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
 
         listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
 
+        for (auto id: {unlinkedId1, unlinkedId2}) {
+            auto idx = Find(ids, id) - ids.begin();
+            ids.erase(ids.begin() + idx);
+            names.erase(names.begin() + idx);
+        }
+
         UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
         for (ui32 i = 0; i < names.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
             UNIT_ASSERT_VALUES_EQUAL(
-                ids[i] == unlinkedId ? InvalidNodeId : ids[i],
+                ids[i],
                 listNodesResponse.GetNodes(i).GetId());
         }
     }
