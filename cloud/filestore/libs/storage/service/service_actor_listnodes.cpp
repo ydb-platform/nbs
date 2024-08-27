@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <util/string/join.h>
@@ -525,25 +526,8 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
         // missing nodes from the response. Plain Erase/EraseIf don't seem to
         // be applicable since we need to do this operation over 2 repeated
         // fields - not over a single stl-like container.
-        auto& nodes = *Response.MutableNodes();
-        auto& names = *Response.MutableNames();
-
-        ui32 j = 0;
-        for (ui32 i = MissingNodeIndices[0]; i < Response.NodesSize(); ++i) {
-            if (j < MissingNodeIndices.size() && i == MissingNodeIndices[j]) {
-                ++j;
-                continue;
-            }
-
-            nodes[i - j] = std::move(nodes[i]);
-            names[i - j] = std::move(names[i]);
-        }
-
-        while (j) {
-            nodes.RemoveLast();
-            names.RemoveLast();
-            --j;
-        }
+        RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
+        RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
 
         ReplyAndDie(ctx);
     }
