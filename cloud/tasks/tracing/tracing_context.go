@@ -18,7 +18,7 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Extracts traceparent and tracestate headers from grpc metadata.
+// Extracts traceparent and tracestate headers from incoming grpc metadata.
 func ExtractTracingContext(ctx context.Context) context.Context {
 	tracingContext := headers.GetFromIncomingContext(ctx, []string{
 		traceparentHeaderKey,
@@ -35,7 +35,10 @@ func ExtractTracingContext(ctx context.Context) context.Context {
 	return prop.Extract(ctx, propagation.MapCarrier(tracingContext))
 }
 
-// Injects (appends) traceparent and tracestate headers to grpc metadata
+// Injects traceparent and tracestate headers to grpc metadata
+// (both incoming and outgoing).
+// If these fields are already present in grpc metadata,
+// their values will be overwritten.
 func InjectTracingContext(ctx context.Context) context.Context {
 	mapCarrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, mapCarrier)
@@ -44,16 +47,15 @@ func InjectTracingContext(ctx context.Context) context.Context {
 
 	traceparent, ok := mapCarrier[traceparentHeaderKey]
 	if !ok {
+		logging.Debug(ctx, "No traceparent in current tracing context")
 		return ctx
 	}
-	tracingContextHeaders[traceparentHeaderKey] = traceparent // TODO:_ or just pass mapCarrier to headers.Append?
+	tracingContextHeaders[traceparentHeaderKey] = traceparent
 
 	tracestate, ok := mapCarrier[tracestateHeaderKey]
 	if ok {
 		tracingContextHeaders[tracestateHeaderKey] = tracestate
 	}
 
-	return headers.Append(ctx, tracingContextHeaders)
+	return headers.Replace(ctx, tracingContextHeaders)
 }
-
-// TODO:_ add change for regular tasks

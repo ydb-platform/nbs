@@ -66,6 +66,8 @@ func (s *scheduler) ScheduleZonalTask(
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "scheduling task %v", taskType)
 
+	ctx = tracing.InjectTracingContext(ctx)
+
 	marshalledRequest, err := proto.Marshal(request)
 	if err != nil {
 		logging.Warn(
@@ -154,8 +156,6 @@ func (s *scheduler) ScheduleRegularTasks(
 			ctx = headers.SetIncomingRequestID(ctx, requestID.String())
 			ctx = tracing.InjectTracingContext(ctx)
 			metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
-			// TODO:_ check that all is ok with x-request-id
-			// TODO:_ can we write some tests for this?
 
 			schedule := tasks_storage.TaskSchedule{
 				ScheduleInterval: schedule.ScheduleInterval,
