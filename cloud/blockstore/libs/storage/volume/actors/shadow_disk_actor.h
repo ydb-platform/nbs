@@ -137,7 +137,8 @@ public:
 private:
     enum EShadowDiskWakeupReason
     {
-        REACQUIRE = TNonreplicatedPartitionMigrationCommonActor::REASON_COUNT,
+        SDWR_REACQUIRE =
+            TNonreplicatedPartitionMigrationCommonActor::WR_REASON_COUNT,
     };
 
     void AcquireShadowDisk(

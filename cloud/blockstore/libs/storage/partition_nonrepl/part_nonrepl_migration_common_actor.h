@@ -130,11 +130,12 @@ private:
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
-    // enum which starts with `REASON_COUNT` value.
-    enum EWakeupReason {
-        REGISTER_TRAFFIC_SOURCE = 1,
+    // enum which starts with `WR_REASON_COUNT` value.
+    enum EWakeupReason
+    {
+        WR_REGISTER_TRAFFIC_SOURCE = 1,
 
-        REASON_COUNT
+        WR_REASON_COUNT
     };
 
     // PoisonPill

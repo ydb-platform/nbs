@@ -108,7 +108,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWakeup(
 {
     const auto* msg = ev->Get();
     switch (msg->Tag) {
-        case REGISTER_TRAFFIC_SOURCE:
+        case WR_REGISTER_TRAFFIC_SOURCE:
             DoRegisterTrafficSource(ctx);
             break;
         default:

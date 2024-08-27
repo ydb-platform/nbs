@@ -892,7 +892,7 @@ void TShadowDiskActor::SchedulePeriodicalReAcquire(const TActorContext& ctx)
 {
     ctx.Schedule(
         Config->GetClientRemountPeriod(),
-        new TEvents::TEvWakeup(EShadowDiskWakeupReason::REACQUIRE));
+        new TEvents::TEvWakeup(EShadowDiskWakeupReason::SDWR_REACQUIRE));
 }
 
 void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
@@ -1129,9 +1129,8 @@ bool TShadowDiskActor::HandleWakeup(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto reason = static_cast<EShadowDiskWakeupReason>(ev->Get()->Tag);
-    switch (reason) {
-        case EShadowDiskWakeupReason::REACQUIRE:
+    switch (ev->Get()->Tag) {
+        case EShadowDiskWakeupReason::SDWR_REACQUIRE:
             AcquireShadowDisk(ctx, EAcquireReason::PeriodicalReAcquire);
             SchedulePeriodicalReAcquire(ctx);
             return true;

@@ -319,8 +319,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::
     NotifyMigrationFinishedIfNeeded(const TActorContext& ctx)
 {
-    if (!IsMigrationFinished())
-    {
+    if (!IsMigrationFinished()) {
         return;
     }
 
@@ -352,7 +351,7 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
     TimeoutCalculator->RegisterTrafficSource(ctx);
     ctx.Schedule(
         RegisterBackgroundTrafficDuration,
-        new TEvents::TEvWakeup(REGISTER_TRAFFIC_SOURCE));
+        new TEvents::TEvWakeup(WR_REGISTER_TRAFFIC_SOURCE));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
