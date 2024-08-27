@@ -102,7 +102,7 @@ func (p *endpointPicker) markAsHealthy(ctx context.Context, endpoint string) {
 		p.healthyEndpoints = append(p.healthyEndpoints, endpoint)
 		logging.Info(ctx, "filestore endpoint %q marked as unhealthy", endpoint)
 
-		p.markedAsHealthy.Signal()
+		p.markedAsHealthy.Broadcast()
 	}
 }
 
