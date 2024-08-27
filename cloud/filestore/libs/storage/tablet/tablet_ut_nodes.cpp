@@ -1201,7 +1201,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
-    Y_UNIT_TEST(StatOpenedFiles)
+    Y_UNIT_TEST(ShouldStatOpenedFiles)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetNodeIndexCacheMaxNodes(32);
