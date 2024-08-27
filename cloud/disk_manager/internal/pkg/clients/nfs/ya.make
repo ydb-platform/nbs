@@ -15,4 +15,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
+    tests
 )
