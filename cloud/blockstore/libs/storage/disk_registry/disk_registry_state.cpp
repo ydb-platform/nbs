@@ -5033,7 +5033,10 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     {
         timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
         if (!timeout) {
-            result.SetCode(E_INVALID_STATE);
+            // If the timer is expired and an agent is still unavailable, then
+            // the agent is most likely in the idle state and won't register in
+            // the DR. Return "E_NOT_FOUND" since infra passes through it.
+            result.SetCode(E_NOT_FOUND);
         }
     }
 

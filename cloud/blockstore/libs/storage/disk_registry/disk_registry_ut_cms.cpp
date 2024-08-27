@@ -1159,7 +1159,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = AddHost("agent-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
