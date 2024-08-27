@@ -72,5 +72,5 @@ Go to http://localhost:8766/blockstore/service and check a particular volume (eg
 
 If program is running on a virtual machine, you first need to set up port forwarding: 
 ```bash
-ssh -L {port}:localhost:{port} {VM ip}
+ssh -L {local_port}:localhost:{remote_port} {vm_ip}
 ```
