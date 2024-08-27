@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
@@ -43,10 +44,6 @@ public:
     virtual bool OnMessage(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
-
-    // Calculates the time during which a 4MB block should migrate.
-    [[nodiscard]] virtual TDuration
-    CalculateMigrationTimeout(TBlockRange64 range) = 0;
 
     // Notifies that a sufficiently large block of data has been migrated. The
     // size is determined by the settings.
@@ -96,6 +93,7 @@ private:
 
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
+    std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationEnabled = false;
@@ -131,6 +129,15 @@ private:
     TDuration CpuUsage;
 
 protected:
+    // Derived class that wishes to handle wakeup messages should make its own
+    // enum which starts with `WR_REASON_COUNT` value.
+    enum EWakeupReason
+    {
+        WR_REGISTER_TRAFFIC_SOURCE = 1,
+
+        WR_REASON_COUNT
+    };
+
     // PoisonPill
     TPoisonPillHelper PoisonPillHelper;
 
@@ -156,7 +163,8 @@ public:
     void InitWork(
         const NActors::TActorContext& ctx,
         NActors::TActorId srcActorId,
-        NActors::TActorId dstActorId);
+        NActors::TActorId dstActorId,
+        std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator);
 
     // Called from the inheritor to start migration.
     void StartWork(const NActors::TActorContext& ctx);
@@ -180,6 +188,7 @@ protected:
 
 private:
     bool IsMigrationAllowed() const;
+    bool IsMigrationFinished() const;
     bool IsIoDepthLimitReached() const;
     bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
 
@@ -198,6 +207,10 @@ private:
         const NActors::TActorContext& ctx,
         TBlockRange64 migratedRange);
     void NotifyMigrationFinishedIfNeeded(const NActors::TActorContext& ctx);
+
+    // Calculates the time during which a 4MB block should migrate.
+    TDuration CalculateMigrationTimeout(TBlockRange64 range) const;
+    void DoRegisterTrafficSource(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -225,6 +238,10 @@ private:
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeup(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

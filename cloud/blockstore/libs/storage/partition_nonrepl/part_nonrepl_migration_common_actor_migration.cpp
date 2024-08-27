@@ -23,10 +23,13 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
     NActors::TActorId srcActorId,
-    NActors::TActorId dstActorId)
+    NActors::TActorId dstActorId,
+    std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
 {
     SrcActorId = srcActorId;
     DstActorId = dstActorId;
+    TimeoutCalculator = std::move(timeoutCalculator);
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
     PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
@@ -42,6 +45,7 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
     const NActors::TActorContext& ctx)
 {
     MigrationEnabled = true;
+    DoRegisterTrafficSource(ctx);
     ScheduleRangeMigration(ctx);
 }
 
@@ -99,6 +103,12 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 {
     return SrcActorId && DstActorId && MigrationEnabled;
+}
+
+bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const
+{
+    return !ProcessingBlocks.IsProcessing() && MigrationsInProgress.empty() &&
+           DeferredMigrations.empty();
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
@@ -309,9 +319,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::
     NotifyMigrationFinishedIfNeeded(const TActorContext& ctx)
 {
-    if (ProcessingBlocks.IsProcessing() || !MigrationsInProgress.empty() ||
-        !DeferredMigrations.empty())
-    {
+    if (!IsMigrationFinished()) {
         return;
     }
 
@@ -322,6 +330,28 @@ TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
     TBlockRange64 range) const
 {
     return ChangedRangesMap.GetChangedBlocks(range);
+}
+
+TDuration
+TNonreplicatedPartitionMigrationCommonActor::CalculateMigrationTimeout(
+    TBlockRange64 range) const
+{
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
+    return TimeoutCalculator->CalculateTimeout(range);
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
+    const TActorContext& ctx)
+{
+    if (!IsMigrationAllowed() || IsMigrationFinished()) {
+        return;
+    }
+
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
+    TimeoutCalculator->RegisterTrafficSource(ctx);
+    ctx.Schedule(
+        RegisterBackgroundTrafficDuration,
+        new TEvents::TEvWakeup(WR_REGISTER_TRAFFIC_SOURCE));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -338,9 +368,7 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         return;
     }
 
-    auto delayBetweenMigrations =
-        MigrationOwner->CalculateMigrationTimeout(*nextRange);
-
+    const auto delayBetweenMigrations = CalculateMigrationTimeout(*nextRange);
     const auto deadline = LastRangeMigrationStartTs + delayBetweenMigrations;
 
     if (ctx.Now() >= deadline) {
