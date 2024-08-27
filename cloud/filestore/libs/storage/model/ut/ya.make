@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 SRCS(
     block_buffer_ut.cpp
     range_ut.cpp
+    utils_ut.cpp
 )
 
 END()

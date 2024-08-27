@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <util/string/join.h>
@@ -19,6 +20,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const auto NoEnt = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TListNodesActor final: public TActorBootstrapped<TListNodesActor>
 {
 private:
@@ -29,9 +34,17 @@ private:
     // Filesystem-specific params
     const TString LogTag;
 
+    // Control flags
+    const bool MultiTabletForwardingEnabled;
+    const bool GetNodeAttrBatchEnabled;
+
     // Response data
     NProto::TListNodesResponse Response;
     ui32 GetNodeAttrResponses = 0;
+
+    TVector<ui32> MissingNodeIndices;
+    ui32 LostNodeCount = 0;
+    ui32 CheckedNodeCount = 0;
 
     TVector<TVector<ui32>> Cookie2NodeIndices;
     TVector<TString> Cookie2FollowerId;
@@ -40,22 +53,20 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
 
-    const bool MultiTabletForwardingEnabled;
-    const bool GetNodeAttrBatchEnabled;
-
 public:
     TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled);
+        bool getNodeAttrBatchEnabled,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateCheck);
 
     void ListNodes(const TActorContext& ctx);
 
@@ -75,10 +86,17 @@ private:
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void CheckNodeAttrs(const TActorContext& ctx);
+
+    void HandleGetNodeAttrResponseCheck(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
+    void CheckResponseAndReply(const TActorContext& ctx);
     void ReplyAndDie(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, NProto::TError error);
 };
@@ -88,17 +106,17 @@ private:
 TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
-        IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled)
+        bool getNodeAttrBatchEnabled,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
-    , RequestStats(std::move(requestStats))
-    , ProfileLog(std::move(profileLog))
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
+    , RequestStats(std::move(requestStats))
+    , ProfileLog(std::move(profileLog))
 {
 }
 
@@ -272,23 +290,21 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     TABLET_VERIFY(ev->Cookie < Cookie2FollowerId.size());
     const auto& followerId = Cookie2FollowerId[ev->Cookie];
 
-    const auto noent = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
     if (HasError(msg->GetError())) {
-        if (msg->GetError().GetCode() == noent) {
-            ReportNodeNotFoundInFollower();
-
+        if (msg->GetError().GetCode() == NoEnt) {
             TStringBuilder names;
             for (auto i: nodeIndices) {
                 if (names) {
                     names << ", ";
                 }
                 names << Response.GetNames(i).Quote();
+                MissingNodeIndices.push_back(i);
             }
 
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Nodes not found in follower: %s, %s, %s",
+                "Nodes not found in follower (invalid parent?): %s, %s, %s",
                 followerId.c_str(),
                 FormatError(msg->GetError()).Quote().c_str(),
                 names.c_str());
@@ -331,17 +347,14 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             continue;
         }
 
-        if (responseIter->GetError().GetCode() == noent) {
-            // TODO(#1350): mb this shouldn't be a critical event - list ->
-            // unlink -> get attr race may lead to such cases
-            // nodes and names for which getnodeattr returns an error should be
-            // removed from the response
-            const auto message = TStringBuilder() << "Node not found in follower: "
+        if (responseIter->GetError().GetCode() == NoEnt) {
+            MissingNodeIndices.push_back(i);
+
+            LOG_WARN(ctx, TFileStoreComponents::SERVICE, TStringBuilder()
+                << "Node not found in follower: "
                 << Response.GetNames(i).Quote() << ", FollowerId: "
                 << followerId << ", Error: "
-                << FormatError(responseIter->GetError()).Quote();
-            ReportNodeNotFoundInFollower(message);
-            LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
+                << FormatError(responseIter->GetError()).Quote());
             ++responseIter;
             continue;
         }
@@ -366,7 +379,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
 
     GetNodeAttrResponses += nodeIndices.size();
     if (GetNodeAttrResponses == Response.NodesSize()) {
-        ReplyAndDie(ctx);
+        CheckResponseAndReply(ctx);
         return;
     }
 }
@@ -377,12 +390,17 @@ void TListNodesActor::HandleGetNodeAttrResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        const auto noent = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
-        if (msg->GetError().GetCode() == noent) {
-            ReportNodeNotFoundInFollower();
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "GetNodeAttrResponse from follower: %s",
+        msg->Record.GetNode().DebugString().Quote().c_str());
 
-            LOG_ERROR(
+    if (HasError(msg->GetError())) {
+        if (msg->GetError().GetCode() == NoEnt) {
+            MissingNodeIndices.push_back(ev->Cookie);
+
+            LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "Node not found in follower: %s, %s",
@@ -395,26 +413,142 @@ void TListNodesActor::HandleGetNodeAttrResponse(
                 "Failed to GetNodeAttr from follower: %s",
                 FormatError(msg->GetError()).Quote().c_str());
 
-            HandleError(ctx, *msg->Record.MutableError());
+            HandleError(ctx, std::move(*msg->Record.MutableError()));
             return;
         }
+    } else {
+        TABLET_VERIFY(ev->Cookie < Response.NodesSize());
+        auto* node = Response.MutableNodes(ev->Cookie);
+        *node = std::move(*msg->Record.MutableNode());
     }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "GetNodeAttrResponse from follower: %s",
-        msg->Record.GetNode().DebugString().Quote().c_str());
+    if (++GetNodeAttrResponses == Response.NodesSize()) {
+        CheckResponseAndReply(ctx);
+        return;
+    }
+}
 
-    TABLET_VERIFY(ev->Cookie < Response.NodesSize());
-    auto* node = Response.MutableNodes(ev->Cookie);
-    *node = std::move(*msg->Record.MutableNode());
-    ++GetNodeAttrResponses;
+////////////////////////////////////////////////////////////////////////////////
 
-    if (GetNodeAttrResponses == Response.NodesSize()) {
+void TListNodesActor::CheckNodeAttrs(const TActorContext& ctx)
+{
+    for (ui64 cookie: MissingNodeIndices) {
+        const auto& name = Response.GetNames(cookie);
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Checking NodeAttr in leader for %lu, %s",
+            LogTag.c_str(),
+            ListNodesRequest.GetNodeId(),
+            name.Quote().c_str());
+
+        auto request =
+            std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+        request->Record.MutableHeaders()->CopyFrom(
+            ListNodesRequest.GetHeaders());
+        request->Record.SetFileSystemId(ListNodesRequest.GetFileSystemId());
+        request->Record.SetNodeId(ListNodesRequest.GetNodeId());
+        request->Record.SetName(name);
+
+        // forward request through tablet proxy
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0, // flags
+            cookie);
+    }
+
+    Become(&TThis::StateCheck);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TListNodesActor::HandleGetNodeAttrResponseCheck(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const auto& node = Response.GetNodes(ev->Cookie);
+    const auto& name = Response.GetNames(ev->Cookie);
+
+    bool exists = true;
+    if (HasError(msg->GetError())) {
+        if (msg->GetError().GetCode() == NoEnt) {
+            exists = false;
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node check in leader failed with error: %s, %s",
+                FormatError(msg->GetError()).Quote().c_str(),
+                name.Quote().c_str());
+        }
+    } else {
+        const auto& attr = msg->Record.GetNode();
+        exists = attr.GetFollowerNodeName() == node.GetFollowerNodeName();
+    }
+
+    if (exists) {
+        ++LostNodeCount;
+        ReportNodeNotFoundInFollower();
+    }
+
+    if (++CheckedNodeCount == MissingNodeIndices.size()) {
+        // If all response nodes are missing, we can't respond with an ok
+        // status because the client will think that it's the end of the
+        // directory stream (recall that directory listing is done in windows
+        // specified by an offset + size pair which is converted to a "Cookie"
+        // + size pair by our vfs_fuse layer)
+        // If all missing nodes are permanently lost, retrying this ListNodes
+        // request won't lead to a different result => E_IO
+        // If some of the missing nodes are missing because they were supposedly
+        // unlinked after the ListNodes call to the leader and before the
+        // GetNodeAttr[Batch] calls to the followers, a retry of such a request
+        // will cause a different set of nodes to be read from the leader =>
+        // E_REJECTED.
+        if (MissingNodeIndices.size() == Response.NodesSize()) {
+            NProto::TError error;
+            if (MissingNodeIndices.size() == LostNodeCount) {
+                error = MakeError(E_IO, TStringBuilder()
+                    << "lost some nodes in followers for request: "
+                    << ListNodesRequest.ShortDebugString().Quote());
+            } else {
+                error = MakeError(E_REJECTED, TStringBuilder()
+                    << "concurrent directory modifications for request: "
+                    << ListNodesRequest.ShortDebugString().Quote());
+            }
+
+            HandleError(ctx, std::move(error));
+            return;
+        }
+
+        // Here we need to remove the Names and Nodes corresponding to the
+        // missing nodes from the response. Plain Erase/EraseIf don't seem to
+        // be applicable since we need to do this operation over 2 repeated
+        // fields - not over a single stl-like container.
+        RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
+        RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
+
+        ReplyAndDie(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TListNodesActor::CheckResponseAndReply(const TActorContext& ctx)
+{
+    if (MissingNodeIndices.empty()) {
         ReplyAndDie(ctx);
         return;
     }
+
+    // Some of the nodes are missing - i.e. they are present in the leader's
+    // ListNodesResponse but absent from the corresponding followers. We need
+    // to check whether they are still present in leader (they might've been
+    // deleted after we got the ListNodesResponse from the leader). If they are,
+    // it's an error which we should report (log + critical events). And in some
+    // cases it affects the error code that we return to the client.
+    CheckNodeAttrs(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -471,6 +605,21 @@ STFUNC(TListNodesActor::StateWork)
     }
 }
 
+STFUNC(TListNodesActor::StateCheck)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvService::TEvGetNodeAttrResponse,
+            HandleGetNodeAttrResponseCheck);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            break;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,10 +657,10 @@ void TStorageServiceActor::HandleListNodes(
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        session->RequestStats,
-        ProfileLog,
         multiTabletForwardingEnabled,
-        StorageConfig->GetGetNodeAttrBatchEnabled());
+        StorageConfig->GetGetNodeAttrBatchEnabled(),
+        session->RequestStats,
+        ProfileLog);
 
     NCloud::Register(ctx, std::move(actor));
 }
