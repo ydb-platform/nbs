@@ -114,7 +114,7 @@ void TGetNodeAttrActor::GetNodeAttrInFollower(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Executing GetNodeAttr in follower for %lu, %s, %s",
+        "[%s] Executing GetNodeAttr in follower for %lu, %s",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
         GetNodeAttrRequest.GetName().Quote().c_str());
