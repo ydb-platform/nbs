@@ -183,10 +183,10 @@ func (c *executionContext) UpdateStateWithCallback(
 	return c.updateStateWithCallback(
 		ctx,
 		func(taskState storage.TaskState) (storage.TaskState, error) {
-			// err = transition(ctx)
-			// if err != nil {
-			// 	return storage.TaskState{}, err
-			// }
+			err = transition(ctx)
+			if err != nil {
+				return storage.TaskState{}, err
+			}
 
 			state, err := c.task.Save()
 			if err != nil {

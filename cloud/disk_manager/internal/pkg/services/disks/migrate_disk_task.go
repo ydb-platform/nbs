@@ -454,6 +454,8 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
+	targetBaseDiskID := t.state.RelocateInfo.TargetBaseDiskID
+
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
 		err = execCtx.UpdateStateWithCallback(
 			ctx,
@@ -468,7 +470,7 @@ func (t *migrateDiskTask) finishMigration(
 						OverlayDisk:      t.request.Disk,
 						BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
 						TargetZoneID:     t.request.DstZoneId,
-						TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+						TargetBaseDiskID: targetBaseDiskID,
 						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
 					},
 				)
