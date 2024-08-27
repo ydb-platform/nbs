@@ -46,7 +46,6 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
 {
     MigrationEnabled = true;
     DoRegisterTrafficSource(ctx);
-    MigrationBlockCount = ProcessingBlocks.GetBlockCountNeedToBeProcessed();
     ScheduleRangeMigration(ctx);
 }
 

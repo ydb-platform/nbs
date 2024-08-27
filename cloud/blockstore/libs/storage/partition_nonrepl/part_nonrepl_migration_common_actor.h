@@ -104,8 +104,6 @@ private:
 
     TChangedRangesMap ChangedRangesMap;
 
-    // The size of whole migration that will be performed by this actor.
-    ui64 MigrationBlockCount;
     std::optional<ui64> LastReportedMigratedBlockCount;
     ui64 MigratedBlockCount = 0;
 
