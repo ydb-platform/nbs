@@ -242,6 +242,8 @@ public:
 
     const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
     const TString* FindFileSystemIdByAlias(const TString& alias) const;
+
+    bool GetMultipleStageRequestThrottlingEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

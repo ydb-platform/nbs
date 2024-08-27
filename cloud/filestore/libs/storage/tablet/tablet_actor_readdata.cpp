@@ -593,7 +593,9 @@ void TIndexTabletActor::HandleDescribeData(
         return;
     }
 
-    if (ThrottleIfNeeded<TEvIndexTablet::TDescribeDataMethod>(ev, ctx)) {
+    if (Config->GetMultipleStageRequestThrottlingEnabled() &&
+        ThrottleIfNeeded<TEvIndexTablet::TDescribeDataMethod>(ev, ctx))
+    {
         return;
     }
 

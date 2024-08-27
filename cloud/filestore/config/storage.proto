@@ -341,4 +341,7 @@ message TStorageConfig
         repeated TFilestoreAliasEntry Entries = 1;
     }
     optional TFilestoreAliases FilestoreAliases = 368;
+
+    optional bool MultipleStageRequestThrottlingEnabled = 369;
+
 }

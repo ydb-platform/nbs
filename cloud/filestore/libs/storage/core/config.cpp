@@ -181,6 +181,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
                                                                                \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
+    xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

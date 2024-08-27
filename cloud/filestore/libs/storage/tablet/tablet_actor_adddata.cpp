@@ -253,7 +253,9 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    if (ThrottleIfNeeded<TEvIndexTablet::TGenerateBlobIdsMethod>(ev, ctx)) {
+    if (Config->GetMultipleStageRequestThrottlingEnabled() &&
+        ThrottleIfNeeded<TEvIndexTablet::TGenerateBlobIdsMethod>(ev, ctx))
+    {
         return;
     }
 
