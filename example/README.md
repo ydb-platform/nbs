@@ -70,7 +70,7 @@ sudo dd iflag=direct if=/dev/nbd0 of=./result.bin count=5 bs=4096
 ## See what's happening inside
 Go to http://localhost:8766/blockstore/service and check a particular volume (eg ```vol0```)
 
-If program is running on a virtual machine, you must first configure port forwarding: 
+If the blockstore server is running on a virtual machine, you must first configure port forwarding: 
 ```bash
 ssh -L 8766:localhost:8766 <vm_ip>
 ```
