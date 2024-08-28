@@ -19,23 +19,24 @@ func NewCompoundRegistry(registries []metrics.Registry) metrics.Registry {
 }
 
 func (r *compoundRegistry) WithTags(tags map[string]string) metrics.Registry {
-	var newRegistries []metrics.Registry
+	var registries []metrics.Registry
 	for _, registry := range r.registries {
-		newRegistries = append(newRegistries, registry.WithTags(tags))
+		registries = append(registries, registry.WithTags(tags))
 	}
+
 	return &compoundRegistry{
-		registries: newRegistries,
+		registries: registries,
 	}
 }
 
 func (r *compoundRegistry) WithPrefix(prefix string) metrics.Registry {
-	var newRegistries []metrics.Registry
+	var registries []metrics.Registry
 	for _, registry := range r.registries {
-		newRegistries = append(newRegistries, registry.WithPrefix(prefix))
+		registries = append(registries, registry.WithPrefix(prefix))
 	}
 
 	return &compoundRegistry{
-		registries: newRegistries,
+		registries: registries,
 	}
 }
 
@@ -104,6 +105,7 @@ func (r *compoundRegistry) GaugeVec(
 	for _, registry := range r.registries {
 		gaugeVecsList = append(gaugeVecsList, registry.GaugeVec(name, labels))
 	}
+
 	return &compoundGaugeVecs{
 		gaugeVecs: gaugeVecsList,
 	}
@@ -118,6 +120,7 @@ func (r *compoundRegistry) FuncGauge(
 	for _, registry := range r.registries {
 		funcGauges = append(funcGauges, registry.FuncGauge(name, function))
 	}
+
 	return &compoundFuncGauge{
 		funcGauges: funcGauges,
 	}
@@ -159,7 +162,10 @@ func (r *compoundRegistry) FuncIntGauge(
 
 	var funcIntGauges []metrics.FuncIntGauge
 	for _, registry := range r.registries {
-		funcIntGauges = append(funcIntGauges, registry.FuncIntGauge(name, function))
+		funcIntGauges = append(
+			funcIntGauges,
+			registry.FuncIntGauge(name, function),
+		)
 	}
 
 	return &compoundFuncIntGauge{
@@ -183,13 +189,13 @@ func (r *compoundRegistry) TimerVec(
 	labels []string,
 ) metrics.TimerVec {
 
-	var timerVecsList []metrics.TimerVec
+	var timerVecs []metrics.TimerVec
 	for _, registry := range r.registries {
-		timerVecsList = append(timerVecsList, registry.TimerVec(name, labels))
+		timerVecs = append(timerVecs, registry.TimerVec(name, labels))
 	}
 
 	return &compoundTimerVec{
-		timerVecs: timerVecsList,
+		timerVecs: timerVecs,
 	}
 }
 
@@ -248,15 +254,16 @@ func (r *compoundRegistry) DurationHistogramVec(
 	labels []string,
 ) metrics.TimerVec {
 
-	var durationHistogramVecsList []metrics.TimerVec
+	var durationHistogramVecs []metrics.TimerVec
 	for _, registry := range r.registries {
-		durationHistogramVecsList = append(
-			durationHistogramVecsList,
+		durationHistogramVecs = append(
+			durationHistogramVecs,
 			registry.DurationHistogramVec(name, buckets, labels),
 		)
 	}
+
 	return &compoundTimerVec{
-		timerVecs: durationHistogramVecsList,
+		timerVecs: durationHistogramVecs,
 	}
 }
 
