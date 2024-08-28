@@ -1,4 +1,4 @@
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.storage.core.tools.common.python.daemon import Daemon
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 
@@ -15,9 +15,9 @@ class EndpointProxy(Daemon):
             command += "--netlink"
 
         super(EndpointProxy, self).__init__(
-            command=command,
+            commands=[command],
             cwd=working_dir,
-            timeout=180)
+            service_name="blockstore-endpoint-proxy")
 
     def __enter__(self):
         self.start()

@@ -111,7 +111,7 @@ def log_called_process_error(exc):
 
 
 @pytest.mark.parametrize('with_netlink,with_endpoint_proxy',
-                         [(True, True), (True, True), (True, False), (True, False)])
+                         [(True, False), (True, True), (False, False), (False, True)])
 def test_resize_device(with_netlink, with_endpoint_proxy):
     env, run = init(with_netlink, with_endpoint_proxy)
     volume_name = "example-disk"
