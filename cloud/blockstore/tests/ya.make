@@ -9,6 +9,7 @@ RECURSE(
     client
     cms
     external_endpoint
+    e2e-tests
     fio
     functional
     fuzzing

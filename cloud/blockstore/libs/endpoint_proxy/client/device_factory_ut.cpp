@@ -71,6 +71,15 @@ struct TTestEndpointProxyClient: NClient::IEndpointProxyClient
             TErrorResponse(E_NOT_IMPLEMENTED));
     }
 
+    TFuture<NProto::TResizeProxyDeviceResponse> ResizeProxyDevice(
+        std::shared_ptr<NProto::TResizeProxyDeviceRequest> request) override
+    {
+        Y_UNUSED(request);
+
+        return NThreading::MakeFuture<NProto::TResizeProxyDeviceResponse>(
+            TErrorResponse(E_NOT_IMPLEMENTED));
+    }
+
     void Start() override
     {}
 

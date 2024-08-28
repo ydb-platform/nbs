@@ -88,6 +88,15 @@ struct TProxyDevice: NBD::IDevice
                 return f.GetValue().GetError();
             });
     }
+
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        auto request = std::make_shared<NProto::TResizeProxyDeviceRequest>();
+        request->SetUnixSocketPath(AddressString);
+        request->SetDeviceSizeInBytes(deviceSizeInBytes);
+        return Client->ResizeProxyDevice(std::move(request))
+            .Apply([](const auto& f) { return f.GetValue().GetError(); });
+    }
 };
 
 struct TProxyFactory: NBD::IDeviceFactory
