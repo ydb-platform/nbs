@@ -155,10 +155,10 @@ struct TResizeRequestContext
     std::unique_ptr<TReader> Reader;
 
     TResizeRequestContext(
-        grpc::CompletionQueue& cq,
-        std::shared_ptr<grpc::Channel> channel,
-        TRequest request,
-        TInstant now)
+            grpc::CompletionQueue& cq,
+            std::shared_ptr<grpc::Channel> channel,
+            TRequest request,
+            TInstant now)
         : TRequestContextImpl(cq, std::move(channel), std::move(request), now)
     {
         Reader = Service.AsyncResizeProxyDevice(&ClientContext, Request, &CQ);

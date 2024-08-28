@@ -27,7 +27,8 @@ struct IDevice
     // stopped for technical reasons like service restart
     virtual NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) = 0;
 
-    virtual NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) = 0;
+    virtual NThreading::TFuture<NProto::TError> Resize(
+        ui64 deviceSizeInBytes) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

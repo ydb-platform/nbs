@@ -146,8 +146,8 @@ struct TResizeRequestContext: TRequestContextBase
     grpc::ServerAsyncResponseWriter<NProto::TResizeProxyDeviceResponse> Writer;
 
     TResizeRequestContext(
-        NProto::TBlockStoreEndpointProxy::AsyncService& service,
-        grpc::ServerCompletionQueue& cq)
+            NProto::TBlockStoreEndpointProxy::AsyncService& service,
+            grpc::ServerCompletionQueue& cq)
         : Writer(&ServerContext)
     {
         service.RequestResizeProxyDevice(

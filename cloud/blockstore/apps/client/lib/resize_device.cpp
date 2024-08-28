@@ -48,7 +48,7 @@ protected:
 
         STORAGE_DEBUG("Reading ResizeDevice request");
         auto request = std::make_shared<NProto::TResizeDeviceRequest>();
-         if (Proto) {
+        if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
             request->SetUnixSocketPath(UnixSocketPath);
