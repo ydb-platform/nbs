@@ -18,7 +18,7 @@ import (
 type ExecutionContext interface {
 	SaveState(ctx context.Context) error
 
-	SaveStateAfterCallback(
+	SaveStateWithPreparation(
 		ctx context.Context,
 		callback func(context.Context, *persistence.Transaction) error,
 	) error
@@ -34,7 +34,7 @@ type ExecutionContext interface {
 
 	HasEvent(ctx context.Context, event int64) bool
 
-	FinishAfterCallback(
+	FinishWithPreparation(
 		ctx context.Context,
 		callback func(context.Context, *persistence.Transaction) error,
 	) error
@@ -56,10 +56,10 @@ func (c *executionContext) String() string {
 }
 
 func (c *executionContext) SaveState(ctx context.Context) error {
-	return c.SaveStateAfterCallback(ctx, nil /* callback */)
+	return c.SaveStateWithPreparation(ctx, nil /* callback */)
 }
 
-func (c *executionContext) SaveStateAfterCallback(
+func (c *executionContext) SaveStateWithPreparation(
 	ctx context.Context,
 	callback func(context.Context, *persistence.Transaction) error,
 ) error {
@@ -69,7 +69,7 @@ func (c *executionContext) SaveStateAfterCallback(
 		return err
 	}
 
-	return c.updateStateAfterCallback(
+	return c.updateStateWithPreparation(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			logging.Info(ctx, "saving state for task %v", taskState.ID)
@@ -134,7 +134,7 @@ func (c *executionContext) HasEvent(ctx context.Context, event int64) bool {
 	return false
 }
 
-func (c *executionContext) FinishAfterCallback(
+func (c *executionContext) FinishWithPreparation(
 	ctx context.Context,
 	callback func(context.Context, *persistence.Transaction) error,
 ) error {
@@ -148,7 +148,7 @@ func (c *executionContext) FinishAfterCallback(
 		return err
 	}
 
-	err = c.updateStateAfterCallback(
+	err = c.updateStateWithPreparation(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			taskState.State = state
@@ -173,7 +173,7 @@ func (c *executionContext) getRetriableErrorCount() uint64 {
 	return c.taskState.RetriableErrorCount
 }
 
-func (c *executionContext) updateStateAfterCallback(
+func (c *executionContext) updateStateWithPreparation(
 	ctx context.Context,
 	transition func(storage.TaskState) storage.TaskState,
 	callback func(context.Context, *persistence.Transaction) error,
@@ -191,7 +191,7 @@ func (c *executionContext) updateStateAfterCallback(
 	var err error
 
 	if callback != nil {
-		newTaskState, err = c.storage.UpdateTaskAfterCallback(ctx, taskState, callback)
+		newTaskState, err = c.storage.UpdateTaskWithPreparation(ctx, taskState, callback)
 	} else {
 		newTaskState, err = c.storage.UpdateTask(ctx, taskState)
 	}
@@ -208,7 +208,7 @@ func (c *executionContext) updateState(
 	transition func(storage.TaskState) storage.TaskState,
 ) error {
 
-	return c.updateStateAfterCallback(ctx, transition, nil /* callback */)
+	return c.updateStateWithPreparation(ctx, transition, nil /* callback */)
 }
 
 func (c *executionContext) clearState(ctx context.Context) error {
@@ -304,7 +304,7 @@ func (c *executionContext) setNonCancellableError(
 }
 
 func (c *executionContext) finish(ctx context.Context) error {
-	return c.FinishAfterCallback(ctx, nil /* callback */)
+	return c.FinishWithPreparation(ctx, nil /* callback */)
 }
 
 func (c *executionContext) setCancelled(ctx context.Context) error {

@@ -218,7 +218,7 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		err := execCtx.SaveStateAfterCallback(
+		err := execCtx.SaveStateWithPreparation(
 			ctx,
 			func(ctx context.Context, tx *persistence.Transaction) error {
 				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
@@ -450,7 +450,7 @@ func (t *migrateDiskTask) finishMigration(
 	}
 
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
-		err = execCtx.SaveStateAfterCallback(
+		err = execCtx.SaveStateWithPreparation(
 			ctx,
 			func(context.Context, *persistence.Transaction) (err error) {
 				err = t.poolStorage.OverlayDiskRebased(
@@ -508,7 +508,7 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	return execCtx.FinishAfterCallback(
+	return execCtx.FinishWithPreparation(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
 			return t.resourceStorage.DiskRelocated(

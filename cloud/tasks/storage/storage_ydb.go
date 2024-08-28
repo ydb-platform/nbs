@@ -366,7 +366,7 @@ func (s *storageYDB) MarkForCancellation(
 	return cancelling, err
 }
 
-func (s *storageYDB) UpdateTaskAfterCallback(
+func (s *storageYDB) UpdateTaskWithPreparation(
 	ctx context.Context,
 	state TaskState,
 	callback func(context.Context, *persistence.Transaction) error,
@@ -378,7 +378,7 @@ func (s *storageYDB) UpdateTaskAfterCallback(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			newState, err = s.updateTaskAfterCallback(ctx, session, state, callback)
+			newState, err = s.updateTaskWithPreparation(ctx, session, state, callback)
 			return err
 		},
 	)

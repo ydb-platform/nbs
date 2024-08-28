@@ -1589,7 +1589,7 @@ func (s *storageYDB) updateTaskTx(
 	return state, nil
 }
 
-func (s *storageYDB) updateTaskAfterCallback(
+func (s *storageYDB) updateTaskWithPreparation(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
@@ -1627,7 +1627,7 @@ func (s *storageYDB) updateTask(
 	state TaskState,
 ) (TaskState, error) {
 
-	return s.updateTaskAfterCallback(
+	return s.updateTaskWithPreparation(
 		ctx,
 		session,
 		state,
