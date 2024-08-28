@@ -99,8 +99,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // Nodes
     //
 
-    virtual void
-    WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
+    virtual void WriteNode(
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs);
     virtual void DeleteNode(ui64 nodeId);
     virtual bool ReadNode(
         ui64 nodeId,
@@ -160,8 +162,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& value,
         ui64 version);
 
-    virtual void
-    DeleteNodeAttrVer(ui64 nodeId, ui64 commitId, const TString& name);
+    virtual void DeleteNodeAttrVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name);
 
     virtual bool ReadNodeAttrVer(
         ui64 nodeId,
@@ -220,8 +224,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& followerId,
         const TString& followerName);
 
-    virtual void
-    DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name);
+    virtual void DeleteNodeRefVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name);
 
     virtual bool ReadNodeRefVer(
         ui64 nodeId,
@@ -494,7 +500,7 @@ class TIndexTabletDatabaseProxy: public TIndexTabletDatabase
 public:
     explicit TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>* requestsLog);
+        TVector<TInMemoryIndexState::TIndexStateRequest>& requestLog);
 
     //
     // Nodes
@@ -582,7 +588,7 @@ public:
         const TString& name) override;
 
 private:
-    TVector<TInMemoryIndexState::TIndexStateRequest>* RequestsLog;
+    TVector<TInMemoryIndexState::TIndexStateRequest>& RequestLog;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
