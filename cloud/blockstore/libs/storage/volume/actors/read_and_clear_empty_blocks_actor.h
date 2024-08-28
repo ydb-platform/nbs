@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -20,33 +19,29 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-class TReadMarkedActor final
-    : public NActors::TActorBootstrapped<TReadMarkedActor<TMethod>>
+class TReadAndClearEmptyBlocksActor final
+    : public NActors::TActorBootstrapped<TReadAndClearEmptyBlocksActor<TMethod>>
 {
 private:
+    using TBase =
+        NActors::TActorBootstrapped<TReadAndClearEmptyBlocksActor<TMethod>>;
     using TActorId = NActors::TActorId;
     using TActorContext = NActors::TActorContext;
 
-    const TRequestInfoPtr RequestInfo;
     typename TMethod::TRequest::ProtoRecordType Request;
-    NBlobMarkers::TBlockMarks BlockMarks;
-    const bool MaskUnusedBlocks;
-    const bool ReplyWithUnencryptedBlockMask;
+    typename TMethod::TResponse::ProtoRecordType Response;
+
+    const TRequestInfoPtr RequestInfo;
+    const NBlobMarkers::TBlockMarks UsedBlocks;
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
 
-    typename TMethod::TResponse::ProtoRecordType Record;
-
-    using TBase = NActors::TActorBootstrapped<TReadMarkedActor<TMethod>>;
-
 public:
-    TReadMarkedActor(
+    TReadAndClearEmptyBlocksActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
         const TCompressedBitmap& usedBlocks,
-        bool maskUnusedBlocks,
-        bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
         ui64 volumeTabletId,
         TActorId volumeActorId);
@@ -79,31 +74,27 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-TReadMarkedActor<TMethod>::TReadMarkedActor(
+TReadAndClearEmptyBlocksActor<TMethod>::TReadAndClearEmptyBlocksActor(
         TRequestInfoPtr requestInfo,
         typename TMethod::TRequest::ProtoRecordType request,
         const TCompressedBitmap& usedBlocks,
-        bool maskUnusedBlocks,
-        bool replyWithUnencryptedBlockMask,
         TActorId partActorId,
         ui64 volumeTabletId,
         TActorId volumeActorId)
-    : RequestInfo(std::move(requestInfo))
-    , Request(std::move(request))
-    , BlockMarks(MakeBlockMarks(
-        usedBlocks,
-        TBlockRange64::WithLength(
-            Request.GetStartIndex(),
-            Request.GetBlocksCount())))
-    , MaskUnusedBlocks(maskUnusedBlocks)
-    , ReplyWithUnencryptedBlockMask(replyWithUnencryptedBlockMask)
+    : Request(std::move(request))
+    , RequestInfo(std::move(requestInfo))
+    , UsedBlocks(MakeUsedBlockMarks(
+          usedBlocks,
+          TBlockRange64::WithLength(
+              Request.GetStartIndex(),
+              Request.GetBlocksCount())))
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
 {}
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::Bootstrap(const TActorContext& ctx)
+void TReadAndClearEmptyBlocksActor<TMethod>::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
@@ -120,7 +111,8 @@ void TReadMarkedActor<TMethod>::Bootstrap(const TActorContext& ctx)
 }
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::ReadBlocks(const TActorContext& ctx)
+void TReadAndClearEmptyBlocksActor<TMethod>::ReadBlocks(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->CallContext = RequestInfo->CallContext;
@@ -131,25 +123,22 @@ void TReadMarkedActor<TMethod>::ReadBlocks(const TActorContext& ctx)
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
-        0,  // cookie
-        &ctx.SelfID);    // forwardOnNondelivery
+        0,              // cookie
+        &ctx.SelfID);   // forwardOnNondelivery
 
     ctx.Send(std::move(event));
 }
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::Done(const TActorContext& ctx)
+void TReadAndClearEmptyBlocksActor<TMethod>::Done(const TActorContext& ctx)
 {
     auto response = std::make_unique<typename TMethod::TResponse>();
-    response->Record = std::move(Record);
+    response->Record = std::move(Response);
 
-    if (MaskUnusedBlocks) {
-        ApplyMask(BlockMarks, Request);
-        ApplyMask(BlockMarks, response->Record);
-    }
-
-    if (ReplyWithUnencryptedBlockMask) {
-        FillUnencryptedBlockMask(BlockMarks, response->Record);
+    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
+        ClearEmptyBlocks(UsedBlocks, Request.Sglist);
+    } else {
+        ClearEmptyBlocks(UsedBlocks, response->Record);
     }
 
     GLOBAL_LWTRACK(
@@ -167,7 +156,7 @@ void TReadMarkedActor<TMethod>::Done(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::HandleUndelivery(
+void TReadAndClearEmptyBlocksActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -178,14 +167,14 @@ void TReadMarkedActor<TMethod>::HandleUndelivery(
         VolumeTabletId,
         TMethod::Name);
 
-    Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
+    Response.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
         << TMethod::Name << " request undelivered to partition"));
 
     Done(ctx);
 }
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::HandleResponse(
+void TReadAndClearEmptyBlocksActor<TMethod>::HandleResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -199,24 +188,24 @@ void TReadMarkedActor<TMethod>::HandleResponse(
             FormatError(msg->Record.GetError()).c_str());
     }
 
-    Record = std::move(msg->Record);
+    Response = std::move(msg->Record);
 
     Done(ctx);
 }
 
 template <ReadRequest TMethod>
-void TReadMarkedActor<TMethod>::HandlePoisonPill(
+void TReadAndClearEmptyBlocksActor<TMethod>::HandlePoisonPill(
     const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    Record.MutableError()->CopyFrom(MakeError(E_REJECTED, "Dead"));
+    Response.MutableError()->CopyFrom(MakeError(E_REJECTED, "Dead"));
     Done(ctx);
 }
 
 template <ReadRequest TMethod>
-STFUNC(TReadMarkedActor<TMethod>::StateWork)
+STFUNC(TReadAndClearEmptyBlocksActor<TMethod>::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 

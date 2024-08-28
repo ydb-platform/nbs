@@ -17,6 +17,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Describes the blocks of the base disk.
+// Accepts a map of blocks belonging to the overlay disk (blockMarks). Only
+// blocks that do not belong to the overlay disk and marked in the blockMarks as
+// a TEmptyMark are described. They are replaced with TFreshMarkOnBaseDisk or
+// TBlobMarkOnBaseDisk, or remain TEmptyMark if the block was not written to the
+// base disk.
 class TDescribeBaseDiskBlocksActor final
     : public NActors::TActorBootstrapped<TDescribeBaseDiskBlocksActor>
 {

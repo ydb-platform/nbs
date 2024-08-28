@@ -277,15 +277,16 @@ public:
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
-    std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> CreateUpdateVolumeConfigRequest(
+    std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
+    CreateUpdateVolumeConfigRequest(
         ui32 maxBandwidth = 0,
         ui32 maxIops = 0,
         ui32 burstPercentage = 0,
         ui32 maxPostponedWeight = 0,
         bool throttlingEnabled = false,
         ui32 version = 1,
-        NCloud::NProto::EStorageMediaKind mediaKind
-            = NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID,
+        NCloud::NProto::EStorageMediaKind mediaKind =
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID,
         ui64 blockCount = 1024,
         TString diskId = "vol0",
         TString cloudId = "cloud",
@@ -294,7 +295,9 @@ public:
         ui32 blocksPerStripe = 0,
         TString tags = "",
         TString baseDiskId = "",
-        TString baseDiskCheckpointId = "");
+        TString baseDiskCheckpointId = "",
+        NProto::EEncryptionMode encryption =
+            NProto::EEncryptionMode::NO_ENCRYPTION);
 
     auto CreateReallocateDiskRequest()
     {
