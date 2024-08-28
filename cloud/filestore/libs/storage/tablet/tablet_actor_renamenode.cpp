@@ -84,7 +84,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -269,7 +269,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         return; // nothing to do
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

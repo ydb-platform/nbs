@@ -338,7 +338,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -435,7 +435,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

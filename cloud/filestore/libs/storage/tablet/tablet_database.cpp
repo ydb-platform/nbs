@@ -1792,9 +1792,9 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 
 TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>& requestLog)
+        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
     : TIndexTabletDatabase(database)
-    , RequestLog(requestLog)
+    , NodeUpdates(nodeUpdates)
 {}
 
 void TIndexTabletDatabaseProxy::WriteNode(
@@ -1803,7 +1803,7 @@ void TIndexTabletDatabaseProxy::WriteNode(
     const NProto::TNode& attrs)
 {
     TIndexTabletDatabase::WriteNode(nodeId, commitId, attrs);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
         .NodeId = nodeId,
         .Row = {.CommitId = commitId, .Node = attrs}});
 }
@@ -1811,7 +1811,7 @@ void TIndexTabletDatabaseProxy::WriteNode(
 void TIndexTabletDatabaseProxy::DeleteNode(ui64 nodeId)
 {
     TIndexTabletDatabase::DeleteNode(nodeId);
-    RequestLog.emplace_back(
+    NodeUpdates.emplace_back(
         TInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId});
 }
 
@@ -1822,7 +1822,7 @@ void TIndexTabletDatabaseProxy::WriteNodeVer(
     const NProto::TNode& attrs)
 {
     TIndexTabletDatabase::WriteNodeVer(nodeId, minCommitId, maxCommitId, attrs);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeVerRequest{
         .NodesVerKey = {nodeId, minCommitId},
         .NodesVerRow = {.MaxCommitId = maxCommitId, .Node = attrs}});
 }
@@ -1830,7 +1830,7 @@ void TIndexTabletDatabaseProxy::WriteNodeVer(
 void TIndexTabletDatabaseProxy::DeleteNodeVer(ui64 nodeId, ui64 commitId)
 {
     TIndexTabletDatabase::DeleteNodeVer(nodeId, commitId);
-    RequestLog.emplace_back(TInMemoryIndexState::TDeleteNodeVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeVerRequest{
         .NodesVerKey{nodeId, commitId}});
 }
 
@@ -1842,7 +1842,7 @@ void TIndexTabletDatabaseProxy::WriteNodeAttr(
     ui64 version)
 {
     TIndexTabletDatabase::WriteNodeAttr(nodeId, commitId, name, value, version);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
         .NodeAttrsKey = {nodeId, name},
         .NodeAttrsRow =
             {.CommitId = commitId, .Value = value, .Version = version}});
@@ -1851,7 +1851,7 @@ void TIndexTabletDatabaseProxy::WriteNodeAttr(
 void TIndexTabletDatabaseProxy::DeleteNodeAttr(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeAttr(nodeId, name);
-    RequestLog.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsRequest{
         .NodeAttrsKey = {nodeId, name}});
 }
 
@@ -1870,7 +1870,7 @@ void TIndexTabletDatabaseProxy::WriteNodeAttrVer(
         name,
         value,
         version);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeAttrsVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsVerRequest{
         .NodeAttrsVerKey = {nodeId, name, minCommitId},
         .NodeAttrsVerRow =
             {.MaxCommitId = maxCommitId, .Value = value, .Version = version}});
@@ -1882,7 +1882,7 @@ void TIndexTabletDatabaseProxy::DeleteNodeAttrVer(
     const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeAttrVer(nodeId, commitId, name);
-    RequestLog.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsVerRequest{
         .NodeAttrsVerKey = {nodeId, name, commitId}});
 }
 
@@ -1901,7 +1901,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
         childNode,
         followerId,
         followerName);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name},
         .NodeRefsRow = {
             .CommitId = commitId,
@@ -1913,7 +1913,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
 void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeRef(nodeId, name);
-    RequestLog.emplace_back(TInMemoryIndexState::TDeleteNodeRefsRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name}});
 }
 
@@ -1934,7 +1934,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRefVer(
         childNode,
         followerId,
         followerName);
-    RequestLog.emplace_back(TInMemoryIndexState::TWriteNodeRefsVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsVerRequest{
         .NodeRefsVerKey = {nodeId, name, minCommitId},
         .NodeRefsVerRow = {
             .MaxCommitId = maxCommitId,
@@ -1949,7 +1949,7 @@ void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
     const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeRefVer(nodeId, commitId, name);
-    RequestLog.emplace_back(TInMemoryIndexState::TDeleteNodeRefsVerRequest{
+    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeRefsVerRequest{
         .NodeRefsVerKey = {nodeId, name, commitId}});
 }
 

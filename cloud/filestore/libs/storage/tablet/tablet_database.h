@@ -498,9 +498,9 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 class TIndexTabletDatabaseProxy: public TIndexTabletDatabase
 {
 public:
-    explicit TIndexTabletDatabaseProxy(
+    TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>& requestLog);
+        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
 
     //
     // Nodes
@@ -588,7 +588,7 @@ public:
         const TString& name) override;
 
 private:
-    TVector<TInMemoryIndexState::TIndexStateRequest>& RequestLog;
+    TVector<TInMemoryIndexState::TIndexStateRequest>& NodeUpdates;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

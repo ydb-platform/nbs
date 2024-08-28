@@ -59,7 +59,7 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
 {
     FILESTORE_VALIDATE_TX_ERROR(CreateCheckpoint, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

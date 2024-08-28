@@ -306,7 +306,7 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -404,7 +404,7 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

@@ -124,7 +124,7 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
     args.NodeId = handle->GetNodeId();
     args.CommitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         return false;
@@ -180,7 +180,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
     const bool needExtend = args.Node->Attrs.GetSize() < size &&
         !HasFlag(args.Flags, NProto::TAllocateDataRequest::F_KEEP_SIZE);
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     // Here we should not check F_KEEP_SIZE OR'ed with F_PUNCH_HOLE, because
     // we did it in validation stage.

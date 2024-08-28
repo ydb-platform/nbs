@@ -38,7 +38,7 @@ public:
         TTransactionContext& tx,
         TTxIndexTablet::TAddBlob& args)
     {
-        TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+        TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
         switch (args.Mode) {
             case EAddBlobMode::Write:
@@ -419,7 +419,7 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
 {
     InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabaseProxy db(tx.DB, &args.IndexStateRequests);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
