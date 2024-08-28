@@ -383,6 +383,8 @@ void TConfigInitializer::ApplyStorageServiceConfig(const TString& text)
     NProto::TStorageServiceConfig storageConfig;
     ParseProtoTextFromStringRobust(text, storageConfig);
 
+    AdoptNodeRegistrationParams(storageConfig);
+
     storageConfig.SetServiceVersionInfo(GetFullVersionString());
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig,
