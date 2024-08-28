@@ -161,6 +161,14 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
+        mount_dir = Path("/tmp/mount")
+        mount_dir.mkdir(parents=True, exist_ok=True)
+        result = common.execute(
+            ["mount", nbd_device, str(mount_dir)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
         new_volume_size = 2 * volume_size
         result = run(
             "resizevolume",
@@ -210,5 +218,10 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             "--disk-id",
             volume_name,
         )
+
+        result = common.execute(
+            ["umount", str(mount_dir)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
 
         cleanup_after_test(env)
