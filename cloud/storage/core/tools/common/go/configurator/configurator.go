@@ -272,13 +272,18 @@ func (g *ConfigGenerator) dumpConfigs(
 	}
 
 	for _, fileName := range g.spec.ServiceSpec.Clusters[cluster].AdditionalFiles {
-		filePath := path.Join(
-			g.spec.ArcadiaPath,
-			g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPath,
-			zone,
-			target,
-			g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPathTargetPrefix,
-			fileName)
+		var filePath string
+		if strings.HasPrefix(fileName, "/") {
+			filePath = path.Join(g.spec.ArcadiaPath, fileName)
+		} else {
+			filePath = path.Join(
+				g.spec.ArcadiaPath,
+				g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPath,
+				zone,
+				target,
+				g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPathTargetPrefix,
+				fileName)
+		}
 		fileData, err := ioutil.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf(
