@@ -71,7 +71,7 @@ bool TIndexTabletActor::PrepareTx_DestroyHandle(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
     if (!ReadNode(db, handle->GetNodeId(), commitId, args.Node)) {
         return false;
     }
@@ -93,7 +93,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     auto* handle = FindHandle(args.Request.GetHandle());
     TABLET_VERIFY(handle);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
     DestroyHandle(db, handle);
 
     auto commitId = GenerateCommitId();
