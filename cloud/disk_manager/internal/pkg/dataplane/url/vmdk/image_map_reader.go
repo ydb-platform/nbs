@@ -176,7 +176,7 @@ func (r *ImageMapReader) readHeaderFromOffset(
 
 	if r.header.MagicNumber != sparseMagicNumber {
 		return common.NewSourceInvalidError(
-			"Failed to check vmdk magic: expected - %v, actual - %v",
+			"check vmdk magic: expected - %v, actual - %v",
 			sparseMagicNumber,
 			r.header.MagicNumber,
 		)
@@ -184,15 +184,13 @@ func (r *ImageMapReader) readHeaderFromOffset(
 
 	if r.header.Version > 3 || r.header.Version < 1 {
 		return common.NewSourceInvalidError(
-			"Unsupported vmdk version: %v",
+			"unsupported vmdk version: %v",
 			r.header.Version,
 		)
 	}
 
 	if !r.header.validate() {
-		return common.NewSourceInvalidError(
-			"Failed to check vmdk header validity: header is corrupted",
-		)
+		return common.NewSourceInvalidError("vmdk header is corrupted")
 	}
 
 	return nil
