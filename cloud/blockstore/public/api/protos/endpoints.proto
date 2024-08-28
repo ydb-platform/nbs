@@ -332,3 +332,40 @@ message TListProxyEndpointsResponse
     // List of proxy endpoints.
     repeated TProxyEndpoint Endpoints = 2;
 }
+
+message TResizeDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Unix socket path of the endpoint associated with the device being resized
+    string UnixSocketPath = 2;
+
+    // New size in bytes.
+    uint64 DeviceSizeInBytes = 3;
+}
+
+message TResizeDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+
+message TResizeProxyDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Unix socket path of the endpoint associated with the device being resized
+    string UnixSocketPath = 2;
+
+    // New size in bytes.
+    uint64 DeviceSizeInBytes = 3;
+}
+
+message TResizeProxyDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

@@ -314,6 +314,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DescribeEndpoint:
         case EBlockStoreRequest::RefreshEndpoint:
         case EBlockStoreRequest::QueryAgentsInfo:
+        case EBlockStoreRequest::ResizeDevice:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

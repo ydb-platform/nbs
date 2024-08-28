@@ -145,6 +145,26 @@ struct TListRequestContext: TRequestContextImpl<
     }
 };
 
+struct TResizeRequestContext
+    : TRequestContextImpl<
+          NProto::TResizeProxyDeviceRequest,
+          NProto::TResizeProxyDeviceResponse>
+{
+    using TReader = grpc::ClientAsyncResponseReader<TResponse>;
+
+    std::unique_ptr<TReader> Reader;
+
+    TResizeRequestContext(
+            grpc::CompletionQueue& cq,
+            std::shared_ptr<grpc::Channel> channel,
+            TRequest request,
+            TInstant now)
+        : TRequestContextImpl(cq, std::move(channel), std::move(request), now)
+    {
+        Reader = Service.AsyncResizeProxyDevice(&ClientContext, Request, &CQ);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEndpointProxyClient
@@ -297,6 +317,16 @@ struct TEndpointProxyClient
             Timer->Now());
     }
 
+    TFuture<NProto::TResizeProxyDeviceResponse> ResizeProxyDevice(
+        std::shared_ptr<NProto::TResizeProxyDeviceRequest> request) override
+    {
+        STORAGE_INFO("ResizeRequest: " << request->DebugString().Quote());
+
+        return RequestImpl<TResizeRequestContext>(
+            std::move(*request),
+            Timer->Now());
+    }
+
     void Loop()
     {
         STORAGE_INFO("Starting loop");
@@ -325,6 +355,13 @@ struct TEndpointProxyClient
                 dynamic_cast<TListRequestContext*>(&*requestContext);
             if (listRequestContext) {
                 FinishRequest(*listRequestContext, ok);
+                continue;
+            }
+
+            auto* resizeRequestContext =
+                dynamic_cast<TResizeRequestContext*>(&*requestContext);
+            if (resizeRequestContext) {
+                FinishRequest(*resizeRequestContext, ok);
                 continue;
             }
         }

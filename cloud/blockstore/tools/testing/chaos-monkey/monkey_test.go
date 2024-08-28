@@ -322,6 +322,14 @@ func (n nbsService) QueryAgentsInfo(
 	panic("implement me")
 }
 
+func (n nbsService) ResizeDevice(
+	ctx context.Context,
+	request *protos.TResizeDeviceRequest,
+) (*protos.TResizeDeviceResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n nbsService) ExecuteAction(
 	ctx context.Context,
 	request *protos.TExecuteActionRequest,
