@@ -65,6 +65,7 @@ target_sources(apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/query_available_storage.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/read_blocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/refresh_endpoint.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/resize_device.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/resize_volume.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/resume_device.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/apps/client/lib/start_endpoint.cpp
