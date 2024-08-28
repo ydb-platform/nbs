@@ -18,7 +18,7 @@ import (
 type ExecutionContext interface {
 	SaveState(ctx context.Context) error
 
-	SaveStateWithCallback(
+	SaveStateAfterCallback(
 		ctx context.Context,
 		callback func(context.Context, *persistence.Transaction) error,
 	) error
@@ -34,14 +34,8 @@ type ExecutionContext interface {
 
 	HasEvent(ctx context.Context, event int64) bool
 
-	FinishWithCallback(
+	FinishAfterCallback(
 		ctx context.Context,
-		callback func(context.Context, *persistence.Transaction) error,
-	) error
-
-	UpdateStateWithCallback(
-		ctx context.Context,
-		transition func(context.Context) error,
 		callback func(context.Context, *persistence.Transaction) error,
 	) error
 }
@@ -62,10 +56,10 @@ func (c *executionContext) String() string {
 }
 
 func (c *executionContext) SaveState(ctx context.Context) error {
-	return c.SaveStateWithCallback(ctx, nil /* callback */)
+	return c.SaveStateAfterCallback(ctx, nil /* callback */)
 }
 
-func (c *executionContext) SaveStateWithCallback(
+func (c *executionContext) SaveStateAfterCallback(
 	ctx context.Context,
 	callback func(context.Context, *persistence.Transaction) error,
 ) error {
@@ -75,13 +69,13 @@ func (c *executionContext) SaveStateWithCallback(
 		return err
 	}
 
-	return c.updateStateWithCallback(
+	return c.updateStateAfterCallback(
 		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
+		func(taskState storage.TaskState) storage.TaskState {
 			logging.Info(ctx, "saving state for task %v", taskState.ID)
 
 			taskState.State = state
-			return taskState, nil
+			return taskState
 		},
 		callback,
 	)
@@ -109,16 +103,13 @@ func (c *executionContext) AddTaskDependency(
 		return err
 	}
 
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			logging.Info(ctx, "add task dependency of %v on %v", taskState.ID, taskID)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		logging.Info(ctx, "add task dependency of %v on %v", taskState.ID, taskID)
 
-			taskState.State = state
-			taskState.Dependencies.Add(taskID)
-			return taskState, nil
-		},
-	)
+		taskState.State = state
+		taskState.Dependencies.Add(taskID)
+		return taskState
+	})
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
@@ -143,7 +134,7 @@ func (c *executionContext) HasEvent(ctx context.Context, event int64) bool {
 	return false
 }
 
-func (c *executionContext) FinishWithCallback(
+func (c *executionContext) FinishAfterCallback(
 	ctx context.Context,
 	callback func(context.Context, *persistence.Transaction) error,
 ) error {
@@ -157,12 +148,12 @@ func (c *executionContext) FinishWithCallback(
 		return err
 	}
 
-	err = c.updateStateWithCallback(
+	err = c.updateStateAfterCallback(
 		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
+		func(taskState storage.TaskState) storage.TaskState {
 			taskState.State = state
 			taskState.Status = storage.TaskStatusFinished
-			return taskState, nil
+			return taskState
 		},
 		callback,
 	)
@@ -174,32 +165,6 @@ func (c *executionContext) FinishWithCallback(
 	return nil
 }
 
-func (c *executionContext) UpdateStateWithCallback(
-	ctx context.Context,
-	transition func(context.Context) error,
-	callback func(context.Context, *persistence.Transaction) error,
-) (err error) {
-
-	return c.updateStateWithCallback(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			err = transition(ctx)
-			if err != nil {
-				return storage.TaskState{}, err
-			}
-
-			state, err := c.task.Save()
-			if err != nil {
-				logging.Warn(ctx, "Saving error, %v", err)
-				return storage.TaskState{}, err
-			}
-			taskState.State = state
-			return taskState, nil
-		},
-		callback,
-	)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c *executionContext) getRetriableErrorCount() uint64 {
@@ -208,34 +173,28 @@ func (c *executionContext) getRetriableErrorCount() uint64 {
 	return c.taskState.RetriableErrorCount
 }
 
-func (c *executionContext) updateStateWithCallback(
+func (c *executionContext) updateStateAfterCallback(
 	ctx context.Context,
-	transition func(storage.TaskState) (storage.TaskState, error),
+	transition func(storage.TaskState) storage.TaskState,
 	callback func(context.Context, *persistence.Transaction) error,
 ) error {
 
-	logging.Debug(ctx, "USWC start")
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	taskState, err := transition(c.taskState)
-	if err != nil {
-		return err
-	}
-
-	logging.Debug(ctx, "USWC transition done")
-
+	taskState := transition(c.taskState)
 	taskState = taskState.DeepCopy()
+
 	taskState.ModifiedAt = time.Now()
 
 	var newTaskState storage.TaskState
+	var err error
 
 	if callback != nil {
-		newTaskState, err = c.storage.UpdateTaskWithCallback(ctx, taskState, callback)
+		newTaskState, err = c.storage.UpdateTaskAfterCallback(ctx, taskState, callback)
 	} else {
 		newTaskState, err = c.storage.UpdateTask(ctx, taskState)
 	}
-	logging.Debug(ctx, "USWC task updated")
 
 	if err != nil {
 		return err
@@ -247,20 +206,17 @@ func (c *executionContext) updateStateWithCallback(
 
 func (c *executionContext) updateState(
 	ctx context.Context,
-	transition func(storage.TaskState) (storage.TaskState, error),
+	transition func(storage.TaskState) storage.TaskState,
 ) error {
 
-	return c.updateStateWithCallback(ctx, transition, nil /* callback */)
+	return c.updateStateAfterCallback(ctx, transition, nil /* callback */)
 }
 
 func (c *executionContext) clearState(ctx context.Context) error {
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = nil
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = nil
+		return taskState
+	})
 }
 
 func (c *executionContext) incrementRetriableErrorCount(
@@ -272,14 +228,11 @@ func (c *executionContext) incrementRetriableErrorCount(
 		return err
 	}
 
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = state
-			taskState.RetriableErrorCount++
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = state
+		taskState.RetriableErrorCount++
+		return taskState
+	})
 }
 
 func (c *executionContext) incrementPanicCount(
@@ -291,14 +244,11 @@ func (c *executionContext) incrementPanicCount(
 		return err
 	}
 
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = state
-			taskState.PanicCount++
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = state
+		taskState.PanicCount++
+		return taskState
+	})
 }
 
 func (c *executionContext) setError(ctx context.Context, e error) error {
@@ -307,15 +257,12 @@ func (c *executionContext) setError(ctx context.Context, e error) error {
 		return err
 	}
 
-	err = c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = state
-			taskState.Status = storage.TaskStatusReadyToCancel
-			taskState.SetError(e)
-			return taskState, nil
-		},
-	)
+	err = c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = state
+		taskState.Status = storage.TaskStatusReadyToCancel
+		taskState.SetError(e)
+		return taskState
+	})
 	if err != nil {
 		logError(
 			ctx,
@@ -349,19 +296,16 @@ func (c *executionContext) setNonCancellableError(
 		return err
 	}
 
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = state
-			taskState.Status = storage.TaskStatusCancelled
-			taskState.SetError(e)
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = state
+		taskState.Status = storage.TaskStatusCancelled
+		taskState.SetError(e)
+		return taskState
+	})
 }
 
 func (c *executionContext) finish(ctx context.Context) error {
-	return c.FinishWithCallback(ctx, nil /* callback */)
+	return c.FinishAfterCallback(ctx, nil /* callback */)
 }
 
 func (c *executionContext) setCancelled(ctx context.Context) error {
@@ -370,23 +314,17 @@ func (c *executionContext) setCancelled(ctx context.Context) error {
 		return err
 	}
 
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			taskState.State = state
-			taskState.Status = storage.TaskStatusCancelled
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.State = state
+		taskState.Status = storage.TaskStatusCancelled
+		return taskState
+	})
 }
 
 func (c *executionContext) ping(ctx context.Context) error {
-	return c.updateState(
-		ctx,
-		func(taskState storage.TaskState) (storage.TaskState, error) {
-			return taskState, nil
-		},
-	)
+	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		return taskState
+	})
 }
 
 ////////////////////////////////////////////////////////////////////////////////

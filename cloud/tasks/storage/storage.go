@@ -352,7 +352,7 @@ type Storage interface {
 	// This fails with WrongGenerationError, if generationID does not match.
 	// In callback you could perform custom transaction and it will be coupled
 	// with current task's updating.
-	UpdateTaskWithCallback(
+	UpdateTaskAfterCallback(
 		ctx context.Context,
 		state TaskState,
 		callback func(context.Context, *persistence.Transaction) error,

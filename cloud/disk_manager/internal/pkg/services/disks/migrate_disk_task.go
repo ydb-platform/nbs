@@ -218,7 +218,7 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		err := execCtx.SaveStateWithCallback(
+		err := execCtx.SaveStateAfterCallback(
 			ctx,
 			func(ctx context.Context, tx *persistence.Transaction) error {
 				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
@@ -243,11 +243,6 @@ func (t *migrateDiskTask) start(
 			return err
 		}
 
-		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
-		err = execCtx.SaveState(ctx)
-		if err != nil {
-			return err
-		}
 	} else if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
 		// Need to check that RelocateInfo is still actual.
 		// OverlayDiskRebasing should be idempotent.
@@ -454,26 +449,28 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	targetBaseDiskID := t.state.RelocateInfo.TargetBaseDiskID
-
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
-		err = execCtx.UpdateStateWithCallback(
+		err = execCtx.SaveStateAfterCallback(
 			ctx,
-			func(context.Context) (err error) {
-				t.state.RelocateInfo.TargetBaseDiskID = ""
-				return nil
-			},
 			func(context.Context, *persistence.Transaction) (err error) {
-				return t.poolStorage.OverlayDiskRebased(
+
+				err = t.poolStorage.OverlayDiskRebased(
 					ctx,
 					storage.RebaseInfo{
 						OverlayDisk:      t.request.Disk,
 						BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
 						TargetZoneID:     t.request.DstZoneId,
-						TargetBaseDiskID: targetBaseDiskID,
+						TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
 						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
 					},
 				)
+
+				if err != nil {
+					return err
+				}
+
+				t.state.RelocateInfo.TargetBaseDiskID = ""
+				return nil
 			},
 		)
 
@@ -513,7 +510,7 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	return execCtx.FinishWithCallback(
+	return execCtx.FinishAfterCallback(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
 			return t.resourceStorage.DiskRelocated(

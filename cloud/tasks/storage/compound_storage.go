@@ -331,14 +331,14 @@ func (s *compoundStorage) MarkForCancellation(
 	return cancelling, err
 }
 
-func (s *compoundStorage) UpdateTaskWithCallback(
+func (s *compoundStorage) UpdateTaskAfterCallback(
 	ctx context.Context,
 	state TaskState,
 	callback func(context.Context, *persistence.Transaction) error,
 ) (res TaskState, err error) {
 
 	err = s.invoke(ctx, func(storage Storage) error {
-		res, err = storage.UpdateTaskWithCallback(ctx, state, callback)
+		res, err = storage.UpdateTaskAfterCallback(ctx, state, callback)
 		return err
 	})
 	return res, err
