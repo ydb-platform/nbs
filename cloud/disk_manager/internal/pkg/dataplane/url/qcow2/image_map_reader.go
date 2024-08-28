@@ -126,12 +126,12 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 
 	if checkMagic(r.header.Magic) {
 		logging.Info(ctx,
-			"Failed to check qcow2 magic: expected - %v, actual - %v",
+			"invalid qcow2 magic: expected - %v, actual - %v",
 			qcow2Magic,
 			r.header.Magic,
 		)
 		return common.NewSourceInvalidError(
-			"failed to check qcow2 magic: expected - %v, actual - %v",
+			"invalid qcow2 magic: expected - %v, actual - %v",
 			qcow2Magic,
 			r.header.Magic,
 		)
@@ -140,11 +140,11 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	if r.header.Version < 2 || r.header.Version > 3 {
 		logging.Info(
 			ctx,
-			"Failed to check qcow2 version: version %d",
+			"unsupported qcow2 version: %d",
 			r.header.Version,
 		)
 		return common.NewSourceInvalidError(
-			"failed to check qcow2 version: version %d",
+			"unsupported qcow2 version: %d",
 			r.header.Version,
 		)
 	}
