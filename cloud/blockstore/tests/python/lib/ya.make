@@ -24,6 +24,7 @@ PY_SRCS(
     config.py
     daemon.py
     disk_agent_runner.py
+    endpoint_proxy.py
     endpoints.py
     loadtest_env.py
     nbs_http_proxy.py

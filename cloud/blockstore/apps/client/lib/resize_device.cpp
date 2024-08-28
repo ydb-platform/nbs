@@ -1,4 +1,5 @@
-#include "refresh_endpoint.h"
+#include "resize_device.h"
+
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -14,46 +15,53 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRefreshEndpointCommand final
+class TResizeDeviceCommand final
     : public TCommand
 {
 private:
     TString UnixSocketPath;
+    ui64 DeviceSizeInBytes = 0;
 
 public:
-    TRefreshEndpointCommand(IBlockStorePtr client)
+    TResizeDeviceCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
-        Opts.AddLongOption("socket", "unix socket path")
+        Opts.AddLongOption(
+                "socket",
+                "Unix socket path of the endpoint associated with the device "
+                "being resized")
             .RequiredArgument("STR")
+            .Required()
             .StoreResult(&UnixSocketPath);
+
+        Opts.AddLongOption("device-size", "Device size in bytes")
+            .RequiredArgument("NUM")
+            .Required()
+            .StoreResult(&DeviceSizeInBytes);
     }
 
 protected:
     bool DoExecute() override
     {
-        if (!Proto && !CheckOpts()) {
-            return false;
-        }
-
         auto& input = GetInputStream();
         auto& output = GetOutputStream();
 
-        STORAGE_DEBUG("Reading RefreshEndpoint request");
-        auto request = std::make_shared<NProto::TRefreshEndpointRequest>();
+        STORAGE_DEBUG("Reading ResizeDevice request");
+        auto request = std::make_shared<NProto::TResizeDeviceRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
             request->SetUnixSocketPath(UnixSocketPath);
+            request->SetDeviceSizeInBytes(DeviceSizeInBytes);
         }
 
-        STORAGE_DEBUG("Sending RefreshEndpoint request");
+        STORAGE_DEBUG("Sending ResizeDevice request");
         const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(ClientEndpoint->RefreshEndpoint(
+        auto result = WaitFor(ClientEndpoint->ResizeDevice(
             MakeIntrusive<TCallContext>(requestId),
             std::move(request)));
 
-        STORAGE_DEBUG("Received RefreshEndpoint response");
+        STORAGE_DEBUG("Received ResizeDevice response");
         if (Proto) {
             SerializeToTextFormat(result, output);
             return true;
@@ -67,26 +75,15 @@ protected:
         output << "OK" << Endl;
         return true;
     }
-
-private:
-    bool CheckOpts() const
-    {
-        if (!UnixSocketPath) {
-            STORAGE_ERROR("Unix socket path is required");
-            return false;
-        }
-
-        return true;
-    }
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr NewRefreshEndpointCommand(IBlockStorePtr client)
+TCommandPtr NewResizeDeviceCommand(IBlockStorePtr client)
 {
-    return MakeIntrusive<TRefreshEndpointCommand>(std::move(client));
+    return MakeIntrusive<TResizeDeviceCommand>(std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

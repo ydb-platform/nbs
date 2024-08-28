@@ -33,4 +33,11 @@ service TBlockStoreEndpointProxy
             body: "*"
         };
     }
+
+    rpc ResizeProxyDevice(TResizeProxyDeviceRequest) returns (TResizeProxyDeviceResponse) {
+        option (google.api.http) = {
+            post: "/resize_proxy_device"
+            body: "*"
+        };
+    }
 }

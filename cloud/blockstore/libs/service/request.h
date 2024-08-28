@@ -99,6 +99,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(ListKeyrings,                       __VA_ARGS__)                       \
     xxx(DescribeEndpoint,                   __VA_ARGS__)                       \
     xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
+    xxx(ResizeDevice,                       __VA_ARGS__)                       \
 // BLOCKSTORE_ENDPOINT_SERVICE
 
 #define BLOCKSTORE_GRPC_SERVICE(xxx, ...)                                      \

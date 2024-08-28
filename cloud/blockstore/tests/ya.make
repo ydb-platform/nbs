@@ -11,6 +11,7 @@ RECURSE(
     csi_driver
     disk_agent_config
     external_endpoint
+    e2e-tests
     fio
     functional
     fuzzing

@@ -116,6 +116,23 @@ public:
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        if (!Device.IsOpen()) {
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Device is not open"));
+        }
+
+        STORAGE_DEBUG("NBD_SET_SIZE " << deviceSizeInBytes);
+        auto ret = ioctl(Device, NBD_SET_SIZE, deviceSizeInBytes);
+        if (ret < 0) {
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Could not setup device size"));
+        }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+
 private:
     void* ThreadProc() override
     {
@@ -259,6 +276,12 @@ public:
     {
         Y_UNUSED(deleteDevice);
 
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        Y_UNUSED(deviceSizeInBytes);
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 };
