@@ -433,7 +433,6 @@ void TCommand::Init()
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
 
     TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
 
     if (logConfig.HasLogLevel()) {
         logSettings.FiltrationLevel = static_cast<ELogPriority>(
