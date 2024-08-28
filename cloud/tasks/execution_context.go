@@ -195,7 +195,6 @@ func (c *executionContext) updateStateAfterCallback(
 	} else {
 		newTaskState, err = c.storage.UpdateTask(ctx, taskState)
 	}
-
 	if err != nil {
 		return err
 	}

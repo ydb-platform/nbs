@@ -453,7 +453,6 @@ func (t *migrateDiskTask) finishMigration(
 		err = execCtx.SaveStateAfterCallback(
 			ctx,
 			func(context.Context, *persistence.Transaction) (err error) {
-
 				err = t.poolStorage.OverlayDiskRebased(
 					ctx,
 					storage.RebaseInfo{
@@ -473,7 +472,6 @@ func (t *migrateDiskTask) finishMigration(
 				return nil
 			},
 		)
-
 		if err != nil {
 			return err
 		}
