@@ -355,7 +355,7 @@ type Storage interface {
 	UpdateTaskWithPreparation(
 		ctx context.Context,
 		state TaskState,
-		callback func(context.Context, *persistence.Transaction) error,
+		preparation func(context.Context, *persistence.Transaction) error,
 	) (TaskState, error)
 
 	// This fails with WrongGenerationError, if generationID does not match.

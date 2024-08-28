@@ -1593,7 +1593,7 @@ func (s *storageYDB) updateTaskWithPreparation(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) (TaskState, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1602,7 +1602,7 @@ func (s *storageYDB) updateTaskWithPreparation(
 	}
 	defer tx.Rollback(ctx)
 
-	err = callback(ctx, tx)
+	err = preparation(ctx, tx)
 	if err != nil {
 		return TaskState{}, err
 	}

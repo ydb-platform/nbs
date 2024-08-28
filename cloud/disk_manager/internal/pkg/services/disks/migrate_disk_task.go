@@ -463,7 +463,6 @@ func (t *migrateDiskTask) finishMigration(
 						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
 					},
 				)
-
 				if err != nil {
 					return err
 				}
