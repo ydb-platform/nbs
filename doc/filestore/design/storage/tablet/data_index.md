@@ -30,5 +30,6 @@ It is the main layer intended for long-term data storage.
 ## [proposed] LargeFileBlocks
 This layer is planned for use with large files. For simplicity the code is going to use it for the blocks at offsets >= N MiB belonging to all files. The first version will implement only large DeletionMarkers to solve the problem of quick large file deletion which is hard to do via the MixedBlocks layer since deleting a 1TiB file implies writing 1TiB / 256KiB = 2 ^ 22 DeletionMarkers in a single transaction.
 * The first version is going to load all such large DeletionMarkers into memory upon tablet startup.
+* Each large DeletionMarker will describe a range of up to 1GiB
 * Large DeletionMarkers will be generated only upon large (> 128GiB) truncate ops.
 * Cleanup operation will keep track of the number of large DeletionMarkers and will start applying and trimming them if their total number becomes too big (e.g. greater than, say, 2 ^ 20).
