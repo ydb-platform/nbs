@@ -497,7 +497,7 @@ func (s *Session) CreateOrAlterTable(
 	defer s.metrics.StatCall(
 		ctx,
 		"session/CreateOrAlterTable",
-		fmt.Sprintf("At path: %v", fullPath),
+		fmt.Sprintf("At path: %q", fullPath),
 	)(&err)
 
 	return createOrAlterTable(
@@ -520,7 +520,7 @@ func (s *Session) DropTable(
 	defer s.metrics.StatCall(
 		ctx,
 		"session/DropTable",
-		fmt.Sprintf("At path: %v", fullPath),
+		fmt.Sprintf("At path: %q", fullPath),
 	)(&err)
 
 	return dropTable(ctx, s.session, fullPath)
@@ -583,7 +583,7 @@ func (c *YDBClient) DropTable(
 
 	return c.Execute(
 		ctx,
-		func(ctx context.Context, s *Session) (err error) {
+		func(ctx context.Context, s *Session) error {
 			return s.DropTable(ctx, fullPath)
 		},
 	)
@@ -650,8 +650,8 @@ func (c *YDBClient) ExecuteRW(
 func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) (err error) {
 	defer c.metrics.StatCall(
 		ctx,
-		"client/MakeDirs",
-		fmt.Sprintf("At path: %v", absolutePath),
+		"client/makeDirs",
+		fmt.Sprintf("At path: %q", absolutePath),
 	)(&err)
 
 	if !strings.HasPrefix(absolutePath, c.database) {
