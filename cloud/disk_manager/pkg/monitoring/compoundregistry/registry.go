@@ -12,7 +12,7 @@ type compoundRegistry struct {
 	registries []metrics.Registry
 }
 
-func WrapRegistry(registries []metrics.Registry) metrics.Registry {
+func NewCompoundRegistry(registries []metrics.Registry) metrics.Registry {
 	return &compoundRegistry{
 		registries: registries,
 	}
@@ -138,9 +138,13 @@ func (r *compoundRegistry) IntGaugeVec(
 	name string,
 	labels []string,
 ) metrics.IntGaugeVec {
+
 	var intGaugeVecsList []metrics.IntGaugeVec
 	for _, registry := range r.registries {
-		intGaugeVecsList = append(intGaugeVecsList, registry.IntGaugeVec(name, labels))
+		intGaugeVecsList = append(
+			intGaugeVecsList,
+			registry.IntGaugeVec(name, labels),
+		)
 	}
 
 	return &compoundIntGaugeVec{
