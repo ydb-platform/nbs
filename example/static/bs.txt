@@ -2,7 +2,7 @@ ServiceSet {
   PDisks {
     NodeID: 1
     PDiskID: 1
-    Path: "data/pdisk-ssd.data"
+    Path: "data/pdisk-ssd-1.data"
     PDiskGuid: 16684173266925138728
     PDiskCategory: 1
   }
@@ -39,4 +39,3 @@ ServiceSet {
   }
   AvailabilityDomains: 1
 }
-

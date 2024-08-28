@@ -2,7 +2,11 @@ Command {
   DefineHostConfig {
     HostConfigId: 1
     Drive {
-      Path: "data/pdisk-ssd.data"
+      Path: "data/pdisk-ssd-1.data"
+      Type: SSD
+    }
+    Drive {
+      Path: "data/pdisk-ssd-2.data"
       Type: SSD
     }
     Drive {
