@@ -176,7 +176,7 @@ func (r *ImageMapReader) readHeaderFromOffset(
 
 	if r.header.MagicNumber != sparseMagicNumber {
 		return common.NewSourceInvalidError(
-			"check vmdk magic: expected - %v, actual - %v",
+			"invalid vmdk magic: expected - %v, actual - %v",
 			sparseMagicNumber,
 			r.header.MagicNumber,
 		)

@@ -131,7 +131,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 			r.header.Magic,
 		)
 		return common.NewSourceInvalidError(
-			"check qcow2 magic: expected - %v, actual - %v",
+			"invalid qcow2 magic: expected - %v, actual - %v",
 			qcow2Magic,
 			r.header.Magic,
 		)
