@@ -1,6 +1,6 @@
 # Data index in Filestore
 
-Data index is represented by 3 layers:
+Data index is represented by the following layers:
 * FreshBytes layer - used for unaligned writes (predominantly smaller than BlockSize)
 * FreshBlocks layer - used for small aligned writes
 * MixedBlocks layer - used for large aligned writes, aligned parts of large unaligned writes, writes done by background ops (Flush, Compaction, FlushBytes)
