@@ -59,6 +59,12 @@ void TConfigInitializerYdb::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
+    if (!ServerConfig) {
+        InitServerConfig();
+    }
+
+    AdoptNodeRegistrationParams(storageConfig);
+
     SetupStorageConfig(storageConfig);
 
     if (Options->SchemeShardDir) {
@@ -262,6 +268,8 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
     NProto::TStorageServiceConfig storageConfig;
     ParseProtoTextFromStringRobust(text, storageConfig);
 
+    AdoptNodeRegistrationParams(storageConfig);
+
     SetupStorageConfig(storageConfig);
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -332,10 +340,22 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
 {
+    THashMap<TString, ui32> configs;
+
+    for (int i = 0; i < config.GetNamedConfigs().size(); ++i) {
+        TStringBuf name = config.GetNamedConfigs(i).GetName();
+
+        if (!name.SkipPrefix("Cloud.NBS.")) {
+            continue;
+        }
+
+        configs.emplace(name, i);
+    }
+
     using TSelf = TConfigInitializerYdb;
     using TApplyFn = void (TSelf::*)(const TString&);
 
-    const THashMap<TString, TApplyFn> map {
+    const TVector<std::pair<TString, TApplyFn>> configHandlers {
         { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
         { "AuthConfig",              &TSelf::ApplyAuthConfig              },
         { "DiagnosticsConfig",       &TSelf::ApplyDiagnosticsConfig       },
@@ -357,16 +377,50 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
     };
 
-    for (auto& item : config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.NBS.")) {
+    for (const auto& handler: configHandlers) {
+        auto it = configs.find(handler.first);
+        if (it == configs.end()) {
             continue;
         }
 
-        auto it = map.find(name);
-        if (it != map.end()) {
-            std::invoke(it->second, this, item.GetConfig());
-        }
+        std::invoke(
+            handler.second,
+            this,
+            config.GetNamedConfigs(it->second).GetConfig());
+    }
+}
+
+void TConfigInitializerYdb::AdoptNodeRegistrationParams(
+    NProto::TStorageServiceConfig& config)
+{
+    if (!ServerConfig->GetServerConfig()) {
+        return;
+    }
+
+    const auto* serverConfig = ServerConfig->GetServerConfig();
+
+    if (!config.GetNodeRegistrationMaxAttempts()) {
+        config.SetNodeRegistrationMaxAttempts(
+            serverConfig->GetNodeRegistrationMaxAttempts());
+    }
+
+    if (!config.GetNodeRegistrationTimeout()) {
+        config.SetNodeRegistrationTimeout(
+            serverConfig->GetNodeRegistrationTimeout());
+    }
+
+    if (!config.GetNodeRegistrationErrorTimeout()) {
+        config.SetNodeRegistrationErrorTimeout(
+            serverConfig->GetNodeRegistrationErrorTimeout());
+    }
+
+    if (!config.GetNodeRegistrationToken()) {
+        config.SetNodeRegistrationToken(
+            serverConfig->GetNodeRegistrationToken());
+    }
+
+    if (!config.GetNodeType()) {
+        config.SetNodeType(serverConfig->GetNodeType());
     }
 }
 

@@ -419,10 +419,22 @@ void TConfigInitializer::ApplyDiskRegistryProxyConfig(const TString& text)
 
 void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
 {
+    THashMap<TString, ui32> configs;
+
+    for (int i = 0; i < config.GetNamedConfigs().size(); ++i) {
+        TStringBuf name = config.GetNamedConfigs(i).GetName();
+
+        if (!name.SkipPrefix("Cloud.NBS.")) {
+            continue;
+        }
+
+        configs.emplace(name, i);
+    }
+
     using TSelf = TConfigInitializer;
     using TApplyFn = void (TSelf::*)(const TString&);
 
-    const THashMap<TString, TApplyFn> map {
+    const TVector<std::pair<TString, TApplyFn>> configHandlers {
         { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
         { "AuthConfig",              &TSelf::ApplyAuthConfig              },
         { "DiagnosticsConfig",       &TSelf::ApplyDiagnosticsConfig       },
@@ -436,16 +448,50 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
         { "StorageServiceConfig",    &TSelf::ApplyStorageServiceConfig    },
     };
 
-    for (auto& item : config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.NBS.")) {
+    for (const auto& handler: configHandlers) {
+        auto it = configs.find(handler.first);
+        if (it == configs.end()) {
             continue;
         }
 
-        auto it = map.find(name);
-        if (it != map.end()) {
-            std::invoke(it->second, this, item.GetConfig());
-        }
+        std::invoke(
+            handler.second,
+            this,
+            config.GetNamedConfigs(it->second).GetConfig());
+    }
+}
+
+void TConfigInitializer::AdoptNodeRegistrationParams(
+    NProto::TStorageServiceConfig& config)
+{
+    if (!ServerConfig->GetServerConfig()) {
+        return;
+    }
+
+    const auto* serverConfig = ServerConfig->GetServerConfig();
+
+    if (!config.GetNodeRegistrationMaxAttempts()) {
+        config.SetNodeRegistrationMaxAttempts(
+            serverConfig->GetNodeRegistrationMaxAttempts());
+    }
+
+    if (!config.GetNodeRegistrationTimeout()) {
+        config.SetNodeRegistrationTimeout(
+            serverConfig->GetNodeRegistrationTimeout());
+    }
+
+    if (!config.GetNodeRegistrationErrorTimeout()) {
+        config.SetNodeRegistrationErrorTimeout(
+            serverConfig->GetNodeRegistrationErrorTimeout());
+    }
+
+    if (!config.GetNodeRegistrationToken()) {
+        config.SetNodeRegistrationToken(
+            serverConfig->GetNodeRegistrationToken());
+    }
+
+    if (!config.GetNodeType()) {
+        config.SetNodeType(serverConfig->GetNodeType());
     }
 }
 

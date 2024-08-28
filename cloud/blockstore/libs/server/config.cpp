@@ -60,6 +60,9 @@ constexpr TDuration Seconds(int s)
     xxx(MaxInFlightBytesPerThread,   ui64,                  128_MB            )\
     xxx(VhostAffinity,               TAffinity,             {}                )\
     xxx(NbdAffinity,                 TAffinity,             {}                )\
+    xxx(NodeRegistrationMaxAttempts,    ui32,               10                )\
+    xxx(NodeRegistrationTimeout,        TDuration,          Seconds(5)        )\
+    xxx(NodeRegistrationErrorTimeout,   TDuration,          Seconds(1)        )\
     xxx(NbdSocketSuffix,             TString,               {}                )\
     xxx(GrpcKeepAliveTime,           ui32,                  7200000           )\
     xxx(GrpcKeepAliveTimeout,        ui32,                  20000             )\
@@ -95,6 +98,7 @@ constexpr TDuration Seconds(int s)
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
+    xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
 // BLOCKSTORE_SERVER_CONFIG
