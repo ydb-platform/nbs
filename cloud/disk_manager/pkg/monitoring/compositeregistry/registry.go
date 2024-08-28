@@ -1,4 +1,4 @@
-package composite_registry
+package compositeregistry
 
 import (
 	"time"
