@@ -26,7 +26,7 @@ Possible value: `bmV4dF8xMjM0`, source: `next_1234`.
 
 `--format (text|json)`
 
-Use to specify desired output format. Defaut is `json`.
+Use to specify desired output format. Default is `json`.
 
 `--limit <rows-num>`
 
@@ -45,7 +45,7 @@ Request all available nodes. Pagination is handled by `ls` itself.
 Plain text output should contain following columns:
 
 * type [d/f/S]
-* nodid
+* node id
 * size
 * path
 
