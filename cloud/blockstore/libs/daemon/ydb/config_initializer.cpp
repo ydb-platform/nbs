@@ -59,10 +59,6 @@ void TConfigInitializerYdb::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    if (!ServerConfig) {
-        InitServerConfig();
-    }
-
     AdoptNodeRegistrationParams(storageConfig);
 
     SetupStorageConfig(storageConfig);

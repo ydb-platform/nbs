@@ -139,6 +139,8 @@ void TConfigInitializer::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
+    AdoptNodeRegistrationParams(storageConfig);
+
     if (Options->SchemeShardDir) {
         storageConfig.SetSchemeShardDir(GetFullSchemeShardDir());
     }
@@ -488,6 +490,10 @@ void TConfigInitializer::AdoptNodeRegistrationParams(
     if (!config.GetNodeRegistrationToken()) {
         config.SetNodeRegistrationToken(
             serverConfig->GetNodeRegistrationToken());
+    }
+
+    if (Options->NodeType) {
+        config.SetNodeType(Options->NodeType);
     }
 
     if (!config.GetNodeType()) {
