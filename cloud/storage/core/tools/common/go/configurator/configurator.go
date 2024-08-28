@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -292,7 +293,9 @@ func (g *ConfigGenerator) dumpConfigs(
 				err,
 			)
 		}
-		resultConfigs = append(resultConfigs, ResultConfig{fileName, string(fileData)})
+		resultConfigs = append(
+			resultConfigs,
+			ResultConfig{filepath.Base(fileName), string(fileData)})
 	}
 
 	if g.spec.ServiceSpec.Clusters[cluster].Configs.Generate && !seed {
