@@ -55,74 +55,91 @@ static const TString TestClientId = "testClientId";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSessionManager final
-    : public ISessionManager
+struct TTestEndpointSession final
+    : public IEndpointSession
 {
-    ui32 CreateSessionCounter = 0;
-    NProto::TStartEndpointRequest LastCreateSesionRequest;
-
     ui32 AlterSessionCounter = 0;
-    TString LastAlterSocketPath;
     NProto::EVolumeAccessMode LastAlterAccessMode;
     NProto::EVolumeMountMode LastAlterMountMode;
     ui64 LastAlterMountSeqNumber;
 
+    TFuture<NProto::TError> Remove(
+        TCallContextPtr ctx,
+        NProto::THeaders headers) override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        return MakeFuture(NProto::TError());
+    }
+
+    TFuture<NProto::TMountVolumeResponse> Alter(
+        TCallContextPtr ctx,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode,
+        ui64 mountSeqNumber,
+        NProto::THeaders headers) override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        ++AlterSessionCounter;
+        LastAlterAccessMode = accessMode;
+        LastAlterMountMode = mountMode;
+        LastAlterMountSeqNumber = mountSeqNumber;
+        return MakeFuture(NProto::TMountVolumeResponse());
+    }
+
+    TFuture<NProto::TMountVolumeResponse> Describe(
+        TCallContextPtr ctx,
+        NProto::THeaders headers) const override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        return MakeFuture(NProto::TMountVolumeResponse());
+    }
+
+    NClient::ISessionPtr GetSession() const override
+    {
+        return nullptr;
+    }
+
+    NProto::TClientPerformanceProfile GetProfile() const override
+    {
+        return NProto::TClientPerformanceProfile();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestSessionFactory final
+    : public ISessionFactory
+{
+    ui32 CreateSessionCounter = 0;
+    NProto::TStartEndpointRequest LastCreateSesionRequest;
+    TVector<std::shared_ptr<TTestEndpointSession>> EndpointSessions;
+
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr ctx,
-        const NProto::TStartEndpointRequest& request) override
+        const NProto::TStartEndpointRequest& request,
+        NProto::TVolume& volume) override
     {
         Y_UNUSED(ctx);
 
         ++CreateSessionCounter;
         LastCreateSesionRequest = request;
-        return MakeFuture<TSessionOrError>(TSessionInfo());
+
+        volume = {};
+        auto endpointSession = std::make_shared<TTestEndpointSession>();
+        EndpointSessions.push_back(endpointSession);
+        return MakeFuture(TSessionOrError(endpointSession));
     }
 
-    TFuture<NProto::TError> RemoveSession(
-        TCallContextPtr ctx,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override
+    ui32 GetAlterSessionCounter() const
     {
-        Y_UNUSED(ctx);
-        Y_UNUSED(socketPath);
-        Y_UNUSED(headers);
-        return MakeFuture(NProto::TError());
-    }
-
-    TFuture<NProto::TError> AlterSession(
-        TCallContextPtr ctx,
-        const TString& socketPath,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode,
-        ui64 mountSeqNumber,
-        const NProto::THeaders& headers) override
-    {
-        Y_UNUSED(ctx);
-        Y_UNUSED(headers);
-        ++AlterSessionCounter;
-        LastAlterSocketPath = socketPath;
-        LastAlterAccessMode = accessMode;
-        LastAlterMountMode = mountMode;
-        LastAlterMountSeqNumber = mountSeqNumber;
-        return MakeFuture(NProto::TError());
-    }
-
-    TFuture<TSessionOrError> GetSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(socketPath);
-        Y_UNUSED(headers);
-        return MakeFuture<TSessionOrError>(TSessionInfo());
-    }
-
-    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
-        const TString& socketPath) override
-    {
-        Y_UNUSED(socketPath);
-        return NProto::TClientPerformanceProfile();
+        ui32 alterSessionCounter = 0;
+        for (auto& session: EndpointSessions) {
+            alterSessionCounter += session->AlterSessionCounter;
+        }
+        return alterSessionCounter;
     }
 };
 
@@ -267,7 +284,7 @@ struct TBootstrap
     IRequestStatsPtr RequestStats = CreateRequestStatsStub();
     IVolumeStatsPtr VolumeStats = CreateVolumeStatsStub();
     IServerStatsPtr ServerStats = CreateServerStatsStub();
-    ISessionManagerPtr SessionManager;
+    ISessionFactoryPtr SessionFactory;
     IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
     TTempDir EndpointsDir = TTempDir(DirPath);
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
@@ -425,16 +442,16 @@ std::shared_ptr<TTestService> CreateTestService(
 
 IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
 {
-    if (!bootstrap.SessionManager) {
-        TSessionManagerOptions sessionManagerOptions;
-        sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
+    if (!bootstrap.SessionFactory) {
+        TSessionFactoryOptions sessionFactoryOptions;
+        sessionFactoryOptions.DefaultClientConfig.SetRequestTimeout(
             TestRequestTimeout.MilliSeconds());
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             bootstrap.Logging,
             CreateDefaultEncryptionKeyProvider());
 
-        bootstrap.SessionManager = CreateSessionManager(
+        bootstrap.SessionFactory = CreateSessionFactory(
             bootstrap.Timer,
             bootstrap.Scheduler,
             bootstrap.Logging,
@@ -446,7 +463,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
             CreateDefaultStorageProvider(bootstrap.Service),
             std::move(encryptionClientFactory),
             bootstrap.Executor,
-            std::move(sessionManagerOptions));
+            std::move(sessionFactoryOptions));
     }
 
     bootstrap.EndpointManager = NServer::CreateEndpointManager(
@@ -458,7 +475,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         bootstrap.ServerStats,
         bootstrap.Executor,
         bootstrap.EndpointEventHandler,
-        bootstrap.SessionManager,
+        bootstrap.SessionFactory,
         bootstrap.EndpointStorage,
         bootstrap.EndpointListeners,
         bootstrap.NbdDeviceFactory,
@@ -1128,8 +1145,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto sessionManager = std::make_shared<TTestSessionManager>();
-        bootstrap.SessionManager = sessionManager;
+        auto sessionFactory = std::make_shared<TTestSessionFactory>();
+        bootstrap.SessionFactory = sessionFactory;
 
         auto listener = std::make_shared<TTestEndpointListener>();
         bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
@@ -1164,13 +1181,13 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 S_OK == response.GetError().GetCode(),
                 response.GetError());
 
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
-            UNIT_ASSERT_VALUES_EQUAL(0, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionFactory->GetAlterSessionCounter());
 
             google::protobuf::util::MessageDifferencer comparator;
             UNIT_ASSERT(comparator.Equals(
                 request,
-                sessionManager->LastCreateSesionRequest));
+                sessionFactory->LastCreateSesionRequest));
         }
 
         {
@@ -1182,8 +1199,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 S_ALREADY == response.GetError().GetCode(),
                 response.GetError());
 
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
-            UNIT_ASSERT_VALUES_EQUAL(0, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionFactory->GetAlterSessionCounter());
         }
 
         {
@@ -1198,16 +1215,15 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 S_OK == response.GetError().GetCode(),
                 response.GetError());
 
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->GetAlterSessionCounter());
+            auto endpointSession = sessionFactory->EndpointSessions[0];
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                request.GetUnixSocketPath(), sessionManager->LastAlterSocketPath);
             UNIT_ASSERT(
-                NProto::VOLUME_ACCESS_READ_WRITE == sessionManager->LastAlterAccessMode);
+                NProto::VOLUME_ACCESS_READ_WRITE == endpointSession->LastAlterAccessMode);
             UNIT_ASSERT(
-                NProto::VOLUME_MOUNT_LOCAL == sessionManager->LastAlterMountMode);
-            UNIT_ASSERT_VALUES_EQUAL(42, sessionManager->LastAlterMountSeqNumber);
+                NProto::VOLUME_MOUNT_LOCAL == endpointSession->LastAlterMountMode);
+            UNIT_ASSERT_VALUES_EQUAL(42, endpointSession->LastAlterMountSeqNumber);
         }
 
         {
@@ -1217,8 +1233,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(HasError(response.GetError()), response.GetError());
 
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->CreateSessionCounter);
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionManager->AlterSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->CreateSessionCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionFactory->GetAlterSessionCounter());
         }
     }
 

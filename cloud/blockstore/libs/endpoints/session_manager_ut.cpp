@@ -66,7 +66,7 @@ struct TBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TSessionManagerTest)
+Y_UNIT_TEST_SUITE(TSessionFactoryTest)
 {
     void ServerStatsShouldMountVolumeWhenEndpointIsStarted(
         NProto::EClientIpcType ipcType)
@@ -124,7 +124,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             logging,
             CreateDefaultEncryptionKeyProvider());
 
-        auto sessionManager = CreateSessionManager(
+        auto sessionFactory = CreateSessionFactory(
             CreateWallClockTimer(),
             scheduler,
             logging,
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
-            TSessionManagerOptions());
+            TSessionFactoryOptions());
 
         executor->Start();
         Y_DEFER {
@@ -149,13 +149,18 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         request.SetClientId("testClientId");
         request.SetIpcType(ipcType);
 
+        IEndpointSessionPtr endpointSession;
+
         {
-            auto future = sessionManager->CreateSession(
+            NProto::TVolume volume;
+            auto future = sessionFactory->CreateSession(
                 MakeIntrusive<TCallContext>(),
-                request);
+                request,
+                volume);
 
             auto sessionOrError = future.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+            endpointSession = sessionOrError.GetResult();
         }
 
         ui32 expectedCount = 1;
@@ -168,9 +173,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         }
 
         {
-            auto future = sessionManager->RemoveSession(
+            auto future = endpointSession->Remove(
                 MakeIntrusive<TCallContext>(),
-                socketPath,
                 request.GetHeaders());
             auto error = future.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_C(!HasError(error), error);
@@ -231,7 +235,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto executor = TExecutor::Create("TestService");
         auto logging = CreateLoggingService("console");
 
-        TSessionManagerOptions options;
+        TSessionFactoryOptions options;
         options.TemporaryServer = temporaryServer;
         options.DisableDurableClient = true;
 
@@ -239,7 +243,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             logging,
             CreateDefaultEncryptionKeyProvider());
 
-        auto sessionManager = CreateSessionManager(
+        auto sessionFactory = CreateSessionFactory(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             logging,
@@ -263,13 +267,15 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         request.SetDiskId(diskId);
         request.SetClientId("testClientId");
 
-        auto future = sessionManager->CreateSession(
+        NProto::TVolume volume;
+        auto future = sessionFactory->CreateSession(
             MakeIntrusive<TCallContext>(),
-            request);
+            request,
+            volume);
 
         auto sessionOrError = future.GetValue(TDuration::Seconds(3));
         UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
-        auto session = sessionOrError.GetResult().Session;
+        auto session = sessionOrError.GetResult()->GetSession();
 
         {
             auto future = session->ReadBlocksLocal(

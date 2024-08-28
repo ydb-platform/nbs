@@ -329,13 +329,13 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("StorageProvider initialized");
 
-    TSessionManagerOptions sessionManagerOptions;
-    sessionManagerOptions.StrictContractValidation
+    TSessionFactoryOptions sessionFactoryOptions;
+    sessionFactoryOptions.StrictContractValidation
         = Configs->ServerConfig->GetStrictContractValidation();
-    sessionManagerOptions.DefaultClientConfig
+    sessionFactoryOptions.DefaultClientConfig
         = Configs->EndpointConfig->GetClientConfig();
-    sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
-    sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
+    sessionFactoryOptions.HostProfile = Configs->HostPerformanceProfile;
+    sessionFactoryOptions.TemporaryServer = Configs->Options->TemporaryServer;
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -345,7 +345,7 @@ void TBootstrapBase::Init()
         Logging,
         CreateEncryptionKeyProvider(KmsKeyProvider));
 
-    auto sessionManager = CreateSessionManager(
+    auto sessionFactory = CreateSessionFactory(
         Timer,
         Scheduler,
         Logging,
@@ -357,9 +357,9 @@ void TBootstrapBase::Init()
         StorageProvider,
         encryptionClientFactory,
         Executor,
-        sessionManagerOptions);
+        sessionFactoryOptions);
 
-    STORAGE_INFO("SessionManager initialized");
+    STORAGE_INFO("SessionFactory initialized");
 
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> endpointListeners;
 
@@ -569,7 +569,7 @@ void TBootstrapBase::Init()
         ServerStats,
         Executor,
         EndpointEventHandler,
-        std::move(sessionManager),
+        std::move(sessionFactory),
         std::move(endpointStorage),
         std::move(endpointListeners),
         std::move(nbdDeviceFactory),
