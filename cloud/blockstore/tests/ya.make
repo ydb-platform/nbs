@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     cms
+    disk_agent_config
     external_endpoint
     e2e-tests
     fio
