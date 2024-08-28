@@ -2724,6 +2724,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         NProtoPrivate::TAddDataRequest addData;
         using TFlags = NKikimr::TStorageStatusFlags;
+        const float freeSpaceShare = 0.22;
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
             {
@@ -2735,6 +2736,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             event->template Get<TEvBlobStorage::TEvPutResult>();
                         const_cast<TFlags&>(msg->StatusFlags).Raw |=
                             ui32(yellowFlag);
+                        const_cast<float&>(msg->ApproximateFreeSpaceShare) =
+                            freeSpaceShare;
                         break;
                     }
 
@@ -2753,6 +2756,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, addData.StorageStatusFlagsSize());
         UNIT_ASSERT(NKikimr::TStorageStatusFlags(
             addData.GetStorageStatusFlags(0)).Check(yellowFlag));
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.ApproximateFreeSpaceSharesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            freeSpaceShare,
+            addData.GetApproximateFreeSpaceShares(0));
     }
 
     void ConfigureFollowers(
@@ -3824,20 +3831,62 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(
             headers,
             TCreateNodeArgs::File(RootNodeId, "file2"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file4"));
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL("file3", listNodesResponse.GetNames(2));
+        UNIT_ASSERT_VALUES_EQUAL("file4", listNodesResponse.GetNames(3));
+        TVector<std::pair<ui64, TString>> nodes(4);
+        for (ui32 i = 0; i < 4; ++i) {
+            nodes[i] = {
+                listNodesResponse.GetNodes(i).GetId(),
+                listNodesResponse.GetNames(i)};
+            UNIT_ASSERT_VALUES_UNEQUAL(0, nodes[i].first);
+        }
 
         auto headers1 = headers;
         headers1.FileSystemId = shard1Id;
 
-        auto listNodesResponse = service.ListNodes(
+        listNodesResponse = service.ListNodes(
             headers1,
             shard1Id,
             RootNodeId)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
-        const auto shard1NodeName = listNodesResponse.GetNames(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        const auto shard1NodeName1 = listNodesResponse.GetNames(0);
+        const auto shard1NodeId1 = listNodesResponse.GetNodes(0).GetId();
+        const auto shard1NodeName2 = listNodesResponse.GetNames(1);
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        const auto shard2NodeName1 = listNodesResponse.GetNames(0);
+        const auto shard2NodeName2 = listNodesResponse.GetNames(1);
 
         // "breaking" one node - deleting it directly from the shard
-        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName1);
+
+        EraseIf(nodes, [=] (const auto& node) {
+            return node.first == shard1NodeId1;
+        });
 
         // ListNodes should still succeed
         listNodesResponse = service.ListNodes(
@@ -3845,18 +3894,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fsId,
             RootNodeId)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
-        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
-        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
-        // zero node id is expected - we failed to fetch attrs for this file
+        // unresolved nodes should be removed from the response
+        UNIT_ASSERT_VALUES_EQUAL(3, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            nodes[0].second,
+            listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[1].second,
+            listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[2].second,
+            listNodesResponse.GetNames(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[0].first,
             listNodesResponse.GetNodes(0).GetId());
-        UNIT_ASSERT_VALUES_UNEQUAL(
-            0,
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[1].first,
             listNodesResponse.GetNodes(1).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[2].first,
+            listNodesResponse.GetNodes(2).GetId());
 
         const auto counters =
             env.GetCounters()->FindSubgroup("component", "service");
@@ -3864,6 +3923,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto counter =
             counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        // "breaking" all nodes - ListNodes should fail with E_IO after this
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
+        service.UnlinkNode(headers2, RootNodeId, shard2NodeName1);
+        service.UnlinkNode(headers2, RootNodeId, shard2NodeName2);
+
+        service.SendListNodesRequest(headers, fsId, RootNodeId);
+        auto response = service.RecvListNodesResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO,
+            response->GetError().GetCode(),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
@@ -3926,9 +3997,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             names.size() / 2,
             listNodesResponse.NamesSize());
-        const ui32 idxToUnlink = 13;
-        const auto shard1NodeName = listNodesResponse.GetNames(idxToUnlink);
-        const ui64 unlinkedId = listNodesResponse.GetNodes(idxToUnlink).GetId();
+        const ui32 idxToUnlink1 = 13;
+        const ui32 idxToUnlink2 = 17;
+        const auto shard1NodeName1 = listNodesResponse.GetNames(idxToUnlink1);
+        const ui64 unlinkedId1 = listNodesResponse.GetNodes(idxToUnlink1).GetId();
+        const auto shard1NodeName2 = listNodesResponse.GetNames(idxToUnlink2);
+        const ui64 unlinkedId2 = listNodesResponse.GetNodes(idxToUnlink2).GetId();
 
         listNodesResponse = service.ListNodes(
             headers,
@@ -3943,18 +4017,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 listNodesResponse.GetNodes(i).GetId());
         }
 
-        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName1);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
 
         listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
 
+        for (auto id: {unlinkedId1, unlinkedId2}) {
+            auto idx = Find(ids, id) - ids.begin();
+            ids.erase(ids.begin() + idx);
+            names.erase(names.begin() + idx);
+        }
+
         UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
         for (ui32 i = 0; i < names.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
             UNIT_ASSERT_VALUES_EQUAL(
-                ids[i] == unlinkedId ? InvalidNodeId : ids[i],
+                ids[i],
                 listNodesResponse.GetNodes(i).GetId());
         }
     }
@@ -3994,7 +4075,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(DestroyDestroyedFileStoreShouldFail)
+    Y_UNIT_TEST(DestroyDestroyedFileStoreShouldNotFail)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");

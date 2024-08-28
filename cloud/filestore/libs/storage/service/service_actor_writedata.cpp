@@ -51,6 +51,7 @@ private:
     TMaybe<TInFlightRequest> InFlightRequest;
     TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
     TVector<ui32> StorageStatusFlags;
+    TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
@@ -175,6 +176,7 @@ private:
         RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteBlob;
         InFlightBSRequests.reserve(RemainingBlobsToWrite);
         StorageStatusFlags.resize(GenerateBlobIdsResponse.BlobsSize());
+        ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -259,6 +261,7 @@ private:
             !InFlightBSRequests[blobIdx]->IsCompleted());
         InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
         StorageStatusFlags[blobIdx] = msg->StatusFlags.Raw;
+        ApproximateFreeSpaceShares[blobIdx] = msg->ApproximateFreeSpaceShare;
 
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
@@ -286,6 +289,11 @@ private:
             StorageStatusFlags.size());
         for (const auto flags: StorageStatusFlags) {
             request->Record.AddStorageStatusFlags(flags);
+        }
+        request->Record.MutableApproximateFreeSpaceShares()->Reserve(
+            ApproximateFreeSpaceShares.size());
+        for (const auto share: ApproximateFreeSpaceShares) {
+            request->Record.AddApproximateFreeSpaceShares(share);
         }
 
         if (Range.Offset < BlobRange.Offset) {

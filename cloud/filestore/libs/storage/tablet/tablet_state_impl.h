@@ -71,6 +71,7 @@ struct TIndexTabletState::TImpl
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
         , NodeIndexCache(registry.GetAllocator(EAllocatorTag::NodeIndexCache))
+        , InMemoryIndexState(registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache))
         , ThrottlingPolicy(TThrottlerConfig())
     {}
 };

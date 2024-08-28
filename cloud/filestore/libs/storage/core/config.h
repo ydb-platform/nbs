@@ -226,6 +226,14 @@ public:
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
 
+    bool GetInMemoryIndexCacheEnabled() const;
+    ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
@@ -238,10 +246,15 @@ public:
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
 
+    ui32 GetNonNetworkMetricsBalancingFactor() const;
+
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 
     const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
     const TString* FindFileSystemIdByAlias(const TString& alias) const;
+
+    ui32 GetChannelFreeSpaceThreshold() const;
+    ui32 GetChannelMinFreeSpace() const;
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
 };

@@ -93,6 +93,9 @@ void TIndexTabletState::LoadState(
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
+    ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
+    ChannelFreeSpaceThreshold = config.GetChannelFreeSpaceThreshold() / 100.;
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
@@ -112,6 +115,13 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadMaxGapPercentage(),
         config.GetReadAheadCacheMaxHandlesPerNode());
     Impl->NodeIndexCache.Reset(config.GetNodeIndexCacheMaxNodes());
+    Impl->InMemoryIndexState.Reset(
+        config.GetInMemoryIndexCacheNodesCapacity(),
+        config.GetInMemoryIndexCacheNodesVerCapacity(),
+        config.GetInMemoryIndexCacheNodeAttrsCapacity(),
+        config.GetInMemoryIndexCacheNodeAttrsVerCapacity(),
+        config.GetInMemoryIndexCacheNodeRefsCapacity(),
+        config.GetInMemoryIndexCacheNodeRefsVerCapacity());
 }
 
 void TIndexTabletState::UpdateConfig(
