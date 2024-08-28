@@ -510,8 +510,8 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
     {
-        const auto& nodeId = handle->GetNodeId();
-        const auto& flags = handle->GetFlags();
+        const auto nodeId = handle->GetNodeId();
+        const auto flags = handle->GetFlags();
         ChangeNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId), -1);
         if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
             ChangeNodeCounters(
