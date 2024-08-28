@@ -1,4 +1,4 @@
-package compositeregistry
+package compoundregistry
 
 import (
 	"time"
@@ -8,244 +8,267 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type compositeRegistry struct {
+type compoundRegistry struct {
 	registries []metrics.Registry
 }
 
 func WrapRegistry(registries []metrics.Registry) metrics.Registry {
-	return &compositeRegistry{
+	return &compoundRegistry{
 		registries: registries,
 	}
 }
 
-func (r *compositeRegistry) WithTags(tags map[string]string) metrics.Registry {
-	newRegistries := make([]metrics.Registry, 0, len(r.registries))
+func (r *compoundRegistry) WithTags(tags map[string]string) metrics.Registry {
+	var newRegistries []metrics.Registry
 	for _, registry := range r.registries {
 		newRegistries = append(newRegistries, registry.WithTags(tags))
 	}
-	return &compositeRegistry{
+	return &compoundRegistry{
 		registries: newRegistries,
 	}
 }
 
-func (r *compositeRegistry) WithPrefix(prefix string) metrics.Registry {
-	newRegistries := make([]metrics.Registry, 0, len(r.registries))
+func (r *compoundRegistry) WithPrefix(prefix string) metrics.Registry {
+	var newRegistries []metrics.Registry
 	for _, registry := range r.registries {
 		newRegistries = append(newRegistries, registry.WithPrefix(prefix))
 	}
-	return &compositeRegistry{
+
+	return &compoundRegistry{
 		registries: newRegistries,
 	}
 }
 
-func (r *compositeRegistry) ComposeName(parts ...string) string {
+func (r *compoundRegistry) ComposeName(parts ...string) string {
 	return r.registries[0].ComposeName(parts...)
 }
 
-func (r *compositeRegistry) Counter(name string) metrics.Counter {
-	counters := make([]metrics.Counter, 0, len(r.registries))
+func (r *compoundRegistry) Counter(name string) metrics.Counter {
+	var counters []metrics.Counter
 	for _, registry := range r.registries {
 		counters = append(counters, registry.Counter(name))
 	}
-	return &composedCounter{
+
+	return &compoundCounter{
 		counters: counters,
 	}
 }
 
-func (r *compositeRegistry) CounterVec(
+func (r *compoundRegistry) CounterVec(
 	name string,
 	labels []string,
 ) metrics.CounterVec {
-	counterVecs := make([]metrics.CounterVec, 0, len(r.registries))
+
+	var counterVecs []metrics.CounterVec
 	for _, registry := range r.registries {
 		counterVecs = append(counterVecs, registry.CounterVec(name, labels))
 	}
-	return &composedCounterVec{
+
+	return &compoundCounterVec{
 		counterVecs: counterVecs,
 	}
 }
 
-func (r *compositeRegistry) FuncCounter(
+func (r *compoundRegistry) FuncCounter(
 	name string,
 	function func() int64,
 ) metrics.FuncCounter {
-	funcCounters := make([]metrics.FuncCounter, 0, len(r.registries))
+
+	var funcCounters []metrics.FuncCounter
 	for _, registry := range r.registries {
 		funcCounters = append(funcCounters, registry.FuncCounter(name, function))
 	}
-	return &composedFuncCounter{
+
+	return &compoundFuncCounter{
 		funcCounters: funcCounters,
 	}
 }
 
-func (r *compositeRegistry) Gauge(name string) metrics.Gauge {
-	gauges := make([]metrics.Gauge, 0, len(r.registries))
+func (r *compoundRegistry) Gauge(name string) metrics.Gauge {
+	var gauges []metrics.Gauge
 	for _, registry := range r.registries {
 		gauges = append(gauges, registry.Gauge(name))
 	}
-	return &composedGauge{
+
+	return &compoundGauge{
 		gauges: gauges,
 	}
 }
 
-func (r *compositeRegistry) GaugeVec(
+func (r *compoundRegistry) GaugeVec(
 	name string,
 	labels []string,
 ) metrics.GaugeVec {
-	gaugeVecsList := make([]metrics.GaugeVec, 0, len(r.registries))
+
+	var gaugeVecsList []metrics.GaugeVec
 	for _, registry := range r.registries {
 		gaugeVecsList = append(gaugeVecsList, registry.GaugeVec(name, labels))
 	}
-	return &composedGaugeVecs{
+	return &compoundGaugeVecs{
 		gaugeVecs: gaugeVecsList,
 	}
 }
 
-func (r *compositeRegistry) FuncGauge(
+func (r *compoundRegistry) FuncGauge(
 	name string,
 	function func() float64,
 ) metrics.FuncGauge {
-	funcGauges := make([]metrics.FuncGauge, 0, len(r.registries))
+
+	var funcGauges []metrics.FuncGauge
 	for _, registry := range r.registries {
 		funcGauges = append(funcGauges, registry.FuncGauge(name, function))
 	}
-	return &composedFuncGauge{
+	return &compoundFuncGauge{
 		funcGauges: funcGauges,
 	}
 }
 
-func (r *compositeRegistry) IntGauge(name string) metrics.IntGauge {
-	intGauges := make([]metrics.IntGauge, 0, len(r.registries))
+func (r *compoundRegistry) IntGauge(name string) metrics.IntGauge {
+	var intGauges []metrics.IntGauge
 	for _, registry := range r.registries {
 		intGauges = append(intGauges, registry.IntGauge(name))
 	}
-	return &composedIntGauge{
+
+	return &compoundIntGauge{
 		intGauges: intGauges,
 	}
 }
 
-func (r *compositeRegistry) IntGaugeVec(
+func (r *compoundRegistry) IntGaugeVec(
 	name string,
 	labels []string,
 ) metrics.IntGaugeVec {
-	intGaugeVecsList := make([]metrics.IntGaugeVec, 0, len(r.registries))
+	var intGaugeVecsList []metrics.IntGaugeVec
 	for _, registry := range r.registries {
 		intGaugeVecsList = append(intGaugeVecsList, registry.IntGaugeVec(name, labels))
 	}
-	return &composedIntGaugeVec{
+
+	return &compoundIntGaugeVec{
 		intGaugeVecs: intGaugeVecsList,
 	}
 }
 
-func (r *compositeRegistry) FuncIntGauge(
+func (r *compoundRegistry) FuncIntGauge(
 	name string,
 	function func() int64,
 ) metrics.FuncIntGauge {
-	funcIntGauges := make([]metrics.FuncIntGauge, 0, len(r.registries))
+
+	var funcIntGauges []metrics.FuncIntGauge
 	for _, registry := range r.registries {
 		funcIntGauges = append(funcIntGauges, registry.FuncIntGauge(name, function))
 	}
-	return &composedFuncIntGauge{
+
+	return &compoundFuncIntGauge{
 		funcIntGauges: funcIntGauges,
 	}
 }
 
-func (r *compositeRegistry) Timer(name string) metrics.Timer {
-	timers := make([]metrics.Timer, 0, len(r.registries))
+func (r *compoundRegistry) Timer(name string) metrics.Timer {
+	var timers []metrics.Timer
 	for _, registry := range r.registries {
 		timers = append(timers, registry.Timer(name))
 	}
-	return &composedTimer{
+
+	return &compoundTimer{
 		timers: timers,
 	}
 }
 
-func (r *compositeRegistry) TimerVec(
+func (r *compoundRegistry) TimerVec(
 	name string,
 	labels []string,
 ) metrics.TimerVec {
-	timerVecsList := make([]metrics.TimerVec, 0, len(r.registries))
+
+	var timerVecsList []metrics.TimerVec
 	for _, registry := range r.registries {
 		timerVecsList = append(timerVecsList, registry.TimerVec(name, labels))
 	}
-	return &composedTimerVec{
+
+	return &compoundTimerVec{
 		timerVecs: timerVecsList,
 	}
 }
 
-func (r *compositeRegistry) Histogram(
+func (r *compoundRegistry) Histogram(
 	name string,
 	buckets metrics.Buckets,
 ) metrics.Histogram {
-	histograms := make([]metrics.Histogram, 0, len(r.registries))
+
+	var histograms []metrics.Histogram
 	for _, registry := range r.registries {
 		histograms = append(histograms, registry.Histogram(name, buckets))
 	}
-	return &composedHistogram{
+
+	return &compoundHistogram{
 		histogramList: histograms,
 	}
 }
 
-func (r *compositeRegistry) HistogramVec(
+func (r *compoundRegistry) HistogramVec(
 	name string,
 	buckets metrics.Buckets,
 	labels []string,
 ) metrics.HistogramVec {
-	histogramVecsList := make([]metrics.HistogramVec, 0, len(r.registries))
+
+	var histogramVecsList []metrics.HistogramVec
 	for _, registry := range r.registries {
 		histogramVecsList = append(
 			histogramVecsList,
 			registry.HistogramVec(name, buckets, labels),
 		)
 	}
-	return &histogramVec{
+
+	return &compoundHistogramVec{
 		histogramVecs: histogramVecsList,
 	}
 }
 
-func (r *compositeRegistry) DurationHistogram(
+func (r *compoundRegistry) DurationHistogram(
 	name string,
 	buckets metrics.DurationBuckets,
 ) metrics.Timer {
-	timers := make([]metrics.Timer, 0, len(r.registries))
+
+	var timers []metrics.Timer
 	for _, registry := range r.registries {
 		timers = append(timers, registry.DurationHistogram(name, buckets))
 	}
-	return &composedTimer{
+
+	return &compoundTimer{
 		timers: timers,
 	}
 }
 
-func (r *compositeRegistry) DurationHistogramVec(
+func (r *compoundRegistry) DurationHistogramVec(
 	name string,
 	buckets metrics.DurationBuckets,
 	labels []string,
 ) metrics.TimerVec {
-	durationHistogramVecsList := make([]metrics.TimerVec, 0, len(r.registries))
+
+	var durationHistogramVecsList []metrics.TimerVec
 	for _, registry := range r.registries {
 		durationHistogramVecsList = append(
 			durationHistogramVecsList,
 			registry.DurationHistogramVec(name, buckets, labels),
 		)
 	}
-	return &composedTimerVec{
+	return &compoundTimerVec{
 		timerVecs: durationHistogramVecsList,
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedGauge struct {
+type compoundGauge struct {
 	gauges []metrics.Gauge
 }
 
-func (g *composedGauge) Set(value float64) {
+func (g *compoundGauge) Set(value float64) {
 	for _, gauge := range g.gauges {
 		gauge.Set(value)
 	}
 }
 
-func (g *composedGauge) Add(value float64) {
+func (g *compoundGauge) Add(value float64) {
 	for _, gauge := range g.gauges {
 		gauge.Add(value)
 	}
@@ -253,27 +276,27 @@ func (g *composedGauge) Add(value float64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedFuncGauge struct {
+type compoundFuncGauge struct {
 	funcGauges []metrics.FuncGauge
 }
 
-func (g *composedFuncGauge) Function() func() float64 {
+func (g *compoundFuncGauge) Function() func() float64 {
 	return g.funcGauges[0].Function()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedIntGauge struct {
+type compoundIntGauge struct {
 	intGauges []metrics.IntGauge
 }
 
-func (g *composedIntGauge) Set(value int64) {
+func (g *compoundIntGauge) Set(value int64) {
 	for _, gauge := range g.intGauges {
 		gauge.Set(value)
 	}
 }
 
-func (g *composedIntGauge) Add(value int64) {
+func (g *compoundIntGauge) Add(value int64) {
 	for _, gauge := range g.intGauges {
 		gauge.Add(value)
 	}
@@ -281,27 +304,27 @@ func (g *composedIntGauge) Add(value int64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedFuncIntGauge struct {
+type compoundFuncIntGauge struct {
 	funcIntGauges []metrics.FuncIntGauge
 }
 
-func (g *composedFuncIntGauge) Function() func() int64 {
+func (g *compoundFuncIntGauge) Function() func() int64 {
 	return g.funcIntGauges[0].Function()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedCounter struct {
+type compoundCounter struct {
 	counters []metrics.Counter
 }
 
-func (c *composedCounter) Inc() {
+func (c *compoundCounter) Inc() {
 	for _, counter := range c.counters {
 		counter.Inc()
 	}
 }
 
-func (c *composedCounter) Add(delta int64) {
+func (c *compoundCounter) Add(delta int64) {
 	for _, counter := range c.counters {
 		counter.Add(delta)
 	}
@@ -309,21 +332,21 @@ func (c *composedCounter) Add(delta int64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedFuncCounter struct {
+type compoundFuncCounter struct {
 	funcCounters []metrics.FuncCounter
 }
 
-func (c *composedFuncCounter) Function() func() int64 {
+func (c *compoundFuncCounter) Function() func() int64 {
 	return c.funcCounters[0].Function()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedHistogram struct {
+type compoundHistogram struct {
 	histogramList []metrics.Histogram
 }
 
-func (h *composedHistogram) RecordValue(value float64) {
+func (h *compoundHistogram) RecordValue(value float64) {
 	for _, histogram := range h.histogramList {
 		histogram.RecordValue(value)
 	}
@@ -331,11 +354,11 @@ func (h *composedHistogram) RecordValue(value float64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedTimer struct {
+type compoundTimer struct {
 	timers []metrics.Timer
 }
 
-func (t *composedTimer) RecordDuration(value time.Duration) {
+func (t *compoundTimer) RecordDuration(value time.Duration) {
 	for _, timer := range t.timers {
 		timer.RecordDuration(value)
 	}
@@ -343,21 +366,22 @@ func (t *composedTimer) RecordDuration(value time.Duration) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedGaugeVecs struct {
+type compoundGaugeVecs struct {
 	gaugeVecs []metrics.GaugeVec
 }
 
-func (v *composedGaugeVecs) With(kv map[string]string) metrics.Gauge {
-	gaugeVecs := make([]metrics.Gauge, 0, len(v.gaugeVecs))
+func (v *compoundGaugeVecs) With(kv map[string]string) metrics.Gauge {
+	var gaugeVecs []metrics.Gauge
 	for _, gaugeVec := range v.gaugeVecs {
 		gaugeVecs = append(gaugeVecs, gaugeVec.With(kv))
 	}
-	return &composedGauge{
+
+	return &compoundGauge{
 		gauges: gaugeVecs,
 	}
 }
 
-func (v *composedGaugeVecs) Reset() {
+func (v *compoundGaugeVecs) Reset() {
 	for _, gaugeVec := range v.gaugeVecs {
 		gaugeVec.Reset()
 	}
@@ -365,21 +389,22 @@ func (v *composedGaugeVecs) Reset() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedIntGaugeVec struct {
+type compoundIntGaugeVec struct {
 	intGaugeVecs []metrics.IntGaugeVec
 }
 
-func (v *composedIntGaugeVec) With(kv map[string]string) metrics.IntGauge {
-	intGaugeVecs := make([]metrics.IntGauge, 0, len(v.intGaugeVecs))
+func (v *compoundIntGaugeVec) With(kv map[string]string) metrics.IntGauge {
+	var intGaugeVecs []metrics.IntGauge
 	for _, intGaugeVec := range v.intGaugeVecs {
 		intGaugeVecs = append(intGaugeVecs, intGaugeVec.With(kv))
 	}
-	return &composedIntGauge{
+
+	return &compoundIntGauge{
 		intGauges: intGaugeVecs,
 	}
 }
 
-func (v *composedIntGaugeVec) Reset() {
+func (v *compoundIntGaugeVec) Reset() {
 	for _, intGaugeVec := range v.intGaugeVecs {
 		intGaugeVec.Reset()
 	}
@@ -387,21 +412,22 @@ func (v *composedIntGaugeVec) Reset() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedCounterVec struct {
+type compoundCounterVec struct {
 	counterVecs []metrics.CounterVec
 }
 
-func (v *composedCounterVec) With(kv map[string]string) metrics.Counter {
-	counters := make([]metrics.Counter, 0, len(v.counterVecs))
+func (v *compoundCounterVec) With(kv map[string]string) metrics.Counter {
+	var counters []metrics.Counter
 	for _, counter := range v.counterVecs {
 		counters = append(counters, counter.With(kv))
 	}
-	return &composedCounter{
+
+	return &compoundCounter{
 		counters: counters,
 	}
 }
 
-func (v *composedCounterVec) Reset() {
+func (v *compoundCounterVec) Reset() {
 	for _, counter := range v.counterVecs {
 		counter.Reset()
 	}
@@ -409,21 +435,22 @@ func (v *composedCounterVec) Reset() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type composedTimerVec struct {
+type compoundTimerVec struct {
 	timerVecs []metrics.TimerVec
 }
 
-func (v *composedTimerVec) With(kv map[string]string) metrics.Timer {
-	timers := make([]metrics.Timer, 0, len(v.timerVecs))
+func (v *compoundTimerVec) With(kv map[string]string) metrics.Timer {
+	var timers []metrics.Timer
 	for _, counter := range v.timerVecs {
 		timers = append(timers, counter.With(kv))
 	}
-	return &composedTimer{
+
+	return &compoundTimer{
 		timers: timers,
 	}
 }
 
-func (v *composedTimerVec) Reset() {
+func (v *compoundTimerVec) Reset() {
 	for _, timerVec := range v.timerVecs {
 		timerVec.Reset()
 	}
@@ -431,21 +458,22 @@ func (v *composedTimerVec) Reset() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type histogramVec struct {
+type compoundHistogramVec struct {
 	histogramVecs []metrics.HistogramVec
 }
 
-func (v *histogramVec) With(kv map[string]string) metrics.Histogram {
-	histograms := make([]metrics.Histogram, 0, len(v.histogramVecs))
+func (v *compoundHistogramVec) With(kv map[string]string) metrics.Histogram {
+	var histograms []metrics.Histogram
 	for _, counter := range v.histogramVecs {
 		histograms = append(histograms, counter.With(kv))
 	}
-	return &composedHistogram{
+
+	return &compoundHistogram{
 		histogramList: histograms,
 	}
 }
 
-func (v *histogramVec) Reset() {
+func (v *compoundHistogramVec) Reset() {
 	for _, histogramV := range v.histogramVecs {
 		histogramV.Reset()
 	}

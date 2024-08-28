@@ -1,4 +1,4 @@
 RECURSE(
-    compositeregistry
+    compundregistry
     metrics
 )
