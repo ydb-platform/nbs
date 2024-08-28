@@ -199,12 +199,6 @@ func (s *nodeService) NodePublishVolume(
 			"AccessMode is missing in NodePublishVolumeRequest")
 	}
 
-	if accessMode.GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
-		return nil, s.statusError(
-			codes.InvalidArgument,
-			"ReadWriteMany acccess mode is not supported")
-	}
-
 	if req.VolumeContext == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
@@ -216,9 +210,15 @@ func (s *nodeService) NodePublishVolume(
 			"podUID is missing in NodePublishVolumeRequest.VolumeContext")
 	}
 
-	var err error
 	nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
+	if !nfsBackend && accessMode.GetMode() ==
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"ReadWriteMany access mode is supported only with nfs backend")
+	}
 
+	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {

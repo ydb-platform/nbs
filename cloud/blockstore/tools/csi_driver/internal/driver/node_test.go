@@ -110,6 +110,11 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		volumeContext[deviceNameVolumeContextKey] = *deviceNameOpt
 	}
 
+	acessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+	if backend == "nfs" {
+		acessMode = csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+	}
+
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: "testStagingTargetPath",
@@ -119,7 +124,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 				Mount: &csi.VolumeCapability_MountVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
-				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				Mode: acessMode,
 			},
 		},
 		VolumeContext: volumeContext,
@@ -555,7 +560,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestPublishDeviceWithReadWriteManyModeIsForbidden(t *testing.T) {
+func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -572,6 +577,9 @@ func TestPublishDeviceWithReadWriteManyModeIsForbidden(t *testing.T) {
 	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
 	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
+	volumeContext := map[string]string{
+		backendVolumeContextKey: "nbs",
+	}
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -602,7 +610,7 @@ func TestPublishDeviceWithReadWriteManyModeIsForbidden(t *testing.T) {
 				Block: &csi.VolumeCapability_BlockVolume{},
 			},
 		},
-		VolumeContext: map[string]string{},
+		VolumeContext: volumeContext,
 	})
 	require.Error(t, err)
 
@@ -618,7 +626,7 @@ func TestPublishDeviceWithReadWriteManyModeIsForbidden(t *testing.T) {
 				Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			},
 		},
-		VolumeContext: map[string]string{},
+		VolumeContext: volumeContext,
 	})
 	require.Error(t, err)
 }
