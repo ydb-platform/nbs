@@ -143,17 +143,6 @@ private:
 
     THashMap<ui64, TNodeRow> Nodes;
 
-    struct TWriteNodeRequest
-    {
-        ui64 NodeId;
-        TNodeRow Row;
-    };
-
-    struct TDeleteNodeRequest
-    {
-        ui64 NodeId;
-    };
-
     //
     // Nodes_Ver
     //
@@ -179,17 +168,6 @@ private:
     {
         ui64 MaxCommitId = 0;
         NProto::TNode Node;
-    };
-
-    struct TWriteNodeVerRequest
-    {
-        TNodesVerKey NodesVerKey;
-        TNodesVerRow NodesVerRow;
-    };
-
-    struct TDeleteNodeVerRequest
-    {
-        TNodesVerKey NodesVerKey;
     };
 
     TMap<TNodesVerKey, TNodesVerRow> NodesVer;
@@ -229,17 +207,6 @@ private:
         ui64 Version = 0;
     };
 
-    struct TWriteNodeAttrsRequest
-    {
-        TNodeAttrsKey NodeAttrsKey;
-        TNodeAttrsRow NodeAttrsRow;
-    };
-
-    struct TDeleteNodeAttrsRequest
-    {
-        TNodeAttrsKey NodeAttrsKey;
-    };
-
     THashMap<TNodeAttrsKey, TNodeAttrsRow, TNodeAttrsKeyHash> NodeAttrs;
 
     //
@@ -270,17 +237,6 @@ private:
         ui64 MaxCommitId = 0;
         TString Value;
         ui64 Version = 0;
-    };
-
-    struct TWriteNodeAttrsVerRequest
-    {
-        TNodeAttrsVerKey NodeAttrsVerKey;
-        TNodeAttrsVerRow NodeAttrsVerRow;
-    };
-
-    struct TDeleteNodeAttrsVerRequest
-    {
-        TNodeAttrsVerKey NodeAttrsVerKey;
     };
 
     TMap<TNodeAttrsVerKey, TNodeAttrsVerRow> NodeAttrsVer;
@@ -321,17 +277,6 @@ private:
         TString FollowerName;
     };
 
-    struct TWriteNodeRefsRequest
-    {
-        TNodeRefsKey NodeRefsKey;
-        TNodeRefsRow NodeRefsRow;
-    };
-
-    struct TDeleteNodeRefsRequest
-    {
-        TNodeRefsKey NodeRefsKey;
-    };
-
     THashMap<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash> NodeRefs;
 
     //
@@ -365,6 +310,64 @@ private:
         TString FollowerName;
     };
 
+    TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
+
+public:
+    struct TWriteNodeRequest
+    {
+        ui64 NodeId = 0;
+        TNodeRow Row;
+    };
+
+    struct TDeleteNodeRequest
+    {
+        ui64 NodeId = 0;
+    };
+
+    struct TWriteNodeVerRequest
+    {
+        TNodesVerKey NodesVerKey;
+        TNodesVerRow NodesVerRow;
+    };
+
+    struct TDeleteNodeVerRequest
+    {
+        TNodesVerKey NodesVerKey;
+    };
+
+    struct TWriteNodeAttrsRequest
+    {
+        TNodeAttrsKey NodeAttrsKey;
+        TNodeAttrsRow NodeAttrsRow;
+    };
+
+    struct TDeleteNodeAttrsRequest
+    {
+        TNodeAttrsKey NodeAttrsKey;
+    };
+
+    struct TWriteNodeAttrsVerRequest
+    {
+        TNodeAttrsVerKey NodeAttrsVerKey;
+        TNodeAttrsVerRow NodeAttrsVerRow;
+    };
+
+    struct TDeleteNodeAttrsVerRequest
+    {
+        TNodeAttrsVerKey NodeAttrsVerKey;
+    };
+
+    struct TWriteNodeRefsRequest
+    {
+        TNodeRefsKey NodeRefsKey;
+        TNodeRefsRow NodeRefsRow;
+    };
+
+    struct TDeleteNodeRefsRequest
+    {
+        TNodeRefsKey NodeRefsKey;
+    };
+
     struct TWriteNodeRefsVerRequest
     {
         TNodeRefsVerKey NodeRefsVerKey;
@@ -375,10 +378,6 @@ private:
     {
         TNodeRefsVerKey NodeRefsVerKey;
     };
-
-    TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
-
-public:
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,
