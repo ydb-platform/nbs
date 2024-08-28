@@ -149,7 +149,6 @@ class LoadTest(Daemon):
             command=params,
             cwd=common.output_path(),
             timeout=180,
-            stdin_file=os.path.join(common.output_path(), "%s_stdin.txt" % test_name),
             stdout_file=os.path.join(common.output_path(), "%s_stdout.txt" % test_name),
             stderr_file=os.path.join(common.output_path(), "%s_stderr.txt" % test_name))
 
