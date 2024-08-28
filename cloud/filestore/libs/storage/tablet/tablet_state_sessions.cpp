@@ -586,24 +586,18 @@ void TIndexTabletState::ChangeNodeCounters(
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
-            FileSystemStats.SetNodesOpenForWritingBySingleSession(
-                FileSystemStats.GetNodesOpenForWritingBySingleSession() +
-                amount);
+            NodeToSessionCounters.NodesOpenForWritingBySingleSession += amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForWritingByMultipleSessions(
-                (FileSystemStats.GetNodesOpenForWritingByMultipleSessions() +
-                 amount));
+            NodeToSessionCounters.NodesOpenForWritingByMultipleSessions +=
+                amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
-            FileSystemStats.SetNodesOpenForReadingBySingleSession(
-                (FileSystemStats.GetNodesOpenForReadingBySingleSession() +
-                 amount));
+            NodeToSessionCounters.NodesOpenForReadingBySingleSession += amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
-            FileSystemStats.SetNodesOpenForReadingByMultipleSessions(
-                (FileSystemStats.GetNodesOpenForReadingByMultipleSessions() +
-                 amount));
+            NodeToSessionCounters.NodesOpenForReadingByMultipleSessions +=
+                amount;
             break;
     }
 }
@@ -627,9 +621,7 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     db.WriteSessionHandle(proto);
     IncrementUsedHandlesCount(db);
 
-    auto* const handle = CreateHandle(session, proto);
-
-    return handle;
+    return CreateHandle(session, proto);
 }
 
 void TIndexTabletState::DestroyHandle(

@@ -218,7 +218,8 @@ private:
             const TSessionsStats& sessionsStats,
             const TChannelsStats& channelsStats,
             const TReadAheadCacheStats& readAheadStats,
-            const TNodeIndexCacheStats& nodeIndexCacheStats);
+            const TNodeIndexCacheStats& nodeIndexCacheStats,
+            const TNodeToSessionCounters& nodeToSessionCounters);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;

@@ -76,11 +76,6 @@ message TFileSystemStats
     uint64 FreshBytesCount = 209;
     uint64 AttrsUsedBytesCount = 210;
     uint64 DeletedFreshBytesCount = 211;
-
-    uint64 NodesOpenForWritingBySingleSession = 212;
-    uint64 NodesOpenForWritingByMultipleSessions = 213; 
-    uint64 NodesOpenForReadingBySingleSession = 214;
-    uint64 NodesOpenForReadingByMultipleSessions = 215;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

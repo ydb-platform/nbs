@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -46,43 +47,6 @@ class TProfileLogRequestInfo;
 } // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNodeToSessionStat
-{
-    struct TSessionStat
-    {
-        THashMap<TString, i32> ReadSessions;
-        THashMap<TString, i32> WriteSessions;
-    };
-    using TStat = THashMap<ui64, TSessionStat>;
-    TStat Stat;
-
-    void Clean(
-        const TStat::iterator& nodeStatIterator,
-        const TString& sessionId);
-
-public:
-    enum class EKind
-    {
-        None,
-        NodesOpenForWritingBySingleSession,
-        NodesOpenForWritingByMultipleSessions,
-        NodesOpenForReadingBySingleSession,
-        NodesOpenForReadingByMultipleSessions,
-    };
-
-    EKind AddRead(ui64 nodeId, const TString& sessionId);
-    EKind AddWrite(ui64 nodeId, const TString& sessionId);
-    EKind RemoveRead(ui64 nodeId, const TString& sessionId);
-    EKind RemoveWrite(ui64 nodeId, const TString& sessionId);
-    [[nodiscard]] EKind GetKind(ui64 nodeId) const;
-
-private:
-    [[nodiscard]] EKind GetKind(
-        const TStat::const_iterator& nodeStatIterator) const;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -159,6 +123,14 @@ struct TFlushBytesStats
     bool ChunkCompleted = false;
 };
 
+struct TNodeToSessionCounters
+{
+    i64 NodesOpenForWritingBySingleSession{0};
+    i64 NodesOpenForWritingByMultipleSessions{0};
+    i64 NodesOpenForReadingBySingleSession{0};
+    i64 NodesOpenForReadingByMultipleSessions{0};
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
@@ -177,6 +149,7 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
+    TNodeToSessionCounters NodeToSessionCounters; 
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -278,6 +251,11 @@ public:
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
+    }
+
+    const TNodeToSessionCounters& GetNodeToSessionCounters() const
+    {
+        return NodeToSessionCounters;
     }
 
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
