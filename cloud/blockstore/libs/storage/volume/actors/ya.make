@@ -1,7 +1,6 @@
 LIBRARY()
 
 SRCS(
-    forward_read_marked.cpp
     forward_write_and_mark_used.cpp
     read_disk_registry_based_overlay.cpp
     shadow_disk_actor.cpp

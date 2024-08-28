@@ -72,7 +72,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
@@ -139,7 +138,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         ActorSystem.GrabEdgeEvent<
@@ -193,7 +191,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -379,7 +376,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -434,7 +430,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -526,7 +521,6 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                false,
                 TDuration()});
 
         // read from overlay disk

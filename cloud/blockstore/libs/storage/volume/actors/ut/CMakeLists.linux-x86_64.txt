@@ -31,8 +31,8 @@ target_link_options(cloud-blockstore-libs-storage-volume-actors-ut PRIVATE
   -ldl
 )
 target_sources(cloud-blockstore-libs-storage-volume-actors-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_read_marked.ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/read_and_clear_empty_blocks_actor_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay_ut.cpp
 )
 set_property(

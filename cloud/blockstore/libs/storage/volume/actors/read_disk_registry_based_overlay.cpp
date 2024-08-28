@@ -37,20 +37,18 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        bool replyWithUnencryptedBlockMask,
         TDuration longRunningThreshold)
     : RequestInfo(std::move(requestInfo))
+    , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlockSize(blockSize)
-    , ReplyWithUnencryptedBlockMask(replyWithUnencryptedBlockMask)
     , LongRunningThreshold(longRunningThreshold)
     , Mode(mode)
-    , OriginalRequest(std::move(originalRequest))
-    , BlockMarks(MakeBlockMarks(
+    , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
           TBlockRange64::WithLength(
               OriginalRequest.GetStartIndex(),
@@ -245,14 +243,10 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::ReplyAndDie(
 
     if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
         ReadHandler->GetLocalResponse(response->Record);
-        ApplyMask(BlockMarks, OriginalRequest);
+        ClearEmptyBlocks(BlockMarks, OriginalRequest.Sglist);
     } else {
         ReadHandler->GetResponse(response->Record);
-        ApplyMask(BlockMarks, response->Record);
-    }
-
-    if (ReplyWithUnencryptedBlockMask) {
-        FillUnencryptedBlockMask(BlockMarks, response->Record);
+        ClearEmptyBlocks(BlockMarks, response->Record);
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -315,7 +309,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                 auto& value = std::get<NBlobMarkers::TFreshMarkOnBaseDisk>(BlockMarks[index]);
                 ReadHandler->SetBlock(
                     value.BlockIndex,
-                    std::move(value.RefToData),
+                    value.RefToData,
                     true); // baseDisk
             } else if (std::holds_alternative<NBlobMarkers::TBlobMarkOnBaseDisk>(BlockMarks[index])) {
                 auto& value = std::get<NBlobMarkers::TBlobMarkOnBaseDisk>(BlockMarks[index]);
