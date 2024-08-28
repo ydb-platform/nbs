@@ -172,7 +172,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
-    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
@@ -180,6 +179,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
+                                                                               \
+    xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
+    xxx(ChannelFreeSpaceThreshold,                      ui32,      25         )\
+    xxx(ChannelMinFreeSpace,                            ui32,      10         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

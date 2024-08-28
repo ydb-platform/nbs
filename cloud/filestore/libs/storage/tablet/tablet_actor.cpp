@@ -633,8 +633,9 @@ void TIndexTabletActor::HandleForcedOperation(
     }
 
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    auto code = e.GetCode();
     auto response = std::make_unique<TResponse>(std::move(e));
-    if (e.GetCode() == S_OK) {
+    if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
             const auto& zeroRanges = RangesWithEmptyCompactionScore;

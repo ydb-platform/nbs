@@ -30,17 +30,6 @@ TString ValidateUpdateConfigRequest(
             << ")";
     }
 
-    const ui64 oldBlockCount = oldConfig.GetBlocksCount();
-    const ui64 newBlockCount = newConfig.GetBlocksCount();
-
-    if (oldBlockCount > newBlockCount) {
-        return TStringBuilder()
-            << "it's not allowed to decrease blockCount"
-            << " (old: " << oldBlockCount
-            << ", new: " << newBlockCount
-            << ")";
-    }
-
     const ui32 oldChannelCount = oldConfig.ExplicitChannelProfilesSize();
     const ui32 newChannelCount = newConfig.ExplicitChannelProfilesSize();
 
@@ -53,28 +42,28 @@ TString ValidateUpdateConfigRequest(
     }
 
     using TChannelDiff = std::tuple<ui32, EChannelDataKind, EChannelDataKind>;
-    TVector<TChannelDiff> ChangedChannels;
+    TVector<TChannelDiff> changedChannels;
 
-    for (ui32 channel = 0; channel < oldChannelCount; ++channel) {
+    for (ui32 c = 0; c < oldChannelCount; ++c) {
         const auto oldDataKind = static_cast<EChannelDataKind>(oldConfig
-            .GetExplicitChannelProfiles(channel)
+            .GetExplicitChannelProfiles(c)
             .GetDataKind());
 
         const auto newDataKind = static_cast<EChannelDataKind>(newConfig
-            .GetExplicitChannelProfiles(channel)
+            .GetExplicitChannelProfiles(c)
             .GetDataKind());
 
         if (oldDataKind != newDataKind) {
-            ChangedChannels.emplace_back(channel, oldDataKind, newDataKind);
+            changedChannels.emplace_back(c, oldDataKind, newDataKind);
         }
     }
 
-    if (ChangedChannels) {
+    if (changedChannels) {
         auto error = TStringBuilder()
             << "it's not allowed to change dataKind of existing channels [";
 
-        for (const auto& [channel, oldDataKind, newDataKind]: ChangedChannels) {
-            error << " (channel: " << channel
+        for (const auto& [c, oldDataKind, newDataKind]: changedChannels) {
+            error << " (channel: " << c
                 << ", oldDataKind: " << ToString(oldDataKind)
                 << ", newDataKind: " << ToString(newDataKind)
                 << ") ";
@@ -88,24 +77,24 @@ TString ValidateUpdateConfigRequest(
         // Resizing tablet: check new channels dataKind.
 
         using TChannelDesc = std::tuple<ui32, EChannelDataKind>;
-        TVector<TChannelDesc> BadNewChannels;
+        TVector<TChannelDesc> badNewChannels;
 
-        for (ui32 channel = oldChannelCount; channel < newChannelCount; ++channel) {
+        for (ui32 c = oldChannelCount; c < newChannelCount; ++c) {
             const auto dataKind = static_cast<EChannelDataKind>(newConfig
-                .GetExplicitChannelProfiles(channel)
+                .GetExplicitChannelProfiles(c)
                 .GetDataKind());
 
             if (dataKind != EChannelDataKind::Mixed) {
-                BadNewChannels.emplace_back(channel, dataKind);
+                badNewChannels.emplace_back(c, dataKind);
             }
         }
 
-        if (BadNewChannels) {
+        if (badNewChannels) {
             auto error = TStringBuilder()
                 << "it's allowed to add new channels with Mixed dataKind only [";
 
-            for (const auto& [channel, dataKind]: BadNewChannels) {
-                error << " (channel: " << channel
+            for (const auto& [c, dataKind]: badNewChannels) {
+                error << " (channel: " << c
                     << ", dataKind: " << ToString(dataKind)
                     << ") ";
             }
@@ -164,7 +153,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,
-            "%s Failed to update config [txId: %d]: %s",
+            "%s Failed to update config [txId: %lu]: %s",
             LogTag.c_str(),
             txId,
             error.c_str());
@@ -181,6 +170,18 @@ void TIndexTabletActor::HandleUpdateConfig(
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
+    }
+
+    const ui64 oldBlockCount = oldConfig.GetBlocksCount();
+    const ui64 newBlockCount = newConfig.GetBlocksCount();
+
+    if (oldBlockCount > newBlockCount) {
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s BlocksCount will be decreased %lu -> %lu [txId: %lu]",
+            LogTag.c_str(),
+            oldBlockCount,
+            newBlockCount,
+            txId);
     }
 
     ExecuteTx<TUpdateConfig>(

@@ -19,16 +19,19 @@ using TBufferPtr = std::shared_ptr<TBuffer>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDirectoryContent {
+struct TDirectoryContent
+{
     TBufferPtr Content = nullptr;
     size_t Offset = 0;
     size_t Size = 0;
 
-    const char* GetData() const {
+    const char* GetData() const
+    {
         return Content ? Content->Data() + Offset : nullptr;
     }
 
-    size_t GetSize() const {
+    size_t GetSize() const
+    {
         return Content ? Min(Size, Content->Size() - Offset) : 0;
     }
 };
@@ -47,7 +50,7 @@ public:
     const fuse_ino_t Index;
     TString Cookie;
 
-    TDirectoryHandle(fuse_ino_t ino)
+    explicit TDirectoryHandle(fuse_ino_t ino)
         : Index(ino)
     {}
 
@@ -113,13 +116,21 @@ public:
 
 namespace {
 
-bool CheckDirectoryHandle(fuse_req_t req, fuse_ino_t ino, std::shared_ptr<TDirectoryHandle> handle, TLog& Log, const char* funcName)
+////////////////////////////////////////////////////////////////////////////////
+
+bool CheckDirectoryHandle(
+    fuse_req_t req,
+    fuse_ino_t ino,
+    const TDirectoryHandle& handle,
+    TLog& Log,
+    const char* funcName)
 {
-    if (handle->Index != ino) {
+    if (handle.Index != ino) {
         STORAGE_ERROR("request #" << fuse_req_unique(req)
             << " consistency violation: " << funcName
-            << " (handle->Index != ino) : "  <<
-            "(" << handle->Index << " != " << ino << ")");
+            << " (handle.Index != ino) : "  <<
+            "(" << handle.Index << " != " << ino << ")");
+
         return false;
     }
     return true;
@@ -135,12 +146,16 @@ private:
     TBufferPtr Buffer;
 
 public:
-    TDirectoryBuilder(size_t size) noexcept
+    explicit TDirectoryBuilder(size_t size) noexcept
         : Buffer(std::make_shared<TBuffer>(size))
     {}
 
 #if defined(FUSE_VIRTIO)
-    void Add(fuse_req_t req, const TString& name, const fuse_entry_param& entry, size_t offset)
+    void Add(
+        fuse_req_t req,
+        const TString& name,
+        const fuse_entry_param& entry,
+        size_t offset)
     {
         size_t entrySize = fuse_add_direntry_plus(
             req,
@@ -161,7 +176,11 @@ public:
             offset + Buffer->Size());
     }
 #else
-    void Add(fuse_req_t req, const TString& name, const fuse_entry_param& entry, size_t offset)
+    void Add(
+        fuse_req_t req,
+        const TString& name,
+        const fuse_entry_param& entry,
+        size_t offset)
     {
         size_t entrySize = fuse_add_direntry(
             req,
@@ -262,7 +281,7 @@ void TFileSystem::ReadDir(
 
     Y_ABORT_UNLESS(handle);
 
-    if (!CheckDirectoryHandle(req, ino, handle, Log, __func__)) {
+    if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
         ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
         return;
     }
@@ -294,7 +313,9 @@ void TFileSystem::ReadDir(
             const auto& response = future.GetValue();
             if (!CheckResponse(self, *callContext, req, response)) {
                 return;
-            } else if (response.NodesSize() != response.NamesSize()) {
+            }
+
+            if (response.NodesSize() != response.NamesSize()) {
                 STORAGE_ERROR("listnodes #" << fuse_req_unique(req)
                     << " names/nodes count mismatch");
 
@@ -327,8 +348,8 @@ void TFileSystem::ReadDir(
                     const auto error = MakeError(
                         E_IO,
                         TStringBuilder() << "#" << fuse_req_unique(req)
-                        << " listed invalid entry: name " << name.Quote()
-                        << ", stat " << DumpMessage(attr));
+                        << " listed invalid entry: parent " << ino << ", name "
+                        << name.Quote() << ", stat " << DumpMessage(attr));
 
                     STORAGE_ERROR(error.GetMessage());
                     self->ReplyError(
@@ -368,7 +389,7 @@ void TFileSystem::ReleaseDir(
     with_lock (CacheLock) {
         auto it = DirectoryHandles.find(fi->fh);
         if (it != DirectoryHandles.end()) {
-            CheckDirectoryHandle(req, ino, it->second, Log, __func__);
+            CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
             DirectoryHandles.erase(it);
         }
     }

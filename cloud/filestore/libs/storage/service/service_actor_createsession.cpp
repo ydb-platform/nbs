@@ -384,7 +384,9 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {
-        ReportCreateSessionError();
+        if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
+            ReportCreateSessionError();
+        }
 
         return Notify(ctx, msg->GetError(), false);
     }

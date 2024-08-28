@@ -60,28 +60,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1'000);
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 1);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 100);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 300);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 400);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(100, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(300, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
 
         service.DestroyFileStore("test");
         service.AssertGetFileStoreInfoFailed("test");
@@ -99,28 +107,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AlterFileStore("test", "yyyy", "zzzz");
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "yyyy");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "zzzz");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 2);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("yyyy", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("zzzz", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 100);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 300);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 30_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 400);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(100, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(300, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(30_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
     }
 
     Y_UNIT_TEST(ShouldResizeFileStore)
@@ -135,31 +151,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ResizeFileStore("test", 100'000'000);
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFileSystemId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetCloudId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetFolderId(), "test");
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocksCount(), 100'000'000);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlockSize(), DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetConfigVersion(), 2);
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(100'000'000, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadIops(), 200);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteIops(), 600);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxReadBandwidth(), 60_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteBandwidth(), 60_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBoostPercentage(), 200);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetBurstPercentage(), 10);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(600, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
 
         service.AssertResizeFileStoreFailed("test", 1'000);
         service.AssertResizeFileStoreFailed("test", 0);
+    }
+
+    Y_UNIT_TEST(ShouldDownsizeFileStore)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 100'000'000);
+
+        {
+            service.SendResizeFileStoreRequest("test", 10'000'000);
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            service.SendResizeFileStoreRequest("test", 10'000'000, true);
+            response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL(100'000'00, response.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
+
+        const auto& profile = response.GetPerformanceProfile();
+        UNIT_ASSERT(!profile.GetThrottlingEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(600, profile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(60_MB, profile.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(128_MB, profile.GetMaxPostponedWeight());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(20).MilliSeconds(),
+            profile.GetMaxPostponedTime());
+        UNIT_ASSERT_VALUES_EQUAL(1024, profile.GetMaxPostponedCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Minutes(30).MilliSeconds(),
+            profile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Hours(12).MilliSeconds(),
+            profile.GetBoostRefillTime());
+        UNIT_ASSERT_VALUES_EQUAL(400, profile.GetBoostPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(10, profile.GetBurstPercentage());
+        UNIT_ASSERT_VALUES_EQUAL(20, profile.GetMaxWriteCostMultiplier());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            profile.GetDefaultPostponedRequestWeight());
     }
 
     Y_UNIT_TEST(ShouldResizeFileStoreWithCustomPerformanceProfile)
@@ -2642,6 +2725,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         NProtoPrivate::TAddDataRequest addData;
         using TFlags = NKikimr::TStorageStatusFlags;
+        const float freeSpaceShare = 0.22;
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
             {
@@ -2653,6 +2737,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             event->template Get<TEvBlobStorage::TEvPutResult>();
                         const_cast<TFlags&>(msg->StatusFlags).Raw |=
                             ui32(yellowFlag);
+                        const_cast<float&>(msg->ApproximateFreeSpaceShare) =
+                            freeSpaceShare;
                         break;
                     }
 
@@ -2671,6 +2757,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, addData.StorageStatusFlagsSize());
         UNIT_ASSERT(NKikimr::TStorageStatusFlags(
             addData.GetStorageStatusFlags(0)).Check(yellowFlag));
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.ApproximateFreeSpaceSharesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            freeSpaceShare,
+            addData.GetApproximateFreeSpaceShares(0));
     }
 
     void ConfigureFollowers(
@@ -3742,20 +3832,62 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(
             headers,
             TCreateNodeArgs::File(RootNodeId, "file2"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file4"));
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL("file3", listNodesResponse.GetNames(2));
+        UNIT_ASSERT_VALUES_EQUAL("file4", listNodesResponse.GetNames(3));
+        TVector<std::pair<ui64, TString>> nodes(4);
+        for (ui32 i = 0; i < 4; ++i) {
+            nodes[i] = {
+                listNodesResponse.GetNodes(i).GetId(),
+                listNodesResponse.GetNames(i)};
+            UNIT_ASSERT_VALUES_UNEQUAL(0, nodes[i].first);
+        }
 
         auto headers1 = headers;
         headers1.FileSystemId = shard1Id;
 
-        auto listNodesResponse = service.ListNodes(
+        listNodesResponse = service.ListNodes(
             headers1,
             shard1Id,
             RootNodeId)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
-        const auto shard1NodeName = listNodesResponse.GetNames(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        const auto shard1NodeName1 = listNodesResponse.GetNames(0);
+        const auto shard1NodeId1 = listNodesResponse.GetNodes(0).GetId();
+        const auto shard1NodeName2 = listNodesResponse.GetNames(1);
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        const auto shard2NodeName1 = listNodesResponse.GetNames(0);
+        const auto shard2NodeName2 = listNodesResponse.GetNames(1);
 
         // "breaking" one node - deleting it directly from the shard
-        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName1);
+
+        EraseIf(nodes, [=] (const auto& node) {
+            return node.first == shard1NodeId1;
+        });
 
         // ListNodes should still succeed
         listNodesResponse = service.ListNodes(
@@ -3763,18 +3895,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fsId,
             RootNodeId)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
-        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
-        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
-        // zero node id is expected - we failed to fetch attrs for this file
+        // unresolved nodes should be removed from the response
+        UNIT_ASSERT_VALUES_EQUAL(3, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            nodes[0].second,
+            listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[1].second,
+            listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[2].second,
+            listNodesResponse.GetNames(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[0].first,
             listNodesResponse.GetNodes(0).GetId());
-        UNIT_ASSERT_VALUES_UNEQUAL(
-            0,
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[1].first,
             listNodesResponse.GetNodes(1).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[2].first,
+            listNodesResponse.GetNodes(2).GetId());
 
         const auto counters =
             env.GetCounters()->FindSubgroup("component", "service");
@@ -3782,6 +3924,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto counter =
             counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        // "breaking" all nodes - ListNodes should fail with E_IO after this
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
+        service.UnlinkNode(headers2, RootNodeId, shard2NodeName1);
+        service.UnlinkNode(headers2, RootNodeId, shard2NodeName2);
+
+        service.SendListNodesRequest(headers, fsId, RootNodeId);
+        auto response = service.RecvListNodesResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO,
+            response->GetError().GetCode(),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
@@ -3844,9 +3998,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             names.size() / 2,
             listNodesResponse.NamesSize());
-        const ui32 idxToUnlink = 13;
-        const auto shard1NodeName = listNodesResponse.GetNames(idxToUnlink);
-        const ui64 unlinkedId = listNodesResponse.GetNodes(idxToUnlink).GetId();
+        const ui32 idxToUnlink1 = 13;
+        const ui32 idxToUnlink2 = 17;
+        const auto shard1NodeName1 = listNodesResponse.GetNames(idxToUnlink1);
+        const ui64 unlinkedId1 = listNodesResponse.GetNodes(idxToUnlink1).GetId();
+        const auto shard1NodeName2 = listNodesResponse.GetNames(idxToUnlink2);
+        const ui64 unlinkedId2 = listNodesResponse.GetNodes(idxToUnlink2).GetId();
 
         listNodesResponse = service.ListNodes(
             headers,
@@ -3861,18 +4018,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 listNodesResponse.GetNodes(i).GetId());
         }
 
-        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName1);
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
 
         listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
 
+        for (auto id: {unlinkedId1, unlinkedId2}) {
+            auto idx = Find(ids, id) - ids.begin();
+            ids.erase(ids.begin() + idx);
+            names.erase(names.begin() + idx);
+        }
+
         UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
         for (ui32 i = 0; i < names.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(names[i], listNodesResponse.GetNames(i));
             UNIT_ASSERT_VALUES_EQUAL(
-                ids[i] == unlinkedId ? InvalidNodeId : ids[i],
+                ids[i],
                 listNodesResponse.GetNodes(i).GetId());
         }
     }
@@ -3912,7 +4076,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(DestroyDestroyedFileStoreShouldFail)
+    Y_UNIT_TEST(DestroyDestroyedFileStoreShouldNotFail)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");

@@ -1,5 +1,7 @@
 #include "part_state.h"
 
+#include <cloud/storage/core/libs/tablet/model/channels.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
@@ -50,19 +52,6 @@ void DumpOperationState(IOutputStream& out, const TOperationState& op)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-double Normalize(double x, double lo, double hi)
-{
-    if (x > hi) {
-        return 1;
-    }
-
-    if (x < lo) {
-        return 0;
-    }
-
-    return (x - lo) / (hi - lo);
-}
 
 double BPFeature(const TBackpressureFeatureConfig& c, double x)
 {
@@ -248,6 +237,12 @@ bool TPartitionState::CheckPermissions(ui32 channel, EChannelPermissions permiss
     return ch ? ch->Permissions.HasFlags(permissions) : true;
 }
 
+double TPartitionState::GetFreeSpaceShare(ui32 channel) const
+{
+    const auto* ch = GetChannel(channel);
+    return ch ? ch->ApproximateFreeSpaceShare : 0;
+}
+
 bool TPartitionState::UpdateChannelFreeSpaceShare(ui32 channel, double share)
 {
     if (share) {
@@ -319,17 +314,14 @@ bool TPartitionState::CheckChannelFreeSpaceShare(ui32 channel) const
     const auto& fsc = FreeSpaceConfig;
     const auto* ch = GetChannel(channel);
 
-    if (!ch || !ch->ApproximateFreeSpaceShare) {
+    if (!ch) {
         return true;
     }
 
-    const auto fss = Normalize(
+    return NCloud::CheckChannelFreeSpaceShare(
         ch->ApproximateFreeSpaceShare,
         fsc.ChannelMinFreeSpace,
-        fsc.ChannelFreeSpaceThreshold
-    );
-
-    return RandomNumber<double>() < fss;
+        fsc.ChannelFreeSpaceThreshold);
 }
 
 bool TPartitionState::IsCompactionAllowed() const
