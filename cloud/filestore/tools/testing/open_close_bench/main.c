@@ -1,18 +1,18 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[]) {
-    int N = 0;
+    int n = 0;
     int opt;
 
     while ((opt = getopt(argc, argv, "n:")) != -1) {
         switch (opt) {
             case 'n':
-                N = atoi(optarg);
+                n = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s -n <number_of_files>\n", argv[0]);
@@ -20,17 +20,17 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (N <= 0) {
+    if (n <= 0) {
         fprintf(stderr, "Please specify a number of files using the -n option.\n");
         exit(EXIT_FAILURE);
     }
 
     char filename[100];
     int fds[100000];
-    clock_t start_time, end_time;
-    double open_time, close_time;
+    clock_t startTime, endTime;
+    double openTime, closeTime;
 
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < n; i++) {
         // Generate filename
         snprintf(filename, sizeof(filename), "file%d.txt", i + 1);
 
@@ -52,27 +52,27 @@ int main(int argc, char *argv[]) {
     }
 
     // Measure opening latency
-    start_time = clock();
-    for (int i = 0; i < N; i++) {
+    startTime = clock();
+    for (int i = 0; i < n; i++) {
         snprintf(filename, sizeof(filename), "file%d.txt", i + 1);
         fds[i] = open(filename, O_RDONLY);
     }
-    end_time = clock();
+    endTime = clock();
 
-    open_time = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-    printf("Open %.6f ms\n", open_time * 1000);
-    printf("Open avg %.6f ms\n", open_time * 1000 / N);
+    openTime = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
+    printf("Open %.6f ms\n", openTime * 1000);
+    printf("Open avg %.6f ms\n", openTime * 1000 / n);
 
     // Measure closing latency
-    start_time = clock();
-    for (int i = 0; i < N; i++) {
+    startTime = clock();
+    for (int i = 0; i < n; i++) {
         close(fds[i]);
     }
-    end_time = clock();
+    endTime = clock();
 
-    close_time = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-    printf("Close %.6f ms\n", close_time * 1000);
-    printf("Close avg %.6f ms\n", close_time * 1000 / N);
+    closeTime = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
+    printf("Close %.6f ms\n", closeTime * 1000);
+    printf("Close avg %.6f ms\n", closeTime * 1000 / n);
 
     return 0;
 }
