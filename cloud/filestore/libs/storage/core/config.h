@@ -234,6 +234,9 @@ public:
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
 
+    bool GetAsyncDestroyHandleEnabled() const;
+    TDuration GetAsyncDestroyHandlePeriod() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

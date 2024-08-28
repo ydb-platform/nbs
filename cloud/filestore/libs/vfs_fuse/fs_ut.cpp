@@ -88,7 +88,8 @@ struct TBootstrap
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler())
+            ISchedulerPtr scheduler = CreateScheduler(),
+            const NProto::TFileStoreFeatures& featuresConfig = {})
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -111,12 +112,17 @@ struct TBootstrap
         Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
 
         Service = std::make_shared<TFileStoreTest>();
-        Service->CreateSessionHandler = [] (auto callContext, auto request) {
+        Service->CreateSessionHandler =
+            [featuresConfig](auto callContext, auto request)
+        {
             Y_UNUSED(callContext);
 
             UNIT_ASSERT(request->GetRestoreClientSession());
             NProto::TCreateSessionResponse result;
             result.MutableSession()->SetSessionId(CreateGuidAsString());
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                featuresConfig);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
             return MakeFuture(result);
         };
 
@@ -1361,6 +1367,101 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             ->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldProcessDestroyHandleRequestsAsynchronously)
+    {
+        NProto::TFileStoreFeatures feauters;
+        feauters.SetAsyncDestroyHandleEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            feauters);
+
+        ui64 handle1 = 2;
+        ui64 nodeId1 = 10;
+        ui64 handle2 = 5;
+        ui64 nodeId2 = 11;
+        bool releaseFinished = false;
+        ui32 handlerCalled = 0;
+        auto destroyFinished = NewPromise<void>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                if (++handlerCalled == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(releaseFinished, true);
+                    UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle1);
+                    UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId1);
+                } else if (handlerCalled == 2) {
+                    UNIT_ASSERT_VALUES_EQUAL(releaseFinished, true);
+                    UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle2);
+                    UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId2);
+                    destroyFinished.TrySetValue();
+                } else {
+                    UNIT_ASSERT_C(
+                        false,
+                        "Handler should not be called more than two times");
+                }
+
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        releaseFinished = true;
+
+        destroyFinished.GetFuture().Wait(WaitTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(handlerCalled, 2);
+    }
+
+    Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
+    {
+        NProto::TFileStoreFeatures feauters;
+        feauters.SetAsyncDestroyHandleEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            feauters);
+
+        ui64 handle = 2;
+        ui64 nodeId = 10;
+        ui32 handlerCalled = 0;
+        auto destroyFinished = NewPromise<void>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle);
+                UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId);
+                if (++handlerCalled > 3) {
+                    destroyFinished.TrySetValue();
+                    return MakeFuture(NProto::TDestroyHandleResponse{});
+                }
+
+                NProto::TDestroyHandleResponse response = TErrorResponse(
+                    E_FS_NOENT, "xxx");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        destroyFinished.GetFuture().Wait(WaitTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(handlerCalled, 4);
     }
 }
 

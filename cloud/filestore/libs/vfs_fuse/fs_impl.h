@@ -4,6 +4,7 @@
 
 #include "cache.h"
 #include "config.h"
+#include "create_destroy_queue.h"
 #include "fs.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -71,6 +72,9 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrLock;
 
+    TCreateDestroyQueue CreateDestroyQueue;
+    TMutex CreateDestroyLock;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,
@@ -83,6 +87,8 @@ public:
         ICompletionQueuePtr queue);
 
     ~TFileSystem();
+
+    void Init() override;
 
     void Reset() override;
 
@@ -393,6 +399,9 @@ private:
         const NProto::TNodeAttr& attrs);
 
     void ClearDirectoryCache();
+
+    void ScheduleNextQueueEntry();
+    void ProcessNextQueueEntry();
 
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \

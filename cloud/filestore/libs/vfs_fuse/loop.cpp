@@ -839,7 +839,8 @@ private:
         if (features.GetAttrTimeout()) {
             config.SetAttrTimeout(features.GetAttrTimeout());
         }
-
+        config.SetAsyncDestroyHandleEnabled(
+            features.GetAsyncDestroyHandleEnabled());
         return std::make_shared<TFileSystemConfig>(config);
     }
 
@@ -870,6 +871,8 @@ private:
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode
         ResetSessionState(SessionThread->GetSession().Dump());
+
+        FileSystem->Init();
     }
 
     void Destroy()

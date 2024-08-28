@@ -411,4 +411,18 @@ struct TSetXAttrValueRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TReleaseRequest
+    : public TRequestBase<fuse_release_in, void, void>
+{
+    TReleaseRequest(ui64 nodeId, ui64 fh)
+    {
+        In->Header.opcode = FUSE_RELEASE;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = fh;
+    }
+};
+
+
 }   // namespace NCloud::NFileStore::NVhost

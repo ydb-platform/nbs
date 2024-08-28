@@ -36,6 +36,9 @@ public:
     ui32 GetMaxBufferSize() const;
     ui32 GetPreferredBlockSize() const;
 
+    bool GetAsyncDestroyHandleEnabled() const;
+    TDuration GetAsyncDestroyHandlePeriod() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -23,6 +23,7 @@ ENDIF()
 END()
 
 RECURSE(
+    protos
     vhost
 )
 

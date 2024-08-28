@@ -20,6 +20,7 @@ message TFileStoreFeatures
     bool ThreeStageWriteEnabled = 5;
     uint32 ThreeStageWriteThreshold = 6;
     uint32 PreferredBlockSize = 7;
+    bool AsyncDestroyHandleEnabled = 8;
 }
 
 message TFileStore

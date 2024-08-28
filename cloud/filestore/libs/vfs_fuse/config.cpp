@@ -26,6 +26,9 @@ namespace {
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
+                                                                               \
+    xxx(AsyncDestroyHandleEnabled,  bool,       false                         )\
+    xxx(AsyncDestroyHandlePeriod,   TDuration,  TDuration::MilliSeconds(50)   )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

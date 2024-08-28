@@ -53,10 +53,29 @@ TFileSystem::~TFileSystem()
     Reset();
 }
 
+void TFileSystem::Init()
+{
+    STORAGE_INFO("scheduling destroy handle queue processing");
+    ScheduleNextQueueEntry();
+}
+
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
     ClearDirectoryCache();
+}
+
+void TFileSystem::ScheduleNextQueueEntry()
+{
+    if (Config->GetAsyncDestroyHandleEnabled()) {
+        Scheduler->Schedule(
+        Timer->Now() + Config->GetAsyncDestroyHandlePeriod(),
+        [=, ptr = weak_from_this()] () {
+            if (auto self = ptr.lock()) {
+                self->ProcessNextQueueEntry();
+            }
+        });
+    }
 }
 
 bool TFileSystem::CheckError(
@@ -230,6 +249,57 @@ void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
     // notifying CompletionQueue about request completion to decrement inflight
     // request counter and unblock the stopping procedure
     CompletionQueue->Complete(req, [&] (fuse_req_t) { return 0; });
+}
+
+void TFileSystem::ProcessNextQueueEntry()
+{
+    TGuard g{CreateDestroyLock};
+    if (CreateDestroyQueue.Empty())
+    {
+        ScheduleNextQueueEntry();
+        return;
+    }
+
+    const auto& entry = CreateDestroyQueue.GetNext();
+    if (entry.HasDestroyHandleRequest()) {
+        const auto& requestInfo = entry.GetDestroyHandleRequest();
+        auto request = std::make_shared<NProto::TDestroyHandleRequest>(
+            requestInfo);
+        STORAGE_DEBUG(
+            "Process destroy request: "
+            << "filesystem " << Config->GetFileSystemId() << " #"
+            << requestInfo.GetNodeId() << " @" << requestInfo.GetHandle());
+
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
+        callContext->RequestType = EFileStoreRequest::DestroyHandle;
+        RequestStats->RequestStarted(Log, *callContext);
+
+        Session->DestroyHandle(callContext, std::move(request))
+        .Subscribe([=, this, ptr = weak_from_this()] (const auto& future) {
+            const auto& response = future.GetValue();
+            const auto& error = response.GetError();
+            if (auto self = ptr.lock()) {
+                // If destroy request failed, we need to retry it.
+                // Otherwise, remove it from queue.
+                if (HasError(error)) {
+                    STORAGE_ERROR(
+                        "DestroyHandle request failed: "
+                        << "filesystem " << Config->GetFileSystemId()
+                        << " error: " << FormatError(error));
+                } else {
+                    with_lock(CreateDestroyLock) {
+                        CreateDestroyQueue.Remove();
+                    }
+                }
+                ScheduleNextQueueEntry();
+            }
+        });
+    } else {
+        // TODO: process create handle
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NFuse

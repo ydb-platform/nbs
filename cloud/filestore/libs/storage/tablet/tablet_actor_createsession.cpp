@@ -36,6 +36,8 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     } else {
         features->SetPreferredBlockSize(fileStore.GetBlockSize());
     }
+    features->SetAsyncDestroyHandleEnabled(
+        config.GetAsyncDestroyHandleEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

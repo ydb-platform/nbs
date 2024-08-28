@@ -360,4 +360,10 @@ message TStorageConfig
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
     optional uint32 NonNetworkMetricsBalancingFactor = 378;
+
+    // Async processing of destroy handle requests.
+    optional bool AsyncDestroyHandleEnabled = 379;
+
+    // Period of processing destroy handle requests.
+    optional uint32 AsyncDestroyHandlePeriod = 380;
 }
