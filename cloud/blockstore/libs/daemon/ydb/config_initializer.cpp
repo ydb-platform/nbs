@@ -389,7 +389,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
 void TConfigInitializerYdb::AdoptNodeRegistrationParams(
     NProto::TStorageServiceConfig& config)
 {
-    if (!ServerConfig->GetServerConfig()) {
+    if (!ServerConfig || !ServerConfig->GetServerConfig()) {
         return;
     }
 

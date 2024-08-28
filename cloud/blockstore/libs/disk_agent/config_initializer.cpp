@@ -466,7 +466,7 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
 void TConfigInitializer::AdoptNodeRegistrationParams(
     NProto::TStorageServiceConfig& config)
 {
-    if (!ServerConfig->GetServerConfig()) {
+    if (!ServerConfig || !ServerConfig->GetServerConfig()) {
         return;
     }
 
