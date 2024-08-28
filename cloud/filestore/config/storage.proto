@@ -342,6 +342,6 @@ message TStorageConfig
     }
     optional TFilestoreAliases FilestoreAliases = 368;
 
+    // Throttle DescribeData and GenerateBlobIds requests
     optional bool MultipleStageRequestThrottlingEnabled = 369;
-
 }
