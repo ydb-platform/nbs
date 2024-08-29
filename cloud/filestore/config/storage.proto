@@ -364,6 +364,6 @@ message TStorageConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 379;
 
-    // Period of processing destroy handle requests.
-    optional uint32 AsyncDestroyHandlePeriod = 380;
+    // Period of processing create/destroy handle requests.
+    optional uint32 AsyncHandleOperationPeriod = 380;
 }

@@ -72,7 +72,7 @@ void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
     if (Config->GetAsyncDestroyHandleEnabled()) {
         Scheduler->Schedule(
-        Timer->Now() + Config->GetAsyncDestroyHandlePeriod(),
+        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
         [=, ptr = weak_from_this()] () {
             if (auto self = ptr.lock()) {
                 self->ProcessHandleOpsQueue();

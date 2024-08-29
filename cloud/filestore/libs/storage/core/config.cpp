@@ -194,7 +194,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \
     xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
-    xxx(AsyncDestroyHandlePeriod,      TDuration,  TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

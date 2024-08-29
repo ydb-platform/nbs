@@ -40,6 +40,6 @@ message TFileSystemConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 11;
 
-    // Period of processing destroy handle requests.
-    optional uint32 AsyncDestroyHandlePeriod = 12;
+    // Period of processing create/destroy handle requests.
+    optional uint32 AsyncHandleOperationPeriod = 12;
 }

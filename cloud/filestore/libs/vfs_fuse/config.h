@@ -37,7 +37,7 @@ public:
     ui32 GetPreferredBlockSize() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
-    TDuration GetAsyncDestroyHandlePeriod() const;
+    TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

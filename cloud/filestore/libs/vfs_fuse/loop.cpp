@@ -841,6 +841,8 @@ private:
         }
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
+        config.SetAsyncHandleOperationPeriod(
+            features.GetAsyncHandleOperationPeriod());
         return std::make_shared<TFileSystemConfig>(config);
     }
 

@@ -1450,7 +1450,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 }
 
                 NProto::TDestroyHandleResponse response = TErrorResponse(
-                    E_FS_NOENT, "xxx");
+                    E_REJECTED, "xxx");
                 return MakeFuture(response);
             });
 
@@ -1462,6 +1462,48 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
         UNIT_ASSERT_VALUES_EQUAL(4, handlerCalled);
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEvent)
+    {
+        NProto::TFileStoreFeatures feauters;
+        feauters.SetAsyncDestroyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, feauters);
+
+        ui64 handle = 2;
+        ui64 nodeId = 10;
+        auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+
+                return responsePromise;
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        NProto::TDestroyHandleResponse response =
+            TErrorResponse(E_FS_NOENT, "xxx");
+        responsePromise.SetValue(std::move(response));
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/AsyncDestroyHandleFailed",
+                    true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
     }
 }
 
