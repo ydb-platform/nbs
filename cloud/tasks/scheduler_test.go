@@ -60,10 +60,10 @@ func (c *executionContextMock) SaveState(ctx context.Context) error {
 
 func (c *executionContextMock) SaveStateWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
-	args := c.Called(ctx, callback)
+	args := c.Called(ctx, preparation)
 	return args.Error(0)
 }
 
@@ -97,10 +97,10 @@ func (c *executionContextMock) HasEvent(ctx context.Context, event int64) bool {
 
 func (c *executionContextMock) FinishWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
-	args := c.Called(ctx, callback)
+	args := c.Called(ctx, preparation)
 	return args.Error(0)
 }
 
