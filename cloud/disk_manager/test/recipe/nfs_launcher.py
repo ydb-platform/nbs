@@ -32,6 +32,7 @@ class NfsLauncher:
             service_type="local",
             verbose=True,
             kikimr_port=ydb_port,
+            secure=True,
         )
         self.__nfs_configurator.generate_configs(domains_txt, names_txt)
 
