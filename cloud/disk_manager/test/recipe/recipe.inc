@@ -6,7 +6,6 @@ DEPENDS(
 
     cloud/disk_manager/cmd/disk-manager
     cloud/disk_manager/cmd/disk-manager-init-db
-    cloud/disk_manager/test/images/recipe
     cloud/disk_manager/test/mocks/compute
     cloud/disk_manager/test/mocks/kms
     cloud/disk_manager/test/mocks/metadata
@@ -29,7 +28,5 @@ DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
     arcadia/cloud/blockstore/tests/certs/server.key
 )
-
-INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/images/recipe/recipe.inc)
 
 USE_RECIPE(cloud/disk_manager/test/recipe/recipe ${RECIPE_ARGS})
