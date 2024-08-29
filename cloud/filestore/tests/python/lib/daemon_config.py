@@ -378,6 +378,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
+        secure=False,
     ):
         super().__init__(
             binary_path,
@@ -394,6 +395,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
+            secure=secure,
         )
 
 
