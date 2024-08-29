@@ -1,5 +1,7 @@
-#include "util/generic/hash.h"
-#include "util/system/types.h"
+#pragma once
+
+#include <util/generic/hash.h>
+#include <util/system/types.h>
 
 namespace NCloud::NFileStore::NStorage {
 
