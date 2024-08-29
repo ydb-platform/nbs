@@ -220,16 +220,16 @@ func (r *compoundRegistry) HistogramVec(
 	labels []string,
 ) metrics.HistogramVec {
 
-	var histogramVecsList []metrics.HistogramVec
+	var histogramVecs []metrics.HistogramVec
 	for _, registry := range r.registries {
-		histogramVecsList = append(
-			histogramVecsList,
+		histogramVecs = append(
+			histogramVecs,
 			registry.HistogramVec(name, buckets, labels),
 		)
 	}
 
 	return &compoundHistogramVec{
-		histogramVecs: histogramVecsList,
+		histogramVecs: histogramVecs,
 	}
 }
 
