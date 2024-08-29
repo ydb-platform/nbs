@@ -3878,24 +3878,25 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             }
 
             if (agentState == NProto::AGENT_STATE_UNAVAILABLE ||
-                    deviceState == NProto::DEVICE_STATE_ERROR)
+                deviceState == NProto::DEVICE_STATE_ERROR)
             {
                 pool.BrokenBytes += deviceBytes;
                 continue;
             }
 
+            if (allocated) {
+                pool.AllocatedBytes += deviceBytes;
+                continue;
+            }
+
             if (agentState == NProto::AGENT_STATE_WARNING ||
-                    deviceState == NProto::DEVICE_STATE_WARNING)
+                deviceState == NProto::DEVICE_STATE_WARNING)
             {
                 pool.DecommissionedBytes += deviceBytes;
                 continue;
             }
 
-            if (allocated) {
-                pool.AllocatedBytes += deviceBytes;
-            } else {
-                pool.FreeBytes += deviceBytes;
-            }
+            pool.FreeBytes += deviceBytes;
         }
     }
 
