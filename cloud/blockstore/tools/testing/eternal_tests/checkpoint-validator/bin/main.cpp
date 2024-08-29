@@ -14,9 +14,7 @@ class TApp
 public:
     TApp()
     {
-        TLogSettings settings;
-        settings.UseLocalTimestamps = true;
-        Logging = CreateLoggingService("console", settings);
+        Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("MAIN");
     }

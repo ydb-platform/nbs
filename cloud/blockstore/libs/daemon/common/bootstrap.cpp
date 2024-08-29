@@ -200,10 +200,7 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
+    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     Configs->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
@@ -699,7 +696,6 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitSpdkEnvConfig();
 
     TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
     logSettings.FiltrationLevel =
         static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
 

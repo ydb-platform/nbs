@@ -196,10 +196,7 @@ void TBootstrap::ParseOptions(int argc, char** argv)
 
 void TBootstrap::Init()
 {
-    TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
+    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
