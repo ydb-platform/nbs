@@ -139,7 +139,7 @@ void TConfigInitializer::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    AdoptNodeRegistrationParams(storageConfig);
+    AdaptNodeRegistrationParams(storageConfig);
 
     if (Options->SchemeShardDir) {
         storageConfig.SetSchemeShardDir(GetFullSchemeShardDir());
@@ -383,7 +383,7 @@ void TConfigInitializer::ApplyStorageServiceConfig(const TString& text)
     NProto::TStorageServiceConfig storageConfig;
     ParseProtoTextFromStringRobust(text, storageConfig);
 
-    AdoptNodeRegistrationParams(storageConfig);
+    AdaptNodeRegistrationParams(storageConfig);
 
     storageConfig.SetServiceVersionInfo(GetFullVersionString());
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -465,7 +465,7 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
     }
 }
 
-void TConfigInitializer::AdoptNodeRegistrationParams(
+void TConfigInitializer::AdaptNodeRegistrationParams(
     NProto::TStorageServiceConfig& config)
 {
     if (!ServerConfig || !ServerConfig->GetServerConfig()) {

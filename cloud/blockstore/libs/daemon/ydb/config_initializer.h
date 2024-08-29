@@ -78,7 +78,7 @@ struct TConfigInitializerYdb final
 
 private:
     void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
-    void AdoptNodeRegistrationParams(NProto::TStorageServiceConfig& config);
+    void AdaptNodeRegistrationParams(NProto::TStorageServiceConfig& config);
 
     void ApplyDiagnosticsConfig(const TString& text);
     void ApplyDiscoveryServiceConfig(const TString& text);

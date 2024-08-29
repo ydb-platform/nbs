@@ -59,7 +59,7 @@ void TConfigInitializerYdb::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    AdoptNodeRegistrationParams(storageConfig);
+    AdaptNodeRegistrationParams(storageConfig);
 
     SetupStorageConfig(storageConfig);
 
@@ -264,7 +264,7 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
     NProto::TStorageServiceConfig storageConfig;
     ParseProtoTextFromStringRobust(text, storageConfig);
 
-    AdoptNodeRegistrationParams(storageConfig);
+    AdaptNodeRegistrationParams(storageConfig);
 
     SetupStorageConfig(storageConfig);
 
@@ -386,7 +386,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
     }
 }
 
-void TConfigInitializerYdb::AdoptNodeRegistrationParams(
+void TConfigInitializerYdb::AdaptNodeRegistrationParams(
     NProto::TStorageServiceConfig& config)
 {
     if (!ServerConfig || !ServerConfig->GetServerConfig()) {
