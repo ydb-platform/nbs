@@ -7,7 +7,7 @@ package NCloud.NFileStore.NProto;
 message TQueueEntry
 {
      oneof Request {
-          TCreateHandleRequest CreateHandleRequest = 101;
-          TDestroyHandleRequest DestroyHandleRequest = 102;
+          TCreateHandleRequest CreateHandleRequest = 1;
+          TDestroyHandleRequest DestroyHandleRequest = 2;
     }
 }
