@@ -927,6 +927,55 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+func (s *storageYDB) listTasksHanging(
+	ctx context.Context,
+	session *persistence.Session,
+	limit uint64,
+	taskTypeBlackList []string,
+	defaultHangingTasksTimeout time.Duration,
+) ([]TaskInfo, error) {
+	now := time.Now()
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		pragma AnsiInForEmptyOrNullableItemsCollections;
+		declare $limit as Uint64;
+		declare $type_black_list as List<Utf8>;
+		declare $default_hanging_task_duration as Interval;
+		declare $now as Timestamp;
+		
+		$task_ids = (
+			select id from ready_to_run UNION
+			select id from running UNION
+			select id from cancelling UNION
+			select id from ready_to_cancel
+		);
+		select * from tasks/tasks
+		where id in $task_ids and 
+		(
+			(ListLength($type_black_list) == 0) or
+			(task_type not in $type_black_list)
+		)  and 
+		(
+			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $) or 
+			(estimated_time > created_at and $now > estimated_time + (estimated_time - created_at) * 2)
+		);
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+		persistence.ValueParam("$type_black_list", strListValue(taskTypeBlackList)),
+		persistence.ValueParam(
+			"$default_hanging_task_duration",
+			persistence.IntervalValue(defaultHangingTasksTimeout),
+		),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	return scanTaskInfosStream(ctx, res)
+}
+
 func (s *storageYDB) listTasksStallingWhileExecuting(
 	ctx context.Context,
 	session *persistence.Session,

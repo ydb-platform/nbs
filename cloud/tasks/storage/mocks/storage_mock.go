@@ -118,6 +118,17 @@ func (s *StorageMock) ListTasksCancelling(
 	return res, args.Error(1)
 }
 
+func (s *StorageMock) ListTasksHanging(
+	ctx context.Context,
+	limit uint64,
+	tasksTypeBlackList []string,
+	defaultHangingTaskTimeout time.Duration,
+) ([]tasks_storage.TaskInfo, error) {
+	args := s.Called(ctx, limit, tasksTypeBlackList, defaultHangingTaskTimeout)
+	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	return res, args.Error(1)
+}
+
 func (s *StorageMock) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,

@@ -246,6 +246,31 @@ func (s *storageYDB) ListTasksCancelling(
 	return tasks, err
 }
 
+func (s *storageYDB) ListTasksHanging(
+	ctx context.Context,
+	limit uint64,
+	tasksTypeBlackList []string,
+	defaultHangingTaskTimeout time.Duration,
+) ([]TaskInfo, error) {
+	var tasks []TaskInfo
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			tasks, err = s.listTasksHanging(
+				ctx,
+				session,
+				limit,
+				tasksTypeBlackList,
+				defaultHangingTaskTimeout,
+			)
+			return err
+		},
+	)
+	return tasks, err
+}
+
 func (s *storageYDB) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
