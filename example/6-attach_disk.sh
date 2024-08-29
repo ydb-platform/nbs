@@ -14,13 +14,15 @@ Creates disk with requested kind and attach it to device
 -h, --help         Display help
 -v, --disk-id      Disk id
 -d, --device       Device name to attach to (default: /dev/nbd0)
+-e, --encrypted    Encrypt disk with default encryption key
 EOF
 }
 
 #defaults
 disk_id="nrd0"
 device="/dev/nbd0"
-options=$(getopt -l "help,disk-id:,device:" -o "hv:d:" -a -- "$@")
+options=$(getopt -l "help,disk-id:,device:,encrypted" -o "hv:d:e" -a -- "$@")
+encryption=""
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -43,6 +45,10 @@ do
         device=${2}
         shift 2
         ;;
+    -e | --encrypted )
+        encryption="--encryption-mode=aes-xts --encryption-key-path=encryption-key.txt"
+        shift 1
+        ;;
     --)
         shift
         break;;
@@ -61,7 +67,8 @@ SOCK="$BIN_DIR/$disk_id.sock"
 sudo modprobe nbd
 touch $SOCK
 sudo-blockstore-nbd --device-mode endpoint --disk-id $disk_id --access-mode rw \
-    --mount-mode local --connect-device $device --listen-path $SOCK
+    --mount-mode local --connect-device $device --listen-path $SOCK \
+    $encryption
 
 if [ $? -ne 0 ]; then
     echo "Attaching disk $disk_id to $device failed"

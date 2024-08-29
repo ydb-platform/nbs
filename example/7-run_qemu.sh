@@ -15,6 +15,7 @@ Run qemu
 -d, --diskid                   NBS Disk ID
 -s, --socket                   Socket path
 -k, --encryption-key-path      Encryption key path
+-e, --encrypted                Use default encryption key
 EOF
 }
 
@@ -22,7 +23,7 @@ EOF
 encryption=""
 diskid=""
 socket=""
-options=$(getopt -l "help,key:,diskid:,socket:" -o "hk:d:s:" -a -- "$@")
+options=$(getopt -l "help,key:,diskid:,socket:,encryption-key-path:,encrypted" -o "hk:d:s:e" -a -- "$@")
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -40,6 +41,10 @@ do
     -k | --encryption-key-path )
         encryption="--encryption-mode=aes-xts --encryption-key-path=${2}"
         shift 2
+        ;;
+    -e | --encrypted )
+        encryption="--encryption-mode=aes-xts --encryption-key-path=encryption-key.txt"
+        shift 1
         ;;
     -d | --diskid )
         diskid=${2}

@@ -14,14 +14,16 @@ Creates disk with requested kind and attach it to device
 -h, --help         Display help
 -k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3|local (default: ssd)
 -d, --disk-id      disk-id
+-e, --encrypted    Encrypt disk with default encryption key
 EOF
 }
 
 #defaults
 kind="ssd"
 disk_id=""
-options=$(getopt -l "help,kind:,disk-id:" -o "hk:d:" -a -- "$@")
+options=$(getopt -l "help,kind:,disk-id:,encrypted" -o "hk:d:e" -a -- "$@")
 block_size=4096
+encryption=""
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -43,6 +45,10 @@ do
     -d | --disk-id )
         disk_id=${2}
         shift 2
+        ;;
+    -e | --encrypted )
+        encryption="--encryption-mode=aes-xts --encryption-key-path=encryption-key.txt"
+        shift 1
         ;;
     --)
         shift
@@ -78,7 +84,8 @@ blockstore-client createvolume \
     --storage-media-kind $kind \
     --blocks-count $blocks_count \
     --block-size $block_size \
-    --disk-id $disk_id
+    --disk-id $disk_id \
+    $encryption
 
 if [ $? -ne 0 ]; then
     echo "Disk $disk_id creation failed"
