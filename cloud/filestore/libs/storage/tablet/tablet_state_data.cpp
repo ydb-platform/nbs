@@ -657,6 +657,7 @@ bool TIndexTabletState::WriteMixedBlocks(
     if (isMixedRangeLoaded) {
         Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blocks);
     }
+    Impl->LargeBlocks.ApplyDeletionMarkers(blocks);
 
     auto rebaseResult = RebaseMixedBlocks(blocks);
 
@@ -826,7 +827,7 @@ void TIndexTabletState::UpdateBlockLists(
     WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 }
 
-ui32 TIndexTabletState::CleanupMixedBlockDeletions(
+ui32 TIndexTabletState::CleanupBlockDeletions(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -835,6 +836,7 @@ ui32 TIndexTabletState::CleanupMixedBlockDeletions(
 
     ui64 removedBlobs = 0;
     for (auto& blob: affectedBlobs) {
+        Impl->LargeBlocks.ApplyAndUpdateDeletionMarkers(blob.Blocks);
         DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 
         bool written = WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
@@ -859,6 +861,20 @@ ui32 TIndexTabletState::CleanupMixedBlockDeletions(
     }
 
     DecrementDeletionMarkersCount(db, deletionMarkerCount);
+
+    auto largeDeletionMarkers =
+        Impl->LargeBlocks.ExtractProcessedDeletionMarkers();
+    ui32 largeDeletionMarkerCount = 0;
+    for (const auto& deletionMarker: largeDeletionMarkers) {
+        db.DeleteLargeDeletionMarker(
+            deletionMarker.NodeId,
+            deletionMarker.CommitId,
+            deletionMarker.BlockIndex);
+
+        largeDeletionMarkerCount += deletionMarker.BlockCount;
+    }
+
+    DecrementLargeDeletionMarkersCount(db, largeDeletionMarkerCount);
 
     auto stats = GetCompactionStats(rangeId);
     // FIXME: return SafeDecrement after NBS-4475
@@ -902,6 +918,7 @@ void TIndexTabletState::RewriteMixedBlocks(
     db.DeleteMixedBlocks(rangeId, blob.BlobId);
 
     Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blob.Blocks);
+    Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
 
     auto rebaseResult = RebaseMixedBlocks(blob.Blocks);
 

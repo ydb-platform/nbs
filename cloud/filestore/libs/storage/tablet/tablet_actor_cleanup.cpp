@@ -102,7 +102,7 @@ void TIndexTabletActor::ExecuteTx_Cleanup(
     TIndexTabletDatabase db(tx.DB);
 
     args.ProcessedDeletionMarkerCount =
-        CleanupMixedBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
+        CleanupBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_Cleanup(

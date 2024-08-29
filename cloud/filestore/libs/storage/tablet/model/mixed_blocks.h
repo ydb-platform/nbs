@@ -26,7 +26,7 @@ public:
 
     bool IsLoaded(ui32 rangeId) const;
 
-    void RefRange(ui32 ragneId);
+    void RefRange(ui32 rangeId);
     void UnRefRange(ui32 rangeId);
 
     bool AddBlocks(

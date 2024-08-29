@@ -845,7 +845,7 @@ public:
         ui32 blocksCount);
 
     // returns processed deletion marker count
-    ui32 CleanupMixedBlockDeletions(
+    ui32 CleanupBlockDeletions(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);

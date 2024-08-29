@@ -461,6 +461,7 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
 
 TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
 {
+    // TODO: take LargeDeletionMarkers into account
     auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);

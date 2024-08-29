@@ -93,6 +93,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
 
     TIndexTabletDatabase db(tx.DB);
 
+    // TODO: load LargeBlocks
     std::initializer_list<bool> results = {
         db.ReadFileSystem(args.FileSystem),
         db.ReadFileSystemStats(args.FileSystemStats),
