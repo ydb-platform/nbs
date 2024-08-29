@@ -30,6 +30,8 @@ type ExecutionContext interface {
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
+	GetEstimate() (time.Time, bool)
+
 	SetEstimate(estimatedDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
@@ -110,6 +112,20 @@ func (c *executionContext) AddTaskDependency(
 		taskState.Dependencies.Add(taskID)
 		return taskState
 	})
+}
+
+func (c *executionContext) GetEstimate() (time.Time, bool) {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	var estimatedDuration time.Duration
+	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
+		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
+	} else {
+		return time.Time{}, false
+	}
+
+	return c.taskState.CreatedAt.Add(estimatedDuration * 2), true
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {

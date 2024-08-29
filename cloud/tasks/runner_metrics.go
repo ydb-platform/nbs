@@ -81,10 +81,12 @@ type runnerMetricsImpl struct {
 	logger                 logging.Logger
 }
 
-func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
+func (m *runnerMetricsImpl) OnExecutionStarted(
+	execContext *executionContext) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
+	state := execContext.taskState
 	subRegistry := m.registry.WithTags(map[string]string{
 		"type": state.TaskType,
 	})
@@ -106,7 +108,7 @@ func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
 
 	// Should not report some tasks as hanging (NBS-4341).
 	if !common.Find(m.exceptHangingTaskTypes, state.TaskType) {
-		hangingDeadline := state.CreatedAt.Add(m.hangingTaskTimeout)
+		deadline := state.CreatedAt.Add(m.hangingTaskTimeout)
 
 		go func() {
 			for {
@@ -116,11 +118,20 @@ func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
 				case <-time.After(checkTaskHangingPeriod):
 				}
 
-				m.checkTaskHanging(ctx, hangingDeadline)
+				execContextDeadline, ok := execContext.GetEstimate()
+				if ok {
+					deadline = execContextDeadline
+				}
+				m.checkTaskHanging(ctx, deadline)
 			}
 		}()
 
-		m.checkTaskHangingImpl(hangingDeadline)
+		execContextDeadline, ok := execContext.GetEstimate()
+		if ok {
+			deadline = execContextDeadline
+		}
+
+		m.checkTaskHangingImpl(deadline)
 	}
 
 	m.taskMetrics.inflightTasksGauge.Add(1)
