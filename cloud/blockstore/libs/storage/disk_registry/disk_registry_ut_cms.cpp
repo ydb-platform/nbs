@@ -1110,7 +1110,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
              Device("dev-2", "uuid-2", "rack-1", 10_GB)})};
 
         auto config = CreateDefaultStorageConfig();
-        config.SetCmsUpdateStateToOnlineTimeout(
+        config.SetIdleAgentDeployByCmsDelay(
             TDuration::Minutes(10).MilliSeconds());
         SetUpRuntime(
             TTestRuntimeBuilder().WithAgents(agents).With(config).Build());
@@ -1143,7 +1143,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 TDuration::MilliSeconds(
-                    config.GetCmsUpdateStateToOnlineTimeout()),
+                    config.GetIdleAgentDeployByCmsDelay()),
                 TDuration::Seconds(timeout));
         }
 
@@ -1156,17 +1156,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_LE(
                 TDuration::Seconds(timeout),
                 TDuration::MilliSeconds(
-                    config.GetCmsUpdateStateToOnlineTimeout()) -
+                    config.GetIdleAgentDeployByCmsDelay()) -
                     2min);
             UNIT_ASSERT_GT(
                 TDuration::Seconds(timeout),
                 TDuration::MilliSeconds(
-                    config.GetCmsUpdateStateToOnlineTimeout()) -
+                    config.GetIdleAgentDeployByCmsDelay()) -
                     3min);
         }
 
         Runtime->AdvanceCurrentTime(
-            TDuration::MilliSeconds(config.GetCmsUpdateStateToOnlineTimeout()));
+            TDuration::MilliSeconds(config.GetIdleAgentDeployByCmsDelay()));
 
         {
             auto [error, timeout] = AddHost("agent-1");
@@ -1183,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 TDuration::MilliSeconds(
-                    config.GetCmsUpdateStateToOnlineTimeout()),
+                    config.GetIdleAgentDeployByCmsDelay()),
                 TDuration::Seconds(timeout));
         }
 

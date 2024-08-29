@@ -1010,5 +1010,5 @@ message TStorageServiceConfig
 
     // Delay that DR uses to wait unavailable agents to register before allowing
     // infra to deploy a host.
-    optional uint32 CmsUpdateStateToOnlineTimeout = 377;
+    optional uint32 IdleAgentDeployByCmsDelay = 377;
 }

@@ -5026,7 +5026,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
         newState == NProto::AGENT_STATE_ONLINE)
     {
         timeout =
-            cmsTs + StorageConfig->GetCmsUpdateStateToOnlineTimeout() - now;
+            cmsTs + StorageConfig->GetIdleAgentDeployByCmsDelay() - now;
         if (!timeout) {
             // If the timer is expired and an agent is still unavailable, then
             // the agent is most likely in the idle state and won't register in
