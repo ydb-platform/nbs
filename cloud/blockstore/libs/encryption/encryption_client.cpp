@@ -92,7 +92,7 @@ protected:
     IBlockStorePtr Client;
 
 public:
-    TClientWrapper(IBlockStorePtr client)
+    explicit TClientWrapper(IBlockStorePtr client)
         : Client(std::move(client))
     {}
 
@@ -178,12 +178,12 @@ public:
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
 
 private:
-    bool Encrypt(
+    NProto::TError Encrypt(
         const TSgList& src,
         const TSgList& dst,
         ui64 startIndex);
 
-    bool Decrypt(
+    NProto::TError Decrypt(
         const TSgList& src,
         const TSgList& dst,
         ui64 startIndex,
@@ -313,16 +313,16 @@ NProto::TReadBlocksResponse TEncryptionClient::HandleReadBlocksResponse(
         return TErrorResponse(sgListOrError.GetError());
     }
 
-    bool res = Decrypt(
+    auto err = Decrypt(
         sgListOrError.GetResult(),
         decryptedSglist,
         startIndex,
         response.GetUnencryptedBlockMask());
 
-    if (!res) {
+    if (HasError(err)) {
         return ErrorResponse<NProto::TReadBlocksResponse>(
-            E_INVALID_STATE,
-            "Failed to decrypt blocks");
+            err.GetCode(),
+            err.GetMessage());
     }
 
     response.ClearBlocks();
@@ -359,15 +359,15 @@ TFuture<NProto::TWriteBlocksResponse> TEncryptionClient::WriteBlocks(
         sglist.size(),
         BlockSize);
 
-    bool res = Encrypt(
+    auto err = Encrypt(
         sglist,
         encryptedSglist,
         request->GetStartIndex());
 
-    if (!res) {
+    if (HasError(err)) {
         return FutureErrorResponse<NProto::TWriteBlocksResponse>(
-            E_INVALID_STATE,
-            "Failed to encrypt blocks");
+            err.GetCode(),
+            err.GetMessage());
     }
 
     request->ClearBlocks();
@@ -457,16 +457,16 @@ NProto::TReadBlocksLocalResponse TEncryptionClient::HandleReadBlocksLocalRespons
         return TErrorResponse(sgListOrError.GetError());
     }
 
-    bool res = Decrypt(
+    auto err = Decrypt(
         encryptedSglist,
         sgListOrError.GetResult(),
         request.GetStartIndex(),
         response.GetUnencryptedBlockMask());
 
-    if (!res) {
+    if (HasError(err)) {
         return ErrorResponse<NProto::TReadBlocksLocalResponse>(
-            E_INVALID_STATE,
-            "Failed to decrypt blocks");
+            err.GetCode(),
+            err.GetMessage());
     }
 
     if (IsDiskRegistryMediaKind(StorageMediaKind)) {
@@ -522,15 +522,15 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
         srcSglist = sgListOrError.ExtractResult();
     }
 
-    bool res = Encrypt(
+    auto err = Encrypt(
         srcSglist,
         encryptedSglist,
         request->GetStartIndex());
 
-    if (!res) {
+    if (HasError(err)) {
         return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
-            E_INVALID_STATE,
-            "Failed to encrypt blocks");
+            err.GetCode(),
+            err.GetMessage());
     }
 
     TGuardedSgList guardedSgList(std::move(encryptedSglist));
@@ -600,26 +600,30 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     });
 }
 
-bool TEncryptionClient::Encrypt(
+NProto::TError TEncryptionClient::Encrypt(
     const TSgList& src,
     const TSgList& dst,
     ui64 startIndex)
 {
     Y_DEBUG_ABORT_UNLESS(dst.size() >= src.size());
     if (dst.size() < src.size()) {
-        return false;
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "destination SgList is too small: "
+                             << dst.size() << " < " << src.size());
     }
 
     for (size_t i = 0; i < src.size(); ++i) {
-        if (!Encryptor->Encrypt(src[i], dst[i], startIndex + i)) {
-            return false;
+        auto err = Encryptor->Encrypt(src[i], dst[i], startIndex + i);
+        if (HasError(err)) {
+            return err;
         }
     }
 
-    return true;
+    return {};
 }
 
-bool TEncryptionClient::Decrypt(
+NProto::TError TEncryptionClient::Decrypt(
     const TSgList& src,
     const TSgList& dst,
     ui64 startIndex,
@@ -627,12 +631,20 @@ bool TEncryptionClient::Decrypt(
 {
     Y_DEBUG_ABORT_UNLESS(dst.size() == src.size());
     if (dst.size() != src.size()) {
-        return false;
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the source and target SgLists have different sizes: "
+                << dst.size() << " != " << src.size());
     }
 
     for (size_t i = 0; i < src.size(); ++i) {
         if (dst[i].Size() != src[i].Size()) {
-            return false;
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "the source and target blocks (# " << i
+                                 << ") have different sizes: " << dst[i].Size()
+                                 << " != " << src[i].Size());
         }
 
         const bool encrypted = !GetBitValue(unencryptedBlockMask, i);
@@ -642,8 +654,11 @@ bool TEncryptionClient::Decrypt(
         if (encrypted) {
             if (src[i].Data() && IsAllZeroes(src[i].Data(), blockSize)) {
                 memset(dstPtr, 0, blockSize);
-            } else if (!Encryptor->Decrypt(src[i], dst[i], startIndex + i)) {
-                return false;
+            } else if (auto err =
+                           Encryptor->Decrypt(src[i], dst[i], startIndex + i);
+                       HasError(err))
+            {
+                return err;
             }
         } else {
             if (src[i].Data()) {
@@ -654,7 +669,7 @@ bool TEncryptionClient::Decrypt(
         }
     }
 
-    return true;
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -853,35 +868,40 @@ public:
 
         auto future = EncryptionKeyProvider->GetKey(encryptionSpec, diskId);
 
-        return future.Apply([=] (auto f) -> TResponse {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                return response.GetError();
-            }
-
-            auto key = response.ExtractResult();
-            NProto::TEncryptionDesc encryptionDesc;
-            encryptionDesc.SetMode(encryptionSpec.GetMode());
-            encryptionDesc.SetKeyHash(key.GetHash());
-
-            IEncryptorPtr encryptor;
-            switch (encryptionSpec.GetMode()) {
-                case NProto::ENCRYPTION_AES_XTS: {
-                    encryptor = CreateAesXtsEncryptor(std::move(key));
-                    break;
+        return future.Apply(
+            [client = std::move(client),
+             logging = Logging,
+             mode = encryptionSpec.GetMode()](auto f) mutable -> TResponse
+            {
+                auto response = f.ExtractValue();
+                if (HasError(response)) {
+                    return response.GetError();
                 }
-                default:
-                    return MakeError(E_ARGUMENT, TStringBuilder()
-                        << "Unknown encryption mode: "
-                        << static_cast<int>(encryptionSpec.GetMode()));
-            }
 
-            return NBlockStore::CreateEncryptionClient(
-                std::move(client),
-                Logging,
-                std::move(encryptor),
-                std::move(encryptionDesc));
-        });
+                auto key = response.ExtractResult();
+                NProto::TEncryptionDesc encryptionDesc;
+                encryptionDesc.SetMode(mode);
+                encryptionDesc.SetKeyHash(key.GetHash());
+
+                IEncryptorPtr encryptor;
+                switch (mode) {
+                    case NProto::ENCRYPTION_AES_XTS: {
+                        encryptor = CreateAesXtsEncryptor(std::move(key));
+                        break;
+                    }
+                    default:
+                        return MakeError(
+                            E_ARGUMENT,
+                            TStringBuilder() << "Unknown encryption mode: "
+                                             << static_cast<int>(mode));
+                }
+
+                return NBlockStore::CreateEncryptionClient(
+                    std::move(client),
+                    std::move(logging),
+                    std::move(encryptor),
+                    std::move(encryptionDesc));
+            });
     }
 };
 
