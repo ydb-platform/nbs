@@ -37,7 +37,6 @@ func (m *ydbMetrics) StatCall(
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
-		errorCounter := subRegistry.Counter("errors")
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(ctx, "YDB call hanging, name %v, query %v", name, query)
@@ -60,15 +59,16 @@ func (m *ydbMetrics) StatCall(
 				errorType = "unavailable"
 			case ydb.IsRatelimiterAcquireError(*err):
 				errorType = "ratelimiterAcquire"
+			default:
+				errorType = "unhandled"
 			}
 
-			if errorType != "" {
-				errorRegistry := subRegistry.WithTags(map[string]string{
-					"type": errorType,
-				})
-				errorCounter = errorRegistry.Counter("error")
-			}
+			errorRegistry := subRegistry.WithTags(map[string]string{
+				"type": errorType,
+			})
 
+			// Should initialize all counters before using them, to avoid 'no data'.
+			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
