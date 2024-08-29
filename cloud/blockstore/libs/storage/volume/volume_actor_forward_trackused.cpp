@@ -1,16 +1,13 @@
 #include "volume_actor.h"
 
-#include <cloud/blockstore/libs/storage/volume/actors/forward_read_marked.h>
-#include <cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.h>
-#include <cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.h>
-
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
-
-#include <cloud/storage/core/libs/common/media.h>
-
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.h>
+#include <cloud/blockstore/libs/storage/volume/actors/read_and_clear_empty_blocks_actor.h>
+#include <cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -31,17 +28,24 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     const auto* msg = ev->Get();
 
-    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
-    const bool encryptedDiskRegistryBasedDisk =
-        State->IsDiskRegistryMediaKind() &&
-        volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
     const bool overlayDiskRegistryBasedDisk =
         State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().Empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight()) {
+        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())
+        {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+            // TODO(drbasic)
+            // For encrypted disk-registry based disks, we will continue to
+            // write a map of encrypted blocks for a while.
+            const bool encryptedDiskRegistryBasedDisk =
+                State->IsDiskRegistryMediaKind() &&
+                State->GetMeta()
+                        .GetVolumeConfig()
+                        .GetEncryptionDesc()
+                        .GetMode() != NProto::NO_ENCRYPTION;
 
             // For overlay disks we need to ensure that the only bits that are
             // set in the used block map are the bits that correspond to the
@@ -68,8 +72,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     if constexpr (IsReadMethod<TMethod>) {
         if (State->GetTrackUsedBlocks()) {
             const bool needToZeroUnusedBlocks =
-                State->GetMaskUnusedBlocks() ||
-                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
+                State->GetMaskUnusedBlocks() || overlayDiskRegistryBasedDisk;
             if (!needToZeroUnusedBlocks) {
                 // We don't need to mask unused blocks. Therefore, we can do
                 // the usual reading.
@@ -104,22 +107,20 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetBaseDiskCheckpointId(),
                     State->GetBlockSize(),
                     State->GetStorageAccessMode(),
-                    encryptedDiskRegistryBasedDisk,
                     GetDowntimeThreshold(
                         *DiagnosticsConfig,
                         NProto::STORAGE_MEDIA_SSD));
             } else {
-                NCloud::Register<TReadMarkedActor<TMethod>>(
+                NCloud::Register<TReadAndClearEmptyBlocksActor<TMethod>>(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
                     State->GetUsedBlocks(),
-                    needToZeroUnusedBlocks,
-                    encryptedDiskRegistryBasedDisk,
                     partActorId,
                     TabletID(),
                     SelfId());
             }
+
             return true;
         }
     }

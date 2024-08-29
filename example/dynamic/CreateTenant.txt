@@ -4,11 +4,11 @@ CreateTenantRequest {
     resources {
       storage_units {
         unit_kind: "ssd"
-        count: 1
+        count: 8
       }
       storage_units {
         unit_kind: "rot"
-        count: 1
+        count: 2
       }
     }
     options {

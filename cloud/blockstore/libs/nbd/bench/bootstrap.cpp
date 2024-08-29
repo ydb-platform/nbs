@@ -112,7 +112,6 @@ TBootstrap::~TBootstrap()
 void TBootstrap::Init()
 {
     TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
     logSettings.FiltrationLevel = Options->FiltrationLevel;
 
     Logging = CreateLoggingService("console", logSettings);

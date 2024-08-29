@@ -540,6 +540,69 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSkipDecryptionForZeroBlocks)
+    {
+        auto logging = CreateLoggingService("console");
+        const int blockSize = 4;
+        const int blocksCount = 16;
+
+        auto testClient = std::make_shared<TTestService>();
+        auto testEncryptor = std::make_shared<TTestEncryptor>();
+
+        auto encryptionClient = CreateEncryptionClient(
+            testClient,
+            logging,
+            testEncryptor,
+            GetDefaultEncryption());
+
+        testClient->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                Y_UNUSED(request);
+
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetBlockSize(blockSize);
+                return MakeFuture(std::move(response));
+            };
+
+        testClient->ReadBlocksHandler =
+            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
+                NProto::TReadBlocksResponse response;
+
+                auto sglist = ResizeIOVector(
+                    *response.MutableBlocks(),
+                    request->GetBlocksCount(),
+                    blockSize);
+
+                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                    std::memset(
+                        const_cast<char*>(sglist[i].Data()),
+                        0,
+                        sglist[i].Size());
+                }
+
+                return MakeFuture(std::move(response));
+            };
+
+        auto mountResponse = MountVolume(*encryptionClient);
+        UNIT_ASSERT(!HasError(mountResponse));
+
+        auto request = std::make_shared<NProto::TReadBlocksRequest>();
+        request->SetStartIndex(0);
+        request->SetBlocksCount(blocksCount);
+
+        auto future = encryptionClient->ReadBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+
+        const auto& buffers = response.GetBlocks().GetBuffers();
+        for (int i = 0; i < blocksCount; ++i) {
+            TBlockDataRef block(buffers[i].data(), buffers[i].size());
+            UNIT_ASSERT(BlockFilledByValue(block, 0u));
+        }
+    }
+
     Y_UNIT_TEST(ShouldDecryptAllBlocksInReadBlocksLocalWhenBitmaskIsEmpty)
     {
         auto logging = CreateLoggingService("console");

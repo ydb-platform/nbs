@@ -5,6 +5,7 @@
 #include "profile_log_events.h"
 #include "tablet_database.h"
 #include "tablet_private.h"
+#include "tablet_state_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -157,6 +158,16 @@ struct TSessionAware
         , RequestId(GetRequestId(request))
         , SessionSeqNo(GetSessionSeqNo(request))
     {}
+};
+
+/**
+ * @brief Transactions, derived from this class, may modify inode-related data.
+ * Thus, to guarantee consistency, they store all the changes applied to this
+ * data in the request log.
+ */
+struct TIndexStateNodeUpdates
+{
+    TVector<TInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 };
 
 struct TProfileAware {
@@ -480,7 +491,7 @@ struct TTxIndexTablet
     // DestroySession
     //
 
-    struct TDestroySession
+    struct TDestroySession: TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const TString SessionId;
@@ -510,7 +521,7 @@ struct TTxIndexTablet
     // CreateCheckpoint
     //
 
-    struct TCreateCheckpoint
+    struct TCreateCheckpoint: TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const TString CheckpointId;
@@ -538,7 +549,7 @@ struct TTxIndexTablet
     // DeleteCheckpoint
     //
 
-    struct TDeleteCheckpoint
+    struct TDeleteCheckpoint: TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const TString CheckpointId;
@@ -615,7 +626,9 @@ struct TTxIndexTablet
     // CreateNode
     //
 
-    struct TCreateNode : TSessionAware
+    struct TCreateNode
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 ParentNodeId;
@@ -676,7 +689,9 @@ struct TTxIndexTablet
     // UnlinkNode
     //
 
-    struct TUnlinkNode : TSessionAware
+    struct TUnlinkNode
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TUnlinkNodeRequest Request;
@@ -717,7 +732,9 @@ struct TTxIndexTablet
     // RenameNode
     //
 
-    struct TRenameNode : TSessionAware
+    struct TRenameNode
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 ParentNodeId;
@@ -883,7 +900,9 @@ struct TTxIndexTablet
     // SetNodeAttr
     //
 
-    struct TSetNodeAttr : TSessionAware
+    struct TSetNodeAttr
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TSetNodeAttrRequest Request;
@@ -982,7 +1001,9 @@ struct TTxIndexTablet
     // SetNodeXAttr
     //
 
-    struct TSetNodeXAttr : TSessionAware
+    struct TSetNodeXAttr
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TSetNodeXAttrRequest Request;
@@ -1083,7 +1104,9 @@ struct TTxIndexTablet
     // RemoveNodeXAttr
     //
 
-    struct TRemoveNodeXAttr : TSessionAware
+    struct TRemoveNodeXAttr
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TRemoveNodeXAttrRequest Request;
@@ -1116,7 +1139,9 @@ struct TTxIndexTablet
     // CreateHandle
     //
 
-    struct TCreateHandle : TSessionAware
+    struct TCreateHandle
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;
@@ -1178,7 +1203,9 @@ struct TTxIndexTablet
     // DestroyHandle
     //
 
-    struct TDestroyHandle : TSessionAware
+    struct TDestroyHandle
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TDestroyHandleRequest Request;
@@ -1337,7 +1364,9 @@ struct TTxIndexTablet
     // WriteData
     //
 
-    struct TWriteData : TSessionAware
+    struct TWriteData
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui32 WriteBlobThreshold;
@@ -1382,7 +1411,9 @@ struct TTxIndexTablet
     // AddData
     //
 
-    struct TAddData : TSessionAware
+    struct TAddData
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
@@ -1421,7 +1452,7 @@ struct TTxIndexTablet
     // WriteBatch
     //
 
-    struct TWriteBatch
+    struct TWriteBatch: TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const bool SkipFresh;
@@ -1454,7 +1485,9 @@ struct TTxIndexTablet
     // AllocateData
     //
 
-    struct TAllocateData : TSessionAware
+    struct TAllocateData
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
@@ -1489,7 +1522,9 @@ struct TTxIndexTablet
     // AddBlob
     //
 
-    struct TAddBlob : TProfileAware
+    struct TAddBlob
+        : TProfileAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const EAddBlobMode Mode;
@@ -1735,7 +1770,9 @@ struct TTxIndexTablet
     // TruncateRange
     //
 
-    struct TTruncateRange : TProfileAware
+    struct TTruncateRange
+        : TProfileAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;

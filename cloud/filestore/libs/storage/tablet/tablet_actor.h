@@ -150,12 +150,6 @@ private:
 
         struct TRequestMetrics
         {
-            explicit TRequestMetrics(
-                TVector<TRequestMetrics*>& allRequestMetrics)
-            {
-                allRequestMetrics.push_back(this);
-            }
-
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
@@ -170,33 +164,27 @@ private:
 
         struct TCompactionMetrics: TRequestMetrics
         {
-            explicit TCompactionMetrics(
-                    TVector<TRequestMetrics*>& allRequestMetrics)
-                : TRequestMetrics(allRequestMetrics)
-            {}
-
             std::atomic<i64> DudCount{0};
         };
-        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(14)};
 
-        TRequestMetrics ReadBlob{AllRequestMetrics};
-        TRequestMetrics WriteBlob{AllRequestMetrics};
-        TRequestMetrics PatchBlob{AllRequestMetrics};
-        TRequestMetrics ReadData{AllRequestMetrics};
-        TRequestMetrics DescribeData{AllRequestMetrics};
-        TRequestMetrics WriteData{AllRequestMetrics};
-        TRequestMetrics AddData{AllRequestMetrics};
-        TRequestMetrics GenerateBlobIds{AllRequestMetrics};
-        TCompactionMetrics Compaction{AllRequestMetrics};
-        TRequestMetrics Cleanup{AllRequestMetrics};
-        TRequestMetrics Flush{AllRequestMetrics};
-        TRequestMetrics FlushBytes{AllRequestMetrics};
-        TRequestMetrics TrimBytes{AllRequestMetrics};
-        TRequestMetrics CollectGarbage{AllRequestMetrics};
+        TRequestMetrics ReadBlob;
+        TRequestMetrics WriteBlob;
+        TRequestMetrics PatchBlob;
+        TRequestMetrics ReadData;
+        TRequestMetrics DescribeData;
+        TRequestMetrics WriteData;
+        TRequestMetrics AddData;
+        TRequestMetrics GenerateBlobIds;
+        TCompactionMetrics Compaction;
+        TRequestMetrics Cleanup;
+        TRequestMetrics Flush;
+        TRequestMetrics FlushBytes;
+        TRequestMetrics TrimBytes;
+        TRequestMetrics CollectGarbage;
 
         i64 LastNetworkMetric = 0;
 
-        i64 TakeTotalRequestBytes();
+        i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};

@@ -40,7 +40,6 @@ public:
     TGetNodeAttrActor(
         TRequestInfoPtr requestInfo,
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
-        TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled);
@@ -73,13 +72,12 @@ private:
 TGetNodeAttrActor::TGetNodeAttrActor(
         TRequestInfoPtr requestInfo,
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
-        TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         bool multiTabletForwardingEnabled)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
-    , LogTag(std::move(logTag))
+    , LogTag(GetNodeAttrRequest.GetFileSystemId())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
@@ -114,7 +112,7 @@ void TGetNodeAttrActor::GetNodeAttrInFollower(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Executing GetNodeAttr in follower for %lu, %s, %s",
+        "[%s] Executing GetNodeAttr in follower for %lu, %s",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
         GetNodeAttrRequest.GetName().Quote().c_str());
@@ -269,7 +267,6 @@ void TStorageServiceActor::HandleGetNodeAttr(
     auto actor = std::make_unique<TGetNodeAttrActor>(
         std::move(requestInfo),
         std::move(msg->Record),
-        msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
         multiTabletForwardingEnabled);

@@ -530,7 +530,10 @@ void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
 void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
 {
     auto* resourceMetrics = Executor()->GetResourceMetrics();
-    resourceMetrics->Network.Increment(Metrics.TakeTotalRequestBytes(), ctx.Now());
+    resourceMetrics->Network.Increment(
+        Metrics.CalculateNetworkRequestBytes(
+            Config->GetNonNetworkMetricsBalancingFactor()),
+        ctx.Now());
     resourceMetrics->TryUpdate(ctx);
 }
 

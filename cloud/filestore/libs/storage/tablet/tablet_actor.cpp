@@ -633,8 +633,9 @@ void TIndexTabletActor::HandleForcedOperation(
     }
 
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    auto code = e.GetCode();
     auto response = std::make_unique<TResponse>(std::move(e));
-    if (e.GetCode() == S_OK) {
+    if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
             const auto& zeroRanges = RangesWithEmptyCompactionScore;
@@ -977,12 +978,14 @@ void TIndexTabletActor::UpdateLogTag()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
+i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
+    ui32 nonNetworkMetricsBalancingFactor)
 {
-    i64 sumRequestBytes = 0;
-    for (auto* metric: AllRequestMetrics) {
-        sumRequestBytes += metric->RequestBytes;
-    }
+    i64 sumRequestBytes =
+        ReadBlob.RequestBytes + WriteBlob.RequestBytes +
+        WriteData.RequestBytes +
+        (DescribeData.Count + AddData.Count + ReadData.Count) *
+            nonNetworkMetricsBalancingFactor;
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;

@@ -14,6 +14,8 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/common
+
+    contrib/libs/protobuf
 )
 
 END()

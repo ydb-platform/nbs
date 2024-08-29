@@ -24,7 +24,8 @@ class NfsLauncher:
             # FIXME: use kikimr service, resolve tenant config issues
             service_type="local",
             verbose=True,
-            kikimr_port=ydb_port)
+            kikimr_port=ydb_port,
+        )
         self.__nfs_configurator.generate_configs(domains_txt, names_txt)
 
         self.__nfs_server = NfsServer(configurator=self.__nfs_configurator)

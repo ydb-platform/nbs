@@ -3,7 +3,6 @@
 DATA_DIRS=" \
     certs \
     data \
-    endpoints \
     logs \
     "
 find_bin_dir() {
@@ -40,13 +39,10 @@ format_disk() {
     DISK_GUID=$1
     DISK_SIZE=$2
 
-    REAL_DISK_FILE=/var/tmp/pdisk-${DISK_GUID}.data
     DISK_FILE=data/pdisk-${DISK_GUID}.data
 
     rm -f $DISK_FILE
-    rm -f $REAL_DISK_FILE
-    dd if=/dev/zero of=$REAL_DISK_FILE bs=1 count=0 seek=$DISK_SIZE
-    ln -s $REAL_DISK_FILE $DISK_FILE
+    dd if=/dev/zero of=$DISK_FILE bs=1 count=0 seek=$DISK_SIZE
 }
 
 setup_remote_disk_agent() {
@@ -177,8 +173,9 @@ KnownDevicePools: <
 EOF
 }
 
-format_disk ssd 64G
-format_disk rot 64G
+format_disk ssd-1 64G
+format_disk ssd-2 64G
+format_disk rot 32G
 
 setup_nonrepl_disk_registry
 

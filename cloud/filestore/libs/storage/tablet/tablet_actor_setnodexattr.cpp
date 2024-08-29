@@ -67,7 +67,7 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(SetNodeXAttr, args);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -108,7 +108,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(SetNodeXAttr, args);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
