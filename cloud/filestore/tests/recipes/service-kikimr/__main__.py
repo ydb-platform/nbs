@@ -71,15 +71,16 @@ def start(argv):
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
+
+    server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+
+    server_config.ServerConfig.Certs.add()
+    server_config.ServerConfig.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+    server_config.ServerConfig.Certs[0].CertPrivateKeyFile = common.source_path(
+        "cloud/filestore/tests/certs/server.key"
+    )
+
     if access_service_port:
-        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
-
-        server_config.ServerConfig.Certs.add()
-        server_config.ServerConfig.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
-        server_config.ServerConfig.Certs[0].CertPrivateKeyFile = common.source_path(
-            "cloud/filestore/tests/certs/server.key"
-        )
-
         storage_config.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
         storage_config.FolderId = "test_folder"
 
@@ -110,8 +111,7 @@ def start(argv):
     set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
     set_env("NFS_CONFIG_DIR", str(nfs_configurator.configs_dir))
-    if access_service_port:
-        set_env("NFS_SERVER_SECURE_PORT", str(server_config.ServerConfig.SecurePort))
+    set_env("NFS_SERVER_SECURE_PORT", str(server_config.ServerConfig.SecurePort))
 
 
 def stop(argv):
