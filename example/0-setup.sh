@@ -3,7 +3,6 @@
 DATA_DIRS=" \
     certs \
     data \
-    endpoints \
     logs \
     "
 find_bin_dir() {
