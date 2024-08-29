@@ -132,8 +132,8 @@ void TFileSystem::Release(
 
     if (Config->GetAsyncDestroyHandleEnabled()) {
         STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
-        with_lock(CreateDestroyLock) {
-            CreateDestroyQueue.AddDestroyRequest(ino, fi->fh);
+        with_lock(HandleOpsQueueLock) {
+            HandleOpsQueue.AddDestroyRequest(ino, fi->fh);
         }
         ReplyError(*callContext, {}, req, 0);
         return;

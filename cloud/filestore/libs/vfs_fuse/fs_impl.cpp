@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
@@ -55,8 +57,9 @@ TFileSystem::~TFileSystem()
 
 void TFileSystem::Init()
 {
+    // TODO: initialize queue from file
     STORAGE_INFO("scheduling destroy handle queue processing");
-    ScheduleNextQueueEntry();
+    ScheduleProcessHandleOpsQueue();
 }
 
 void TFileSystem::Reset()
@@ -65,14 +68,14 @@ void TFileSystem::Reset()
     ClearDirectoryCache();
 }
 
-void TFileSystem::ScheduleNextQueueEntry()
+void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
     if (Config->GetAsyncDestroyHandleEnabled()) {
         Scheduler->Schedule(
         Timer->Now() + Config->GetAsyncDestroyHandlePeriod(),
         [=, ptr = weak_from_this()] () {
             if (auto self = ptr.lock()) {
-                self->ProcessNextQueueEntry();
+                self->ProcessHandleOpsQueue();
             }
         });
     }
@@ -251,22 +254,21 @@ void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
     CompletionQueue->Complete(req, [&] (fuse_req_t) { return 0; });
 }
 
-void TFileSystem::ProcessNextQueueEntry()
+void TFileSystem::ProcessHandleOpsQueue()
 {
-    TGuard g{CreateDestroyLock};
-    if (CreateDestroyQueue.Empty())
-    {
-        ScheduleNextQueueEntry();
+    TGuard g{HandleOpsQueueLock};
+    if (HandleOpsQueue.Empty()) {
+        ScheduleProcessHandleOpsQueue();
         return;
     }
 
-    const auto& entry = CreateDestroyQueue.GetNext();
+    const auto& entry = HandleOpsQueue.Front();
     if (entry.HasDestroyHandleRequest()) {
         const auto& requestInfo = entry.GetDestroyHandleRequest();
         auto request = std::make_shared<NProto::TDestroyHandleRequest>(
             requestInfo);
         STORAGE_DEBUG(
-            "Process destroy request: "
+            "Process destroy handle request: "
             << "filesystem " << Config->GetFileSystemId() << " #"
             << requestInfo.GetNodeId() << " @" << requestInfo.GetHandle());
 
@@ -277,25 +279,28 @@ void TFileSystem::ProcessNextQueueEntry()
         RequestStats->RequestStarted(Log, *callContext);
 
         Session->DestroyHandle(callContext, std::move(request))
-        .Subscribe([=, this, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            if (auto self = ptr.lock()) {
-                // If destroy request failed, we need to retry it.
-                // Otherwise, remove it from queue.
-                if (HasError(error)) {
-                    STORAGE_ERROR(
-                        "DestroyHandle request failed: "
-                        << "filesystem " << Config->GetFileSystemId()
-                        << " error: " << FormatError(error));
-                } else {
-                    with_lock(CreateDestroyLock) {
-                        CreateDestroyQueue.Remove();
+            .Subscribe([this, ptr = weak_from_this()] (const auto& future) {
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                if (auto self = ptr.lock()) {
+                    // If destroy request failed, we need to retry it.
+                    // Otherwise, remove it from queue.
+                    if (HasError(error)) {
+                        STORAGE_ERROR(
+                            "DestroyHandle request failed: "
+                            << "filesystem " << Config->GetFileSystemId()
+                            << " error: " << FormatError(error));
+                        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+                            ReportAsyncDestroyHandleFailed();
+                        }
+                    } else {
+                        with_lock(HandleOpsQueueLock) {
+                            HandleOpsQueue.Pop();
+                        }
                     }
+                    ScheduleProcessHandleOpsQueue();
                 }
-                ScheduleNextQueueEntry();
-            }
-        });
+            });
     } else {
         // TODO: process create handle
     }

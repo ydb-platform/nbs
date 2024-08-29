@@ -4,8 +4,8 @@
 
 #include "cache.h"
 #include "config.h"
-#include "create_destroy_queue.h"
 #include "fs.h"
+#include "handle_ops_queue.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -72,8 +72,8 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrLock;
 
-    TCreateDestroyQueue CreateDestroyQueue;
-    TMutex CreateDestroyLock;
+    THandleOpsQueue HandleOpsQueue;
+    TMutex HandleOpsQueueLock;
 
 public:
     TFileSystem(
@@ -400,8 +400,8 @@ private:
 
     void ClearDirectoryCache();
 
-    void ScheduleNextQueueEntry();
-    void ProcessNextQueueEntry();
+    void ScheduleProcessHandleOpsQueue();
+    void ProcessHandleOpsQueue();
 
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \

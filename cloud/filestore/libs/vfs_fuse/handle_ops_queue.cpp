@@ -1,10 +1,10 @@
-#include "create_destroy_queue.h"
+#include "handle_ops_queue.h"
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCreateDestroyQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
+void THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
 {
      NProto::TQueueEntry request;
      request.MutableDestroyHandleRequest()->SetHandle(handle);
@@ -12,22 +12,22 @@ void TCreateDestroyQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
      Requests.push(request);
 }
 
-NProto::TQueueEntry TCreateDestroyQueue::GetNext()
+const NProto::TQueueEntry& THandleOpsQueue::Front()
 {
      return Requests.front();
 }
 
-bool TCreateDestroyQueue::Empty() const
+bool THandleOpsQueue::Empty() const
 {
      return Requests.empty();
 }
 
-void TCreateDestroyQueue::Remove()
+void THandleOpsQueue::Pop()
 {
      Requests.pop();
 }
 
-ui64 TCreateDestroyQueue::Size()
+ui64 THandleOpsQueue::Size() const
 {
      return Requests.size();
 }

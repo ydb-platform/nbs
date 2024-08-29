@@ -1393,13 +1393,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     callContext->FileSystemId);
 
                 if (++handlerCalled == 1) {
-                    UNIT_ASSERT_VALUES_EQUAL(releaseFinished, true);
-                    UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle1);
-                    UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId1);
+                    UNIT_ASSERT(releaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
                 } else if (handlerCalled == 2) {
                     UNIT_ASSERT_VALUES_EQUAL(releaseFinished, true);
-                    UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle2);
-                    UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId2);
+                    UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
                     destroyFinished.TrySetValue();
                 } else {
                     UNIT_ASSERT_C(
@@ -1420,7 +1420,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         releaseFinished = true;
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(handlerCalled, 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, handlerCalled);
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
@@ -1442,8 +1442,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
-                UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handle);
-                UNIT_ASSERT_VALUES_EQUAL(request->GetNodeId(), nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
                 if (++handlerCalled > 3) {
                     destroyFinished.TrySetValue();
                     return MakeFuture(NProto::TDestroyHandleResponse{});
@@ -1461,7 +1461,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(handlerCalled, 4);
+        UNIT_ASSERT_VALUES_EQUAL(4, handlerCalled);
     }
 }
 

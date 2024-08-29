@@ -1,7 +1,6 @@
 SRCS(
     cache.cpp
     config.cpp
-    create_destroy_queue.cpp
     fs.cpp
     fs_impl.cpp
     fs_impl_attr.cpp
@@ -10,6 +9,7 @@ SRCS(
     fs_impl_lock.cpp
     fs_impl_node.cpp
     fs_impl_stat.cpp
+    handle_ops_queue.cpp
     log.cpp
     loop.cpp
 )

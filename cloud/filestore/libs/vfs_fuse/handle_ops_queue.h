@@ -6,18 +6,17 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateDestroyQueue
+class THandleOpsQueue
 {
 private:
      TQueue<NProto::TQueueEntry> Requests;
 
 public:
      void AddDestroyRequest(ui64 nodeId, ui64 handle);
-     NProto::TQueueEntry GetNext();
-     void Remove();
-     ui64 Size();
+     const NProto::TQueueEntry& Front();
+     void Pop();
+     ui64 Size() const;
      bool Empty() const;
-
 };
 
 }   // namespace NCloud::NFileStore::NFuse
