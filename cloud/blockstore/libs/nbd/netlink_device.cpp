@@ -257,12 +257,6 @@ public:
 
     NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
     {
-        if (!StartResult.HasValue() || StartResult.GetValue().GetCode() != S_OK)
-        {
-            return NThreading::MakeFuture(
-                MakeError(E_FAIL, "Device is not open"));
-        }
-
         try {
             TNetlinkSocket socket;
             TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
