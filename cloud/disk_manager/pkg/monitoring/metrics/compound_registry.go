@@ -1,4 +1,4 @@
-package compoundregistry
+package metrics
 
 import (
 	"time"
@@ -101,13 +101,13 @@ func (r *compoundRegistry) GaugeVec(
 	labels []string,
 ) metrics.GaugeVec {
 
-	var gaugeVecsList []metrics.GaugeVec
+	var gaugeVecs []metrics.GaugeVec
 	for _, registry := range r.registries {
-		gaugeVecsList = append(gaugeVecsList, registry.GaugeVec(name, labels))
+		gaugeVecs = append(gaugeVecs, registry.GaugeVec(name, labels))
 	}
 
 	return &compoundGaugeVecs{
-		gaugeVecs: gaugeVecsList,
+		gaugeVecs: gaugeVecs,
 	}
 }
 
@@ -142,16 +142,16 @@ func (r *compoundRegistry) IntGaugeVec(
 	labels []string,
 ) metrics.IntGaugeVec {
 
-	var intGaugeVecsList []metrics.IntGaugeVec
+	var intGaugeVecs []metrics.IntGaugeVec
 	for _, registry := range r.registries {
-		intGaugeVecsList = append(
-			intGaugeVecsList,
+		intGaugeVecs = append(
+			intGaugeVecs,
 			registry.IntGaugeVec(name, labels),
 		)
 	}
 
 	return &compoundIntGaugeVec{
-		intGaugeVecs: intGaugeVecsList,
+		intGaugeVecs: intGaugeVecs,
 	}
 }
 
@@ -210,7 +210,7 @@ func (r *compoundRegistry) Histogram(
 	}
 
 	return &compoundHistogram{
-		histogramList: histograms,
+		histograms: histograms,
 	}
 }
 
@@ -354,11 +354,11 @@ func (c *compoundFuncCounter) Function() func() int64 {
 ////////////////////////////////////////////////////////////////////////////////
 
 type compoundHistogram struct {
-	histogramList []metrics.Histogram
+	histograms []metrics.Histogram
 }
 
 func (h *compoundHistogram) RecordValue(value float64) {
-	for _, histogram := range h.histogramList {
+	for _, histogram := range h.histograms {
 		histogram.RecordValue(value)
 	}
 }
@@ -480,7 +480,7 @@ func (v *compoundHistogramVec) With(kv map[string]string) metrics.Histogram {
 	}
 
 	return &compoundHistogram{
-		histogramList: histograms,
+		histograms: histograms,
 	}
 }
 
