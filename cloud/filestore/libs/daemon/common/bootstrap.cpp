@@ -104,9 +104,7 @@ TBootstrapCommon::TBootstrapCommon(
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
 {
-    TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
-    BootstrapLogging = CreateLoggingService("console", logSettings);
+    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     BootstrapLogging->Start();
 
     Log = BootstrapLogging->CreateLog(logComponent);
@@ -242,7 +240,6 @@ void TBootstrapCommon::InitDiagnostics()
 {
     if (!ActorSystem) {
         TLogSettings logSettings;
-        logSettings.UseLocalTimestamps = true;
 
         if (Configs->Options->VerboseLevel) {
             auto level = GetLogLevel(Configs->Options->VerboseLevel);
