@@ -556,7 +556,7 @@ func lockAndExecuteTask(
 	go taskPinger(pingCtx, execCtx, pingPeriod, pingTimeout, cancelRun)
 	defer cancelPing()
 
-	runnerMetrics.OnExecutionStarted(taskState)
+	runnerMetrics.OnExecutionStarted(execCtx)
 	logging.Info(ctx, "started execution of task %v", taskInfo)
 
 	runner.executeTask(runCtx, execCtx, task)

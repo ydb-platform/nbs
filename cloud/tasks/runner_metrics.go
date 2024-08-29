@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +47,7 @@ func printStackTraces() string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerMetrics interface {
-	OnExecutionStarted(state tasks_storage.TaskState)
+	OnExecutionStarted(state *executionContext)
 	OnExecutionStopped()
 	OnExecutionError(err error)
 	OnError(err error)
