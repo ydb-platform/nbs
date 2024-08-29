@@ -11,19 +11,23 @@ show_help() {
     cat << EOF
 Usage: ./5-create_disk.sh [-hkd]
 Creates disk with requested kind and attach it to device
--h, --help         Display help
--k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3|local (default: ssd)
--d, --disk-id      disk-id
--e, --encrypted    Encrypt disk with default encryption key
+-h, --help                     Display help
+-k, --kind                     Kind of disk ssd|hdd|nonreplicated|mirror2|mirror3|local (default: ssd)
+-d, --disk-id                  disk-id
+-b, --base-disk-id             the base disk if you want to create an overlay disk. Should use together with the base-disk-checkpoint-id
+-c, --base-disk-checkpoint-id  the checkpoint-id if you want to create an overlay disk. Should use together with the base-disk-id
+-e, --encrypted                Encrypt disk with default encryption key
 EOF
 }
 
 #defaults
 kind="ssd"
 disk_id=""
-options=$(getopt -l "help,kind:,disk-id:,encrypted" -o "hk:d:e" -a -- "$@")
+options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:" -o "hk:d:eb:c:" -a -- "$@")
 block_size=4096
 encryption=""
+base_disk_id=""
+base_disk_checkpoint_id=""
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -50,6 +54,14 @@ do
         encryption="--encryption-mode=aes-xts --encryption-key-path=encryption-key.txt"
         shift 1
         ;;
+    -b | --base-disk-id )
+        base_disk_id=${2}
+        shift 2
+        ;;
+    -c | --base-disk-checkpoint-id )
+        base_disk_checkpoint_id=${2}
+        shift 2
+        ;;
     --)
         shift
         break;;
@@ -59,6 +71,8 @@ done
 case $kind in
 "ssd")
     default_id="vol0"; blocks_count=8388608;; # 32GiB
+"hdd")
+    default_id="hdd0"; blocks_count=8388608;; # 32GiB
 "nonreplicated")
     default_id="nbr0"; blocks_count=262144;;
 "mirror2")
@@ -78,6 +92,12 @@ if [ $disk_id == ""] ; then
   disk_id=$default_id
 fi
 
+if [ ! -z "$base_disk_id" ] ; then
+  echo base_disk_id=$base_disk_id
+  base_disk="--base-disk-id $base_disk_id --base-disk-checkpoint-id $base_disk_checkpoint_id"
+  echo $base_disk
+fi
+
 # create disk
 echo "Creating disk $disk_id in $kind mode"
 blockstore-client createvolume \
@@ -85,7 +105,7 @@ blockstore-client createvolume \
     --blocks-count $blocks_count \
     --block-size $block_size \
     --disk-id $disk_id \
-    $encryption
+    $encryption $base_disk \
 
 if [ $? -ne 0 ]; then
     echo "Disk $disk_id creation failed"

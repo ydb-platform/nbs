@@ -66,8 +66,7 @@ if [ -z "$diskid" ] ; then
 fi
 
 if [ -z "$socket" ] ; then
-    echo "Socket path shouldn't be empty"
-    exit 1
+    socket="/tmp/$diskid.sock"
 fi
 
 # prepare qemu image
