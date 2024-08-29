@@ -57,7 +57,7 @@ TFileSystem::~TFileSystem()
 
 void TFileSystem::Init()
 {
-    // TODO: initialize queue from file
+    // TODO(#1541): initialize queue from file
     STORAGE_INFO("scheduling destroy handle queue processing");
     ScheduleProcessHandleOpsQueue();
 }
@@ -292,6 +292,9 @@ void TFileSystem::ProcessHandleOpsQueue()
                             << " error: " << FormatError(error));
                         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
                             ReportAsyncDestroyHandleFailed();
+                            with_lock(HandleOpsQueueLock) {
+                                HandleOpsQueue.Pop();
+                            }
                         }
                     } else {
                         with_lock(HandleOpsQueueLock) {
@@ -302,7 +305,7 @@ void TFileSystem::ProcessHandleOpsQueue()
                 }
             });
     } else {
-        // TODO: process create handle
+        // TODO(#1541): process create handle
     }
 
 }
