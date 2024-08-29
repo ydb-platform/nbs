@@ -81,8 +81,8 @@ class NfsDaemonConfigGenerator:
 
         self.__use_secure_registration = use_secure_registration
 
-        if access_service_port:
-            self.__app_config.ServerConfig.SecurePort = self._port_manager.get_port()
+        self.__secure_port = self._port_manager.get_port()
+        self.__app_config.ServerConfig.SecurePort = self.__secure_port
 
         with open(self.__app_config_file_path, "w") as config_file:
             if self.__app_config:
@@ -92,6 +92,10 @@ class NfsDaemonConfigGenerator:
     @property
     def port(self):
         return self.__port
+
+    @property
+    def secure_port(self):
+        return self.__secure_port
 
     @property
     def mon_port(self):

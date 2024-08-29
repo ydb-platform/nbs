@@ -61,7 +61,7 @@ NfsConfig: <
             ]
         >
     >
-    Insecure: true
+    RootCertsFile: "{root_certs_file}"
 >
 FilesystemConfig: <
     DeletedFilesystemExpirationTimeout: "1s"

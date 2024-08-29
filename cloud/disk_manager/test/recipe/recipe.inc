@@ -28,6 +28,8 @@ ENDIF()
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
     arcadia/cloud/blockstore/tests/certs/server.key
+    arcadia/cloud/filestore/tests/certs/server.crt
+    arcadia/cloud/filestore/tests/certs/server.key
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/images/recipe/recipe.inc)
