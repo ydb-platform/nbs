@@ -1109,9 +1109,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             {Device("dev-1", "uuid-1", "rack-1", 10_GB),
              Device("dev-2", "uuid-2", "rack-1", 10_GB)})};
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build());
+        auto config = CreateDefaultStorageConfig();
+        config.SetCmsUpdateStateToOnlineTimeout(
+            TDuration::Minutes(10).MilliSeconds());
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents(agents).With(config).Build());
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, agents));
@@ -1140,7 +1142,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
-                TDuration{5min},
+                TDuration::MilliSeconds(
+                    config.GetCmsUpdateStateToOnlineTimeout()),
                 TDuration::Seconds(timeout));
         }
 
@@ -1150,11 +1153,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto [error, timeout] = AddHost("agent-1");
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_LE(TDuration::Seconds(timeout), TDuration{3min});
-            UNIT_ASSERT_GT(TDuration::Seconds(timeout), TDuration{2min});
+            UNIT_ASSERT_LE(
+                TDuration::Seconds(timeout),
+                TDuration::MilliSeconds(
+                    config.GetCmsUpdateStateToOnlineTimeout()) -
+                    2min);
+            UNIT_ASSERT_GT(
+                TDuration::Seconds(timeout),
+                TDuration::MilliSeconds(
+                    config.GetCmsUpdateStateToOnlineTimeout()) -
+                    3min);
         }
 
-        Runtime->AdvanceCurrentTime(10min);
+        Runtime->AdvanceCurrentTime(
+            TDuration::MilliSeconds(config.GetCmsUpdateStateToOnlineTimeout()));
 
         {
             auto [error, timeout] = AddHost("agent-1");
@@ -1170,7 +1182,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
-                TDuration{5min},
+                TDuration::MilliSeconds(
+                    config.GetCmsUpdateStateToOnlineTimeout()),
                 TDuration::Seconds(timeout));
         }
 
