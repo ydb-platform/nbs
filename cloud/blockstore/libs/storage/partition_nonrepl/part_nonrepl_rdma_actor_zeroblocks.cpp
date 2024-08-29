@@ -177,8 +177,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         SelfId(),
         requestId);
 
-    auto* serializer = TBlockStoreProtocol::Serializer();
-
     struct TDeviceRequestInfo
     {
         NRdma::IClientEndpointPtr Endpoint;
@@ -209,7 +207,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             nullptr,
-            serializer->MessageByteSize(deviceRequest, 0),
+            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
             4_KB);
 
         if (HasError(err)) {
@@ -226,12 +224,11 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             return;
         }
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
-            0, // flags
-            deviceRequest,
-            TContIOVector(nullptr, 0));
+            0,   // flags
+            deviceRequest);
 
         requests.push_back({std::move(ep), std::move(req)});
     }

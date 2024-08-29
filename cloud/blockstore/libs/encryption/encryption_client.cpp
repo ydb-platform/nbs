@@ -631,23 +631,25 @@ bool TEncryptionClient::Decrypt(
     }
 
     for (size_t i = 0; i < src.size(); ++i) {
-        bool encrypted = !GetBitValue(unencryptedBlockMask, i);
+        if (dst[i].Size() != src[i].Size()) {
+            return false;
+        }
+
+        const bool encrypted = !GetBitValue(unencryptedBlockMask, i);
+        auto* dstPtr = const_cast<char*>(dst[i].Data());
+        const size_t blockSize = dst[i].Size();
 
         if (encrypted) {
-            if (!Encryptor->Decrypt(src[i], dst[i], startIndex + i)) {
+            if (src[i].Data() && IsAllZeroes(src[i].Data(), blockSize)) {
+                memset(dstPtr, 0, blockSize);
+            } else if (!Encryptor->Decrypt(src[i], dst[i], startIndex + i)) {
                 return false;
             }
         } else {
-            Y_DEBUG_ABORT_UNLESS(dst[i].Size() == src[i].Size());
-            if (dst[i].Size() != src[i].Size()) {
-                return false;
-            }
-            auto* dstPtr = const_cast<char*>(dst[i].Data());
-
             if (src[i].Data()) {
-                memcpy(dstPtr, src[i].Data(), src[i].Size());
+                memcpy(dstPtr, src[i].Data(), blockSize);
             } else {
-                memset(dstPtr, 0, src[i].Size());
+                memset(dstPtr, 0, blockSize);
             }
         }
     }

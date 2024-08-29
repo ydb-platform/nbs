@@ -34,17 +34,21 @@ private:
     using TBase = NActors::TActorBootstrapped<TReadDiskRegistryBasedOverlayActor<TMethod>>;
 
     const TRequestInfoPtr RequestInfo;
+    const TRequest OriginalRequest;
     const TActorId VolumeActorId;
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TString BaseDiskId;
     const TString BaseDiskCheckpointId;
     const ui32 BlockSize;
-    const bool ReplyWithUnencryptedBlockMask;
     const TDuration LongRunningThreshold;
     const EStorageAccessMode Mode;
 
-    TRequest OriginalRequest;
+    // Initially, the block map is built on the basis of the usedBlocks of the
+    // overlay disk.
+    // Then we move it to TDescribeBaseDiskBlocksActor, which will
+    // specify information about empty blocks that belong to the base disk.
+    // The updated map will be returned in the TEvDescribeBlocksCompleted.
     NBlobMarkers::TBlockMarks BlockMarks;
 
     IReadBlocksHandlerPtr ReadHandler;
@@ -57,7 +61,7 @@ public:
     TReadDiskRegistryBasedOverlayActor(
         TRequestInfoPtr requestInfo,
         TRequest originalRequest,
-        const TCompressedBitmap* usedBlocks,
+        const TCompressedBitmap& usedBlocks,
         TActorId volumeActorId,
         TActorId partActorId,
         ui64 volumeTabletId,
@@ -65,7 +69,6 @@ public:
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        bool replyWithUnencryptedBlockMask,
         TDuration longRunningThreshold);
 
     void Bootstrap(const TActorContext& ctx);

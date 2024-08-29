@@ -4,86 +4,62 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NBlobMarkers;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-void ApplyMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksRequest& request)
+void ZeroBlock(TString& block)
 {
-    Y_UNUSED(blockMarks);
-    Y_UNUSED(request);
+    memset(&block[0], 0, block.size());
 }
 
-void ApplyMask(
-    const TBlockMarks& blockMarks,
+void ZeroBlock(TBlockDataRef block)
+{
+    memset(const_cast<char*>(block.Data()), 0, block.Size());
+}
+
+template <typename TBlocks>
+void ZeroBlocks(const TBlockMarks& usedBlocks, TBlocks& blocks)
+{
+    const size_t blockCount = Min<size_t>(usedBlocks.size(), blocks.size());
+    for (size_t i = 0; i < blockCount; ++i) {
+        auto& block = blocks[i];
+        if (block && std::holds_alternative<TEmptyMark>(usedBlocks[i])) {
+            ZeroBlock(block);
+        }
+    }
+}
+
+}   // namespace
+
+void ClearEmptyBlocks(
+    const TBlockMarks& usedBlocks,
     NProto::TReadBlocksResponse& response)
 {
-    auto& buffers = *response.MutableBlocks()->MutableBuffers();
-    const size_t minSize = std::min(std::ssize(blockMarks), std::ssize(buffers));
-    for (size_t i = 0; i < minSize; ++i) {
-        if (buffers[i].data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
-            memset(buffers[i].begin(), 0, buffers[i].size());
-        }
-    }
+    NProto::TIOVector& blocks = *response.MutableBlocks();
+    ZeroBlocks(usedBlocks, *blocks.MutableBuffers());
 }
 
-void ApplyMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksLocalRequest& request)
+void ClearEmptyBlocks(
+    const TBlockMarks& usedBlocks,
+    const TGuardedSgList& sglist)
 {
-    auto& sglist = request.Sglist;
-    auto guard = sglist.Acquire();
-    if (!guard) {
-        return;
-    }
-
-    auto& blockDatas = guard.Get();
-
-    for (size_t i = 0; i < blockMarks.size() && i < blockDatas.size(); ++i) {
-        auto& buffer = blockDatas[i];
-        if (buffer.Data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
-            memset(const_cast<char*>(buffer.Data()), 0, buffer.Size());
-        }
+    if (auto guard = sglist.Acquire()) {
+        ZeroBlocks(usedBlocks, guard.Get());
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FillUnencryptedBlockMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksResponse& response)
-{
-    if (blockMarks.empty()) {
-        return;
-    }
-
-    TDynBitMap bitmap;
-    for (size_t i = 0; i < blockMarks.size(); ++i) {
-        if (std::holds_alternative<TEmptyMark>(blockMarks[i]) ||
-            std::holds_alternative<TFreshMarkOnBaseDisk>(blockMarks[i]) ||
-            std::holds_alternative<TBlobMarkOnBaseDisk>(blockMarks[i])) {
-            bitmap.Set(i);
-        }
-    }
-
-    auto& blockMask = *response.MutableUnencryptedBlockMask();
-    blockMask.assign(TStringBuf{
-        reinterpret_cast<const char*>(bitmap.GetChunks()),
-        bitmap.Size() / 8});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TBlockMarks MakeBlockMarks(
-    const TCompressedBitmap* usedBlocks,
+TBlockMarks MakeUsedBlockMarks(
+    const TCompressedBitmap& usedBlocks,
     TBlockRange64 range)
 {
     TBlockMarks blockMarks(range.Size(), TEmptyMark{});
-    if (usedBlocks) {
-        for (ui64 i = 0; i < range.Size(); ++i) {
-            if (usedBlocks->Test(i + range.Start)) {
-                blockMarks[i] = TUsedMark{};
-            }
+
+    for (ui64 i = 0; i < range.Size(); ++i) {
+        if (usedBlocks.Test(i + range.Start)) {
+            blockMarks[i] = TUsedMark{};
         }
     }
 

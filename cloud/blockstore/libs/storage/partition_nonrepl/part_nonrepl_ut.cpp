@@ -66,7 +66,6 @@ struct TTestEnv
     struct TParams
     {
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
-        bool MarkBlocksUsed = false;
         bool MuteIOErrors = false;
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
@@ -133,7 +132,6 @@ struct TTestEnv
             TNonreplicatedPartitionConfig::TVolumeInfo{Now(), params.MediaKind},
             VolumeActorId,
             params.MuteIOErrors,
-            params.MarkBlocksUsed,
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

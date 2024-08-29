@@ -13,9 +13,7 @@ bool RunTest(
     ui64 iterations,
     TMaybe<ui32> brokenBlockIdx)
 {
-    TLogSettings settings;
-    settings.UseLocalTimestamps = true;
-    auto logging = CreateLoggingService("console", settings);
+    auto logging = CreateLoggingService("console", TLogSettings{});
     logging->Start();
     Y_DEFER {
         logging->Stop();

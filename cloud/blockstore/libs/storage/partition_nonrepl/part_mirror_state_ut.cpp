@@ -61,7 +61,6 @@ struct TEnv
             volumeInfo,
             NActors::TActorId(),
             false, // muteIOErrors
-            false, // markBlocksUsed
             FreshDeviceIds,
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden

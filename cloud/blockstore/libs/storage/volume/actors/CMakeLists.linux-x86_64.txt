@@ -21,7 +21,6 @@ target_link_libraries(storage-volume-actors PUBLIC
   library-cpp-lwtrace
 )
 target_sources(storage-volume-actors PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_read_marked.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.cpp

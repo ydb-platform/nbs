@@ -102,7 +102,6 @@ struct TTestEnv
     TTestEnv(TTestActorRuntime& runtime)
         : TTestEnv(
             runtime,
-            false,
             DefaultDevices(runtime.GetNodeId(0)),
             TVector<TDevices>{
                 DefaultReplica(runtime.GetNodeId(0), 1),
@@ -114,7 +113,6 @@ struct TTestEnv
 
     TTestEnv(
             TTestActorRuntime& runtime,
-            bool markBlocksUsed,
             TDevices devices,
             TVector<TDevices> replicas,
             TMigrations migrations = {},
@@ -185,7 +183,6 @@ struct TTestEnv
                 NProto::STORAGE_MEDIA_SSD_MIRROR3},
             VolumeActorId,
             false, // muteIOErrors
-            markBlocksUsed,
             std::move(freshDeviceIds),
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden
@@ -698,7 +695,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const THashSet<TString> freshDeviceIds{"vasya", "vasya#1", "petya#2"};
         TTestEnv env(
             runtime,
-            false, // markBlocksUsed
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TVector<TDevices>{
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
@@ -894,7 +890,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const THashSet<TString> freshDeviceIds{"vasya", "vasya#1", "petya#2"};
         TTestEnv env(
             runtime,
-            false, // markBlocksUsed
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TVector<TDevices>{
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
@@ -936,7 +931,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TTestEnv env(
             runtime,
-            false, // markBlocksUsed
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TVector<TDevices>{
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),

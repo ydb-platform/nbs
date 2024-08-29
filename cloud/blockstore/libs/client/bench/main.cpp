@@ -31,10 +31,11 @@ struct TBootstrap
 {
     const ui32 BlockSize = 4*1024;
 
-    ILoggingServicePtr Logging = CreateLoggingService("console", {
-        .FiltrationLevel = TLOG_ERR,
-        .UseLocalTimestamps = true,
-    });
+    ILoggingServicePtr Logging = CreateLoggingService(
+        "console",
+        {
+            .FiltrationLevel = TLOG_ERR,
+        });
     TClientAppConfigPtr Config = std::make_shared<TClientAppConfig>();
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();

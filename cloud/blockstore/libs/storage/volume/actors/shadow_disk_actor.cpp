@@ -839,7 +839,6 @@ void TShadowDiskActor::CreateShadowDiskConfig()
         volumeInfo,
         SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
         true,       // muteIOErrors
-        false,      // markBlocksUsed
         THashSet<TString>(),   // freshDeviceIds
         TDuration(),           // maxTimedOutDeviceStateDuration
         false,                 // maxTimedOutDeviceStateDurationOverridden

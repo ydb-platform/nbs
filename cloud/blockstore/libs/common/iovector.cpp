@@ -176,7 +176,12 @@ bool IsAllZeroes(const char* src, size_t size)
     using TBigNumber = ui64;
 
     if (size < sizeof(TBigNumber)) {
-        return false;
+        for (size_t i = 0; i < size; ++i) {
+            if (src[i] != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     const bool isAligned =

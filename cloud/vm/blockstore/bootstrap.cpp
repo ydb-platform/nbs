@@ -99,7 +99,6 @@ void TBootstrap::Init()
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
 
     TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
     logSettings.SuppressNewLine = true;   // host will do it for us
 
     if (logConfig.HasLogLevel()) {

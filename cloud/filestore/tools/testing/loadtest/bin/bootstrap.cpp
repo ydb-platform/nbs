@@ -154,7 +154,6 @@ void TBootstrap::Stop()
 void TBootstrap::InitDbgConfig()
 {
     TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
 
     if (Options->VerboseLevel) {
         auto level = GetLogLevel(Options->VerboseLevel);

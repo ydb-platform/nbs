@@ -71,35 +71,15 @@ struct TTestEnv
         : TTestEnv(runtime, NProto::VOLUME_IO_OK)
     {}
 
-    explicit TTestEnv(
+    TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode)
-        : TTestEnv(runtime, ioMode, false, DefaultDevices(runtime.GetNodeId(0)))
+        : TTestEnv(runtime, ioMode, DefaultDevices(runtime.GetNodeId(0)))
     {}
 
-    explicit TTestEnv(
+    TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode,
-            TDevices devices)
-        : TTestEnv(runtime, ioMode, false, std::move(devices))
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            bool markBlocksUsed)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            markBlocksUsed,
-            DefaultDevices(runtime.GetNodeId(0))
-        )
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            bool markBlocksUsed,
             TDevices devices)
         : Runtime(runtime)
         , VolumeActorId(0, "VVV")
@@ -156,7 +136,6 @@ struct TTestEnv
                     NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
                 VolumeActorId,
                 false, // muteIOErrors
-                markBlocksUsed,
                 THashSet<TString>(), // freshDeviceIds
                 TDuration::Zero(), // maxTimedOutDeviceStateDuration
                 false, // maxTimedOutDeviceStateDurationOverridden
