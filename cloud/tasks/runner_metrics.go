@@ -63,7 +63,6 @@ type taskMetrics struct {
 	nonRetriableErrorsCounter    metrics.Counter
 	nonCancellableErrorsCounter  metrics.Counter
 	panicCounter                 metrics.Counter
-	hangingTasksGauge            metrics.Gauge
 	isTaskHanging                bool
 	inflightTasksGauge           metrics.Gauge
 	taskID                       string
@@ -97,7 +96,6 @@ func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
 		retriableErrorsCounter:       subRegistry.Counter("errors/retriable"),
 		nonRetriableErrorsCounter:    subRegistry.Counter("errors/nonRetriable"),
 		nonCancellableErrorsCounter:  subRegistry.Counter("errors/nonCancellable"),
-		hangingTasksGauge:            subRegistry.Gauge("hangingTasks"),
 		inflightTasksGauge:           subRegistry.Gauge("inflightTasks"),
 		taskID:                       state.ID,
 		taskType:                     state.TaskType,
@@ -197,7 +195,6 @@ func (m *runnerMetricsImpl) setTaskHanging(value bool) {
 	prevValue := m.taskMetrics.isTaskHanging
 	m.taskMetrics.isTaskHanging = value
 
-	gauge := m.taskMetrics.hangingTasksGauge
 	switch {
 	case !prevValue && value:
 		if m.logger != nil {
@@ -208,10 +205,6 @@ func (m *runnerMetricsImpl) setTaskHanging(value bool) {
 				printStackTraces(),
 			)
 		}
-
-		gauge.Add(1)
-	case prevValue && !value:
-		gauge.Add(-1)
 	}
 }
 
