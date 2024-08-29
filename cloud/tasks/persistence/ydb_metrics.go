@@ -37,6 +37,7 @@ func (m *ydbMetrics) StatCall(
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
+		errorCounter := subRegistry.Counter("errors")
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(ctx, "YDB call hanging, name %v, query %v", name, query)
@@ -45,7 +46,7 @@ func (m *ydbMetrics) StatCall(
 
 		if *err != nil {
 			var errorType string
-			errorRegistry := subRegistry
+
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
 				errorType = "TLI"
@@ -62,13 +63,12 @@ func (m *ydbMetrics) StatCall(
 			}
 
 			if errorType != "" {
-				errorRegistry = errorRegistry.WithTags(map[string]string{
+				errorRegistry := subRegistry.WithTags(map[string]string{
 					"type": errorType,
 				})
+				errorCounter = errorRegistry.Counter("error")
 			}
 
-			// Should initialize all counters before using them, to avoid 'no data'.
-			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
