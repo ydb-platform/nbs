@@ -62,14 +62,31 @@ TString ReadFile(const TString& name)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TServer;
+
 struct TRequestContextBase
 {
     bool Done = false;
 
     virtual ~TRequestContextBase() = default;
+
+    virtual void Process(
+        TServer& server,
+        NProto::TBlockStoreEndpointProxy::AsyncService& service,
+        grpc::ServerCompletionQueue& cq) = 0;
 };
 
-struct TStartRequestContext: TRequestContextBase
+template <typename TDerived>
+struct TRequestContextT
+    : TRequestContextBase
+{
+    void Process(
+        TServer& server,
+        NProto::TBlockStoreEndpointProxy::AsyncService& service,
+        grpc::ServerCompletionQueue& cq) override;
+};
+
+struct TStartRequestContext: TRequestContextT<TStartRequestContext>
 {
     NProto::TStartProxyEndpointRequest Request;
     NProto::TStartProxyEndpointResponse Response;
@@ -92,7 +109,7 @@ struct TStartRequestContext: TRequestContextBase
     }
 };
 
-struct TStopRequestContext: TRequestContextBase
+struct TStopRequestContext: TRequestContextT<TStopRequestContext>
 {
     NProto::TStopProxyEndpointRequest Request;
     NProto::TStopProxyEndpointResponse Response;
@@ -115,7 +132,7 @@ struct TStopRequestContext: TRequestContextBase
     }
 };
 
-struct TListRequestContext: TRequestContextBase
+struct TListRequestContext: TRequestContextT<TListRequestContext>
 {
     NProto::TListProxyEndpointsRequest Request;
     NProto::TListProxyEndpointsResponse Response;
@@ -138,7 +155,7 @@ struct TListRequestContext: TRequestContextBase
     }
 };
 
-struct TResizeRequestContext: TRequestContextBase
+struct TResizeRequestContext: TRequestContextT<TResizeRequestContext>
 {
     NProto::TResizeProxyDeviceRequest Request;
     NProto::TResizeProxyDeviceResponse Response;
@@ -189,6 +206,9 @@ struct TClientStorage: NStorage::NServer::IClientStorage
 
 struct TServer: IEndpointProxyServer
 {
+    template <typename TDerived>
+    friend struct TRequestContextT;
+
     TGrpcInitializer GrpcInitializer;
 
     const TEndpointProxyServerConfig Config;
@@ -425,37 +445,7 @@ struct TServer: IEndpointProxyServer
                 continue;
             }
 
-            auto* startRequestContext =
-                dynamic_cast<TStartRequestContext*>(requestContext);
-            if (startRequestContext) {
-                new TStartRequestContext(Service, *CQ);
-                ProcessRequest(startRequestContext);
-                continue;
-            }
-
-            auto* stopRequestContext =
-                dynamic_cast<TStopRequestContext*>(requestContext);
-            if (stopRequestContext) {
-                new TStopRequestContext(Service, *CQ);
-                ProcessRequest(stopRequestContext);
-                continue;
-            }
-
-            auto* listRequestContext =
-                dynamic_cast<TListRequestContext*>(requestContext);
-            if (listRequestContext) {
-                new TListRequestContext(Service, *CQ);
-                ProcessRequest(listRequestContext);
-                continue;
-            }
-
-            auto* resizeRequestContext =
-                dynamic_cast<TResizeRequestContext*>(requestContext);
-            if (resizeRequestContext) {
-                new TResizeRequestContext(Service, *CQ);
-                ProcessRequest(resizeRequestContext);
-                continue;
-            }
+            requestContext->Process(*this, Service, *CQ);
         }
 
         STORAGE_INFO("Exiting loop");
@@ -915,6 +905,18 @@ struct TServer: IEndpointProxyServer
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TDerived>
+void TRequestContextT<TDerived>::Process(
+    TServer& server,
+    NProto::TBlockStoreEndpointProxy::AsyncService& service,
+    grpc::ServerCompletionQueue& cq)
+{
+    new TDerived(service, cq);
+    server.ProcessRequest(static_cast<TDerived*>(this));
+}
 
 }   // namespace
 
