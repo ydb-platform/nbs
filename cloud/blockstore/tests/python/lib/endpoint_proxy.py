@@ -12,7 +12,7 @@ class EndpointProxy(Daemon):
         ]
 
         if with_netlink:
-            command += "--netlink"
+            command += ["--netlink"]
 
         super(EndpointProxy, self).__init__(
             commands=[command],
