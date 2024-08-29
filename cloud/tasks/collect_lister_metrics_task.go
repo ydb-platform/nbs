@@ -13,9 +13,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type collectListerMetricsTask struct {
-	registry                  metrics.Registry
-	storage                   storage.Storage
-	metricsCollectionInterval time.Duration
+	registry                    metrics.Registry
+	storage                     storage.Storage
+	metricsCollectionInterval   time.Duration
+	hangingTasksDefaultDuration time.Duration
+	exceptHangingTaskTypes      []string
 }
 
 func (c collectListerMetricsTask) Save() ([]byte, error) {
@@ -88,6 +90,22 @@ func (c collectListerMetricsTask) Run(
 				)
 			},
 			storage.TaskStatusToString(storage.TaskStatusCancelling),
+		)
+		if err != nil {
+			return err
+		}
+
+		err = c.collectTasksMetrics(
+			ctx,
+			func(ctx context.Context) ([]storage.TaskInfo, error) {
+				return c.storage.ListTasksHanging(
+					ctx,
+					^uint64(0),
+					c.exceptHangingTaskTypes,
+					c.hangingTasksDefaultDuration,
+				)
+			},
+			"hanging",
 		)
 		if err != nil {
 			return err

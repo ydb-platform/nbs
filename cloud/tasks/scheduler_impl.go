@@ -608,12 +608,16 @@ func NewScheduler(
 		return nil, err
 	}
 
+	hangingTasksDefaultDuration, err := time.ParseDuration(
+		config.GetHangingTaskTimeout())
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
-				registry:                  metricsRegistry,
-				storage:                   storage,
-				metricsCollectionInterval: listerMetricsCollectionInterval,
+				registry:                    metricsRegistry,
+				storage:                     storage,
+				metricsCollectionInterval:   listerMetricsCollectionInterval,
+				hangingTasksDefaultDuration: hangingTasksDefaultDuration,
+				exceptHangingTaskTypes:      config.GetExceptHangingTaskTypes(),
 			}
 		},
 	)
