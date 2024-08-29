@@ -268,6 +268,10 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
 
     SetupStorageConfig(storageConfig);
 
+    if (Options->TemporaryServer) {
+        storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
+    }
+
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig,
         FeaturesConfig);

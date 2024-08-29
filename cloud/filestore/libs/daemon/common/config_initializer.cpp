@@ -48,28 +48,7 @@ void TConfigInitializerCommon::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    if (Options->SchemeShardDir) {
-        storageConfig.SetSchemeShardDir(Options->SchemeShardDir);
-    }
-
-    if (Options->DisableLocalService) {
-        storageConfig.SetDisableLocalService(true);
-    }
-
-    if (Options->NodeRegistrationErrorTimeout) {
-        storageConfig.SetNodeRegistrationErrorTimeout(
-            Options->NodeRegistrationErrorTimeout.MilliSeconds());
-    }
-
-    if (Options->NodeRegistrationMaxAttempts) {
-        storageConfig.SetNodeRegistrationMaxAttempts(
-            Options->NodeRegistrationMaxAttempts);
-    }
-
-    if (Options->NodeRegistrationTimeout) {
-        storageConfig.SetNodeRegistrationTimeout(
-            Options->NodeRegistrationTimeout.MilliSeconds());
-    }
+    ApplyOptionsToStorageConfig(storageConfig);
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig);
@@ -133,8 +112,13 @@ void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
     NProto::TStorageConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
+    ApplyOptionsToStorageConfig(config);
+
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config));
+
+    Y_ENSURE(!Options->SchemeShardDir ||
+        GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
 }
 
 void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
@@ -144,6 +128,33 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
 
     FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
         std::move(config));
+}
+
+void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
+    NProto::TStorageConfig& storageConfig)
+{
+    if (Options->SchemeShardDir) {
+        storageConfig.SetSchemeShardDir(Options->SchemeShardDir);
+    }
+
+    if (Options->DisableLocalService) {
+        storageConfig.SetDisableLocalService(true);
+    }
+
+    if (Options->NodeRegistrationErrorTimeout) {
+        storageConfig.SetNodeRegistrationErrorTimeout(
+            Options->NodeRegistrationErrorTimeout.MilliSeconds());
+    }
+
+    if (Options->NodeRegistrationMaxAttempts) {
+        storageConfig.SetNodeRegistrationMaxAttempts(
+            Options->NodeRegistrationMaxAttempts);
+    }
+
+    if (Options->NodeRegistrationTimeout) {
+        storageConfig.SetNodeRegistrationTimeout(
+            Options->NodeRegistrationTimeout.MilliSeconds());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NDaemon
