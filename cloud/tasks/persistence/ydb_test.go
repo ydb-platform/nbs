@@ -515,7 +515,7 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 	defer db.Close(ctx)
 
 	metricsRegistry.GetCounter(
-		"errors",
+		"error",
 		map[string]string{"call": "client/makeDirs", "type": "scheme"},
 	).On("Inc").Once()
 
