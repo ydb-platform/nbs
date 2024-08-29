@@ -218,7 +218,7 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		err := execCtx.SaveStateWithCallback(
+		err := execCtx.SaveStateWithPreparation(
 			ctx,
 			func(ctx context.Context, tx *persistence.Transaction) error {
 				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
@@ -243,11 +243,6 @@ func (t *migrateDiskTask) start(
 			return err
 		}
 
-		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
-		err = execCtx.SaveState(ctx)
-		if err != nil {
-			return err
-		}
 	} else if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
 		// Need to check that RelocateInfo is still actual.
 		// OverlayDiskRebasing should be idempotent.
@@ -455,14 +450,25 @@ func (t *migrateDiskTask) finishMigration(
 	}
 
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
-		err = t.poolStorage.OverlayDiskRebased(
+		err = execCtx.SaveStateWithPreparation(
 			ctx,
-			storage.RebaseInfo{
-				OverlayDisk:      t.request.Disk,
-				BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
-				TargetZoneID:     t.request.DstZoneId,
-				TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
-				SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+			func(context.Context, *persistence.Transaction) (err error) {
+				err = t.poolStorage.OverlayDiskRebased(
+					ctx,
+					storage.RebaseInfo{
+						OverlayDisk:      t.request.Disk,
+						BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+						TargetZoneID:     t.request.DstZoneId,
+						TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+					},
+				)
+				if err != nil {
+					return err
+				}
+
+				t.state.RelocateInfo.TargetBaseDiskID = ""
+				return nil
 			},
 		)
 		if err != nil {
@@ -501,7 +507,7 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
-	return execCtx.FinishWithCallback(
+	return execCtx.FinishWithPreparation(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
 			return t.resourceStorage.DiskRelocated(
