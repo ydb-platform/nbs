@@ -560,7 +560,7 @@ func lockAndExecuteTask(
 		trace.WithAttributes(
 			attribute.String("task_id", taskInfo.ID),
 			attribute.Int64("generation_id", int64(taskInfo.GenerationID)),
-			attribute.Bool("is_regular", taskState.Regular),
+			attribute.Bool("regular", taskState.Regular),
 		),
 	)
 	defer span.End()
