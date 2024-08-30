@@ -36,5 +36,4 @@ message TVFSConfig
 
     // Limits max requests allowed at a time.
     optional uint32 MaxBackground = 12;
-
 }
