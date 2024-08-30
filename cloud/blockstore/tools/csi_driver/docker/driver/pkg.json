@@ -1,0 +1,38 @@
+{
+    "meta": {
+        "name": "CSI driver",
+        "version": "{sandbox_task_id}.{branch}",
+        "description": "CSI Driver",
+        "maintainer": "NBS <nbs-dev@nebius.com>",
+        "pre-depends": [
+        ]
+    },
+    "build": {
+        "targets": [
+            "cloud/blockstore/tools/csi_driver/cmd/nbs_csi_driver"
+        ]
+    },
+    "data": [
+        {
+            "source": {
+                "type": "RELATIVE",
+                "path": "Dockerfile"
+            },
+            "destination": {
+                "path": "/Dockerfile"
+            }
+        },
+        {
+            "source": {
+                "path": "cloud/blockstore/tools/csi_driver/cmd/nbs_csi_driver",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        }
+    ]
+}

@@ -1,0 +1,52 @@
+{
+    "meta": {
+        "name": "YDB",
+        "version": "{sandbox_task_id}.{branch}",
+        "description": "YDB",
+        "maintainer": "NBS <nbs-dev@nebius.com>",
+        "pre-depends": [
+        ]
+    },
+    "build": {
+        "targets": [
+            "contrib/ydb/apps/ydbd/"
+        ],
+        "flags": [
+            {
+                "name": "YDB_VERSIONS_EXTENDED_COMPAT_LIST",
+                "value": "1"
+            },
+            {
+                "name": "HARDENING",
+                "value": "yes"
+            },
+            {
+                "name": "CFLAGS",
+                "value": "-DFORCE_STATIC_LINKING=yes"
+            }
+        ]
+    },
+    "data": [
+        {
+            "source": {
+                "type": "RELATIVE",
+                "path": "Dockerfile"
+            },
+            "destination": {
+                "path": "/Dockerfile"
+            }
+        },
+        {
+            "source": {
+                "path": "contrib/ydb/apps/ydbd/",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        }
+    ]
+}

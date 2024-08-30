@@ -1,0 +1,91 @@
+{
+    "meta": {
+        "name": "nebius-blockstore-server",
+        "version": "{sandbox_task_id}.{branch}",
+        "description": "Nebius BlockStore Server",
+        "maintainer": "Nebius NBS <nbs-dev@nebius.com>",
+        "pre-depends": [
+        ]
+    },
+    "build": {
+        "targets": [
+            "cloud/blockstore/apps/server",
+            "cloud/blockstore/apps/client",
+            "cloud/blockstore/vhost-server",
+            "cloud/blockstore/tools/analytics/dump-event-log"
+        ],
+        "flags": [
+            {
+                "name": "YDB_VERSIONS_EXTENDED_COMPAT_LIST",
+                "value": "1"
+            },
+            {
+                "name": "HARDENING",
+                "value": "yes"
+            },
+            {
+                "name": "CFLAGS",
+                "value": "-ggdb -fno-omit-frame-pointer -DNALF_FORCE_MALLOC_FREE -DFORCE_STATIC_LINKING=yes"
+            }
+        ]
+    },
+    "data": [
+        {
+            "source": {
+                "type": "RELATIVE",
+                "path": "Dockerfile"
+            },
+            "destination": {
+                "path": "/Dockerfile"
+            }
+        },
+        {
+            "source": {
+                "path": "cloud/blockstore/apps/server",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        },
+        {
+            "source": {
+                "path": "cloud/blockstore/apps/client",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        },
+        {
+            "source": {
+                "path": "cloud/blockstore/vhost-server",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        },
+        {
+            "source": {
+                "path": "cloud/blockstore/tools/analytics/dump-event-log",
+                "type": "BUILD_OUTPUT",
+                "files": [
+                    "*"
+                ]
+            },
+            "destination": {
+                "path": "/"
+            }
+        }
+    ]
+}
