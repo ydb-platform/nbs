@@ -60,7 +60,7 @@ func (m *ydbMetrics) StatCall(
 			case ydb.IsRatelimiterAcquireError(*err):
 				errorType = "ratelimiterAcquire"
 			default:
-				errorType = "unhandled"
+				errorType = "unknown"
 			}
 
 			errorRegistry := subRegistry.WithTags(map[string]string{
