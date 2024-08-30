@@ -18,6 +18,13 @@ class NfsLauncher:
         if fs_root_path:
             server_config.LocalServiceConfig.RootPath = fs_root_path
 
+        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+        server_config.ServerConfig.Certs.add()
+        server_config.ServerConfig.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+        server_config.ServerConfig.Certs[0].CertPrivateKeyFile = common.source_path(
+            "cloud/filestore/tests/certs/server.key"
+        )
+
         self.__nfs_configurator = NfsServerConfigGenerator(
             binary_path=nfs_binary_path,
             app_config=server_config,
@@ -25,6 +32,7 @@ class NfsLauncher:
             service_type="local",
             verbose=True,
             kikimr_port=ydb_port,
+            secure=True,
         )
         self.__nfs_configurator.generate_configs(domains_txt, names_txt)
 
@@ -41,4 +49,4 @@ class NfsLauncher:
 
     @property
     def port(self):
-        return self.__nfs_configurator.port
+        return self.__nfs_configurator.secure_port

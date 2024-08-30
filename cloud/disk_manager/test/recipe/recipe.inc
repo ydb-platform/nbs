@@ -27,6 +27,8 @@ ENDIF()
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
     arcadia/cloud/blockstore/tests/certs/server.key
+    arcadia/cloud/filestore/tests/certs/server.crt
+    arcadia/cloud/filestore/tests/certs/server.key
 )
 
 USE_RECIPE(cloud/disk_manager/test/recipe/recipe ${RECIPE_ARGS})
