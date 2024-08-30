@@ -17,7 +17,8 @@
         "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs",
         "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz",
         "5922914799": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk",
-        "6318551696": "https://storage.yandexcloud.net/barkovbg-s3/ubuntu1604-ci-stable"
+        "6318551696": "https://storage.yandexcloud.net/barkovbg-s3/ubuntu1604-ci-stable",
+	"770480022": "https://ydb-tech-ci.storage.yandexcloud.net/ydb-platform/resources/770480022"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
