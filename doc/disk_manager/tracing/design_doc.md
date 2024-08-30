@@ -2,18 +2,18 @@
 
 ## What we want to achieve
 
-Our goal is to set up tracing of requests in the disk manager service using [Open Telemetry](https://opentelemetry.io/). As a result, spans from disk manager should be visible on request traces along with the existing spans from other services.
+Our goal is to set up tracing of requests in the Disk Manager service using [Open Telemetry](https://opentelemetry.io/). As a result, spans from Disk Manager should be visible on request traces along with the existing spans from other services.
 
-For each request in dm and for each dm task, traces should allow tracking what stages the request/task went through, which services it interacted with and which requests is sended, and how long it took. If the request took too long, it should be clear from the trace where the delays occurred. If an error occurred, it should be clear where it occurred. **All this information should be easily readable for someone who is not an expert on disk manager.**
+For each request in DM and for each DM task, traces should allow tracking what stages the request/task went through, which services it interacted with and which requests is sended, and how long it took. If the request took too long, it should be clear from the trace where the delays occurred. If an error occurred, it should be clear where it occurred. **All this information should be easily readable for someone who is not an expert on Disk Manager.**
 
 For example, let's say we receive a complaint about task slowdowns. There can be various reasons for this — all of them should be visible in the traces. Including:
-- Long waiting for responses to requests to NBS/YDB/S3.
-- The task was restarted many times due to recoverable errors from NBS/YDB/S3.
+- Long waiting for responses to requests to Blockstore/YDB/S3.
+- The task was restarted many times due to recoverable errors from Blockstore/YDB/S3.
 - The task waited for a long time for a child task to complete.
 - A task waits a long time for the result of another task that is not a child (for example, retire base disk or acquire base disk wait for the base disk to be filled).
 - No runner took on the execution of the task for a long time.
 - The task loses information about its progress and therefore repeats the same actions many times.
-- dm is not at all to blame; the brakes were in external services relative to dm/nbs.
+- DM is not at all to blame; the brakes were in external services relative to DM/Blockstore.
 
 ## Span pipeline
 
@@ -23,7 +23,7 @@ Spans need to be sent to the backend, where they will be stored and can be viewe
 
 ### Span context from incoming requests
 
-We need to be able to associate our spans with those of the service sending requests to disk manager. This means that for each request, we must obtain the [trace context](https://opentelemetry.io/docs/concepts/context-propagation/), namely, the trace id and span id of the span that will be the parent for our span. The trace context in [W3C format](https://www.w3.org/TR/trace-context/) (traceparent and tracestate fields in grpc metadata) can be passed in each incoming request. We need to be able to parse these fields.
+We need to be able to associate our spans with those of the service sending requests to Disk Manager. This means that for each request, we must obtain the [trace context](https://opentelemetry.io/docs/concepts/context-propagation/), namely, the trace ID and span ID of the span that will be the parent for our span. The trace context in [W3C format](https://www.w3.org/TR/trace-context/) (traceparent and tracestate fields in grpc metadata) can be passed in each incoming request. We need to be able to parse these fields.
 
 ## Span structure
 
@@ -31,12 +31,12 @@ We need to be able to associate our spans with those of the service sending requ
 
 Some time ago, we discussed what span structure to create. Then we tentatively came to the following option (which does not seem to be fully achievable).
 
-1. One span per each request in grpc facade. For example, a request to create a disk or a task metadata request. These spans are normally short (since even if dm schedules a task in response to a request, this task will be executed asynchronously). The parent span will be the span passed in the grpc metadata of the request.
+1. One span per each request in grpc facade. For example, a request to create a disk or a task metadata request. These spans are normally short (since even if DM schedules a task in response to a request, this task will be executed asynchronously). The parent span will be the span passed in the grpc metadata of the request.
 2. Each task has a main span. All other spans related to this task are in the subtree under this span. The span begins when we go to schedule the task and ends when the task is completed or canceled.
-3. Each logical step in the execution of a task should have its own span. Example: creating a disk. The steps are: going to nbs to create a disk, filling the disk (with a child dataplane task), going to nbs to create a checkpoint on the base disk, going to ydb to put the disk into ready status.
-4. There should be spans corresponding to requests to other services (NBS, NFS, DM, S3). Not all requests are considered worthy of a separate span. In some cases, it is better to create an event within the current span or not create anything. A separate span is only if the request is important (long and/or complex). An example: creating an nrd disk checkpoint is an important request.
+3. Each logical step in the execution of a task should have its own span. Example: creating a disk. The steps are: going to Blockstore to create a disk, filling the disk (with a child data-plane task), going to Blockstore to create a checkpoint on the base disk, going to ydb to put the disk into ready status.
+4. There should be spans corresponding to requests to other services (Blockstore, Filestore, DM, S3). Not all requests are considered worthy of a separate span. In some cases, it is better to create an event within the current span or not create anything. A separate span is only if the request is important (long and/or complex). An example: creating an nrd disk checkpoint is an important request.
 5. Policy regarding repetitions of the same actions by other generations of tasks. We haven't decided exactly what to do, but there is an idea that we would like to avoid duplicate spans for the same action.
-6. Policy when retrying the same request (for example, in nbs). We haven't decided here either.
+6. Policy when retrying the same request (for example, in Blockstore). We haven't decided here either.
 
 This plan faces some difficulties that need to be considered.
 
@@ -44,15 +44,15 @@ This plan faces some difficulties that need to be considered.
 
 **A.** You cannot start a span on one host and finish it on another. This makes points 2 and 3 impossible: it will not be possible to create a span that covers the entire life of the task. Moreover, it will not be possible to make a span covering the execution of a task by different runners (in other words, covering more than one generation of the task).
 
-**B.** Idempotent requests. By design, Disk Manager can often make the same request many times. For example, a task may schedule the same child task several times or repeatedly go to nbs with a request to create a disk. It is not clear how to prevent duplicate requests from generating duplicate spans.
+**B.** Idempotent requests. By design, Disk Manager can often make the same request many times. For example, a task may schedule the same child task several times or repeatedly go to Blockstore with a request to create a disk. It is not clear how to prevent duplicate requests from generating duplicate spans.
 
-Firstly, in the dm code, we often don't even know if a request is repeated or not — we don't think about it and just rely on the idempotence of the request. For example, we can schedule the same task many times, and we don't check whether we scheduled it for the first time or repeatedly.
+Firstly, in the DM code, we often don't even know if a request is repeated or not — we don't think about it and just rely on the idempotence of the request. For example, we can schedule the same task many times, and we don't check whether we scheduled it for the first time or repeatedly.
 
 Secondly, there is a technical obstacle. Any started span must be eventually completed (this is a requirement of the go sdk: "Any Span that is created MUST also be ended" [link](https://pkg.go.dev/go.opentelemetry.io/otel/trace#Tracer)). That is, there is no way to say "we changed our mind, we no longer need this span". Perhaps sampling could help here — but tail sampling is not available out of the box in the go sdk (see more details in the paragraph "Sampling").
 
 **C.** In general, we need to strike a balance between two things. On the one hand, there is the completeness of information contained in spans. On the other hand, there is the number of spans (so that there are not too many of them). I have a feeling that in Plan A this balance is shifted towards too little completeness of information.
 
-I believe that there is no need to be afraid of a large (within reasonable limits) number of spans, since spans in a trace can be filtered. If in some trace a lot of similar spans create extra noise, or if someone does not want to look at spans from disk manager at all — they can be filtered out when viewing. Therefore, it is more important to invest in an attribute system that will make filtering convenient than to strictly save spans. You can also use sampling to protect yourself from an excessively large number of spans (see more details in the paragraph "Sampling").
+I believe that there is no need to be afraid of a large (within reasonable limits) number of spans, since spans in a trace can be filtered. If in some trace a lot of similar spans create extra noise, or if someone does not want to look at spans from Disk Manager at all — they can be filtered out when viewing. Therefore, it is more important to invest in an attribute system that will make filtering convenient than to strictly save spans. You can also use sampling to protect yourself from an excessively large number of spans (see more details in the paragraph "Sampling").
 
 At the same time, it is important that all useful information is always reflected. Almost any request can fail or end with an error. Therefore, we should strive not to be greedy with creating spans.
 
@@ -60,19 +60,19 @@ The described difficulties serve as motivation for the second phase of the plan.
 
 ### Plan B
 1. One span per each request in grpc facade — everything is OK here, no changes.
-2. Do not make a "main" span for the entire task execution. Instead, you can add the task_id attribute to the span, which will allow filtering the spans of this task. The parent span for this task will be the span within which the task was first scheduled. It may be a span of a request in the grpc facade or one of the spans within the execution of the parent task.
+2. Do not make a "main" span for the entire task execution. Instead, you can add the `task_id` attribute to the span, which will allow filtering the spans of this task. The parent span for this task will be the span within which the task was first scheduled. It may be a span of a request in the grpc facade or one of the spans within the execution of the parent task.
 
 	A nice consequence of this approach: the "real" moment of scheduling a child task can be distinguished from all repeated ones — the "real" one was in the parent span.
 3. We cannot make a single span for a logical step in the work of the task. But we need to be able to isolate these logical steps from the trace somehow. This means that we will have to represent a logical step as a subset of spans. To filter spans for a given logical step, you can add an appropriate attribute to each span (call this attribute something like "step_description").
 4. Requests to other services.
-	- Each controlplane request to nbs/nfs client has its own span. There are no unimportant requests here. If it still turns out that there are too many spans due to such a policy, it will be possible to remove spans for certain types of requests depending on the importance/noisiness ratio.
-	- dataplane requests to nbs, as well as requests to S3. Here I propose making spans with strict sampling. After all, sometimes such requests slow down, so some spans are needed. However, there are a lot of such requests, and obviously it won't work to make a span for each request.
-	- Requests to ydb. Here, similarly to nbs, you can make a span for each request in the [ydb go sdk](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3) (for example, a span for the begin transaction request). This can be done using the ydb go sdk. The ydb go sdk allows you to flexibly configure what spans to create and what not to — if necessary, these settings can be changed.
+	- Each control-plane request to Blockstore/Filestore client has its own span. There are no unimportant requests here. If it still turns out that there are too many spans due to such a policy, it will be possible to remove spans for certain types of requests depending on the importance/noisiness ratio.
+	- data-plane requests to Blockstore, as well as requests to S3. Here I propose making spans with strict sampling. After all, sometimes such requests slow down, so some spans are needed. However, there are a lot of such requests, and obviously it won't work to make a span for each request.
+	- Requests to ydb. Here, similarly to Blockstore, you can make a span for each request in the [ydb go sdk](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3) (for example, a span for the begin transaction request). This can be done using the ydb go sdk. The ydb go sdk allows you to flexibly configure what spans to create and what not to — if necessary, these settings can be changed.
 
 	See more details in the paragraph "Interaction with other services".
 5. Repetitions of the same actions by other generations of tasks. There may be situations like this:
 	- The older generation duplicates an action already performed by the younger generation.
-	- The action is performed by a younger (outdated) generation. This can happen, for example, with a request to nbs.
+	- The action is performed by a younger (outdated) generation. This can happen, for example, with a request to Blockstore.
 
 	I propose making a span for a duplicate request anyway. Since a duplicate request may well turn out to be the most important due to some kind of bug — as it recently happened, for example, with creating a checkpoint with deleted data. Yes, normally there should not be such bugs. But traces are precisely important for those requests in which something went wrong. If we debug something later and there is no clue in the traces, it will be annoying. Moreover, usually before executing a request — when you need to decide whether to start a span — we don't even know if the request is a duplicate.
 
@@ -83,9 +83,9 @@ The described difficulties serve as motivation for the second phase of the plan.
 
 	Pros: all the desired information here is quite easily read from events — the number of retries, their reasons, the size of the intervals between retries. It seems that it is possible not to create spans here.
 
-	Cons: the size of intervals is still more convenient and conceptually correct to look at spans. Also, we need to see if there is any information that may change from retry to retry, but which we would like to dig into the span rather than looking for it through events. For example, will client id be such information? Or transaction id?
+	Cons: the size of intervals is still more convenient and conceptually correct to look at spans. Also, we need to see if there is any information that may change from retry to retry, but which we would like to dig into the span rather than looking for it through events. For example, will client ID be such information? Or transaction ID?
 
-	But there is also a difficulty in implementing retries. In the case of nbs/nfs and ydb, the code responsible for retries usually lies in the corresponding sdk. Is it possible to ask this code to follow the desired retry policy? In the case of ydb, perhaps this is feasible — we will need to take a closer look at the settings offered by the ydb go sdk. In the case of nbs, apparently this will not work — after all, there is currently no tracing at the level of the nbs go sdk. If we decide to make tracing in the nbs go sdk, we will have to provide for the settings of the retry policy.
+	But there is also a difficulty in implementing retries. In the case of Blockstore/Filestore and ydb, the code responsible for retries usually lies in the corresponding sdk. Is it possible to ask this code to follow the desired retry policy? In the case of ydb, perhaps this is feasible — we will need to take a closer look at the settings offered by the ydb go sdk. In the case of Blockstore, apparently this will not work — after all, there is currently no tracing at the level of the Blockstore go sdk. If we decide to make tracing in the Blockstore go sdk, we will have to provide for the settings of the retry policy.
 
 ### Error handling
 
@@ -105,30 +105,30 @@ Note: you need to make sure that one and the same span does not have too many in
 ### Span attributes
 
 - Span type (need to distinguish execution of a task within one generation, sending a request to another service, processing a request in grpc facade). If it's about a request to another service — then the name of the service the request goes to is also needed.
-- task id
+- Task ID
 - Task type
 - Generation of the task
 - Our standard headers: x-operation-id, x-request-id, x-request-uid.
-- Type of operation (for example: CreateDisk, CreateSnapshot)
-- Information on whether the task is currently being executed or canceled. Maybe just use the runner id.
+- Request name (for example: [CreateDisk](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/services/disks/service.go#L309), [CreateSnapshot](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/services/snapshots/service.go#L24))
+- Information on whether the task is currently being executed or canceled. Maybe just use the host + runner ID.
 - Error type
 - Error text
 - Information about what logical step of the task is being performed now (step_description). But here we still need to think more about whether such a thing is needed at all, and if so, which steps in which tasks should be highlighted.
 - A flag indicating that the request is a duplicate — so that duplicates can be easily filtered out.
 
-If it's about a request to nbs:
+If it's about a request to Blockstore:
 - Request type (for example: CreateDisk, CreateСheckpoint)
-- fqnd control the request goes to
-- client id
-- session id (if any)
+- FQDN of the host the request goes to
+- Client ID
+- Session ID (if any)
 
 If it's about a request to ydb:
-- transaction id.
+- Transaction ID.
 - Path to the database
 - Information about sql queries: list of tables involved and operations (select, upsert, ...) that we applied to them.
 
 If the request is in S3:
-- bucket id
+- Bucket ID
 
 TODO: anything else?
 
@@ -137,19 +137,12 @@ TODO: anything else?
 We create events in the following cases:
 
 - Context cancellation. It should be clear from the name/attributes of the event why the context was cancelled.
-
 - We received an error (whether retrialable or not).
-
 - Any place where an interrupt execution error is thrown. It should be clear from the name / attributes of the event why we decided to interrupt the task execution.
-
 - We start waiting for another task (as a special case for interrupt execution error).
-
 - We waited for another task.
-
 - Scheduling a child task.
-
 - Going to retry the request.
-
 - TODO: Is there anything else?
 
 ## Sampling
@@ -163,10 +156,10 @@ Terminology: if we take a span (make a decision to ship it), we *sample* it. If 
 ### What we want to achieve with sampling
 
 There are two parameters that are important to follow:
-- The total flow of spans from the disk manager.
+- The total flow of spans from the Disk Manager.
 - The number of spans within one trace.
 
-The total number of spans should already be within reasonable limits (at least at first) — it is unlikely to be more than thousands of spans per second. Indeed, most of the time, the number of inflight tasks for the entire dm + snapshot in the stand is about several dozen; one task, if used reasonably, should not generate more than dozens of spans per second; there should not be many spans outside tasks either. When traces start working, we will need to monitor how many spans per second we get in practice, whether there are any high peaks.
+The total number of spans should already be within reasonable limits (at least at first) — it is unlikely to be more than thousands of spans per second. Indeed, most of the time, the number of inflight tasks for the entire DM + snapshot in the cluster is about several dozen; one task, if used reasonably, should not generate more than dozens of spans per second; there should not be many spans outside tasks either. When traces start working, we will need to monitor how many spans per second we get in practice, whether there are any high peaks.
 
 It is more important to limit the number of spans in one trace, since we may have long tasks and they can have a large number of generations. As a guideline, I propose to ensure that there are no more than 1000 spans within one task. Again, we need to see how convenient the traces turn out to be in practice and adjust this guideline if necessary.
 
@@ -190,11 +183,11 @@ In addition, you can consider the following ideas:
 
 - Implement sampling based on parent ([parent based](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#ParentBased)). In simple terms, this means that a child span checks whether the parent span has been sampled, and if not, the child span is also not sampled. (For this purpose, each span under the hood has a `Sampled` flag. This flag is passed in the traceparent header, so the mechanism works for external spans as well.)
 
-- Sample a span with some fixed probability. This approach may be suitable for data plane requests to YDB and S3.
+- Sample a span with some fixed probability. This approach may be suitable for data-plane requests to YDB and S3.
 
 - Consider limiting the number of child spans for one parent. This solution will not work in case of a large number of task generations (since in this case, the parent could be open on another host). However, it can help if a task opens many spans within one generation. Also, in general, it is useful to prevent too many spans.
 
-## Interaction with other services (NBS, NFS, YDB, S3...)
+## Interaction with other services (Blockstore, Filestore, YDB, S3...)
 
 ### YDB
 
@@ -208,9 +201,9 @@ Proposal:
 - Crete a span per call of level 1.
 - We leave calls of level 2 up to ydb go sdk — it works with open telemetry ([here](https://github.com/ydb-platform/ydb-go-sdk-otel) is their adapter for open telemetry). Also, ydb go sdk allows you to configure which operations we start a span for and which ones we don't ([here](https://github.com/ydb-platform/nbs/blob/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3/trace/details.go#L31) is a list of available options). Now some of these options are even [set](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L698) in our code — however, I don’t understand what these options affect, since we don’t use the ydb adapter for open telemetry yet.
 
-### NBS
+### Blockstore
 
-The case of nbs is generally similar to ydb. For example, the «level 1» method [CreateProxyOverlayDisk](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/clients/nbs/client.go#L644) involves several calls to the [nbs go sdk](https://github.com/ydb-platform/nbs/tree/main/cloud/blockstore/public/sdk/go). However, unlike the ydb go sdk, tracing with open telemetry is not yet supported in the nbs go sdk. You can implement tracing following the example of ydb. Alternatively, for each type of request in the nbs go sdk, you can create a wrapper on the disk manager side that starts a span for this request.
+The case of Blockstore is generally similar to ydb. For example, the «level 1» method [CreateProxyOverlayDisk](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/clients/nbs/client.go#L644) involves several calls to the [Blockstore go sdk](https://github.com/ydb-platform/nbs/tree/main/cloud/blockstore/public/sdk/go). However, unlike the ydb go sdk, tracing with open telemetry is not yet supported in the Blockstore go sdk. You can implement tracing following the example of ydb. Alternatively, for each type of request in the Blockstore go sdk, you can create a wrapper on the Disk Manager side that starts a span for this request.
 
 ## Implementation stages
 
