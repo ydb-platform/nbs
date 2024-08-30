@@ -9,6 +9,7 @@ SRCS(
     fs_impl_lock.cpp
     fs_impl_node.cpp
     fs_impl_stat.cpp
+    handle_ops_queue.cpp
     log.cpp
     loop.cpp
 )
@@ -20,6 +21,7 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos
+    cloud/filestore/libs/vfs_fuse/protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

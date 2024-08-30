@@ -826,6 +826,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         NProto::TFileStoreFeatures features;
         features.SetThreeStageWriteThreshold(64_KB);
         features.SetPreferredBlockSize(4_KB);
+        features.SetAsyncHandleOperationPeriod(
+            TDuration::MilliSeconds(50).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
@@ -836,6 +838,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
         config.SetPreferredBlockSizeMultiplier(2);
+        config.SetAsyncDestroyHandleEnabled(true);
+        config.SetAsyncHandleOperationPeriod(
+            TDuration::MilliSeconds(100).MilliSeconds());
 
         features.SetTwoStageReadEnabled(true);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -844,6 +849,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetThreeStageWriteEnabled(true);
         features.SetThreeStageWriteThreshold(10_MB);
         features.SetPreferredBlockSize(4_KB * 2);
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationPeriod(
+            TDuration::MilliSeconds(100).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
