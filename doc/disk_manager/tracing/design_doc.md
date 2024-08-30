@@ -19,11 +19,11 @@ For example, let's say we receive a complaint about task slowdowns. There can be
 
 ### Sending spans to the backend
 
-Spans need to be sent to the backend, where they will be stored and can be viewed. In OpenTelemetry, there is a tool called [Exporter](https://opentelemetry.io/docs/languages/go/exporters/) for this purpose. We will use the [grpc exporter](https://opentelemetry.io/docs/languages/go/exporters/#otlp-traces-over-grpc). This exporter can send spans to an arbitrary endpoint.
+Spans need to be sent to the backend, where they will be stored and can be viewed. In OpenTelemetry, there is a tool called [Exporter](https://opentelemetry.io/docs/languages/go/exporters/) for this purpose. We will use the [GRPC exporter](https://opentelemetry.io/docs/languages/go/exporters/#otlp-traces-over-grpc). This exporter can send spans to an arbitrary endpoint.
 
 ### Span context from incoming requests
 
-We need to be able to associate our spans with those of the service sending requests to Disk Manager. This means that for each request, we must obtain the [trace context](https://opentelemetry.io/docs/concepts/context-propagation/), namely, the trace ID and span ID of the span that will be the parent for our span. The trace context in [W3C format](https://www.w3.org/TR/trace-context/) (traceparent and tracestate fields in grpc metadata) can be passed in each incoming request. We need to be able to parse these fields.
+We need to be able to associate our spans with those of the service sending requests to Disk Manager. This means that for each request, we must obtain the [trace context](https://opentelemetry.io/docs/concepts/context-propagation/), namely, the trace ID and span ID of the span that will be the parent for our span. The trace context in [W3C format](https://www.w3.org/TR/trace-context/) (traceparent and tracestate fields in GRPC metadata) can be passed in each incoming request. We need to be able to parse these fields.
 
 ## Span structure
 
@@ -31,9 +31,9 @@ We need to be able to associate our spans with those of the service sending requ
 
 Some time ago, we discussed what span structure to create. Then we tentatively came to the following option (which does not seem to be fully achievable).
 
-1. One span per each request in grpc facade. For example, a request to create a disk or a task metadata request. These spans are normally short (since even if DM schedules a task in response to a request, this task will be executed asynchronously). The parent span will be the span passed in the grpc metadata of the request.
+1. One span per each request in GRPC facade. For example, a request to create a disk or a task metadata request. These spans are normally short (since even if DM schedules a task in response to a request, this task will be executed asynchronously). The parent span will be the span passed in the GRPC metadata of the request.
 2. Each task has a main span. All other spans related to this task are in the subtree under this span. The span begins when we go to schedule the task and ends when the task is completed or canceled.
-3. Each logical step in the execution of a task should have its own span. Example: creating a disk. The steps are: going to Blockstore to create a disk, filling the disk (with a child data-plane task), going to Blockstore to create a checkpoint on the base disk, going to ydb to put the disk into ready status.
+3. Each logical step in the execution of a task should have its own span. Example: creating a disk. The steps are: going to Blockstore to create a disk, filling the disk (with a child data-plane task), going to Blockstore to create a checkpoint on the base disk, going to YDB to put the disk into ready status.
 4. There should be spans corresponding to requests to other services (Blockstore, Filestore, DM, S3). Not all requests are considered worthy of a separate span. In some cases, it is better to create an event within the current span or not create anything. A separate span is only if the request is important (long and/or complex). An example: creating an nrd disk checkpoint is an important request.
 5. Policy regarding repetitions of the same actions by other generations of tasks. We haven't decided exactly what to do, but there is an idea that we would like to avoid duplicate spans for the same action.
 6. Policy when retrying the same request (for example, in Blockstore). We haven't decided here either.
@@ -48,7 +48,7 @@ This plan faces some difficulties that need to be considered.
 
 Firstly, in the DM code, we often don't even know if a request is repeated or not — we don't think about it and just rely on the idempotence of the request. For example, we can schedule the same task many times, and we don't check whether we scheduled it for the first time or repeatedly.
 
-Secondly, there is a technical obstacle. Any started span must be eventually completed (this is a requirement of the go sdk: "Any Span that is created MUST also be ended" [link](https://pkg.go.dev/go.opentelemetry.io/otel/trace#Tracer)). That is, there is no way to say "we changed our mind, we no longer need this span". Perhaps sampling could help here — but tail sampling is not available out of the box in the go sdk (see more details in the paragraph "Sampling").
+Secondly, there is a technical obstacle. Any started span must be eventually completed (this is a requirement of the Go SDK: "Any Span that is created MUST also be ended" [link](https://pkg.go.dev/go.opentelemetry.io/otel/trace#Tracer)). That is, there is no way to say "we changed our mind, we no longer need this span". Perhaps sampling could help here — but tail sampling is not available out of the box in the Go SDK (see more details in the paragraph "Sampling").
 
 **C.** In general, we need to strike a balance between two things. On the one hand, there is the completeness of information contained in spans. On the other hand, there is the number of spans (so that there are not too many of them). I have a feeling that in Plan A this balance is shifted towards too little completeness of information.
 
@@ -59,15 +59,15 @@ At the same time, it is important that all useful information is always reflecte
 The described difficulties serve as motivation for the second phase of the plan.
 
 ### Plan B
-1. One span per each request in grpc facade — everything is OK here, no changes.
-2. Do not make a "main" span for the entire task execution. Instead, you can add the `task_id` attribute to the span, which will allow filtering the spans of this task. The parent span for this task will be the span within which the task was first scheduled. It may be a span of a request in the grpc facade or one of the spans within the execution of the parent task.
+1. One span per each request in GRPC facade — everything is OK here, no changes.
+2. Do not make a "main" span for the entire task execution. Instead, you can add the `task_id` attribute to the span, which will allow filtering the spans of this task. The parent span for this task will be the span within which the task was first scheduled. It may be a span of a request in the GRPC facade or one of the spans within the execution of the parent task.
 
 	A nice consequence of this approach: the "real" moment of scheduling a child task can be distinguished from all repeated ones — the "real" one was in the parent span.
 3. We cannot make a single span for a logical step in the work of the task. But we need to be able to isolate these logical steps from the trace somehow. This means that we will have to represent a logical step as a subset of spans. To filter spans for a given logical step, you can add an appropriate attribute to each span (call this attribute something like "step_description").
 4. Requests to other services.
 	- Each control-plane request to Blockstore/Filestore client has its own span. There are no unimportant requests here. If it still turns out that there are too many spans due to such a policy, it will be possible to remove spans for certain types of requests depending on the importance/noisiness ratio.
 	- data-plane requests to Blockstore, as well as requests to S3. Here I propose making spans with strict sampling. After all, sometimes such requests slow down, so some spans are needed. However, there are a lot of such requests, and obviously it won't work to make a span for each request.
-	- Requests to ydb. Here, similarly to Blockstore, you can make a span for each request in the [ydb go sdk](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3) (for example, a span for the begin transaction request). This can be done using the ydb go sdk. The ydb go sdk allows you to flexibly configure what spans to create and what not to — if necessary, these settings can be changed.
+	- Requests to YDB. Here, similarly to Blockstore, you can make a span for each request in the [YDB Go SDK](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3) (for example, a span for the begin transaction request). This can be done using the YDB Go SDK. The YDB Go SDK allows you to flexibly configure what spans to create and what not to — if necessary, these settings can be changed.
 
 	See more details in the paragraph "Interaction with other services".
 5. Repetitions of the same actions by other generations of tasks. There may be situations like this:
@@ -85,7 +85,7 @@ The described difficulties serve as motivation for the second phase of the plan.
 
 	Cons: the size of intervals is still more convenient and conceptually correct to look at spans. Also, we need to see if there is any information that may change from retry to retry, but which we would like to dig into the span rather than looking for it through events. For example, will client ID be such information? Or transaction ID?
 
-	But there is also a difficulty in implementing retries. In the case of Blockstore/Filestore and ydb, the code responsible for retries usually lies in the corresponding sdk. Is it possible to ask this code to follow the desired retry policy? In the case of ydb, perhaps this is feasible — we will need to take a closer look at the settings offered by the ydb go sdk. In the case of Blockstore, apparently this will not work — after all, there is currently no tracing at the level of the Blockstore go sdk. If we decide to make tracing in the Blockstore go sdk, we will have to provide for the settings of the retry policy.
+	But there is also a difficulty in implementing retries. In the case of Blockstore/Filestore and YDB, the code responsible for retries usually lies in the corresponding SDK. Is it possible to ask this code to follow the desired retry policy? In the case of YDB, perhaps this is feasible — we will need to take a closer look at the settings offered by the YDB Go SDK. In the case of Blockstore, apparently this will not work — after all, there is currently no tracing at the level of the Blockstore Go SDK. If we decide to make tracing in the Blockstore Go SDK, we will have to provide for the settings of the retry policy.
 
 ### Error handling
 
@@ -95,16 +95,16 @@ The described difficulties serve as motivation for the second phase of the plan.
 
 ### Other details
 
-- Regular tasks. Since we start them ourselves, the question arises where spans of such tasks will go and who will be the parent span. You can make a separate parent span for each launch of a regular task, to which all children will be tied. This span will be trivial: it will begin as soon as it ends. In truth, conceptually open telemetry [dictates](https://opentelemetry.io/docs/concepts/signals/traces/#span-events) to make an event in such cases, not a span. But here, due to the absence of a parent, you have to make a span. Thus, there will be one trace per each launch of the regular task.
+- Regular tasks. Since we start them ourselves, the question arises where spans of such tasks will go and who will be the parent span. You can make a separate parent span for each launch of a regular task, to which all children will be tied. This span will be trivial: it will begin as soon as it ends. In truth, conceptually Open Telemetry [dictates](https://opentelemetry.io/docs/concepts/signals/traces/#span-events) to make an event in such cases, not a span. But here, due to the absence of a parent, you have to make a span. Thus, there will be one trace per each launch of the regular task.
 - Another point about regular tasks: what if a regular task is very long or even eternal? Here, you will have to somehow break the trace into several, at some point start a new parent span. The details still need to be thought out.
-- Links between spans. Sometimes a task depends on the results of another task that is not child for it. For example, retire base disk or acquire base disk wait for the base disk to be filled. In this case, it makes sense to use span links [general doc](https://opentelemetry.io/docs/concepts/signals/traces/#span-links), [implementation in go skd](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#Link) — this is a way to create a link between two spans (possibly from different traces). I'm not 100% sure that it will work, but it's worth trying.
+- Links between spans. Sometimes a task depends on the results of another task that is not child for it. For example, retire base disk or acquire base disk wait for the base disk to be filled. In this case, it makes sense to use span links [general doc](https://opentelemetry.io/docs/concepts/signals/traces/#span-links), [implementation in Go SDK](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#Link) — this is a way to create a link between two spans (possibly from different traces). I'm not 100% sure that it will work, but it's worth trying.
 
 Note: you need to make sure that one and the same span does not have too many incoming links (by default there is a limit on the number of links — 128, [doc](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#NewSpanLimits)).
-- There are requests to ydb that have no parent span — these are requests to the task database in ydb, which are selected for execution. Such requests are made outside of any task or request in grpc facade, so these requests will not have a parent span. This results in one separate trace per each such request. You can think about whether it is possible to improve this situation somehow.
+- There are requests to YDB that have no parent span — these are requests to the task database in YDB, which are selected for execution. Such requests are made outside of any task or request in GRPC facade, so these requests will not have a parent span. This results in one separate trace per each such request. You can think about whether it is possible to improve this situation somehow.
 
 ### Span attributes
 
-- Span type (need to distinguish execution of a task within one generation, sending a request to another service, processing a request in grpc facade). If it's about a request to another service — then the name of the service the request goes to is also needed.
+- Span type (need to distinguish execution of a task within one generation, sending a request to another service, processing a request in GRPC facade). If it's about a request to another service — then the name of the service the request goes to is also needed.
 - Task ID
 - Task type
 - Generation of the task
@@ -122,10 +122,10 @@ If it's about a request to Blockstore:
 - Client ID
 - Session ID (if any)
 
-If it's about a request to ydb:
+If it's about a request to YDB:
 - Transaction ID.
 - Path to the database
-- Information about sql queries: list of tables involved and operations (select, upsert, ...) that we applied to them.
+- Information about SQL queries: list of tables involved and operations (select, upsert, ...) that we applied to them.
 
 If the request is in S3:
 - Bucket ID
@@ -137,7 +137,7 @@ TODO: anything else?
 We create events in the following cases:
 
 - Context cancellation. It should be clear from the name/attributes of the event why the context was cancelled.
-- We received an error (whether retrialable or not).
+- We received an error (whether retriable or not).
 - Any place where an interrupt execution error is thrown. It should be clear from the name / attributes of the event why we decided to interrupt the task execution.
 - We start waiting for another task (as a special case for interrupt execution error).
 - We waited for another task.
@@ -147,9 +147,9 @@ We create events in the following cases:
 
 ## Sampling
 
-To protect ourselves from an excessively large number of spans, we can do sampling. It is supported in the go sdk: [doc](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#Sampler). The sampler can be flexibly configured — we need to understand what sampling policy will be best for us.
+To protect ourselves from an excessively large number of spans, we can do sampling. It is supported in the Go SDK: [doc](https://pkg.go.dev/go.opentelemetry.io/otel/sdk/trace#Sampler). The sampler can be flexibly configured — we need to understand what sampling policy will be best for us.
 
-General [doc](https://opentelemetry.io/docs/languages/go/sampling/) about sampling in open telemetry.
+General [doc](https://opentelemetry.io/docs/languages/go/sampling/) about sampling in Open Telemetry.
 
 Terminology: if we take a span (make a decision to ship it), we *sample* it. If we discard a span, we do not *sample* it.
 
@@ -193,23 +193,23 @@ In addition, you can consider the following ideas:
 
 There are two «levels» of calls when accessing YDB.
 1. Calls to the methods of [persistence.YDBClient](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L531). For example, [CreateOrAlterTable](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L547) or [Execute](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L592).
-2. Calls directly to the [ydb go sdk](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3). For example, [session.StreamExecuteScanQuery](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L395) or [tx.CommitTx](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L316).
+2. Calls directly to the [YDB Go SDK](https://github.com/ydb-platform/nbs/tree/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3). For example, [session.StreamExecuteScanQuery](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L395) or [tx.CommitTx](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L316).
 
 Within one call of level 1, several calls of level 2 may occur (this is especially true for [persistence.YDBClient.Execute](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L592) — a complex series of operations can occur within the function passed to it).
 
 Proposal:
 - Crete a span per call of level 1.
-- We leave calls of level 2 up to ydb go sdk — it works with open telemetry ([here](https://github.com/ydb-platform/ydb-go-sdk-otel) is their adapter for open telemetry). Also, ydb go sdk allows you to configure which operations we start a span for and which ones we don't ([here](https://github.com/ydb-platform/nbs/blob/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3/trace/details.go#L31) is a list of available options). Now some of these options are even [set](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L698) in our code — however, I don’t understand what these options affect, since we don’t use the ydb adapter for open telemetry yet.
+- We leave calls of level 2 up to YDB Go SDK — it works with Open Telemetry ([here](https://github.com/ydb-platform/ydb-go-sdk-otel) is their adapter for Open Telemetry). Also, YDB Go SDK allows you to configure which operations we start a span for and which ones we don't ([here](https://github.com/ydb-platform/nbs/blob/main/vendor/github.com/ydb-platform/ydb-go-sdk/v3/trace/details.go#L31) is a list of available options). Now some of these options are even [set](https://github.com/ydb-platform/nbs/blob/main/cloud/tasks/persistence/ydb.go#L698) in our code — however, I don’t understand what these options affect, since we don’t use the YDB adapter for Open Telemetry yet.
 
 ### Blockstore
 
-The case of Blockstore is generally similar to ydb. For example, the «level 1» method [CreateProxyOverlayDisk](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/clients/nbs/client.go#L644) involves several calls to the [Blockstore go sdk](https://github.com/ydb-platform/nbs/tree/main/cloud/blockstore/public/sdk/go). However, unlike the ydb go sdk, tracing with open telemetry is not yet supported in the Blockstore go sdk. You can implement tracing following the example of ydb. Alternatively, for each type of request in the Blockstore go sdk, you can create a wrapper on the Disk Manager side that starts a span for this request.
+The case of Blockstore is generally similar to YDB. For example, the «level 1» method [CreateProxyOverlayDisk](https://github.com/ydb-platform/nbs/blob/main/cloud/disk_manager/internal/pkg/clients/nbs/client.go#L644) involves several calls to the [Blockstore Go SDK](https://github.com/ydb-platform/nbs/tree/main/cloud/blockstore/public/sdk/go). However, unlike the YDB Go SDK, tracing with Open Telemetry is not yet supported in the Blockstore Go SDK. You can implement tracing following the example of YDB. Alternatively, for each type of request in the Blockstore Go SDK, you can create a wrapper on the Disk Manager side that starts a span for this request.
 
 ## Implementation stages
 
 The following key stages can be identified during implementation.
 
-1. Hello world. Make sure that some first spans start shipping. For example, only spans of requests to the grpc facade (point 1 of the plan). To do this, you need to write trace initialization, add a trace exporter to the initialization, learn how to take the trace context from compute requests, and create spans themselves. This is done in this PR https://github.com/ydb-platform/nbs/pull/1696.
+1. Hello world. Make sure that some first spans start shipping. For example, only spans of requests to the GRPC facade (point 1 of the plan). To do this, you need to write trace initialization, add a trace exporter to the initialization, learn how to take the trace context from compute requests, and create spans themselves. This is done in this PR https://github.com/ydb-platform/nbs/pull/1696.
 2. MVP. Add spans that allow you to get meaningful traces, which you can already try to debug problems with. To do this, add spans reflecting the work of tasks, as well as spans of requests to other services (points 2–4 of the plan). Add the most important attributes and events to spans. Also at this stage, it’s worth making some simple sampler that will help not to overwhelm the trace with many thousands of spans in extreme cases.
 3. Adding details, improvements and enhancements. Here you can think about a smarter sampler, a more convenient and complete set of attributes for spans/events, span links, etc. At this stage, you will need to look at the experience with the previous version and consider what was uncomfortable and what is most important to add.
 
@@ -219,6 +219,6 @@ The following key stages can be identified during implementation.
 
 - The library for tracing in Go should be located in the [cloud/tasks](https://github.com/ydb-platform/nbs/tree/main/cloud/tasks) folder.
 - Optionally, you can make this library independent of a specific tracing implementation (opentelemetry in our case). However, there is currently no particular need for this.
-- The [interceptor](https://github.com/ydb-platform/nbs/blob/d307bc734c5494c7a686fd9155e352efa1c949ec/cloud/disk_manager/internal/pkg/facade/interceptor.go#L186) is responsible for spans of requests to the gprc facade. The [runners](https://github.com/ydb-platform/nbs/blob/d307bc734c5494c7a686fd9155e352efa1c949ec/cloud/tasks/runner.go) are responsible for task spans. Corresponding clients are responsible for spans of requests to other systems. Task code does not open spans, but it can modify the current span — add attributes and events.
+- The [interceptor](https://github.com/ydb-platform/nbs/blob/d307bc734c5494c7a686fd9155e352efa1c949ec/cloud/disk_manager/internal/pkg/facade/interceptor.go#L186) is responsible for spans of requests to the GRPC facade. The [runners](https://github.com/ydb-platform/nbs/blob/d307bc734c5494c7a686fd9155e352efa1c949ec/cloud/tasks/runner.go) are responsible for task spans. Corresponding clients are responsible for spans of requests to other systems. Task code does not open spans, but it can modify the current span — add attributes and events.
 - The runner that takes a task for execution needs to know the trace context for the span that will be the parent for this task's spans. For this purpose, the trace context is persistently stored in the [task metadata](https://github.com/ydb-platform/nbs/blob/d307bc734c5494c7a686fd9155e352efa1c949ec/cloud/tasks/storage/common.go#L226). This trace context is determined at the time of the first scheduling of the task and remains unchanged thereafter.
 - It is probably necessary to add a shutdown timeout for tracing.
