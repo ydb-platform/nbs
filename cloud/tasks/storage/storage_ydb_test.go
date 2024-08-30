@@ -1004,6 +1004,187 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
+func TestStorageYDBListTasksHanging(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := empty.NewRegistry()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	hangingTasksStatuses := []TaskStatus{
+		TaskStatusReadyToRun,
+		TaskStatusRunning,
+		TaskStatusCancelling,
+		TaskStatusReadyToCancel,
+		TaskStatusWaitingToCancel,
+		TaskStatusWaitingToRun,
+	}
+	exceptHangingTaskTypes := []string{
+		"task_excepted_type1",
+		"task_excepted_type2",
+		"task_excepted_type_3",
+	}
+	allowedHangingTaskTypes := []string{
+		"allowed_task_type_1",
+		"allowed_task_type_2",
+		"allowed_task_type_3",
+	}
+	expectedHangingTasksIds := make([]string, 0, 36)
+	expectedTaskIdsWithoutBlackList := make([]string, 0, 72)
+	hangingTasksDefaultDuration := time.Hour * 5
+
+	createTask := func(
+		taskType string,
+		taskStatus TaskStatus,
+		createdAt time.Time,
+		estimatedDuration time.Duration,
+	) string {
+
+		state := TaskState{
+			IdempotencyKey: getIdempotencyKeyForTest(t),
+			TaskType:       taskType,
+			Description:    "Some task",
+			CreatedAt:      createdAt,
+			CreatedBy:      "some_user",
+			ModifiedAt:     time.Now(),
+			GenerationID:   10,
+			Status:         taskStatus,
+			State:          []byte{},
+			Dependencies:   NewStringSet(),
+		}
+		if estimatedDuration > 0 {
+			state.EstimatedTime = createdAt.Add(estimatedDuration)
+		}
+		taskId, err := storage.CreateTask(ctx, state)
+		require.NoError(t, err)
+		return taskId
+	}
+
+	timeBeforeHangingTaskDuration := func() time.Time {
+		return time.Now().Add(-hangingTasksDefaultDuration).Add(-time.Minute)
+	}
+	createHangingTaskNoEstimate := func(
+		taskType string,
+		taskStatus TaskStatus,
+	) string {
+
+		return createTask(
+			taskType,
+			taskStatus,
+			timeBeforeHangingTaskDuration(),
+			-1,
+		)
+	}
+	createHangingTaskWithEstimate := func(
+		taskType string,
+		taskStatus TaskStatus,
+	) string {
+
+		return createTask(
+			taskType,
+			taskStatus,
+			time.Now().Add(-time.Hour*2).Add(-time.Minute),
+			time.Hour,
+		)
+	}
+
+	for _, taskStatus := range hangingTasksStatuses {
+		for _, taskType := range allowedHangingTaskTypes {
+			// task without estimate
+			taskId := createHangingTaskNoEstimate(taskType, taskStatus)
+			expectedHangingTasksIds = append(expectedHangingTasksIds, taskId)
+			expectedTaskIdsWithoutBlackList = append(
+				expectedTaskIdsWithoutBlackList,
+				taskId,
+			)
+			// task  with missed estimate by two
+			taskId = createHangingTaskWithEstimate(taskType, taskStatus)
+			expectedHangingTasksIds = append(expectedHangingTasksIds, taskId)
+			expectedTaskIdsWithoutBlackList = append(
+				expectedTaskIdsWithoutBlackList,
+				taskId,
+			)
+
+			// tasks not hanging
+			createTask(taskType, taskStatus, time.Now(), -1)
+			createTask(taskType, taskStatus, time.Now(), time.Hour)
+			// estimate is missed, but task duration does not exceed x2 estimate duration
+			createTask(taskType, taskStatus, time.Now().Add(-119*time.Minute), time.Hour)
+		}
+
+		for _, taskType := range exceptHangingTaskTypes {
+			// task without estimate
+			taskId := createHangingTaskNoEstimate(taskType, taskStatus)
+			expectedTaskIdsWithoutBlackList = append(
+				expectedTaskIdsWithoutBlackList,
+				taskId,
+			)
+			// task  with missed estimate by two
+			taskId = createHangingTaskWithEstimate(taskType, taskStatus)
+			expectedTaskIdsWithoutBlackList = append(
+				expectedTaskIdsWithoutBlackList,
+				taskId,
+			)
+
+			// tasks not hanging
+			createTask(taskType, taskStatus, time.Now(), -1)
+			createTask(taskType, taskStatus, time.Now(), time.Hour)
+			// estimate is missed, but task duration does not exceed x2 estimate duration
+			createTask(taskType, taskStatus, time.Now().Add(-119*time.Minute), time.Hour)
+		}
+	}
+	someOtherAllowedType := "allowedType"
+	createTask(
+		someOtherAllowedType,
+		TaskStatusFinished,
+		timeBeforeHangingTaskDuration(),
+		-1,
+	)
+	createTask(
+		someOtherAllowedType,
+		TaskStatusCancelled,
+		time.Now().Add(-time.Hour),
+		time.Minute*15,
+	)
+
+	getIds := func(tasks []TaskInfo) []string {
+		result := make([]string, 0, len(tasks))
+		for _, task := range tasks {
+			result = append(result, task.ID)
+		}
+
+		return result
+	}
+
+	hangingTasks, err := storage.ListTasksHanging(
+		ctx,
+		^0,
+		exceptHangingTaskTypes,
+		hangingTasksDefaultDuration,
+	)
+	require.NoError(t, err)
+	hangingTasksWithoutBlackList, err := storage.ListTasksHanging(
+		ctx,
+		^0,
+		[]string{},
+		hangingTasksDefaultDuration,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedHangingTasksIds, getIds(hangingTasks))
+	require.ElementsMatch(
+		t,
+		expectedTaskIdsWithoutBlackList,
+		getIds(hangingTasksWithoutBlackList),
+	)
+}
+
 func TestStorageYDBListTasksRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
