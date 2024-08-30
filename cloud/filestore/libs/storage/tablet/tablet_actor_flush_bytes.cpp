@@ -664,7 +664,10 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-    args.CollectCommitId = GetCurrentCommitId();
+    args.CollectCommitId = GenerateCommitId();
+    if (args.CollectCommitId == InvalidCommitId) {
+        return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
+    }
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
