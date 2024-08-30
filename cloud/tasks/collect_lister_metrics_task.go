@@ -19,7 +19,7 @@ type collectListerMetricsTask struct {
 	metricsCollectionInterval   time.Duration
 	hangingTasksDefaultDuration time.Duration
 	exceptHangingTaskTypes      []string
-	maxReportedTaskIds          int
+	maxReportedHangingTaskIDs   int64
 }
 
 func (c collectListerMetricsTask) Save() ([]byte, error) {
@@ -171,12 +171,12 @@ func (c collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	sensor := "hangingTasks"
-	reportedTasksIdsCounter := 0
+	reportedTasksIdsCounter := int64(0)
 	newHangingsTasksGaugesById := make(map[string]metrics.Gauge)
 	for _, taskInfo := range taskInfos {
 		tasksByType[taskInfo.TaskType]++
 
-		if reportedTasksIdsCounter < c.maxReportedTaskIds {
+		if reportedTasksIdsCounter < c.maxReportedHangingTaskIDs {
 			subRegistry := c.registry.WithTags(map[string]string{
 				"type": taskInfo.TaskType, "task_id": taskInfo.ID,
 			})

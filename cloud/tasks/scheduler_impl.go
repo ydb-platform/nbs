@@ -615,9 +615,11 @@ func NewScheduler(
 			return &collectListerMetricsTask{
 				registry:                    metricsRegistry,
 				storage:                     storage,
+				hangingTasksGaugesById:      make(map[string]metrics.Gauge),
 				metricsCollectionInterval:   listerMetricsCollectionInterval,
 				hangingTasksDefaultDuration: hangingTasksDefaultDuration,
 				exceptHangingTaskTypes:      config.GetExceptHangingTaskTypes(),
+				maxReportedHangingTaskIDs:   config.GetMaxReportedHangingTaskIDs(),
 			}
 		},
 	)
