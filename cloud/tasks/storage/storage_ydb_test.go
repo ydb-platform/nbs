@@ -1165,14 +1165,14 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 
 	hangingTasks, err := storage.ListTasksHanging(
 		ctx,
-		^0,
+		^uint64(0),
 		exceptHangingTaskTypes,
 		hangingTasksDefaultDuration,
 	)
 	require.NoError(t, err)
 	hangingTasksWithoutBlackList, err := storage.ListTasksHanging(
 		ctx,
-		^0,
+		^uint64(0),
 		[]string{},
 		hangingTasksDefaultDuration,
 	)
