@@ -945,10 +945,12 @@ func (s *storageYDB) listTasksHanging(
 		declare $now as Timestamp;
 		
 		$task_ids = (
+			select id from waiting_to_run UNION
 			select id from ready_to_run UNION
 			select id from running UNION
-			select id from cancelling UNION
-			select id from ready_to_cancel
+			select id from waiting_to_cancel UNION
+			select id from ready_to_cancel UNION
+			select id from cancelling
 		);
 		select * from tasks/tasks
 		where id in $task_ids and 
@@ -957,8 +959,8 @@ func (s *storageYDB) listTasksHanging(
 			(task_type not in $type_black_list)
 		)  and 
 		(
-			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $) or 
-			(estimated_time > created_at and $now > estimated_time + (estimated_time - created_at) * 2)
+			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $default_hanging_task_duration) or 
+			(estimated_time > created_at and $now >= estimated_time + (estimated_time - created_at) * 2)
 		);
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
