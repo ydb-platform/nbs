@@ -952,7 +952,7 @@ func (s *storageYDB) listTasksHanging(
 			select id from ready_to_cancel UNION
 			select id from cancelling
 		);
-		select * from tasks/tasks
+		select * from tasks
 		where id in $task_ids and 
 		(
 			(ListLength($type_black_list) == 0) or
