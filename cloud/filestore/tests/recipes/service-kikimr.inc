@@ -11,7 +11,7 @@ IF (NFS_RESTART_INTERVAL)
     )
 ENDIF()
 
-SET_APPEND(RECIPE_ARGS
+SET(RECIPE_ARGS
     --use-log-files
     --in-memory-pdisks
     --restart-interval $NFS_RESTART_INTERVAL

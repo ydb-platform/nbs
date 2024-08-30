@@ -24,10 +24,6 @@ PEERDIR(
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/access-service.inc)
-
-SET_APPEND(RECIPE_ARGS
-    --secure
-)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 END()

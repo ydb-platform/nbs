@@ -33,7 +33,6 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
-    parser.add_argument("--secure", action="store_true", default=False)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -73,16 +72,17 @@ def start(argv):
                 p.read(),
                 TStorageConfig())
 
-    if args.secure:
-        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+    secure = False
+    if access_service_port:
+        secure = True
 
+        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
         server_config.ServerConfig.Certs.add()
         server_config.ServerConfig.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
         server_config.ServerConfig.Certs[0].CertPrivateKeyFile = common.source_path(
             "cloud/filestore/tests/certs/server.key"
         )
 
-    if access_service_port:
         storage_config.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
         storage_config.FolderId = "test_folder"
 
@@ -98,7 +98,7 @@ def start(argv):
         restart_interval=get_restart_interval(args.restart_interval),
         access_service_port=access_service_port,
         storage_config=storage_config,
-        secure=args.secure,
+        secure=secure,
     )
     nfs_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
@@ -114,7 +114,7 @@ def start(argv):
     set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
     set_env("NFS_CONFIG_DIR", str(nfs_configurator.configs_dir))
-    if args.secure:
+    if secure:
         set_env("NFS_SERVER_SECURE_PORT", str(nfs_configurator.secure_port))
 
 
