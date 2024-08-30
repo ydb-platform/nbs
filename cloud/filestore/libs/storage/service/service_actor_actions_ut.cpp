@@ -5,6 +5,8 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 
+#include <contrib/libs/protobuf/src/google/protobuf/stubs/stringpiece.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NKikimr;
