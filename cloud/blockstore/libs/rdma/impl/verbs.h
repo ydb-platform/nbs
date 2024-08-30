@@ -109,6 +109,7 @@ struct IVerbs
         sockaddr* dst,
         TDuration timeout) = 0;
     virtual void ResolveRoute(rdma_cm_id* id, TDuration timeout) = 0;
+    virtual TString GetPeer(rdma_cm_id* id) = 0;
 
     virtual void Listen(rdma_cm_id* id, int backlog) = 0;
     virtual void Connect(rdma_cm_id* id, rdma_conn_param* param) = 0;

@@ -73,9 +73,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint(
-            "::",
-            10020);
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
 
         Y_UNUSED(clientEndpoint);
     }
