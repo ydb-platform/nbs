@@ -157,6 +157,8 @@ struct IFileSystem
 
     virtual void Reset() = 0;
 
+    virtual void Init() = 0;
+
     //
     // FileSystem information
     //

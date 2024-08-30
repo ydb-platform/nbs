@@ -131,7 +131,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         return true;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     // There could be two cases:
     // * access by parentId/name
@@ -237,7 +237,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         return RebootTabletOnCommitOverflow(ctx, "CreateHandle");
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (args.TargetNodeId == InvalidNodeId
             && (args.FollowerId.Empty() || args.IsNewFollowerNode))

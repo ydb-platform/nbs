@@ -193,6 +193,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheNodeRefsVerCapacity,          ui64,       0         )\
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \
+    xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
+    xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
+                                                                               \
     xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 

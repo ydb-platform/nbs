@@ -55,6 +55,7 @@ class NfsDaemonConfigGenerator:
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
+        secure=False,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -81,8 +82,9 @@ class NfsDaemonConfigGenerator:
 
         self.__use_secure_registration = use_secure_registration
 
-        if access_service_port:
-            self.__app_config.ServerConfig.SecurePort = self._port_manager.get_port()
+        if secure:
+            self.__secure_port = self._port_manager.get_port()
+            self.__app_config.ServerConfig.SecurePort = self.__secure_port
 
         with open(self.__app_config_file_path, "w") as config_file:
             if self.__app_config:
@@ -92,6 +94,10 @@ class NfsDaemonConfigGenerator:
     @property
     def port(self):
         return self.__port
+
+    @property
+    def secure_port(self):
+        return self.__secure_port
 
     @property
     def mon_port(self):
@@ -372,6 +378,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         access_service_port=0,
         storage_config=None,
         use_secure_registration=False,
+        secure=False,
     ):
         super().__init__(
             binary_path,
@@ -388,6 +395,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
+            secure=secure,
         )
 
 

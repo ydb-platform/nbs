@@ -130,9 +130,17 @@ void TFileSystem::Release(
         return;
     }
 
+    if (Config->GetAsyncDestroyHandleEnabled()) {
+        STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
+        with_lock(HandleOpsQueueLock) {
+            HandleOpsQueue.AddDestroyRequest(ino, fi->fh);
+        }
+        ReplyError(*callContext, {}, req, 0);
+        return;
+    }
+
     auto request = StartRequest<NProto::TDestroyHandleRequest>(ino);
     request->SetHandle(fi->fh);
-
     Session->DestroyHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();

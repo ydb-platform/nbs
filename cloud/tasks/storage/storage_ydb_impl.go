@@ -1589,11 +1589,11 @@ func (s *storageYDB) updateTaskTx(
 	return state, nil
 }
 
-func (s *storageYDB) updateTaskWithCallback(
+func (s *storageYDB) updateTaskWithPreparation(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) (TaskState, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1602,12 +1602,12 @@ func (s *storageYDB) updateTaskWithCallback(
 	}
 	defer tx.Rollback(ctx)
 
-	state, err = s.updateTaskTx(ctx, tx, state)
+	err = preparation(ctx, tx)
 	if err != nil {
 		return TaskState{}, err
 	}
 
-	err = callback(ctx, tx)
+	state, err = s.updateTaskTx(ctx, tx, state)
 	if err != nil {
 		return TaskState{}, err
 	}
@@ -1627,7 +1627,7 @@ func (s *storageYDB) updateTask(
 	state TaskState,
 ) (TaskState, error) {
 
-	return s.updateTaskWithCallback(
+	return s.updateTaskWithPreparation(
 		ctx,
 		session,
 		state,

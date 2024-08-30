@@ -71,9 +71,12 @@ def start(argv):
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
-    if access_service_port:
-        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
 
+    secure = False
+    if access_service_port:
+        secure = True
+
+        server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
         server_config.ServerConfig.Certs.add()
         server_config.ServerConfig.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
         server_config.ServerConfig.Certs[0].CertPrivateKeyFile = common.source_path(
@@ -95,6 +98,7 @@ def start(argv):
         restart_interval=get_restart_interval(args.restart_interval),
         access_service_port=access_service_port,
         storage_config=storage_config,
+        secure=secure,
     )
     nfs_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
@@ -110,8 +114,8 @@ def start(argv):
     set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
     set_env("NFS_CONFIG_DIR", str(nfs_configurator.configs_dir))
-    if access_service_port:
-        set_env("NFS_SERVER_SECURE_PORT", str(server_config.ServerConfig.SecurePort))
+    if secure:
+        set_env("NFS_SERVER_SECURE_PORT", str(nfs_configurator.secure_port))
 
 
 def stop(argv):

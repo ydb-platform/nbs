@@ -56,10 +56,8 @@ int main(int argc, const char** argv)
 {
     TOptions options(argc, argv);
 
-    NCloud::TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
-
-    auto logging = NCloud::CreateLoggingService("console", logSettings);
+    auto logging =
+        NCloud::CreateLoggingService("console", NCloud::TLogSettings{});
     auto Log = logging->CreateLog(options.ComponentName);
     auto monitoring = NCloud::CreateMonitoringServiceStub();
     auto statsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(

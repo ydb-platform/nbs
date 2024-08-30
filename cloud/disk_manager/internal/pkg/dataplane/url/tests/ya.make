@@ -19,8 +19,4 @@ REQUIREMENTS(
     ram:32
 )
 
-DEPENDS(
-    cloud/disk_manager/test/images/resources
-)
-
 END()

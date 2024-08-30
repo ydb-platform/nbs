@@ -1441,7 +1441,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("local-ssd", 93_GB, NProto::DEVICE_POOL_KIND_LOCAL)
+            .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
             .Build();
 
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
@@ -1753,10 +1753,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val()); // the agent is in a warning state
         UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, brokenBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, decommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, suspendedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             totalBytes->Val(),
             freeBytes->Val()
@@ -1792,10 +1792,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val()); // the agent is in a warning state
         UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, brokenBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, decommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, suspendedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             totalBytes->Val(),
             freeBytes->Val()
@@ -1829,10 +1829,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(10_GB, freeBytes->Val()); // the agent is in a warning state
         UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, brokenBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, decommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, suspendedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, dirtyBytes->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             totalBytes->Val(),
             freeBytes->Val()
@@ -11625,6 +11625,182 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             });
 
         UNIT_ASSERT(state.GetDirtyDevices().empty());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateDecommissionedBytesProperlyDuringMigration)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agents = TVector {
+            AgentConfig(1, {
+                Device("dev-1", "uuid-1.1", "rack-1"),
+                Device("dev-2", "uuid-1.2", "rack-1"),
+                Device("dev-3", "uuid-1.3", "rack-1"),
+            }),
+            AgentConfig(2, {
+                Device("dev-1", "uuid-2.1", "rack-2"),
+                Device("dev-2", "uuid-2.2", "rack-2"),
+                Device("dev-3", "uuid-2.3", "rack-2"),
+            }),
+        };
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(counters)
+            .WithKnownAgents(agents)
+            .Build();
+
+        TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
+        defaultPool.Init(counters->GetSubgroup("pool", "default"));
+
+        auto freeBytes = counters->GetCounter("FreeBytes");
+        auto totalBytes = counters->GetCounter("TotalBytes");
+        auto decommissionedBytes = counters->GetCounter("DecommissionedBytes");
+        auto allocatedBytes = counters->GetCounter("AllocatedBytes");
+        auto dirtyBytes = counters->GetCounter("DirtyBytes");
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocatedBytes->Val());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            auto error = AllocateDisk(db, state, "vol1", {}, {}, 10_GB, devices);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        });
+
+        TDiskInfo diskInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("vol1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
+        UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskInfo.State);
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(50_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
+
+        // disable an agent hosting vol1
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UpdateAgentState(
+                state,
+                db,
+                diskInfo.Devices[0].GetAgentId(),
+                NProto::AGENT_STATE_WARNING);
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
+
+        // start a migration
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            const auto m = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, m.size());
+
+            const auto& [diskId, sourceId] = m[0];
+
+            UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                diskInfo.Devices[0].GetDeviceUUID(),
+                sourceId);
+
+            auto r = state.StartDeviceMigration(Now(), db, diskId, sourceId);
+            UNIT_ASSERT_SUCCESS(r.GetError());
+        });
+
+        // update the info
+        diskInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("vol1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Migrations.size());
+        UNIT_ASSERT_EQUAL(NProto::DISK_STATE_WARNING, diskInfo.State);
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
+
+        // finish the migration
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            bool updated = false;
+
+            const auto error = state.FinishDeviceMigration(
+                db,
+                "vol1",
+                diskInfo.Migrations[0].GetSourceDeviceId(),
+                diskInfo.Migrations[0].GetTargetDevice().GetDeviceUUID(),
+                Now(),
+                &updated);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT(updated);
+        });
+
+        // update the info
+        diskInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("vol1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
+        UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, diskInfo.State);
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) mutable {
+            const auto& disks = state.GetDisksToReallocate();
+            UNIT_ASSERT_VALUES_EQUAL(1, disks.size());
+
+            const auto seqNo = disks.at("vol1");
+            UNIT_ASSERT_VALUES_UNEQUAL(0, seqNo);
+
+            state.DeleteDiskToReallocate(db, "vol1", seqNo);
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, dirtyBytes->Val());
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) mutable {
+            state.MarkDeviceAsClean(
+                Now(),
+                db,
+                diskInfo.FinishedMigrations[0].DeviceId);
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(60_GB, totalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, freeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30_GB, decommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
     }
 }
 

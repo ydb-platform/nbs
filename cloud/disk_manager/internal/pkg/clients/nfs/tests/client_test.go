@@ -33,7 +33,7 @@ func getEndpoint() string {
 }
 
 func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
-	insecure := true
+	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 	return nfs.NewFactory(
 		ctx,
 		&config.ClientConfig{
@@ -42,7 +42,7 @@ func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
 					Endpoints: []string{getEndpoint(), getEndpoint()},
 				},
 			},
-			Insecure: &insecure,
+			RootCertsFile: &rootCertsFile,
 		},
 		metrics.NewEmptyRegistry(),
 	)

@@ -156,7 +156,6 @@ bool TCommand::WaitForI(const TFuture<void>& future)
 
 void TCommand::Init()
 {
-    LogSettings.UseLocalTimestamps = true;
     if (!VerboseLevel.empty()) {
         auto level = GetLogLevel(VerboseLevel);
         Y_ENSURE(level, "unknown log level: " << VerboseLevel.Quote());

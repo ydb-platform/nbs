@@ -361,6 +361,12 @@ message TStorageConfig
     // while we use them for load balancing
     optional uint32 NonNetworkMetricsBalancingFactor = 378;
 
+    // Async processing of destroy handle requests.
+    optional bool AsyncDestroyHandleEnabled = 379;
+
+    // Period of processing create/destroy handle requests.
+    optional uint32 AsyncHandleOperationPeriod = 380;
+
     // Throttle DescribeData and GenerateBlobIds requests
-    optional bool MultipleStageRequestThrottlingEnabled = 379;
+    optional bool MultipleStageRequestThrottlingEnabled = 381;
 }

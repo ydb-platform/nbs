@@ -1007,4 +1007,8 @@ message TStorageServiceConfig
 
     // Resync range, if scrubbing found a mismatch.
     optional bool ResyncRangeAfterScrubbing = 376;
+
+    // Delay that DR uses to wait unavailable agents to register before allowing
+    // infra to deploy a host.
+    optional uint32 IdleAgentDeployByCmsDelay = 377;
 }

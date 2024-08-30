@@ -22,6 +22,8 @@ var endpointPickerCheckPeriod = 5 * time.Second
 // Should be superseded by Filestore public SDK discovery client once it is
 // implemented.
 type endpointPicker struct {
+	clientCredentials *nfs_client.ClientCredentials
+
 	endpoints        []string
 	healthyEndpoints []string
 	mutex            sync.Mutex
@@ -30,11 +32,13 @@ type endpointPicker struct {
 
 func newEndpointPicker(
 	ctx context.Context,
+	clientCredentials *nfs_client.ClientCredentials,
 	endpoints []string,
 ) *endpointPicker {
 
 	p := &endpointPicker{
-		endpoints: endpoints,
+		clientCredentials: clientCredentials,
+		endpoints:         endpoints,
 	}
 	p.markedAsHealthy = common.NewCond(&p.mutex)
 
@@ -59,9 +63,9 @@ func newEndpointPicker(
 func (p *endpointPicker) checkHealth(ctx context.Context, endpoint string) {
 	client, err := nfs_client.NewGrpcClient(
 		&nfs_client.GrpcClientOpts{
-			Endpoint: endpoint,
-			// Credentials: not needed here
-			Timeout: &endpointPickerCheckTimeout,
+			Endpoint:    endpoint,
+			Credentials: p.clientCredentials,
+			Timeout:     &endpointPickerCheckTimeout,
 		},
 		NewNfsClientLog(nfs_client.LOG_DEBUG),
 	)
@@ -91,7 +95,7 @@ func (p *endpointPicker) markAsUnhealthy(
 	defer p.mutex.Unlock()
 
 	p.healthyEndpoints = common.Remove(p.healthyEndpoints, endpoint)
-	logging.Info(ctx, "filestore endpoint %q marked as healthy", endpoint)
+	logging.Info(ctx, "filestore endpoint %q marked as unhealthy", endpoint)
 }
 
 func (p *endpointPicker) markAsHealthy(ctx context.Context, endpoint string) {
@@ -100,7 +104,7 @@ func (p *endpointPicker) markAsHealthy(ctx context.Context, endpoint string) {
 
 	if !common.Find(p.healthyEndpoints, endpoint) {
 		p.healthyEndpoints = append(p.healthyEndpoints, endpoint)
-		logging.Info(ctx, "filestore endpoint %q marked as unhealthy", endpoint)
+		logging.Info(ctx, "filestore endpoint %q marked as healthy", endpoint)
 
 		p.markedAsHealthy.Broadcast()
 	}
@@ -113,7 +117,7 @@ func (p *endpointPicker) pickEndpoint(ctx context.Context) (string, error) {
 	for len(p.healthyEndpoints) == 0 {
 		logging.Info(
 			ctx,
-			"waiting for one of filestore endpoints to become ready",
+			"waiting for one of filestore endpoints to become healthy",
 		)
 		err := p.markedAsHealthy.Wait(ctx)
 		if err != nil {
