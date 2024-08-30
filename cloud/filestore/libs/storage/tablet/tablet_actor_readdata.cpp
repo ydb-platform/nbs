@@ -502,7 +502,10 @@ STFUNC(TReadDataActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TReadRequest>
-NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
+NProto::TError ValidateRequest(
+    const TReadRequest& request,
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     const TByteRange range(
         request.GetOffset(),
@@ -510,7 +513,7 @@ NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
         blockSize
     );
 
-    if (auto error = ValidateRange(range); HasError(error)) {
+    if (auto error = ValidateRange(range, maxFileBlocks); HasError(error)) {
         return error;
     }
 
@@ -526,7 +529,10 @@ void TIndexTabletActor::HandleReadData(
     const TActorContext& ctx)
 {
     auto validator = [&] (const NProto::TReadDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TReadDataMethod>(ev, ctx, validator)) {
@@ -586,7 +592,10 @@ void TIndexTabletActor::HandleDescribeData(
     const TActorContext& ctx)
 {
     auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {

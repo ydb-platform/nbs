@@ -256,7 +256,7 @@ struct TEnvironment
     {
         static auto hasher = CreateRangeIdHasher(RangeIdHasherType);
 
-        const TByteRange maxFileBlocks(0, MaxFileBlocks, BlockSize);
+        const TByteRange maxFileBlocks(0, GetDefaultMaxFileBlocks(), BlockSize);
 
         TVector<ui32> rangeIds;
         SplitRange(

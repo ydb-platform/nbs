@@ -82,6 +82,7 @@ void TIndexTabletState::LoadState(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& fileSystemStats,
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
+    const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
@@ -122,6 +123,9 @@ void TIndexTabletState::LoadState(
         config.GetInMemoryIndexCacheNodeAttrsVerCapacity(),
         config.GetInMemoryIndexCacheNodeRefsCapacity(),
         config.GetInMemoryIndexCacheNodeRefsVerCapacity());
+    for (const auto& deletionMarker: largeDeletionMarkers) {
+        Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
+    }
 }
 
 void TIndexTabletState::UpdateConfig(

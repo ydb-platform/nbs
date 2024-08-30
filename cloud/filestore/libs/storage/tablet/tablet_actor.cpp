@@ -329,7 +329,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TRequest& request,
     const TByteRange& range)
 {
-    if (auto error = ValidateRange(range); HasError(error)) {
+    auto error = ValidateRange(range, Config->GetMaxFileBlocks());
+    if (HasError(error)) {
         return error;
     }
 

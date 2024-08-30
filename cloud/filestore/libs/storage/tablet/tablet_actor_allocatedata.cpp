@@ -13,7 +13,8 @@ namespace {
 
 NProto::TError ValidateRequest(
     const NProto::TAllocateDataRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     if (!request.GetHandle()) {
         return ErrorInvalidHandle();
@@ -28,7 +29,7 @@ NProto::TError ValidateRequest(
     }
 
     TByteRange range(request.GetOffset(), request.GetLength(), blockSize);
-    if (range.BlockCount() > MaxFileBlocks) {
+    if (range.BlockCount() > maxFileBlocks) {
         return ErrorFileTooBig();
     }
 
@@ -71,7 +72,10 @@ void TIndexTabletActor::HandleAllocateData(
     }
 
     auto validator = [&] (const NProto::TAllocateDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TAllocateDataMethod>(ev, ctx, validator)) {

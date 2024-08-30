@@ -371,4 +371,18 @@ message TStorageConfig
     optional uint32 NodeRegistrationMaxAttempts = 381;
     optional uint32 NodeRegistrationTimeout = 382;   // in ms
     optional uint32 NodeRegistrationErrorTimeout = 383;  // in ms
+
+    // Max block count per file.
+    optional uint64 MaxFileBlocks = 384;
+    // Enables the usage of large deletion markers (needed for efficient
+    // truncate ops on large files).
+    optional bool LargeDeletionMarkersEnabled = 385;
+    // Sets max block count per single large deletion marker.
+    optional uint64 LargeDeletionMarkerBlocks = 386;
+    // Truncate and allocate ops that exceed this threshold will lead to large
+    // deletion marker generation.
+    optional uint64 LargeDeletionMarkersThreshold = 387;
+    // If the number of blocks marked for deletion via large deletion markers
+    // exceeds this threshold, Cleanup will be triggered.
+    optional uint64 LargeDeletionMarkersCleanupThreshold = 388;
 }

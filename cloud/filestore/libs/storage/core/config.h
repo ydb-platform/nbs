@@ -261,6 +261,12 @@ public:
 
     ui32 GetChannelFreeSpaceThreshold() const;
     ui32 GetChannelMinFreeSpace() const;
+
+    ui64 GetMaxFileBlocks() const;
+    bool GetLargeDeletionMarkersEnabled() const;
+    ui64 GetLargeDeletionMarkerBlocks() const;
+    ui64 GetLargeDeletionMarkersThreshold() const;
+    ui64 GetLargeDeletionMarkersCleanupThreshold() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

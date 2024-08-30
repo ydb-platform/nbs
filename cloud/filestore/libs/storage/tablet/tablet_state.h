@@ -173,6 +173,7 @@ public:
         const NProto::TFileSystem& fileSystem,
         const NProto::TFileSystemStats& fileSystemStats,
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
+        const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TThrottlerConfig& throttlerConfig);
 
     bool IsStateLoaded() const

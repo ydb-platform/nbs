@@ -1217,7 +1217,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        tabletConfig.BlockCount = MaxFileBlocks * 2;
+        tabletConfig.BlockCount = GetDefaultMaxFileBlocks() * 2;
         TIndexTabletClient tablet(
             env.GetRuntime(),
             nodeIdx,
@@ -1245,21 +1245,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(
             handle,
-            (MaxFileBlocks - 1) * block,
+            (GetDefaultMaxFileBlocks() - 1) * block,
             block,
             '5');
         UNIT_ASSERT_VALUES_EQUAL(
             GetNodeAttrs(tablet, id).GetSize(),
-            MaxFileBlocks * block);
+            GetDefaultMaxFileBlocks() * block);
 
         tablet.AssertWriteDataFailed(
             handle,
-            MaxFileBlocks * block,
+            GetDefaultMaxFileBlocks() * block,
             1_KB,
             '6');
         UNIT_ASSERT_VALUES_EQUAL(
             GetNodeAttrs(tablet, id).GetSize(),
-            MaxFileBlocks * block);
+            GetDefaultMaxFileBlocks() * block);
     }
 
     TABLET_TEST(ShouldTrackUsedBlocks)

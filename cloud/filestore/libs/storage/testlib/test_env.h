@@ -35,6 +35,12 @@ constexpr ui32 DefaultChannelCount = 7;
 
 void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired);
 
+inline auto GetDefaultMaxFileBlocks()
+{
+    static const auto VALUE = TStorageConfig().GetMaxFileBlocks();
+    return VALUE;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestEnvConfig
