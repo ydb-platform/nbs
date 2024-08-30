@@ -22,6 +22,7 @@ private:
     std::unique_ptr<TTestEnv> Env = nullptr;
     std::unique_ptr<TIndexTabletClient> Tablet = nullptr;
     ui64 Handle = 0;
+    ui64 NodeId = 0;
 
 public:
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -45,6 +46,7 @@ public:
         NProto::TStorageConfig storageConfig;
         if (throttlingEnabled.Defined()) {
             storageConfig.SetThrottlingEnabled(throttlingEnabled.GetRef());
+            storageConfig.SetMultipleStageRequestThrottlingEnabled(throttlingEnabled.GetRef());
         }
 
         Env = std::make_unique<TTestEnv>(envConfig, storageConfig);
@@ -58,9 +60,8 @@ public:
             tabletId);
         Tablet->InitSession("client", "session");
 
-        const auto nodeId =
-            CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        Handle = CreateHandle(*Tablet, nodeId);
+        NodeId = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        Handle = CreateHandle(*Tablet, NodeId);
     }
 
     auto UpdateConfig(const TFileSystemConfig& config)
@@ -76,6 +77,16 @@ public:
     void ReadData(ui64 offset, ui32 len)
     {
         Tablet->SendReadDataRequest(Handle, offset, len);
+    }
+
+    void DescribeData(ui64 offset, ui32 len)
+    {
+        Tablet->SendDescribeDataRequest(Handle, offset, len);
+    }
+
+    void GenerateBlobIds(ui64 offset, ui32 len, [[maybe_unused]] char fill = {})
+    {
+        Tablet->SendGenerateBlobIdsRequest(NodeId, Handle, offset, len);
     }
 
     void Tick(TDuration duration)
@@ -108,6 +119,8 @@ public:
 
     TEST_CLIENT_DECLARE_METHOD(ReadData);
     TEST_CLIENT_DECLARE_METHOD(WriteData);
+    TEST_CLIENT_DECLARE_METHOD(DescribeData);
+    TEST_CLIENT_DECLARE_METHOD(GenerateBlobIds);
 
 #undef TEST_CLIENT_DECLARE_METHOD
 
@@ -219,7 +232,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
 
         // 2. Testing that we start rejecting requests after
         // our postponed limit saturates.
-        WriteData(0, 1, 'y');   // Event 1 byte request must be rejected.
+        WriteData(0, 1, 'y');   // Even 1 byte request must be rejected.
         AssertWriteDataQuickResponse(E_FS_THROTTLED);
         ReadData(0, 1_KB);
         AssertReadDataQuickResponse(E_FS_THROTTLED);
@@ -279,6 +292,97 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
 
         // TODO: 6. Test backpressure effect (NBS-2278).
         // TODO: 7. Test max count (NBS-2278).
+    }
+
+    Y_UNIT_TEST_F(ShouldThrottleTwoStage, TTablet)
+    {
+        const auto config = MakeThrottlerConfig(
+            true,                                    // throttlingEnabled
+            2,                                       // maxReadIops
+            2,                                       // maxWriteIops
+            8_KB,                                    // maxReadBandwidth
+            8_KB,                                    // maxWriteBandwidth
+            TDuration::Minutes(30).MilliSeconds(),   // boostTime
+            TDuration::Hours(12).MilliSeconds(),     // boostRefillTime
+            10,                                      // boostPercentage
+            32_KB,                                   // maxPostponedWeight
+            10,                                      // maxWriteCostMultiplier
+            TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
+            64,                                      // maxPostponedCount
+            100,                                     // burstPercentage
+            1_KB   // defaultPostponedRequestWeight
+        );
+        UpdateConfig(config);
+
+        // 0. Testing that at 1rps nothing is throttled.
+        for (size_t i = 0; i < 10; ++i) {
+            Tick(TDuration::Seconds(1));
+            DescribeData(4_KB * i, 4_KB);
+            const auto readResponse = AssertDescribeDataQuickResponse(S_OK);
+            Tick(TDuration::Seconds(1));
+            GenerateBlobIds(4_KB * (i + 1), 4_KB, static_cast<char>('a' + i));
+            AssertGenerateBlobIdsQuickResponse(S_OK);
+        }
+
+        // 1. Testing that excess requests are postponed.
+        for (size_t i = 0; i < 20; ++i) {
+            DescribeData(4_KB * i, 4_KB);
+            AssertDescribeDataNoResponse();
+
+        // Now we have 20_KB in PostponeQueue.
+
+        for (size_t i = 0; i < 3; ++i) {
+            GenerateBlobIds(0, 4_KB, 'z');
+            AssertGenerateBlobIdsNoResponse();
+        }
+
+        // Now we have 32_KB in PostponedQueue. Equal to MaxPostponedWeight.
+
+        // 2. Testing that we start rejecting requests after
+        // our postponed limit saturates.
+        DUMP(config.BlockSize);
+
+        GenerateBlobIds(
+            0,
+            config.BlockSize,
+            'y');   // Request must be rejected.
+        AssertGenerateBlobIdsQuickResponse(E_FS_THROTTLED);
+        DescribeData(0, config.BlockSize);
+        AssertDescribeDataQuickResponse(E_FS_THROTTLED);
+
+        // 3. Testing that after some time passes our postponed requests
+        // are successfully processed.
+        // Test actor runtime will automatically advance the timer for us.
+        for (ui32 i = 0; i < 20; ++i) {
+            Tick(TDuration::Seconds(1));
+            const auto readResponse = AssertDescribeDataResponse(S_OK);
+        }
+
+        for (ui32 i = 0; i < 3; ++i) {
+            Tick(TDuration::Seconds(1));
+            AssertGenerateBlobIdsResponse(S_OK);
+        }
+
+        // Now PostponedQueue is empty.
+        
+        // 4. Testing that bursts actually work.
+        Tick(TDuration::Seconds(2));
+        DescribeData(0, 12_KB);
+        {
+            // Postponed WriteDataRequest must write 4_KB of 'z'.
+            const auto readResponse = AssertDescribeDataQuickResponse(S_OK);
+        }
+        DescribeData(12_KB, 4_KB);
+        AssertDescribeDataNoResponse();
+        {
+            const auto readResponse = AssertDescribeDataResponse(S_OK);
+            Tick(TDuration::Seconds(1));
+        }
+
+        // 5. Requests of any size should work, but not immediately.
+        GenerateBlobIds(0, 32_KB, 'a');
+        Tick(TDuration::Seconds(5));
+        AssertGenerateBlobIdsResponse(S_OK);
     }
 
     Y_UNIT_TEST_F(ShouldNotThrottleIfThrottlerIsDisabled, TTablet)
