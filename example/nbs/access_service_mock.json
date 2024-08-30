@@ -1,0 +1,19 @@
+{
+    "port": 9090,
+    "accounts": [
+      {
+        "permissions": [
+          {"permission": "nbsInternal.disks.get2", "resource": "example_project"},
+          {"permission": "nbsInternal.disks.list", "resource":  "example_project"},
+          {"permission": "nbsInternal.disks.update", "resource":  "example_project"},
+          {"permission": "nbsInternal.disks.delete", "resource":  "example_project"},
+          {"permission": "nbsInternal.disks.read", "resource":  "example_project"},
+          {"permission": "nbsInternal.disks.write", "resource":  "example_project"},
+          {"permission": "nbsInternal.disks.create", "resource":  "example_project"}
+        ],
+        "id": "example_acc_id",
+        "is_unknown_subject": false,
+        "token": "DEADBEEF"
+      }
+    ]
+  }
