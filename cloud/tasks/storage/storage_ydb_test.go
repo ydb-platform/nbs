@@ -1023,8 +1023,6 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		TaskStatusRunning,
 		TaskStatusCancelling,
 		TaskStatusReadyToCancel,
-		TaskStatusWaitingToCancel,
-		TaskStatusWaitingToRun,
 	}
 	exceptHangingTaskTypes := []string{
 		"task_excepted_type1",
