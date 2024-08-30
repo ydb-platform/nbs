@@ -11,7 +11,7 @@ IF (NFS_RESTART_INTERVAL)
     )
 ENDIF()
 
-SET(RECIPE_ARGS
+SET_APPEND(RECIPE_ARGS
     --use-log-files
     --in-memory-pdisks
     --restart-interval $NFS_RESTART_INTERVAL
@@ -24,11 +24,6 @@ ENDIF()
 IF (NOT OPENSOURCE OR NFS_FORCE_VERBOSE)
     SET_APPEND(RECIPE_ARGS --verbose)
 ENDIF()
-
-DATA(
-    arcadia/cloud/filestore/tests/certs/server.crt
-    arcadia/cloud/filestore/tests/certs/server.key
-)
 
 USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe
