@@ -328,6 +328,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         for (size_t i = 0; i < 20; ++i) {
             DescribeData(4_KB * i, 4_KB);
             AssertDescribeDataNoResponse();
+        }
 
         // Now we have 20_KB in PostponeQueue.
 
@@ -340,7 +341,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
 
         // 2. Testing that we start rejecting requests after
         // our postponed limit saturates.
-        DUMP(config.BlockSize);
 
         GenerateBlobIds(
             0,
