@@ -1,1 +1,8 @@
 
+AccessServiceEndpoint: "localhost:9090"
+UseBlackBox: false
+UseAccessService: true
+UseStaff: false
+PathToRootCA: "/etc/ssl/certs/ca-certificates.crt"
+AccessServiceType: "Nebius_v1"
+UseAccessServiceTLS: false

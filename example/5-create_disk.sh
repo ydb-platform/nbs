@@ -78,7 +78,8 @@ blockstore-client createvolume \
     --storage-media-kind $kind \
     --blocks-count $blocks_count \
     --block-size $block_size \
-    --disk-id $disk_id
+    --disk-id $disk_id \
+    --config nbs/nbs-client.txt
 
 if [ $? -ne 0 ]; then
     echo "Disk $disk_id creation failed"

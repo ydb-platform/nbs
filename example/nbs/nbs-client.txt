@@ -16,7 +16,6 @@ ClientConfig {
       MaxWriteIops: 100000
     }
   }
-  InsecurePort: 9766
 }
 LogConfig {
   SysLogService: "NBS_CLIENT"
