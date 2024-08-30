@@ -11,6 +11,8 @@
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
+#include <netdb.h>
+
 namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -265,6 +267,26 @@ struct TVerbs
         }
     }
 
+    TString GetPeer(rdma_cm_id *id) override
+    {
+        auto* addr = rdma_get_peer_addr(id);
+        char host[NI_MAXHOST];
+
+        int err = getnameinfo(
+            addr,
+            sizeof(sockaddr_storage),
+            host,
+            sizeof(host),
+            NULL,   // serv
+            0,      // servlen
+            0);     // flags
+
+        if (err) {
+            return PrintAddress(addr);
+        }
+        return TString(host);
+    }
+
     void Listen(rdma_cm_id* id, int backlog) override
     {
         int res = rdma_listen(id, backlog);
@@ -442,7 +464,7 @@ const char* GetEventName(rdma_cm_event_type event)
 
 TString PrintAddress(const sockaddr* addr)
 {
-    return NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addr));
+    return NAddr::PrintHost(NAddr::TOpaqueAddr(addr));
 }
 
 TString PrintConnectionParams(const rdma_conn_param* conn)
