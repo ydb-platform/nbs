@@ -25,6 +25,7 @@ function on_exit() {
 
     sudo rm -rf "/home/${USER_TO_CREATE}/.aws" /root/.aws/
     sudo rm -rf /var/lib/apt/lists/*
+    sudo cloud-init clean --logs
     sync
     exit "$exit_code"
 }
