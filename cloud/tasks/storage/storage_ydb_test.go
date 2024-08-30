@@ -1175,6 +1175,12 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		hangingTasksDefaultDuration,
 	)
 	require.NoError(t, err)
+	logging.Info(ctx, "hanging tasks %v", hangingTasks)
+	logging.Info(
+		ctx,
+		"hanging tasks without blacklist %v",
+		hangingTasksWithoutBlackList,
+	)
 	require.ElementsMatch(t, expectedHangingTasksIds, getIds(hangingTasks))
 	require.ElementsMatch(
 		t,
