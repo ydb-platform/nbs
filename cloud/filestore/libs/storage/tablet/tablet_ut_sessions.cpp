@@ -826,6 +826,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         NProto::TFileStoreFeatures features;
         features.SetThreeStageWriteThreshold(64_KB);
         features.SetPreferredBlockSize(4_KB);
+        features.SetAsyncHandleOperationPeriod(
+            TDuration::MilliSeconds(50).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
