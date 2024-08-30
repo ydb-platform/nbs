@@ -108,7 +108,7 @@ class TestWithMultipleAgents(object):
         self.storage_config.MaxMigrationBandwidth = 1024 * 1024 * 1024
         self.storage_config.UseMirrorResync = True
         self.storage_config.MirroredMigrationStartAllowed = True
-        self.storage.NodeType = 'main'
+        self.storage_config.NodeType = 'main'
 
     def run_disk_agent(self, index, temporary=False):
         storage = TStorageServiceConfig()
