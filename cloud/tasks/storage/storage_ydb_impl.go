@@ -961,7 +961,7 @@ func (s *storageYDB) listTasksHanging(
 		(
 			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $default_hanging_task_duration) or 
 			(estimated_time > created_at and $now >= estimated_time + (estimated_time - created_at) * 2)
-		);
+		) limit $limit;
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam("$type_black_list", strListValue(taskTypeBlackList)),
