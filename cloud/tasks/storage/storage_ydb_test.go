@@ -1062,6 +1062,14 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		}
 		taskId, err := storage.CreateTask(ctx, state)
 		require.NoError(t, err)
+		logging.Info(
+			ctx,
+			"task with id=%s, created_at=%v, status %s, estimate=%v",
+			taskId,
+			createdAt,
+			TaskStatusToString(taskStatus),
+			state.EstimatedTime,
+		)
 		return taskId
 	}
 
