@@ -155,6 +155,9 @@ private:
     /*const*/ ui32 SessionHistoryEntryCount = 0;
     /*const*/ double ChannelMinFreeSpace = 0;
     /*const*/ double ChannelFreeSpaceThreshold = 1;
+    /*const*/ bool LargeDeletionMarkersEnabled = false;
+    /*const*/ ui64 LargeDeletionMarkerBlocks = 0;
+    /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
 
     bool StateLoaded = false;
 

@@ -97,6 +97,10 @@ void TIndexTabletState::LoadState(
     ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
     ChannelFreeSpaceThreshold = config.GetChannelFreeSpaceThreshold() / 100.;
 
+    LargeDeletionMarkersEnabled = config.GetLargeDeletionMarkersEnabled();
+    LargeDeletionMarkerBlocks = config.GetLargeDeletionMarkerBlocks();
+    LargeDeletionMarkersThreshold = config.GetLargeDeletionMarkersThreshold();
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);

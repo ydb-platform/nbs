@@ -199,9 +199,6 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         if (args.CommitId == InvalidCommitId) {
             return RebootTabletOnCommitOverflow(ctx, "AllocateData");
         }
-        // TODO: We should not use this range request because tx size
-        // is limited. Need some generic process range mechanism after
-        // NBS-2979
         ZeroRange(
             db,
             args.NodeId,

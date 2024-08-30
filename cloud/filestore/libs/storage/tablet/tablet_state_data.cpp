@@ -177,18 +177,39 @@ void TIndexTabletState::DeleteRange(
             range.FirstAlignedBlock(),
             deletedBlockCount);
 
-        SplitRange(
-            range.FirstAlignedBlock(),
-            deletedBlockCount,
-            BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
-                MarkMixedBlocksDeleted(
-                    db,
-                    nodeId,
-                    commitId,
-                    range.FirstAlignedBlock() + blockOffset,
-                    blocksCount);
-            });
+        const bool useLargeDeletionMarkers = LargeDeletionMarkersEnabled
+            && deletedBlockCount >= LargeDeletionMarkersThreshold;
+        if (useLargeDeletionMarkers) {
+            SplitRange(
+                range.FirstAlignedBlock(),
+                deletedBlockCount,
+                LargeDeletionMarkerBlocks,
+                [&] (ui32 blockOffset, ui32 blocksCount) {
+                    Impl->LargeBlocks.AddDeletionMarker({
+                        nodeId,
+                        commitId,
+                        blockOffset,
+                        blocksCount});
+                    db.WriteLargeDeletionMarkers(
+                        nodeId,
+                        commitId,
+                        blockOffset,
+                        blocksCount);
+                });
+        } else {
+            SplitRange(
+                range.FirstAlignedBlock(),
+                deletedBlockCount,
+                BlockGroupSize,
+                [&] (ui32 blockOffset, ui32 blocksCount) {
+                    MarkMixedBlocksDeleted(
+                        db,
+                        nodeId,
+                        commitId,
+                        range.FirstAlignedBlock() + blockOffset,
+                        blocksCount);
+                });
+        }
     }
 
     WriteFreshBytesDeletionMarker(
