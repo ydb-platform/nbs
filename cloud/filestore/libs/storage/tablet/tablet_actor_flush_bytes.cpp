@@ -664,11 +664,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-    args.CollectCommitId = Max<ui64>();
-
-    for (const auto& bytes: args.Bytes) {
-        args.CollectCommitId = Min(args.CollectCommitId, bytes.MinCommitId);
-    }
+    args.CollectCommitId = GetCurrentCommitId();
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 

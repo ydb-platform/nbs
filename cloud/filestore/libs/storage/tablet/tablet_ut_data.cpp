@@ -5869,16 +5869,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         //                                            lastCollectCommitId
         // runtime.SetEventFilter(MakeCollectGarbageFilter(0, 1));
 
-        // during the FlushBytes (after the barrier is acquired):
+        // during the FlushBytes (if the barrier would have been acquired for
+        // the fresh bytes commit Id)
         //
         //   garbage                           |               |
         // [    a    ][    b    ][    c    ][fresh][    d    ] |
         //                                     |               |
         //                                  barrier   lastCollectCommitId
         //
-        // in order to ensure the barrier is held for long enough time, we
-        // postpone the ReadBlob request, that is supposed to be sent during the
-        // FlushBytes
+        // in order to ensure the acquired barrier is held for long enough time,
+        // we postpone the ReadBlob request, that is supposed to be sent during
+        // the FlushBytes
 
         TAutoPtr<IEventHandle> readBlob;
         runtime.SetEventFilter(
@@ -5902,17 +5903,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         runtime.SetEventFilter(MakeCollectGarbageFilter(0, 1));
 
-        // The following CollectGarbage is sent with collectCommitId equal to
-        // the minimal barrier, meaning that it will be less than the
-        // lastCollectCommitId
+        tablet.CollectGarbage();
+        env.GetRuntime().Send(readBlob.Release(), nodeIdx);
 
-        tablet.SendCollectGarbageRequest();
-        auto response = tablet.RecvCollectGarbageResponse();
-
-        UNIT_ASSERT(FAILED(response->GetStatus()));
-        UNIT_ASSERT_C(
-            response->GetErrorReason().Contains("empty QuorumTracker"),
-            response->GetErrorReason());
+        auto result = tablet.RecvFlushBytesResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, result->GetStatus());
     }
 
     TABLET_TEST(ShouldNotCollectGarbageWithPreviousGeneration)
