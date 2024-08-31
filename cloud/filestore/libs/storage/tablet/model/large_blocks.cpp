@@ -139,6 +139,10 @@ struct TLargeBlocks::TImpl
 
                 ++rangeIt;
             }
+
+            if (update && it->second.empty()) {
+                NodeId2Markers.erase(it);
+            }
         }
     }
 };
