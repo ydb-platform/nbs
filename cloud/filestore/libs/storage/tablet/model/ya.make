@@ -25,6 +25,7 @@ SRCS(
     group_by.cpp
     mixed_blocks.cpp
     node_index_cache.cpp
+    node_session_stat.cpp
     operation.cpp
     range_locks.cpp
     read_ahead.cpp

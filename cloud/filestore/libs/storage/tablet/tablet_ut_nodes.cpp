@@ -1201,6 +1201,141 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldStatOpenedFiles)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNodeIndexCacheMaxNodes(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+#define COUNTERS_VALIDATE_WS_WM_RS_RM(wo, wm, ro, rm)               \
+    {                                                               \
+        tablet.SendRequest(tablet.CreateUpdateCounters());          \
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1)); \
+        TTestRegistryVisitor visitor;                               \
+        registry->Visit(TInstant::Zero(), visitor);                 \
+        visitor.ValidateExpectedCounters({                          \
+            {{{"filesystem", "test"},                               \
+              {"sensor", "NodesOpenForWritingBySingleSession"}},    \
+             wo},                                                   \
+            {{{"filesystem", "test"},                               \
+              {"sensor", "NodesOpenForWritingByMultipleSessions"}}, \
+             wm},                                                   \
+            {{{"filesystem", "test"},                               \
+              {"sensor", "NodesOpenForReadingBySingleSession"}},    \
+             ro},                                                   \
+            {{{"filesystem", "test"},                               \
+              {"sensor", "NodesOpenForReadingByMultipleSessions"}}, \
+             rm},                                                   \
+        });                                                         \
+    }
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        {
+            auto handleS1W = CreateHandle(tablet, id);
+
+            tablet.WriteData(handleS1W, 0, 1, '1');
+            tablet.WriteData(handleS1W, 1, 1024, '2');
+
+            {
+                auto handleS1R =
+                    CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+                tablet.ReadData(handleS1R, 10, 10);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
+                tablet.DestroyHandle(handleS1R);
+            }
+
+            COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
+            tablet.DestroyHandle(handleS1W);
+
+            {
+                auto handleS1R =
+                    CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+                tablet.ReadData(handleS1R, 10, 10);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+
+                auto handleS1W = CreateHandle(tablet, id);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
+
+                {
+                    TIndexTabletClient tablet2(
+                        env.GetRuntime(),
+                        nodeIdx,
+                        tabletId);
+                    tablet2.InitSession("client2", "session2");
+                    auto handleS2R =
+                        CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 0, 0);
+
+                    tablet2.DestroyHandle(handleS2R);
+                    auto handleS2W = CreateHandle(tablet2, id, {});
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(0, 1, 0, 0);
+                    tablet2.DestroyHandle(handleS2W);
+                }
+
+                tablet.DestroyHandle(handleS1W);
+                COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+
+                {
+                    auto node2 = CreateNode(
+                        tablet,
+                        TCreateNodeArgs::File(RootNodeId, "test2"));
+                    auto handleS1W2 = CreateHandle(tablet, node2);
+                    tablet.WriteData(handleS1W2, 0, 1, '1');
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(1, 0, 1, 0);
+                    tablet.DestroyHandle(handleS1W2);
+
+                    {
+                        auto handleS1R = CreateHandle(
+                            tablet,
+                            node2,
+                            {},
+                            TCreateHandleArgs::RDNLY);
+                        COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 2, 0);
+                        tablet.DestroyHandle(handleS1R);
+                    }
+                }
+
+                {
+                    TIndexTabletClient tablet2(
+                        env.GetRuntime(),
+                        nodeIdx,
+                        tabletId);
+                    tablet2.InitSession("client2", "session2");
+                    auto handleS2R =
+                        CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+                    COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 1);
+                    tablet2.DestroyHandle(handleS2R);
+                }
+
+                tablet.DestroyHandle(handleS1R);
+            }
+        }
+
+        COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 0);
+
+        {
+            auto handleS1R =
+                CreateHandle(tablet, id, {}, TCreateHandleArgs::RDNLY);
+            tablet.ReadData(handleS1R, 10, 10);
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+            tablet.RebootTablet();
+            tablet.RecoverSession();
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 1, 0);
+            tablet.DestroyHandle(handleS1R);
+            COUNTERS_VALIDATE_WS_WM_RS_RM(0, 0, 0, 0);
+        }
+
+#undef COUNTERS_VALIDATE_WS_WM_RS_RM
+    }
+
     Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)
     {
         NProto::TStorageConfig storageConfig;
