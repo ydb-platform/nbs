@@ -1,6 +1,7 @@
 #include "large_blocks.h"
 
-#include "alloc.h"
+#include <util/generic/map.h>
+#include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -8,15 +9,138 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSegmentWithHoles
+{
+    TMap<ui64, ui64> End2Start;
+
+    TSegmentWithHoles(ui64 start, ui64 end)
+    {
+        End2Start[end] = start;
+    }
+
+    void PunchHole(ui64 start, ui64 end)
+    {
+        auto lo = End2Start.upper_bound(start);
+        auto hi = End2Start.upper_bound(end);
+        std::pair<ui64, ui64> newLo;
+        if (lo != End2Start.end()) {
+            newLo = {lo->first, Max(lo->first, start)};
+        }
+
+        if (hi != End2Start.end() && hi->second < end) {
+            hi->second = end;
+        }
+
+        while (lo != hi) {
+            lo = End2Start.erase(lo);
+        }
+
+        if (newLo.first < newLo.second) {
+            End2Start[newLo.second] = newLo.first;
+        }
+    }
+};
+
+struct TMarkerInfo
+{
+    TDeletionMarker Marker;
+    // TODO: alloc
+    TSegmentWithHoles UnprocessedPart;
+
+    explicit TMarkerInfo(TDeletionMarker marker)
+        : Marker(marker)
+        , UnprocessedPart(
+            marker.BlockIndex,
+            marker.BlockIndex + marker.BlockCount)
+    {
+    }
+};
+
+struct TMarkerInfoLess
+{
+    using is_transparent = void;
+
+    bool operator()(const auto& lhs, const auto& rhs) const
+    {
+        return GetEnd(lhs) < GetEnd(rhs);
+    }
+
+    static ui64 GetEnd(const TMarkerInfo& markerInfo)
+    {
+        return markerInfo.Marker.BlockIndex + markerInfo.Marker.BlockCount;
+    }
+
+    static ui64 GetEnd(ui64 end)
+    {
+        return end;
+    }
+};
+
+using TRangeMap = TSet<TMarkerInfo, TMarkerInfoLess, TStlAllocator>;
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TLargeBlocks::TImpl
 {
-    // TODO
-
     IAllocator* Alloc;
+    using TByNodeId =
+        THashMap<ui64, TRangeMap, THash<ui64>, TEqualTo<ui64>, TStlAllocator>;
+    TByNodeId NodeId2Markers;
+    TVector<TDeletionMarker> ProcessedMarkers;
+    // Right now this implementation never decrements MaxMarkerBlocks for
+    // simplicity. It's ok since most of the markers are going to be similar
+    // in size and there is an upper limit for marker length.
+    ui64 MaxMarkerBlocks = 0;
+
+    explicit TImpl(IAllocator* alloc)
+        : Alloc(alloc)
+        , NodeId2Markers(alloc)
+    {
+    }
+
+    void Apply(TVector<TBlock>& blocks, bool update)
+    {
+        for (auto& block: blocks) {
+            auto it = NodeId2Markers.find(block.NodeId);
+            if (it == NodeId2Markers.end()) {
+                continue;
+            }
+
+            auto rangeIt = it->second.upper_bound(block.BlockIndex);
+            while (rangeIt != it->second.end()) {
+                const ui64 end =
+                    rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount;
+                if (block.BlockIndex + MaxMarkerBlocks < end) {
+                    break;
+                }
+
+                const bool inside = rangeIt->Marker.BlockIndex <= block.BlockIndex
+                    && end > block.BlockIndex;
+                if (!inside) {
+                    ++rangeIt;
+                    continue;
+                }
+
+                block.MaxCommitId =
+                    Min(block.MaxCommitId, rangeIt->Marker.CommitId);
+
+                if (update) {
+                    const_cast<TSegmentWithHoles&>(rangeIt->UnprocessedPart)
+                        .PunchHole(block.BlockIndex, block.BlockIndex + 1);
+
+                    if (rangeIt->UnprocessedPart.End2Start.empty()) {
+                        ProcessedMarkers.push_back(rangeIt->Marker);
+                        rangeIt = it->second.erase(rangeIt);
+                        continue;
+                    }
+                }
+
+                ++rangeIt;
+            }
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,26 +153,34 @@ TLargeBlocks::~TLargeBlocks() = default;
 
 void TLargeBlocks::AddDeletionMarker(TDeletionMarker deletionMarker)
 {
-    Y_UNUSED(deletionMarker);
-    // TODO
+    TImpl::TByNodeId::insert_ctx ctx;
+    auto it = Impl->NodeId2Markers.find(deletionMarker.NodeId, ctx);
+    if (it == Impl->NodeId2Markers.end()) {
+        it = Impl->NodeId2Markers.emplace_direct(
+            ctx,
+            deletionMarker.NodeId,
+            Impl->Alloc);
+    }
+    it->second.emplace(deletionMarker);
+    Impl->MaxMarkerBlocks =
+        Max<ui64>(Impl->MaxMarkerBlocks, deletionMarker.BlockCount);
 }
 
 void TLargeBlocks::ApplyDeletionMarkers(TVector<TBlock>& blocks) const
 {
-    Y_UNUSED(blocks);
-    // TODO
+    Impl->Apply(blocks, false);
 }
 
 void TLargeBlocks::ApplyAndUpdateDeletionMarkers(TVector<TBlock>& blocks)
 {
-    Y_UNUSED(blocks);
-    // TODO
+    Impl->Apply(blocks, true);
 }
 
 TVector<TDeletionMarker> TLargeBlocks::ExtractProcessedDeletionMarkers()
 {
-    // TODO
-    return {};
+    auto res = std::move(Impl->ProcessedMarkers);
+    Impl->ProcessedMarkers.clear();
+    return res;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -10,6 +10,7 @@ SRCS(
     fresh_blocks_ut.cpp
     fresh_bytes_ut.cpp
     garbage_queue_ut.cpp
+    large_blocks_ut.cpp
     mixed_blocks_ut.cpp
     node_index_cache_ut.cpp
     node_session_stat_ut.cpp

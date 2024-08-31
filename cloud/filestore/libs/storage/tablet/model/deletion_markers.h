@@ -38,6 +38,8 @@ struct TDeletionMarker
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// TODO(#1923): support checkpoints in TDeletionMarkers. Right now the
+// implementation simply overwrites older commitIds with newer ones.
 
 class TDeletionMarkers
 {
