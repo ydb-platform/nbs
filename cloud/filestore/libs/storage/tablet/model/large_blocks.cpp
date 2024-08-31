@@ -23,8 +23,8 @@ struct TSegmentWithHoles
         auto lo = End2Start.upper_bound(start);
         auto hi = End2Start.upper_bound(end);
         std::pair<ui64, ui64> newLo;
-        if (lo != End2Start.end()) {
-            newLo = {lo->first, Max(lo->first, start)};
+        if (lo != End2Start.end() && lo->second < start) {
+            newLo = {lo->second, start};
         }
 
         if (hi != End2Start.end() && hi->second < end) {
