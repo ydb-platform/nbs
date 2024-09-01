@@ -19,7 +19,7 @@ TNodeToSessionStat::EKind TNodeToSessionStat::AddWrite(
 }
 
 void TNodeToSessionStat::Clean(
-    const TStat::iterator& nodeStatIterator,
+    TStat::iterator& nodeStatIterator,
     const TString& sessionId)
 {
     auto& nodeStat = nodeStatIterator->second;
@@ -40,6 +40,7 @@ void TNodeToSessionStat::Clean(
 
     if (nodeStat.WriteSessions.empty() && nodeStat.ReadSessions.empty()) {
         Stat.erase(nodeStatIterator);
+        nodeStatIterator = Stat.end();
     }
 }
 
@@ -47,7 +48,7 @@ TNodeToSessionStat::EKind TNodeToSessionStat::RemoveRead(
     ui64 nodeId,
     const TString& sessionId)
 {
-    const auto& nodeStatIterator = Stat.find(nodeId);
+    auto nodeStatIterator = Stat.find(nodeId);
     if (nodeStatIterator != Stat.end()) {
         --nodeStatIterator->second.ReadSessions[sessionId];
         Clean(nodeStatIterator, sessionId);
@@ -59,7 +60,7 @@ TNodeToSessionStat::EKind TNodeToSessionStat::RemoveWrite(
     ui64 nodeId,
     const TString& sessionId)
 {
-    const auto& nodeStatIterator = Stat.find(nodeId);
+    auto nodeStatIterator = Stat.find(nodeId);
     if (nodeStatIterator != Stat.end()) {
         --nodeStatIterator->second.WriteSessions[sessionId];
         Clean(nodeStatIterator, sessionId);

@@ -15,10 +15,6 @@ class TNodeToSessionStat
     using TStat = THashMap<ui64, TSessionStat>;
     TStat Stat;
 
-    void Clean(
-        const TStat::iterator& nodeStatIterator,
-        const TString& sessionId);
-
 public:
     enum class EKind
     {
@@ -38,6 +34,10 @@ public:
 private:
     [[nodiscard]] EKind GetKind(
         const TStat::const_iterator& nodeStatIterator) const;
+
+    void Clean(
+        TStat::iterator& nodeStatIterator,
+        const TString& sessionId);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
