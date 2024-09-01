@@ -30,6 +30,7 @@ SRCS(
     operation.cpp
     range_locks.cpp
     read_ahead.cpp
+    sparse_segment.cpp
     split_range.cpp
     throttler_logger.cpp
     throttling_policy.cpp

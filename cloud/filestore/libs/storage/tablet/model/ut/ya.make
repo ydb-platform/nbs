@@ -17,6 +17,7 @@ SRCS(
     operation_ut.cpp
     range_locks_ut.cpp
     read_ahead_ut.cpp
+    sparse_segment_ut.cpp
     split_range_ut.cpp
     throttling_policy_ut.cpp
 )

@@ -1,6 +1,7 @@
 #include "large_blocks.h"
 
-#include <util/generic/map.h>
+#include "sparse_segment.h"
+
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -9,47 +10,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSegmentWithHoles
-{
-    TMap<ui64, ui64> End2Start;
-
-    TSegmentWithHoles(ui64 start, ui64 end)
-    {
-        End2Start[end] = start;
-    }
-
-    void PunchHole(ui64 start, ui64 end)
-    {
-        auto lo = End2Start.upper_bound(start);
-        auto hi = End2Start.upper_bound(end);
-        std::pair<ui64, ui64> newLo;
-        if (lo != End2Start.end() && lo->second < start) {
-            newLo = {lo->second, start};
-        }
-
-        if (hi != End2Start.end() && hi->second < end) {
-            hi->second = end;
-        }
-
-        while (lo != hi) {
-            lo = End2Start.erase(lo);
-        }
-
-        if (newLo.first < newLo.second) {
-            End2Start[newLo.second] = newLo.first;
-        }
-    }
-};
-
 struct TMarkerInfo
 {
     TDeletionMarker Marker;
-    // TODO: alloc
-    TSegmentWithHoles UnprocessedPart;
+    TSparseSegment UnprocessedPart;
 
-    explicit TMarkerInfo(TDeletionMarker marker)
+    explicit TMarkerInfo(TDeletionMarker marker, IAllocator* alloc)
         : Marker(marker)
         , UnprocessedPart(
+            alloc,
             marker.BlockIndex,
             marker.BlockIndex + marker.BlockCount)
     {
@@ -127,10 +96,10 @@ struct TLargeBlocks::TImpl
                     Min(block.MaxCommitId, rangeIt->Marker.CommitId);
 
                 if (update) {
-                    const_cast<TSegmentWithHoles&>(rangeIt->UnprocessedPart)
+                    const_cast<TSparseSegment&>(rangeIt->UnprocessedPart)
                         .PunchHole(block.BlockIndex, block.BlockIndex + 1);
 
-                    if (rangeIt->UnprocessedPart.End2Start.empty()) {
+                    if (rangeIt->UnprocessedPart.Empty()) {
                         ProcessedMarkers.push_back(rangeIt->Marker);
                         rangeIt = it->second.erase(rangeIt);
                         continue;
@@ -165,7 +134,7 @@ void TLargeBlocks::AddDeletionMarker(TDeletionMarker deletionMarker)
             deletionMarker.NodeId,
             Impl->Alloc);
     }
-    it->second.emplace(deletionMarker);
+    it->second.emplace(deletionMarker, Impl->Alloc);
     Impl->MaxMarkerBlocks =
         Max<ui64>(Impl->MaxMarkerBlocks, deletionMarker.BlockCount);
 }
