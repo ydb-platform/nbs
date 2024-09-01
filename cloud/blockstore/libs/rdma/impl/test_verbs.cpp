@@ -399,16 +399,15 @@ struct TTestVerbs
 
     void ResolveAddress(
         rdma_cm_id* id,
-        sockaddr* src_addr,
-        sockaddr* dst_addr,
+        sockaddr* srcAddr,
+        sockaddr* dstAddr,
         TDuration timeout) override
     {
-        Y_UNUSED(src_addr);
-        Y_UNUSED(dst_addr);
         Y_UNUSED(timeout);
 
-        memcpy(&id->route.addr.src_storage, src_addr, sizeof(sockaddr_storage));
-        memcpy(&id->route.addr.dst_storage, dst_addr, sizeof(sockaddr_storage));
+        static_assert(sizeof(sockaddr) <= sizeof(sockaddr_storage));
+        memcpy(&id->route.addr.src_storage, srcAddr, sizeof(sockaddr));
+        memcpy(&id->route.addr.dst_storage, dstAddr, sizeof(sockaddr));
 
         EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_ADDR_RESOLVED, id);
     }
