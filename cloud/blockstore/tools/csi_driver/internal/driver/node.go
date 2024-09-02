@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -858,7 +859,9 @@ func (s *nodeService) NodeExpandVolume(
 			"Failed to determine NBD Device filename")
 	}
 
-	newBlocksCount := uint64(req.CapacityRange.RequiredBytes) / uint64(resp.Volume.BlockSize)
+	newBlocksCount := uint64(math.Ceil(
+		float64(req.CapacityRange.RequiredBytes) / float64(resp.Volume.BlockSize)),
+	)
 	log.Printf("Resize volume id %v blocks count %v", req.VolumeId, newBlocksCount)
 	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
 		DiskId:             req.VolumeId,
