@@ -149,18 +149,13 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	err = t.storage.SnapshotCreated(
+	return t.storage.SnapshotCreated(
 		ctx,
 		t.request.DstSnapshotId,
 		time.Now(),
 		uint64(t.state.SnapshotSize),
 		uint64(t.state.SnapshotStorageSize),
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (t *createSnapshotFromDiskTask) Run(

@@ -462,90 +462,92 @@ func TestCreateSnapshot(t *testing.T) {
 }
 
 func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
-	t.Run(testCases()[0].name, func(t *testing.T) {
-		f := createFixture(t)
-		defer f.teardown()
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
 
-		snapshot1 := SnapshotMeta{
-			ID: "snapshot1",
-			Disk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-			CheckpointID: "checkpoint1",
-			CreateTaskID: "create1",
-		}
+			snapshot1 := SnapshotMeta{
+				ID: "snapshot1",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint1",
+				CreateTaskID: "create1",
+			}
 
-		created, err := f.storage.CreateSnapshot(f.ctx, snapshot1)
-		require.NoError(t, err)
-		require.NotNil(t, created)
-		require.Empty(t, created.BaseSnapshotID)
-		require.Empty(t, created.BaseCheckpointID)
+			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Empty(t, created.BaseSnapshotID)
+			require.Empty(t, created.BaseCheckpointID)
 
-		created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
-			ID: "snapshot2",
-			Disk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-			CheckpointID: "checkpoint2",
-			CreateTaskID: "create2",
+			created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID: "snapshot2",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint2",
+				CreateTaskID: "create2",
+			})
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Empty(t, created.BaseSnapshotID)
+			require.Empty(t, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			snapshot3 := SnapshotMeta{
+				ID: "snapshot3",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint3",
+				CreateTaskID: "create3",
+			}
+
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
+			require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			snapshot4 := SnapshotMeta{
+				ID: "snapshot4",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint4",
+				CreateTaskID: "create4",
+			}
+
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot4)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
+			require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot1.ID, "delete1")
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot3.ID, "delete3")
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot4.ID, "delete4")
+			require.NoError(t, err)
 		})
-		require.NoError(t, err)
-		require.NotNil(t, created)
-		require.Empty(t, created.BaseSnapshotID)
-		require.Empty(t, created.BaseCheckpointID)
-
-		err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
-		require.NoError(t, err)
-
-		snapshot3 := SnapshotMeta{
-			ID: "snapshot3",
-			Disk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-			CheckpointID: "checkpoint3",
-			CreateTaskID: "create3",
-		}
-
-		created, err = f.storage.CreateSnapshot(f.ctx, snapshot3)
-		require.NoError(t, err)
-		require.NotNil(t, created)
-		require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
-		require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
-
-		err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
-		require.NoError(t, err)
-
-		snapshot4 := SnapshotMeta{
-			ID: "snapshot4",
-			Disk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-			CheckpointID: "checkpoint4",
-			CreateTaskID: "create4",
-		}
-
-		created, err = f.storage.CreateSnapshot(f.ctx, snapshot4)
-		require.NoError(t, err)
-		require.NotNil(t, created)
-		require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
-		require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
-
-		err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
-		require.NoError(t, err)
-
-		_, err = f.storage.DeletingSnapshot(f.ctx, snapshot1.ID, "delete1")
-		require.NoError(t, err)
-
-		_, err = f.storage.DeletingSnapshot(f.ctx, snapshot3.ID, "delete3")
-		require.NoError(t, err)
-
-		_, err = f.storage.DeletingSnapshot(f.ctx, snapshot4.ID, "delete4")
-		require.NoError(t, err)
-	})
+	}
 }
 
 func TestDeletingSnapshot(t *testing.T) {

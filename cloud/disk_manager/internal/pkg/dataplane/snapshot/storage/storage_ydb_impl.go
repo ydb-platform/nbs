@@ -76,7 +76,6 @@ func (s *storageYDB) getIncremental(
 	}
 
 	logging.Info(ctx, "incremental is %v and %v", snapshotID, checkpointID)
-
 	return
 }
 
