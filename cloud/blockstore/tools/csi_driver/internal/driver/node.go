@@ -88,10 +88,6 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type VolumeInfo struct {
-	nbdDevicePath string
-}
-
 type nodeService struct {
 	csi.NodeServer
 
@@ -105,7 +101,6 @@ type nodeService struct {
 	nbsClient nbsclient.ClientIface
 	nfsClient nfsclient.EndpointClientIface
 	mounter   mounter.Interface
-	volumeMap map[string]VolumeInfo
 }
 
 func newNodeService(
@@ -129,7 +124,6 @@ func newNodeService(
 		mounter:             mounter,
 		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
-		volumeMap:           make(map[string]VolumeInfo),
 	}
 }
 
@@ -277,8 +271,6 @@ func (s *nodeService) NodeUnpublishVolume(
 			"Failed to unpublish volume: %v", err)
 	}
 
-	delete(s.volumeMap, req.VolumeId)
-
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -424,7 +416,7 @@ func (s *nodeService) startNbsEndpoint(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	resp, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           volumeId,
 		InstanceId:       podId,
@@ -442,12 +434,6 @@ func (s *nodeService) startNbsEndpoint(
 			HostType: &hostType,
 		},
 	})
-
-	if err == nil {
-		s.volumeMap[volumeId] = VolumeInfo{nbdDevicePath: resp.NbdDeviceFile}
-	}
-
-	return resp, err
 }
 
 func (s *nodeService) nodePublishFileStoreAsVhostSocket(
@@ -842,11 +828,34 @@ func (s *nodeService) NodeExpandVolume(
 			"CapacityRange is missing in NodeExpandVolumeRequest")
 	}
 
-	volumeInfo, ok := s.volumeMap[req.VolumeId]
-	if !ok {
-		return nil, s.statusErrorf(
+	podId, err := s.parsePodId(req.VolumePath)
+	if err != nil {
+		return nil, err
+	}
+
+	endpointDir := filepath.Join(s.socketsDir, podId, req.VolumeId)
+	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
+
+	listEndpointsResp, err := s.nbsClient.ListEndpoints(
+		ctx, &nbsapi.TListEndpointsRequest{},
+	)
+	if err != nil {
+		log.Printf("List endpoints failed %v", err)
+		return nil, err
+	}
+
+	nbdDevicePath := ""
+	for _, endpoint := range listEndpointsResp.Endpoints {
+		if endpoint.UnixSocketPath == unixSocketPath {
+			nbdDevicePath = endpoint.GetNbdDeviceFile()
+			break
+		}
+	}
+
+	if nbdDevicePath == "" {
+		return nil, status.Error(
 			codes.Internal,
-			"volume info is missing")
+			"Failed to determine NBD Device filename")
 	}
 
 	newBlocksCount := uint64(req.CapacityRange.RequiredBytes) / uint64(resp.Volume.BlockSize)
@@ -863,14 +872,8 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	podId, err := s.parsePodId(req.VolumePath)
-	if err != nil {
-		return nil, err
-	}
-
-	endpointDir := filepath.Join(s.socketsDir, podId, req.VolumeId)
 	_, err = s.nbsClient.ResizeDevice(ctx, &nbsapi.TResizeDeviceRequest{
-		UnixSocketPath:    filepath.Join(endpointDir, nbsSocketName),
+		UnixSocketPath:    unixSocketPath,
 		DeviceSizeInBytes: newBlocksCount * uint64(resp.Volume.BlockSize),
 	})
 
@@ -882,7 +885,7 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	if s.isMountAccessType(req.VolumePath) {
-		cmd := exec.Command("resize2fs", volumeInfo.nbdDevicePath)
+		cmd := exec.Command("resize2fs", nbdDevicePath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return nil, s.statusErrorf(
 				codes.Internal,
