@@ -1052,8 +1052,8 @@ func TestTryExecutingTask(t *testing.T) {
 	runner.On("lockTask", ctx, taskInfo).Return(state, nil)
 	task.On("Load", state.Request, state.State).Return(nil)
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Maybe()
-
-	runnerMetrics.On("OnExecutionStarted", state)
+	execCtx := newExecutionContext(task, taskStorage, state)
+	runnerMetrics.On("OnExecutionStarted", execCtx)
 	runner.On("executeTask", mock.Anything, mock.Anything, task)
 	runnerMetrics.On("OnExecutionStopped")
 
@@ -1097,7 +1097,8 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		updateTaskErr,
 	).Once()
 
-	runnerMetrics.On("OnExecutionStarted", state)
+	execCtx := newExecutionContext(task, taskStorage, state)
+	runnerMetrics.On("OnExecutionStarted", execCtx)
 	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
 		// Wait for pingPeriod, so that the first ping has had a chance to run.
 		// TODO: This is bad.
