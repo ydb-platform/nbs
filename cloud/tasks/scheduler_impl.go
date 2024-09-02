@@ -617,14 +617,14 @@ func NewScheduler(
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
-				registry:                    metricsRegistry,
-				storage:                     storage,
-				hangingTasksGaugesByID:      make(map[string]metrics.Gauge),
-				hangingTasksGaugesByType:    make(map[string]metrics.Gauge),
-				metricsCollectionInterval:   listerMetricsCollectionInterval,
-				hangingTasksDefaultDuration: hangingTasksDefaultDuration,
-				exceptHangingTaskTypes:      config.GetExceptHangingTaskTypes(),
-				maxReportedHangingTaskIDs:   config.GetMaxReportedHangingTaskIDs(),
+				registry:                  metricsRegistry,
+				storage:                   storage,
+				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
+				hangingTaskGaugesByType:   make(map[string]metrics.Gauge),
+				metricsCollectionInterval: listerMetricsCollectionInterval,
+				hangingTaskTimeout:        hangingTasksDefaultDuration,
+				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
+				maxHangingTaskIDsToReport: config.GetMaxReportedHangingTaskIDs(),
 			}
 		},
 	)

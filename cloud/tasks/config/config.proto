@@ -49,5 +49,5 @@ message TasksConfig {
 
     optional string CollectListerMetricsTaskScheduleInterval = 28 [default = "10m"];
     optional string ListerMetricsCollectionInterval = 29 [default = "1m"];
-    optional int64 MaxReportedHangingTaskIDs = 30 [default = 50];
+    optional int64 MaxReportedHangingTaskIDs = 30 [default = 1000];
 }
