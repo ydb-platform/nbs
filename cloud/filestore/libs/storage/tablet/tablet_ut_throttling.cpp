@@ -46,7 +46,8 @@ public:
         NProto::TStorageConfig storageConfig;
         if (throttlingEnabled.Defined()) {
             storageConfig.SetThrottlingEnabled(throttlingEnabled.GetRef());
-            storageConfig.SetMultipleStageRequestThrottlingEnabled(throttlingEnabled.GetRef());
+            storageConfig.SetMultipleStageRequestThrottlingEnabled(
+                throttlingEnabled.GetRef());
         }
 
         Env = std::make_unique<TTestEnv>(envConfig, storageConfig);
@@ -318,7 +319,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         for (size_t i = 0; i < 10; ++i) {
             Tick(TDuration::Seconds(1));
             DescribeData(4_KB * i, 4_KB);
-            const auto readResponse = AssertDescribeDataQuickResponse(S_OK);
+            AssertDescribeDataQuickResponse(S_OK);
             Tick(TDuration::Seconds(1));
             GenerateBlobIds(4_KB * (i + 1), 4_KB);
             AssertGenerateBlobIdsQuickResponse(S_OK);
@@ -352,8 +353,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         // Test actor runtime will automatically advance the timer for us.
         for (ui32 i = 0; i < 20; ++i) {
             Tick(TDuration::Seconds(1));
-            const auto readResponse = AssertDescribeDataResponse(S_OK);
-        }
+            AssertDescribeDataResponse(S_OK);
 
         for (ui32 i = 0; i < 3; ++i) {
             Tick(TDuration::Seconds(1));
