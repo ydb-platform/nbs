@@ -215,7 +215,9 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        ReportDescribeFileStoreError();
+        if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
+            ReportDescribeFileStoreError();
+        }
 
         Notify(ctx, msg->GetError(), false);
         Die(ctx);
