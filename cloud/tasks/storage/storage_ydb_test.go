@@ -1015,25 +1015,34 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
-	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
-		TaskStallingTimeout: &taskStallingTimeout,
-	}, metricsRegistry)
+	storage, err := newStorage(
+		t,
+		ctx,
+		db,
+		&tasks_config.TasksConfig{
+			TaskStallingTimeout: &taskStallingTimeout,
+		},
+		metricsRegistry,
+	)
 	hangingTasksStatuses := []TaskStatus{
 		TaskStatusReadyToRun,
 		TaskStatusRunning,
 		TaskStatusCancelling,
 		TaskStatusReadyToCancel,
 	}
+
 	exceptHangingTaskTypes := []string{
 		"task_excepted_type1",
 		"task_excepted_type2",
 		"task_excepted_type_3",
 	}
+
 	allowedHangingTaskTypes := []string{
 		"allowed_task_type_1",
 		"allowed_task_type_2",
 		"allowed_task_type_3",
 	}
+
 	expectedHangingTasksIds := make([]string, 0, 36)
 	expectedTaskIdsWithoutBlackList := make([]string, 0, 72)
 	hangingTasksDefaultDuration := time.Hour * 5
@@ -1060,6 +1069,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		if estimatedDuration > 0 {
 			state.EstimatedTime = createdAt.Add(estimatedDuration)
 		}
+
 		taskId, err := storage.CreateTask(ctx, state)
 		require.NoError(t, err)
 		logging.Info(
