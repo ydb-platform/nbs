@@ -84,7 +84,7 @@ public:
         Tablet->SendDescribeDataRequest(Handle, offset, len);
     }
 
-    void GenerateBlobIds(ui64 offset, ui32 len, [[maybe_unused]] char fill = {})
+    void GenerateBlobIds(ui64 offset, ui32 len)
     {
         Tablet->SendGenerateBlobIdsRequest(NodeId, Handle, offset, len);
     }
@@ -320,7 +320,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             DescribeData(4_KB * i, 4_KB);
             const auto readResponse = AssertDescribeDataQuickResponse(S_OK);
             Tick(TDuration::Seconds(1));
-            GenerateBlobIds(4_KB * (i + 1), 4_KB, static_cast<char>('a' + i));
+            GenerateBlobIds(4_KB * (i + 1), 4_KB);
             AssertGenerateBlobIdsQuickResponse(S_OK);
         }
 
@@ -333,7 +333,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         // Now we have 20_KB in PostponeQueue.
 
         for (size_t i = 0; i < 3; ++i) {
-            GenerateBlobIds(0, 4_KB, 'z');
+            GenerateBlobIds(0, 4_KB);
             AssertGenerateBlobIdsNoResponse();
         }
 
@@ -342,10 +342,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         // 2. Testing that we start rejecting requests after
         // our postponed limit saturates.
 
-        GenerateBlobIds(
-            0,
-            config.BlockSize,
-            'y');   // Request must be rejected.
+        GenerateBlobIds(0, config.BlockSize);   // Request must be rejected.
         AssertGenerateBlobIdsQuickResponse(E_FS_THROTTLED);
         DescribeData(0, config.BlockSize);
         AssertDescribeDataQuickResponse(E_FS_THROTTLED);
@@ -370,17 +367,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         DescribeData(0, 12_KB);
         {
             // Postponed WriteDataRequest must write 4_KB of 'z'.
-            const auto readResponse = AssertDescribeDataQuickResponse(S_OK);
+            AssertDescribeDataQuickResponse(S_OK);
         }
         DescribeData(12_KB, 4_KB);
         AssertDescribeDataNoResponse();
         {
-            const auto readResponse = AssertDescribeDataResponse(S_OK);
+            AssertDescribeDataResponse(S_OK);
             Tick(TDuration::Seconds(1));
         }
 
         // 5. Requests of any size should work, but not immediately.
-        GenerateBlobIds(0, 32_KB, 'a');
+        GenerateBlobIds(0, 32_KB);
         Tick(TDuration::Seconds(5));
         AssertGenerateBlobIdsResponse(S_OK);
     }
