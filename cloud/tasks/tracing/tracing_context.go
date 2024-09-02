@@ -18,8 +18,8 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Extracts traceparent and tracestate headers from incoming grpc metadata.
-func ExtractTracingContext(ctx context.Context) context.Context {
+// Gets traceparent and tracestate headers from incoming grpc metadata.
+func GetTracingContext(ctx context.Context) context.Context {
 	tracingContext := headers.GetFromIncomingContext(ctx, []string{
 		traceparentHeaderKey,
 		tracestateHeaderKey,
@@ -35,11 +35,11 @@ func ExtractTracingContext(ctx context.Context) context.Context {
 	return prop.Extract(ctx, propagation.MapCarrier(tracingContext))
 }
 
-// Injects traceparent and tracestate headers to grpc metadata
+// Sets traceparent and tracestate headers in grpc metadata
 // (both incoming and outgoing).
 // If these fields are already present in grpc metadata,
 // their values will be overwritten.
-func InjectTracingContext(ctx context.Context) context.Context {
+func SetTracingContext(ctx context.Context) context.Context {
 	mapCarrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, mapCarrier)
 

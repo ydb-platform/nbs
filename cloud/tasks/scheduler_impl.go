@@ -66,7 +66,7 @@ func (s *scheduler) ScheduleZonalTask(
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "scheduling task %v", taskType)
 
-	ctx = tracing.InjectTracingContext(ctx)
+	ctx = tracing.SetTracingContext(ctx)
 
 	marshalledRequest, err := proto.Marshal(request)
 	if err != nil {
@@ -154,7 +154,7 @@ func (s *scheduler) ScheduleRegularTasks(
 			}
 
 			ctx = headers.SetIncomingRequestID(ctx, requestID.String())
-			ctx = tracing.InjectTracingContext(ctx)
+			ctx = tracing.SetTracingContext(ctx)
 			metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
 
 			schedule := tasks_storage.TaskSchedule{

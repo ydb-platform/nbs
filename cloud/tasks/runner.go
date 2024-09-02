@@ -550,7 +550,7 @@ func lockAndExecuteTask(
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
 	runCtx = logging.WithCommonFields(runCtx)
-	runCtx = tracing.ExtractTracingContext(runCtx)
+	runCtx = tracing.GetTracingContext(runCtx)
 
 	runCtx, span := tracing.StartSpan(
 		runCtx,
