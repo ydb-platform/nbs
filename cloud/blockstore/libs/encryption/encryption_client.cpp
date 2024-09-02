@@ -389,8 +389,7 @@ TFuture<NProto::TWriteBlocksResponse> TEncryptionClient::WriteBlocks(
 
     if (HasError(err)) {
         return FutureErrorResponse<NProto::TWriteBlocksResponse>(
-            err.GetCode(),
-            err.GetMessage());
+            std::move(err));
     }
 
     request->ClearBlocks();
@@ -553,8 +552,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     if (HasError(err)) {
         return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
-            err.GetCode(),
-            err.GetMessage());
+            std::move(err));
     }
 
     TGuardedSgList guardedSgList(std::move(encryptedSglist));
@@ -679,18 +677,20 @@ NProto::TError TEncryptionClient::Decrypt(
                                  << " != " << src[i].Size());
         }
 
-        // XXX: можно ли тут обойтись только IsAllZeroes?
-        const bool encrypted = !GetBitValue(unencryptedBlockMask, i) /* &&
-                               !IsAllZeroes(src[i]) */;
+        const bool encrypted = !GetBitValue(unencryptedBlockMask, i);
+        auto* dstPtr = const_cast<char*>(dst[i].Data());
+        const size_t blockSize = dst[i].Size();
+
         if (encrypted) {
-            auto err = Encryptor->Decrypt(src[i], dst[i], startIndex + i);
-            if (HasError(err)) {
+            if (src[i].Data() && IsAllZeroes(src[i].Data(), blockSize)) {
+                memset(dstPtr, 0, blockSize);
+            } else if (auto err =
+                           Encryptor->Decrypt(src[i], dst[i], startIndex + i);
+                       HasError(err))
+            {
                 return err;
             }
         } else {
-            auto* dstPtr = const_cast<char*>(dst[i].Data());
-            const size_t blockSize = dst[i].Size();
-
             if (src[i].Data()) {
                 memcpy(dstPtr, src[i].Data(), blockSize);
             } else {
@@ -778,7 +778,7 @@ private:
                 auto [client, error] = f.GetValue();
                 if (HasError(error)) {
                     return FutureErrorResponse<NProto::TMountVolumeResponse>(
-                        error);
+                        std::move(error));
                 }
 
                 auto ptr = weakPtr.lock();
@@ -1065,7 +1065,7 @@ public:
             return MakeFuture<TResponse>(client);
         }
 
-        if (desc.GetMode() != NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE) {
+        if (desc.GetMode() != NProto::ENCRYPTION_DEFAULT_AES_XTS) {
             return MakeFuture<TResponse>(
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }

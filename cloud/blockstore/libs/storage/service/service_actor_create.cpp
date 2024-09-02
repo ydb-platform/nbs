@@ -205,10 +205,14 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
 
 bool TCreateVolumeActor::ShouldCreateVolumeWithDefaultEncryption() const
 {
+    if (GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+        // TODO: XXX
+        return false;
+    }
+
     return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
-        GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL &&    // XXX
         Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
-        (Config->GetDefaultEncryptionForNonReplicatedDisksEnabled() ||
+        (Config->GetDefaultEncryptionForDiskRegistryBasedDisksEnabled() ||
          Config->IsDefaultEncryptionForNonReplicatedDisksFeatureEnabled(
              Request.GetCloudId(),
              Request.GetFolderId(),
@@ -265,7 +269,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
                              << " with default AES XTS encryption");
 
         auto& desc = encryptionDesc.emplace();
-        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
+        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
         desc.SetKeyHash(msg->EncryptionKey);
     }
 

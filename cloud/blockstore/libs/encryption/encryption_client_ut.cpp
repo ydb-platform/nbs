@@ -591,13 +591,13 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto future = encryptionClient->ReadBlocks(
             MakeIntrusive<TCallContext>(),
             std::move(request));
-        auto response = future.GetValue(TDuration::Seconds(5));
+        auto response = future.GetValue(5s);
         UNIT_ASSERT(!HasError(response));
 
         const auto& buffers = response.GetBlocks().GetBuffers();
         for (int i = 0; i < blocksCount; ++i) {
             TBlockDataRef block(buffers[i].data(), buffers[i].size());
-            UNIT_ASSERT(BlockFilledByValue(block, 0u));
+            UNIT_ASSERT(BlockFilledByValue(block, 0u)); /// ?
         }
     }
 
@@ -1214,8 +1214,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             for (ui32 i = 0; i != blocksCount; ++i) {
                 TString buf(blockSize, 'a' + i);
                 TBlockDataRef bufRef(buf.data(), buf.size());
-                auto res = encryptor->Encrypt(bufRef, sglist[i], i);
-                UNIT_ASSERT(res);
+                auto err = encryptor->Encrypt(bufRef, sglist[i], i);
+                UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err.GetCode(), err);
             }
         };
 
@@ -1264,7 +1264,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 volume.SetBlockSize(blockSize);
 
                 auto& desc = *volume.MutableEncryptionDesc();
-                desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
+                desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
                 desc.SetKeyHash(Base64Encode(key));
 
                 return MakeFuture(std::move(response));

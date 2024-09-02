@@ -1013,5 +1013,5 @@ message TStorageServiceConfig
     optional uint32 IdleAgentDeployByCmsDelay = 377;
 
     // Enable default enctyption for NRD/Mirrored disks.
-    optional bool DefaultEncryptionForNonReplicatedDisksEnabled = 378;
+    optional bool DefaultEncryptionForDiskRegistryBasedDisksEnabled = 378;
 }

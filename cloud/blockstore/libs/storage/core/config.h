@@ -593,7 +593,7 @@ public:
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
 
-    [[nodiscard]] bool GetDefaultEncryptionForNonReplicatedDisksEnabled() const;
+    [[nodiscard]] bool GetDefaultEncryptionForDiskRegistryBasedDisksEnabled() const;
 };
 
 ui64 GetAllocationUnit(

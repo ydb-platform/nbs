@@ -260,7 +260,7 @@ def __run_test(test_case):
         storage.AgentRequestTimeout = 5000      # 5 sec
         storage.RejectLateRequestsAtDiskAgentEnabled = test_case.reject_late_requests_at_disk_agent
         storage.AssignIdToWriteAndZeroRequestsEnabled = test_case.reject_late_requests_at_disk_agent
-        storage.DefaultEncryptionForNonReplicatedDisksEnabled = test_case.enable_default_encryption
+        storage.DefaultEncryptionForDiskRegistryBasedDisksEnabled = test_case.enable_default_encryption
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
