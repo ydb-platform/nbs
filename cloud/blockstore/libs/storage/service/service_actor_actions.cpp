@@ -87,6 +87,7 @@ void TServiceActor::HandleExecuteAction(
         {"partiallysuspenddiskagent",         &TServiceActor::CreatePartiallySuspendDiskAgentActor         },
         {"getstorageconfig",                  &TServiceActor::CreateGetStorageConfigActor                  },
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
+        {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
     };
 
     NProto::TError error;
