@@ -80,8 +80,7 @@ type runnerMetricsImpl struct {
 	logger                 logging.Logger
 }
 
-func (m *runnerMetricsImpl) OnExecutionStarted(
-	execContext *executionContext) {
+func (m *runnerMetricsImpl) OnExecutionStarted(execContext *executionContext) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
@@ -121,6 +120,7 @@ func (m *runnerMetricsImpl) OnExecutionStarted(
 				if ok {
 					deadline = execContextDeadline
 				}
+
 				m.checkTaskHanging(ctx, deadline)
 			}
 		}()
