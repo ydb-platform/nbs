@@ -161,7 +161,7 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-    TNodeToSessionCounters NodeToSessionCounters; 
+    TNodeToSessionCounters NodeToSessionCounters;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
