@@ -10,33 +10,36 @@ import (
 
 func appendToIncomingContext(
 	ctx context.Context,
-	md grpc_metadata.MD,
+	metadata grpc_metadata.MD,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromIncomingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromIncomingContext(ctx)
 	if ok {
-		md = grpc_metadata.Join(existingMd, md)
+		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
 
-	return grpc_metadata.NewIncomingContext(ctx, md)
+	return grpc_metadata.NewIncomingContext(ctx, metadata)
 }
 
 func appendToOutgoingContext(
 	ctx context.Context,
-	md grpc_metadata.MD,
+	metadata grpc_metadata.MD,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromOutgoingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromOutgoingContext(ctx)
 	if ok {
-		md = grpc_metadata.Join(existingMd, md)
+		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
 
-	return grpc_metadata.NewOutgoingContext(ctx, md)
+	return grpc_metadata.NewOutgoingContext(ctx, metadata)
 }
 
 func Append(ctx context.Context, headers map[string]string) context.Context {
-	md := grpc_metadata.New(headers)
-	return appendToOutgoingContext(appendToIncomingContext(ctx, md), md)
+	metadata := grpc_metadata.New(headers)
+	return appendToOutgoingContext(
+		appendToIncomingContext(ctx, metadata),
+		metadata,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,15 +49,15 @@ func deleteFromIncomingContext(
 	headers map[string]string,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromIncomingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ctx
 	}
 
 	for key := range headers {
-		existingMd.Delete(key)
+		existingMetadata.Delete(key)
 	}
-	return grpc_metadata.NewIncomingContext(ctx, existingMd)
+	return grpc_metadata.NewIncomingContext(ctx, existingMetadata)
 }
 
 func deleteFromOutgoingContext(
@@ -62,15 +65,15 @@ func deleteFromOutgoingContext(
 	headers map[string]string,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromOutgoingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromOutgoingContext(ctx)
 	if !ok {
 		return ctx
 	}
 
 	for key := range headers {
-		existingMd.Delete(key)
+		existingMetadata.Delete(key)
 	}
-	return grpc_metadata.NewOutgoingContext(ctx, existingMd)
+	return grpc_metadata.NewOutgoingContext(ctx, existingMetadata)
 }
 
 func Replace(ctx context.Context, headers map[string]string) context.Context {
@@ -86,7 +89,7 @@ func GetFromIncomingContext(
 	allowedKeys []string,
 ) map[string]string {
 
-	md, ok := grpc_metadata.FromIncomingContext(ctx)
+	metadata, ok := grpc_metadata.FromIncomingContext(ctx)
 	if !ok {
 		return map[string]string{}
 	}
@@ -94,7 +97,7 @@ func GetFromIncomingContext(
 	headers := make(map[string]string)
 
 	for _, key := range allowedKeys {
-		vals := md.Get(key)
+		vals := metadata.Get(key)
 		if len(vals) != 0 {
 			headers[key] = vals[0]
 		}

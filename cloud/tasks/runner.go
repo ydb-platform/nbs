@@ -12,8 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -557,10 +555,13 @@ func lockAndExecuteTask(
 	runCtx, span := tracing.StartSpan(
 		runCtx,
 		fmt.Sprintf(taskInfo.TaskType),
-		trace.WithAttributes(
-			attribute.String("task_id", taskInfo.ID),
-			attribute.Int64("generation_id", int64(taskInfo.GenerationID)),
-			attribute.Bool("regular", taskState.Regular),
+		tracing.WithAttributes(
+			tracing.AttributeString("task_id", taskInfo.ID),
+			tracing.AttributeInt64(
+				"generation_id",
+				int64(taskInfo.GenerationID),
+			),
+			tracing.AttributeBool("regular", taskState.Regular),
 		),
 	)
 	defer span.End()
