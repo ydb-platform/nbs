@@ -7,7 +7,7 @@ index b0a6530113..b4417e08de 100644
 
                         /* ensure we don't return zero. */
 -                       pid = pid + (n << 22);
-+                       pid = pid + (uint32_t(n) << 22);
++                       pid = pid + ((uint32_t)n << 22);
                         return pid ? pid : 1024;
                 }
         }
