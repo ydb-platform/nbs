@@ -15,7 +15,7 @@ import (
 type collectListerMetricsTask struct {
 	registry                    metrics.Registry
 	storage                     storage.Storage
-	hangingTasksGaugesById      map[string]metrics.Gauge
+	hangingTasksGaugesByID      map[string]metrics.Gauge
 	hangingTasksGaugesByType    map[string]metrics.Gauge
 	metricsCollectionInterval   time.Duration
 	hangingTasksDefaultDuration time.Duration
@@ -172,30 +172,33 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	sensor := "hangingTasks"
-	reportedTasksIdsCounter := int64(0)
-	newHangingsTasksGaugesById := make(map[string]metrics.Gauge)
+	reportedTasksIDsCounter := int64(0)
+	newHangingsTasksGaugesByID := make(map[string]metrics.Gauge)
 	newHangingTasksGaugesByType := make(map[string]metrics.Gauge)
 
 	for _, taskInfo := range taskInfos {
 		tasksByType[taskInfo.TaskType]++
-		if reportedTasksIdsCounter < c.maxReportedHangingTaskIDs {
-			subRegistry := c.registry.WithTags(map[string]string{
-				"type": taskInfo.TaskType, "task_id": taskInfo.ID,
-			})
+		if reportedTasksIDsCounter < c.maxReportedHangingTaskIDs {
+			subRegistry := c.registry.WithTags(
+				map[string]string{
+					"type": taskInfo.TaskType, "task_id": taskInfo.ID,
+				},
+			)
 			hangingTasksGauge := subRegistry.Gauge(sensor)
 			hangingTasksGauge.Set(float64(1))
-			newHangingsTasksGaugesById[taskInfo.ID] = hangingTasksGauge
-			reportedTasksIdsCounter++
+			newHangingsTasksGaugesByID[taskInfo.ID] = hangingTasksGauge
+			reportedTasksIDsCounter++
 		}
 	}
 
-	for id, gauge := range c.hangingTasksGaugesById {
-		_, ok := newHangingsTasksGaugesById[id]
+	for id, gauge := range c.hangingTasksGaugesByID {
+		_, ok := newHangingsTasksGaugesByID[id]
 		if !ok {
 			gauge.Set(float64(0))
 		}
 	}
-	c.hangingTasksGaugesById = newHangingsTasksGaugesById
+
+	c.hangingTasksGaugesByID = newHangingsTasksGaugesByID
 
 	for taskType, count := range tasksByType {
 		subRegistry := c.registry.WithTags(map[string]string{
