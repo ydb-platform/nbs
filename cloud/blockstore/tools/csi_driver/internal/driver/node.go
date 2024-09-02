@@ -829,6 +829,21 @@ func (s *nodeService) NodeExpandVolume(
 			"CapacityRange is missing in NodeExpandVolumeRequest")
 	}
 
+	if resp.Volume.BlockSize == 0 {
+		return nil, status.Error(
+			codes.Internal,
+			"Invalid block size")
+	}
+
+	newBlocksCount := uint64(math.Ceil(
+		float64(req.CapacityRange.RequiredBytes) / float64(resp.Volume.BlockSize)),
+	)
+	if newBlocksCount <= resp.Volume.BlocksCount {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"New blocks count is less than or equal to current blocks count value")
+	}
+
 	podId, err := s.parsePodId(req.VolumePath)
 	if err != nil {
 		return nil, err
@@ -859,9 +874,6 @@ func (s *nodeService) NodeExpandVolume(
 			"Failed to determine NBD Device filename")
 	}
 
-	newBlocksCount := uint64(math.Ceil(
-		float64(req.CapacityRange.RequiredBytes) / float64(resp.Volume.BlockSize)),
-	)
 	log.Printf("Resize volume id %v blocks count %v", req.VolumeId, newBlocksCount)
 	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
 		DiskId:             req.VolumeId,
