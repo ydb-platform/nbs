@@ -1,7 +1,6 @@
 SET(RECIPE_DEPS_LIST
     cloud/disk_manager/test/images/server
     cloud/disk_manager/test/images/recipe
-    cloud/disk_manager/test/images/resources
     cloud/disk_manager/test/images/qcow2generator
 )
 

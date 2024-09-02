@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -122,6 +123,14 @@ struct TFlushBytesStats
     bool ChunkCompleted = false;
 };
 
+struct TNodeToSessionCounters
+{
+    i64 NodesOpenForWritingBySingleSession{0};
+    i64 NodesOpenForWritingByMultipleSessions{0};
+    i64 NodesOpenForReadingBySingleSession{0};
+    i64 NodesOpenForReadingByMultipleSessions{0};
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
@@ -140,6 +149,7 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
+    TNodeToSessionCounters NodeToSessionCounters;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -243,6 +253,11 @@ public:
         return FileSystemStats;
     }
 
+    const TNodeToSessionCounters& GetNodeToSessionCounters() const
+    {
+        return NodeToSessionCounters;
+    }
+
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 
     const TFileStoreAllocRegistry& GetFileStoreProfilingRegistry() const
@@ -293,6 +308,8 @@ private:                                                                       \
 FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
+
+    void ChangeNodeCounters(const TNodeToSessionStat::EKind nodeKind, i64 amount);
 
     //
     // Throttling

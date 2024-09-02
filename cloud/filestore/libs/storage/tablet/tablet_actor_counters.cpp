@@ -297,6 +297,19 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        NodesOpenForWritingBySingleSession,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodesOpenForWritingByMultipleSessions,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodesOpenForReadingBySingleSession,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodesOpenForReadingByMultipleSessions,
+        EMetricType::MT_ABSOLUTE);
+
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);
@@ -374,7 +387,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TSessionsStats& sessionsStats,
     const TChannelsStats& channelsStats,
     const TReadAheadCacheStats& readAheadStats,
-    const TNodeIndexCacheStats& nodeIndexCacheStats)
+    const TNodeIndexCacheStats& nodeIndexCacheStats,
+    const TNodeToSessionCounters& nodeToSessionCounters)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -432,6 +446,19 @@ void TIndexTabletActor::TMetrics::Update(
     Store(ReadAheadCacheNodeCount, readAheadStats.NodeCount);
     Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
+    Store(
+        NodesOpenForWritingBySingleSession,
+        nodeToSessionCounters.NodesOpenForWritingBySingleSession);
+    Store(
+        NodesOpenForWritingByMultipleSessions,
+        nodeToSessionCounters.NodesOpenForWritingByMultipleSessions);
+    Store(
+        NodesOpenForReadingBySingleSession,
+        nodeToSessionCounters.NodesOpenForReadingBySingleSession);
+    Store(
+        NodesOpenForReadingByMultipleSessions,
+        nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
+
     BusyIdleCalc.OnUpdateStats();
 }
 
@@ -479,7 +506,8 @@ void TIndexTabletActor::RegisterStatCounters()
         CalculateSessionsStats(),
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
-        CalculateNodeIndexCacheStats());
+        CalculateNodeIndexCacheStats(),
+        GetNodeToSessionCounters());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -524,7 +552,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateSessionsStats(),
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
-        CalculateNodeIndexCacheStats());
+        CalculateNodeIndexCacheStats(),
+        GetNodeToSessionCounters());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
