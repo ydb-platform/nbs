@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -692,6 +693,8 @@ func (s *nodeService) NodeGetVolumeStats(
 	req *csi.NodeGetVolumeStatsRequest) (
 	*csi.NodeGetVolumeStatsResponse, error) {
 
+	log.Printf("csi.NodeGetVolumeStats: %+v", req)
+
 	if req.VolumeId == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
@@ -712,24 +715,20 @@ func (s *nodeService) NodeGetVolumeStats(
 		return nil, fmt.Errorf("NBS client is not available")
 	}
 
-	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
-		DiskId: req.VolumeId,
-	}
-
-	_, err := s.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	mounted, err := s.mounter.IsMountPoint(req.VolumePath)
 	if err != nil {
-		if nbsclient.IsDiskNotFoundError(err) {
+		if err == fs.ErrNotExist {
 			return nil, s.statusError(
 				codes.NotFound,
-				"Volume is not found")
+				"Mount point does not exist")
 		}
+
 		return nil, s.statusErrorf(
 			codes.Internal,
-			"Failed to get volume stats: %v", err)
+			"NodeGetVolumeStats failed: %w", err)
 	}
 
-	_, err = s.mounter.IsMountPoint(req.VolumePath)
-	if err != nil {
+	if !mounted {
 		return nil, s.statusError(
 			codes.NotFound,
 			"Volume does not exist on the specified path")
