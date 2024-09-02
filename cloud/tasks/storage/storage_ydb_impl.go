@@ -934,6 +934,7 @@ func (s *storageYDB) listTasksHanging(
 	taskTypeBlackList []string,
 	defaultHangingTasksTimeout time.Duration,
 ) ([]TaskInfo, error) {
+
 	now := time.Now()
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -973,6 +974,7 @@ func (s *storageYDB) listTasksHanging(
 		return nil, err
 	}
 	defer res.Close()
+
 	return scanTaskInfosStream(ctx, res)
 }
 

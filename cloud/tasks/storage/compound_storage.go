@@ -254,16 +254,19 @@ func (s *compoundStorage) ListTasksHanging(
 	defaultHangingTaskTimeout time.Duration,
 ) ([]TaskInfo, error) {
 	tasks := []TaskInfo{}
-	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksHanging(
-			ctx,
-			limit,
-			tasksTypeBlackList,
-			defaultHangingTaskTimeout,
-		)
-		tasks = append(tasks, values...)
-		return err
-	})
+	err := s.visit(
+		ctx,
+		func(storage Storage) error {
+			values, err := storage.ListTasksHanging(
+				ctx,
+				limit,
+				tasksTypeBlackList,
+				defaultHangingTaskTimeout,
+			)
+			tasks = append(tasks, values...)
+			return err
+		},
+	)
 	return tasks, err
 }
 
