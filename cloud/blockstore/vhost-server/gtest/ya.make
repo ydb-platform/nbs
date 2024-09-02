@@ -1,6 +1,6 @@
 GTEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     ../backend.cpp
