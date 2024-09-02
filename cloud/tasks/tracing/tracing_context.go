@@ -56,6 +56,5 @@ func SetTracingContext(ctx context.Context) context.Context {
 	if ok {
 		tracingContextHeaders[tracestateHeaderKey] = tracestate
 	}
-
 	return headers.Replace(ctx, tracingContextHeaders)
 }

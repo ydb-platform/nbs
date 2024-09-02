@@ -17,7 +17,6 @@ func appendToIncomingContext(
 	if ok {
 		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
-
 	return grpc_metadata.NewIncomingContext(ctx, metadata)
 }
 
@@ -30,7 +29,6 @@ func appendToOutgoingContext(
 	if ok {
 		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
-
 	return grpc_metadata.NewOutgoingContext(ctx, metadata)
 }
 
@@ -110,7 +108,6 @@ func GetFromIncomingContext(
 	if !ok {
 		return map[string]string{}
 	}
-
 	return getFromMetadata(metadata, allowedKeys)
 }
 
@@ -123,7 +120,6 @@ func GetFromOutgoingContext(
 	if !ok {
 		return map[string]string{}
 	}
-
 	return getFromMetadata(metadata, allowedKeys)
 }
 
