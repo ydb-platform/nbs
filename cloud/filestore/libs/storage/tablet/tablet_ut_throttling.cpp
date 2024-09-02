@@ -294,7 +294,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         // TODO: 7. Test max count (NBS-2278).
     }
 
-    Y_UNIT_TEST_F(ShouldThrottleTwoStage, TTablet)
+    Y_UNIT_TEST_F(ShouldThrottleMultipleStage, TTablet)
     {
         const auto config = MakeThrottlerConfig(
             true,                                    // throttlingEnabled
@@ -364,7 +364,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         }
 
         // Now PostponedQueue is empty.
-        
+
         // 4. Testing that bursts actually work.
         Tick(TDuration::Seconds(2));
         DescribeData(0, 12_KB);
