@@ -19,7 +19,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <bool DoDecrypt>
-[[nodiscard]] bool DoCryptoOperation(
+[[nodiscard]] NProto::TError DoCryptoOperation(
     IEncryptor& encryptor,
     TBlockDataRef src,
     TBlockDataRef dst,
@@ -39,26 +39,33 @@ template <bool DoDecrypt>
                 continue;
             }
 
-            if (!encryptor.Decrypt(srcRef, dstRef, startSector + i)) {
+            auto err = encryptor.Decrypt(srcRef, dstRef, startSector + i);
+            if (HasError(err)) {
                 // Something went wrong inside the decryption operation.
-                return false;
+                return err;
             }
         } else {
-            if (!encryptor.Encrypt(srcRef, dstRef, startSector + i)) {
+            auto err = encryptor.Encrypt(srcRef, dstRef, startSector + i);
+            if (HasError(err)) {
                 // Something went wrong inside the encryption operation.
-                return false;
+                return err;
             }
 
             if (IsAllZeroes(dstRef.Data(), dstRef.Size())) {
-                ReportCriticalEvent(
-                    "EncryptorGeneratedZeroBlock",
+                auto err = MakeError(
+                    E_INVALID_STATE,
                     TStringBuilder() << "Encryptor has generated a zero block #"
                                      << startSector + i << " !");
-                return false;
+
+                ReportCriticalEvent(
+                    "EncryptorGeneratedZeroBlock",
+                    err.GetMessage());
+
+                return err;
             }
         }
     }
-    return true;
+    return {};
 }
 
 void PrepareCompoundIO(
@@ -183,12 +190,13 @@ bool SgListCopyWithOptionalDecryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{src, buffer.len};
         TBlockDataRef dstRef{static_cast<const char*>(buffer.base), buffer.len};
-        if (!DoCryptoOperation<true>(*encryptor, srcRef, dstRef, startSector)) {
+        auto err =
+            DoCryptoOperation<true>(*encryptor, srcRef, dstRef, startSector);
+        if (HasError(err)) {
             STORAGE_ERROR(
-                "Decryption error. Start block %" PRIu64
-                ", blocks count %" PRIu64,
-                startSector,
-                buffers.size());
+                "Decryption error: " << FormatError(err) << ". Start block "
+                                     << startSector << ", blocks count "
+                                     << buffers.size());
             return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
@@ -217,13 +225,13 @@ bool SgListCopyWithOptionalEncryption(
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{static_cast<const char*>(buffer.base), buffer.len};
         TBlockDataRef dstRef{dst, buffer.len};
-        if (!DoCryptoOperation<false>(*encryptor, srcRef, dstRef, startSector))
-        {
+        auto err =
+            DoCryptoOperation<false>(*encryptor, srcRef, dstRef, startSector);
+        if (HasError(err)) {
             STORAGE_ERROR(
-                "Encryption error. Start block %" PRIu64
-                ", blocks count %" PRIu64,
-                startSector,
-                buffers.size());
+                "Encryption error: " << FormatError(err) << ". Start block "
+                                     << startSector << ", blocks count "
+                                     << buffers.size());
             return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
