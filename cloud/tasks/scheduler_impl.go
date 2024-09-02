@@ -610,6 +610,10 @@ func NewScheduler(
 
 	hangingTasksDefaultDuration, err := time.ParseDuration(
 		config.GetHangingTaskTimeout())
+	if err != nil {
+		return nil, err
+	}
+
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
