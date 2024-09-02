@@ -23,15 +23,15 @@ type collectListerMetricsTask struct {
 	maxReportedHangingTaskIDs   int64
 }
 
-func (c collectListerMetricsTask) Save() ([]byte, error) {
+func (c *collectListerMetricsTask) Save() ([]byte, error) {
 	return nil, nil
 }
 
-func (c collectListerMetricsTask) Load(request []byte, state []byte) error {
+func (c *collectListerMetricsTask) Load(request []byte, state []byte) error {
 	return nil
 }
 
-func (c collectListerMetricsTask) Run(
+func (c *collectListerMetricsTask) Run(
 	ctx context.Context,
 	execCtx ExecutionContext,
 ) error {
@@ -107,7 +107,7 @@ func (c collectListerMetricsTask) Run(
 	return nil
 }
 
-func (c collectListerMetricsTask) Cancel(
+func (c *collectListerMetricsTask) Cancel(
 	ctx context.Context,
 	execCtx ExecutionContext,
 ) error {
@@ -115,20 +115,20 @@ func (c collectListerMetricsTask) Cancel(
 	return nil
 }
 
-func (c collectListerMetricsTask) GetMetadata(
+func (c *collectListerMetricsTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (c collectListerMetricsTask) GetResponse() proto.Message {
+func (c *collectListerMetricsTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c collectListerMetricsTask) collectTasksMetrics(
+func (c *collectListerMetricsTask) collectTasksMetrics(
 	ctx context.Context,
 	getTaskInfos func(context.Context) ([]storage.TaskInfo, error),
 	sensor string,
@@ -155,7 +155,7 @@ func (c collectListerMetricsTask) collectTasksMetrics(
 	return nil
 }
 
-func (c collectListerMetricsTask) collectHangingTasksMetrics(
+func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	ctx context.Context,
 ) error {
 
