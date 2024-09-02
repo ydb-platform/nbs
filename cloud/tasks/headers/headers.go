@@ -84,15 +84,10 @@ func Replace(ctx context.Context, headers map[string]string) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetFromIncomingContext(
-	ctx context.Context,
+func getFromMetadata(
+	metadata grpc_metadata.MD,
 	allowedKeys []string,
 ) map[string]string {
-
-	metadata, ok := grpc_metadata.FromIncomingContext(ctx)
-	if !ok {
-		return map[string]string{}
-	}
 
 	headers := make(map[string]string)
 
@@ -104,6 +99,32 @@ func GetFromIncomingContext(
 	}
 
 	return headers
+}
+
+func GetFromIncomingContext(
+	ctx context.Context,
+	allowedKeys []string,
+) map[string]string {
+
+	metadata, ok := grpc_metadata.FromIncomingContext(ctx)
+	if !ok {
+		return map[string]string{}
+	}
+
+	return getFromMetadata(metadata, allowedKeys)
+}
+
+func GetFromOutgoingContext(
+	ctx context.Context,
+	allowedKeys []string,
+) map[string]string {
+
+	metadata, ok := grpc_metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return map[string]string{}
+	}
+
+	return getFromMetadata(metadata, allowedKeys)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
