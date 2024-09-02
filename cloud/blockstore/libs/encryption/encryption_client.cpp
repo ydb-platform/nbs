@@ -643,10 +643,14 @@ NProto::TError TEncryptionClient::Encrypt(
         }
 
         if (IsAllZeroes(dst[i])) {
-            ReportEncryptorGeneratedZeroBlock(TStringBuilder()
-                << "block #" << startIndex + i);
+            auto err = MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "Encryptor has generated a zero block (#"
+                                 << startIndex + i << ")!");
 
-            return MakeError(E_FAIL, "Encryptor has generated a zero block!");
+            ReportEncryptorGeneratedZeroBlock(err.GetMessage());
+
+            return err;
         }
     }
 
