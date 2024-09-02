@@ -945,9 +945,9 @@ func (s *storageYDB) listTasksHanging(
 		declare $now as Timestamp;
 		
 		$task_ids = (
-			select id from ready_to_run UNION
-			select id from running UNION
-			select id from ready_to_cancel UNION
+			select id from ready_to_run UNION ALL
+			select id from running UNION ALL
+			select id from ready_to_cancel UNION ALL
 			select id from cancelling
 		);
 		select * from tasks
