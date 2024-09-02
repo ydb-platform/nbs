@@ -1371,22 +1371,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldProcessDestroyHandleRequestsAsynchronously)
     {
-        NProto::TFileStoreFeatures feauters;
-        feauters.SetAsyncDestroyHandleEnabled(true);
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            feauters);
+            features);
 
-        ui64 handle1 = 2;
-        ui64 nodeId1 = 10;
-        ui64 handle2 = 5;
-        ui64 nodeId2 = 11;
-        bool releaseFinished = false;
-        ui32 handlerCalled = 0;
+        const ui64 handle1 = 2;
+        const ui64 nodeId1 = 10;
+        const ui64 handle2 = 5;
+        const ui64 nodeId2 = 11;
+        std::atomic_bool releaseFinished = false;
+        std::atomic_uint handlerCalled = 0;
         auto destroyFinished = NewPromise<void>();
         bootstrap.Service->SetHandlerDestroyHandle(
-            [&](auto callContext, auto request)
+            [&, destroyFinished](auto callContext, auto request) mutable
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
@@ -1397,7 +1397,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
                 } else if (handlerCalled == 2) {
-                    UNIT_ASSERT_VALUES_EQUAL(releaseFinished, true);
+                    UNIT_ASSERT(releaseFinished);
                     UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
                     destroyFinished.TrySetValue();
@@ -1420,24 +1420,24 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         releaseFinished = true;
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(2, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
     {
-        NProto::TFileStoreFeatures feauters;
-        feauters.SetAsyncDestroyHandleEnabled(true);
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            feauters);
+            features);
 
-        ui64 handle = 2;
-        ui64 nodeId = 10;
-        ui32 handlerCalled = 0;
+        const ui64 handle = 2;
+        const ui64 nodeId = 10;
+        std::atomic_uint handlerCalled = 0;
         auto destroyFinished = NewPromise<void>();
         bootstrap.Service->SetHandlerDestroyHandle(
-            [&](auto callContext, auto request)
+            [&, destroyFinished](auto callContext, auto request) mutable
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
@@ -1461,21 +1461,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(4, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(4U, handlerCalled.load());
     }
 
     Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEvent)
     {
-        NProto::TFileStoreFeatures feauters;
-        feauters.SetAsyncDestroyHandleEnabled(true);
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
         auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, feauters);
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
-        ui64 handle = 2;
-        ui64 nodeId = 10;
+        const ui64 handle = 2;
+        const ui64 nodeId = 10;
         auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
-            [&](auto callContext, auto request)
+            [&, responsePromise](auto callContext, auto request)
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
