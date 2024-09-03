@@ -1224,7 +1224,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	timeoutString := hangingTaskTimeout.String()
 	config.HangingTaskTimeout = &timeoutString
 	metricsCollectionInterval := "10ms"
-	config.CollectListerMetricsTaskScheduleInterval = &metricsCollectionInterval
+	config.ListerMetricsCollectionInterval = &metricsCollectionInterval
 	config.ExceptHangingTaskTypes = []string{"tasks.CollectListerMetrics"}
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
