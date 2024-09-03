@@ -65,8 +65,10 @@ func InitTracing(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(*config.ServiceName),
 	)
+	sampler := sdktrace.ParentBased(sdktrace.AlwaysSample())
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithSampler(sampler),
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)
