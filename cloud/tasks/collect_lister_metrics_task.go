@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -180,6 +181,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	for _, taskInfo := range taskInfos {
 		tasksByType[taskInfo.TaskType]++
 		if reportedTaskIDCount < c.maxHangingTaskIDsToReport {
+			logging.Info(ctx, "Task %s is hanging.", taskInfo.ID)
 			subRegistry := c.registry.WithTags(
 				map[string]string{
 					"type": taskInfo.TaskType, "id": taskInfo.ID,
@@ -195,6 +197,11 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	for id, gauge := range c.hangingTaskGaugesByID {
 		_, ok := newHangingsTaskGaugesByID[id]
 		if !ok {
+			logging.Info(
+				ctx,
+				"Tasks with id %s is not hanging no more.",
+				id,
+			)
 			gauge.Set(float64(0))
 		}
 	}
@@ -213,6 +220,11 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	for taskType, gauge := range c.hangingTaskGaugesByType {
 		_, ok := newHangingTaskGaugesByType[taskType]
 		if !ok {
+			logging.Info(
+				ctx,
+				"Tasks with type %s is not hanging no more.",
+				taskType,
+			)
 			gauge.Set(float64(0))
 		}
 	}
