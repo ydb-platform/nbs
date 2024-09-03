@@ -322,6 +322,8 @@ func scheduleLongTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const hangingTaskType = "tasks.hanging"
+
 type hangingTask struct{}
 
 func (t *hangingTask) Save() ([]byte, error) {
@@ -357,7 +359,7 @@ func (t *hangingTask) GetResponse() proto.Message {
 
 func registerHangingTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution(
-		"tasks.hanging",
+		hangingTaskType,
 		func() tasks.Task {
 			return &hangingTask{}
 		},
@@ -371,7 +373,7 @@ func scheduleHangingeTask(
 
 	return scheduler.ScheduleTask(
 		ctx,
-		"tasks.hanging",
+		hangingTaskType,
 		"Hanging task",
 		&empty.Empty{},
 	)
@@ -1226,7 +1228,10 @@ func TestHangingTasksMetrics(t *testing.T) {
 	config.HangingTaskTimeout = &timeoutString
 	metricsCollectionInterval := "10ms"
 	config.ListerMetricsCollectionInterval = &metricsCollectionInterval
-	config.ExceptHangingTaskTypes = []string{"tasks.CollectListerMetrics"}
+	config.ExceptHangingTaskTypes = []string{
+		"tasks.CollectListerMetrics",
+		"tasks.ClearEndedTasks",
+	}
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 	err = registerHangingTask(s.registry)
@@ -1239,22 +1244,43 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskId, err := scheduleHangingeTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
+	collectedTaskStatuses := []tasks_storage.TaskStatus{
+		tasks_storage.TaskStatusReadyToRun,
+		tasks_storage.TaskStatusRunning,
+		tasks_storage.TaskStatusReadyToCancel,
+		tasks_storage.TaskStatusCancelling,
+	}
+	for _, taskStatus := range collectedTaskStatuses {
+		for _, taskType := range config.ExceptHangingTaskTypes {
+			registry.GetGauge(
+				tasks_storage.TaskStatusToString(taskStatus),
+				map[string]string{"type": taskType},
+			).On("Set", mock.Anything).Maybe()
+		}
+
+		registry.GetGauge(
+			tasks_storage.TaskStatusToString(taskStatus),
+			map[string]string{"type": hangingTaskType},
+		).On("Set", mock.Anything).Maybe()
+
+	}
+
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": "all"},
+		map[string]string{"type": hangingTaskType, "id": "all"},
 	).On("Set", float64(1)).Return(mock.Anything)
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": taskId},
+		map[string]string{"type": hangingTaskType, "id": taskId},
 	).On("Set", float64(1)).Return(mock.Anything)
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": "all"},
+		map[string]string{"type": hangingTaskType, "id": "all"},
 	).On("Set", float64(0)).NotBefore(
 		gaugeSet1TypeCall).Return(mock.Anything)
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": taskId},
+		map[string]string{"type": hangingTaskType, "id": taskId},
 	).On("Set", float64(0)).NotBefore(
 		gaugeSet1IDCall).Return(mock.Anything)
 
