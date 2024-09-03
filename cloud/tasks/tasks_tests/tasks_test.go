@@ -1215,7 +1215,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	registry := mocks.NewRegistryMock()
 
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
-	runnersCount := uint64(2)
+	runnersCount := uint64(5)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
 	taskWaitingTimeout := "10s"
