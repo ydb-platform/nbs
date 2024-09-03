@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -549,6 +550,21 @@ func lockAndExecuteTask(
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
 	runCtx = logging.WithCommonFields(runCtx)
+	runCtx = tracing.GetTracingContext(runCtx)
+
+	runCtx, span := tracing.StartSpan(
+		runCtx,
+		fmt.Sprintf(taskInfo.TaskType),
+		tracing.WithAttributes(
+			tracing.AttributeString("task_id", taskInfo.ID),
+			tracing.AttributeInt64(
+				"generation_id",
+				int64(taskInfo.GenerationID),
+			),
+			tracing.AttributeBool("regular", taskState.Regular),
+		),
+	)
+	defer span.End()
 
 	execCtx := newExecutionContext(task, taskStorage, taskState)
 
