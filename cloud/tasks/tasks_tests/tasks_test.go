@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
@@ -1241,19 +1242,21 @@ func TestHangingTasksMetrics(t *testing.T) {
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": "all"},
-	).On("Set", float64(1)).Once()
+	).On("Set", float64(1)).Return(mock.Anything)
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskId},
-	).On("Set", float64(1))
+	).On("Set", float64(1)).Return(mock.Anything)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": "all"},
-	).On("Set", float64(0)).NotBefore(gaugeSet1TypeCall)
+	).On("Set", float64(0)).NotBefore(
+		gaugeSet1TypeCall).Return(mock.Anything)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskId},
-	).On("Set", float64(0)).NotBefore(gaugeSet1IDCall)
+	).On("Set", float64(0)).NotBefore(
+		gaugeSet1IDCall).Return(mock.Anything)
 
 	time.Sleep(hangingTaskTimeout * 2)
 	_, err = s.scheduler.CancelTask(ctx, taskId)
