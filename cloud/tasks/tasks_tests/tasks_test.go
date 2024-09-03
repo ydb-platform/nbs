@@ -1218,6 +1218,8 @@ func TestHangingTasksMetrics(t *testing.T) {
 	runnersCount := uint64(2)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
+	taskWaitingTimeout := "10s"
+	config.TaskWaitingTimeout = &taskWaitingTimeout
 	hangingTaskTimeout := time.Second * 5
 	timeoutString := hangingTaskTimeout.String()
 	config.HangingTaskTimeout = &timeoutString
