@@ -1274,7 +1274,7 @@ func (s *storageYDB) lockSnapshot(
 		return false, err
 	}
 
-	logging.Info(ctx, "Successfully locked snapshot with id %v", snapshotID)
+	logging.Info(ctx, "Locked snapshot with id %v", snapshotID)
 	return true, nil
 }
 
@@ -1355,6 +1355,6 @@ func (s *storageYDB) unlockSnapshot(
 		return err
 	}
 
-	logging.Info(ctx, "Successfully unlocked snapshot with id %v", snapshotID)
+	logging.Info(ctx, "Unlocked snapshot with id %v", snapshotID)
 	return nil
 }

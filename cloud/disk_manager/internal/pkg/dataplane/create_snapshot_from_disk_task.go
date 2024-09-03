@@ -80,7 +80,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		}
 		logging.Info(
 			ctx,
-			"Successfully unlocked snapshot with id %v",
+			"Unlocked snapshot with id %v",
 			t.state.BaseSnapshotId,
 		)
 	}
@@ -146,7 +146,7 @@ func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 	if diskParams.IsDiskRegistryBasedDisk {
 		logging.Info(
 			ctx,
-			"Should perform full snapshot %v of disk %v",
+			"Performing full snapshot %v of disk %v because it is registry based",
 			snapshotMeta.ID,
 			t.request.SrcDisk.DiskId,
 		)
@@ -169,7 +169,7 @@ func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 		if locked {
 			logging.Info(
 				ctx,
-				"Successfully locked snapshot with id %v",
+				"Locked snapshot with id %v",
 				baseSnapshotID,
 			)
 		} else {
@@ -209,7 +209,7 @@ func (t *createSnapshotFromDiskTask) unlockBaseSnapshot(
 		}
 		logging.Info(
 			ctx,
-			"Successfully unlocked snapshot with id %v",
+			"Unlocked snapshot with id %v",
 			t.state.BaseSnapshotId,
 		)
 
