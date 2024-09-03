@@ -897,6 +897,12 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
 
     DecrementLargeDeletionMarkersCount(db, largeDeletionMarkerCount);
 
+    if (PriorityRangeIdsForCleanup
+            && PriorityRangeIdsForCleanup.front() == rangeId)
+    {
+        PriorityRangeIdsForCleanup.pop_front();
+    }
+
     auto stats = GetCompactionStats(rangeId);
     // FIXME: return SafeDecrement after NBS-4475
     stats.BlobsCount = (stats.BlobsCount > removedBlobs) ? (stats.BlobsCount - removedBlobs) : 0;
@@ -1152,6 +1158,35 @@ TCompactionCounter TIndexTabletState::GetRangeToCompact() const
 TCompactionCounter TIndexTabletState::GetRangeToCleanup() const
 {
     return Impl->CompactionMap.GetTopCleanupScore();
+}
+
+TMaybe<ui32> TIndexTabletState::NextPriorityRangeIdForCleanup() const
+{
+    if (PriorityRangeIdsForCleanup.empty()
+            && GetLargeDeletionMarkersCount() >= LargeDeletionMarkersThreshold)
+    {
+        auto one = Impl->LargeBlocks.GetOne();
+        SplitRange(
+            one.BlockIndex,
+            one.BlockCount,
+            BlockGroupSize,
+            [&] (ui32 blockOffset, ui32 blocksCount) {
+                Y_UNUSED(blocksCount);
+                PriorityRangeIdsForCleanup.push_back(
+                    GetMixedRangeIndex(one.NodeId, blockOffset));
+            });
+    }
+
+    if (PriorityRangeIdsForCleanup) {
+        return PriorityRangeIdsForCleanup.front();
+    }
+
+    return {};
+}
+
+ui32 TIndexTabletState::GetPriorityRangeIdCount() const
+{
+    return PriorityRangeIdsForCleanup.size();
 }
 
 TCompactionMapStats TIndexTabletState::GetCompactionMapStats(ui32 topSize) const

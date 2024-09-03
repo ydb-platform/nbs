@@ -462,7 +462,6 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
 
 TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
 {
-    // TODO: take LargeDeletionMarkers into account
     auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
@@ -472,6 +471,13 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         : 0;
     const bool shouldCleanup =
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
+    bool isPriority = false;
+
+    if (auto priorityRangeId = NextPriorityRangeIdForCleanup()) {
+        cleanupRangeId = *priorityRangeId;
+        cleanupScore = Max<ui32>();
+        isPriority = true;
+    }
 
     return {
         Config->GetCleanupThreshold(),
@@ -479,11 +485,15 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         cleanupScore,
         cleanupRangeId,
         avgCleanupScore,
+        Config->GetLargeDeletionMarkersThreshold(),
+        GetLargeDeletionMarkersCount(),
+        GetPriorityRangeIdCount(),
+        isPriority,
         Config->GetNewCleanupEnabled(),
         cleanupScore >= Config->GetCleanupThreshold()
             || Config->GetNewCleanupEnabled()
-            && cleanupScore && shouldCleanup,
-    };
+            && cleanupScore && shouldCleanup
+            || isPriority};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

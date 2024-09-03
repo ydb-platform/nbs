@@ -95,6 +95,10 @@ struct TCleanupInfo
     const ui32 Score;
     const ui32 RangeId;
     const double AverageScore;
+    const ui64 LargeDeletionMarkersThreshold;
+    const ui64 LargeDeletionMarkerCount;
+    const ui32 PriorityRangeIdCount;
+    const bool IsPriority;
     const bool NewCleanupEnabled;
     const bool ShouldCleanup;
 
@@ -104,6 +108,10 @@ struct TCleanupInfo
             ui32 score,
             ui32 rangeId,
             double averageScore,
+            ui64 largeDeletionMarkersThreshold,
+            ui64 largeDeletionMarkerCount,
+            ui32 priorityRangeIdCount,
+            bool isPriority,
             bool newCleanupEnabled,
             bool shouldCleanup)
         : Threshold(threshold)
@@ -111,6 +119,10 @@ struct TCleanupInfo
         , Score(score)
         , RangeId(rangeId)
         , AverageScore(averageScore)
+        , LargeDeletionMarkersThreshold(largeDeletionMarkersThreshold)
+        , LargeDeletionMarkerCount(largeDeletionMarkerCount)
+        , PriorityRangeIdCount(priorityRangeIdCount)
+        , IsPriority(isPriority)
         , NewCleanupEnabled(newCleanupEnabled)
         , ShouldCleanup(shouldCleanup)
     {
@@ -988,6 +1000,9 @@ public:
 
     TBlobIndexOpQueue BlobIndexOps;
 
+private:
+    mutable TDeque<ui32> PriorityRangeIdsForCleanup;
+
     //
     // Compaction map
     //
@@ -998,6 +1013,8 @@ public:
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
+    TMaybe<ui32> NextPriorityRangeIdForCleanup() const;
+    ui32 GetPriorityRangeIdCount() const;
 
     TCompactionMapStats GetCompactionMapStats(ui32 topSize) const;
 

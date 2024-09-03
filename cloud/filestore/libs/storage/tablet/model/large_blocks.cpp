@@ -149,6 +149,22 @@ void TLargeBlocks::ApplyAndUpdateDeletionMarkers(TVector<TBlock>& blocks)
     Impl->Apply(blocks, true);
 }
 
+TDeletionMarker TLargeBlocks::GetOne() const
+{
+    const TDeletionMarker invalid(0, InvalidCommitId, 0, 0);
+    if (Impl->NodeId2Markers.empty()) {
+        return invalid;
+    }
+
+    const auto& markers = Impl->NodeId2Markers.begin()->second;
+    Y_DEBUG_ABORT_UNLESS(!markers.empty());
+    if (markers.empty()) {
+        return invalid;
+    }
+
+    return markers.begin()->Marker;
+}
+
 TVector<TDeletionMarker> TLargeBlocks::ExtractProcessedDeletionMarkers()
 {
     auto res = std::move(Impl->ProcessedMarkers);

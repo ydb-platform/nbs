@@ -35,6 +35,11 @@ struct TDeletionMarker
             && BlockIndex == other.BlockIndex
             && BlockCount == other.BlockCount;
     }
+
+    bool IsValid() const
+    {
+        return CommitId != InvalidCommitId && BlockCount > 0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

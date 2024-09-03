@@ -46,6 +46,13 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         lb.AddDeletionMarker({nodeId1, commitId, l, l});
         lb.AddDeletionMarker({nodeId1, commitId, 2 * l, rem});
 
+        auto one = lb.GetOne();
+        UNIT_ASSERT(one.IsValid());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, one.NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(0, one.BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(l, one.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(commitId, one.CommitId);
+
         lb.ApplyDeletionMarkers(blobs[0]);
         for (auto& block: blobs[0]) {
             UNIT_ASSERT_VALUES_EQUAL(commitId, block.MaxCommitId);
@@ -87,6 +94,13 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(l, processed[0].BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(commitId, processed[0].CommitId);
 
+        one = lb.GetOne();
+        UNIT_ASSERT(one.IsValid());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, one.NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(l, one.BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(l, one.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(commitId, one.CommitId);
+
         for (ui32 i = l / blobBlocks; i < (2 * l + rem) / blobBlocks; ++i) {
             lb.ApplyAndUpdateDeletionMarkers(blobs[i]);
             for (const auto& block: blobs[i]) {
@@ -104,6 +118,9 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(2 * l, processed[1].BlockIndex);
         UNIT_ASSERT_VALUES_EQUAL(rem, processed[1].BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(commitId, processed[1].CommitId);
+
+        one = lb.GetOne();
+        UNIT_ASSERT(!one.IsValid());
     }
 }
 
