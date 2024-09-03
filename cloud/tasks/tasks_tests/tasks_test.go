@@ -1215,7 +1215,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	registry := mocks.NewRegistryMock()
 
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
-	runnersCount := uint64(5)
+	runnersCount := uint64(2)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
 	taskWaitingTimeout := "10s"
@@ -1230,6 +1230,10 @@ func TestHangingTasksMetrics(t *testing.T) {
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 	err = registerHangingTask(s.registry)
 	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
 	reqCtx := getRequestContext(t, ctx)
 	taskId, err := scheduleHangingeTask(reqCtx, s.scheduler)
 	gaugeSet1TypeCall := registry.GetGauge(
