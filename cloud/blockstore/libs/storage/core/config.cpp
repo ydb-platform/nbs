@@ -602,7 +602,6 @@ bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
     return value.empty();
 }
 
-
 template <>
 bool IsEmpty(const NCloud::NProto::TCertificate& value)
 {
@@ -953,7 +952,6 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 
     return {value};
 }
-
 
 const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
 {
