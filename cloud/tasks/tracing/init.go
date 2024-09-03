@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tracing_config "github.com/ydb-platform/nbs/cloud/tasks/tracing/config"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -31,6 +32,15 @@ func StartSpan(
 ) (context.Context, trace.Span) {
 
 	return otel.Tracer(tracerName).Start(ctx, spanName, opts...)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func SetError(span trace.Span, err error) {
+
+	if err != nil {
+		span.SetStatus(codes.Error, fmt.Sprintf("%v", err))
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

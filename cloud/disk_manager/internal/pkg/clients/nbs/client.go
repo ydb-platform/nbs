@@ -18,6 +18,7 @@ import (
 	core_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -606,6 +607,13 @@ func (c *client) Create(
 
 	defer c.metrics.StatRequest("Create")(&err)
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"NBS.Create",
+	)
+	defer span.End()
+	defer tracing.SetError(span, err)
+
 	kind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
 		return err
@@ -616,8 +624,7 @@ func (c *client) Create(
 		return err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateVolume(
+	return c.createVolume(
 		ctx,
 		params.ID,
 		params.BlocksCount,
@@ -638,7 +645,6 @@ func (c *client) Create(
 			EncryptionSpec:          encryptionSpec,
 		},
 	)
-	return wrapError(err)
 }
 
 func (c *client) CreateProxyOverlayDisk(
@@ -660,8 +666,7 @@ func (c *client) CreateProxyOverlayDisk(
 		return false, nil
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateVolume(
+	err = c.createVolume(
 		ctx,
 		diskID,
 		volume.BlocksCount,
@@ -681,7 +686,7 @@ func (c *client) CreateProxyOverlayDisk(
 		},
 	)
 	if err != nil {
-		return false, wrapError(err)
+		return false, err
 	}
 
 	ctx = c.withTimeoutHeader(ctx)
@@ -1508,15 +1513,6 @@ func (c *client) GetScanDiskStatus(
 	return fromScanDiskProgress(response.Progress), err
 }
 
-func (c *client) withTimeoutHeader(ctx context.Context) context.Context {
-	//nolint:SA1029
-	return context.WithValue(
-		ctx,
-		nbs_client.RequestTimeoutHeaderKey,
-		c.serverRequestTimeout,
-	)
-}
-
 func (c *client) FinishFillDisk(
 	ctx context.Context,
 	saveState func() error,
@@ -1539,4 +1535,44 @@ func (c *client) FinishFillDisk(
 			response,
 		)
 	})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) withTimeoutHeader(ctx context.Context) context.Context {
+	//nolint:SA1029
+	return context.WithValue(
+		ctx,
+		nbs_client.RequestTimeoutHeaderKey,
+		c.serverRequestTimeout,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) createVolume(
+	ctx context.Context,
+	diskId string,
+	blocksCount uint64,
+	opts *nbs_client.CreateVolumeOpts,
+) error {
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"NBS.CreateVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskId),
+			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
+		),
+	)
+	defer span.End()
+
+	err := c.nbs.CreateVolume(ctx, diskId, blocksCount, opts)
+	if err != nil {
+		err = wrapError(err)
+		tracing.SetError(span, err)
+	}
+
+	return err
 }
