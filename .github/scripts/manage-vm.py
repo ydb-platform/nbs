@@ -411,7 +411,11 @@ def remove_runner_from_github(
         if delete_status.status_code != 204:
             # removed throwing exception here, because removing VM is more important
             # added additional logging to see what went wrong
-            logger.info("Failed to remove runner with name %s, status_code: %d", vm_id, delete_status.status_code)
+            logger.info(
+                "Failed to remove runner with name %s, status_code: %d",
+                vm_id,
+                delete_status.status_code,
+            )
             logger.info("Response: %s", delete_status.text)
             return
 
