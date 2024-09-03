@@ -43,6 +43,7 @@ func (c *collectListerMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
+		logging.Info(ctx, "Collect lister metrics iteration started")
 		err := c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
