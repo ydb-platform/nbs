@@ -1228,7 +1228,8 @@ func TestHangingTasksMetrics(t *testing.T) {
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 	err = registerHangingTask(s.registry)
 	require.NoError(t, err)
-	taskId, err := scheduleHangingeTask(ctx, s.scheduler)
+	reqCtx := getRequestContext(t, ctx)
+	taskId, err := scheduleHangingeTask(reqCtx, s.scheduler)
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "hanging", "id": "all"},
@@ -1247,8 +1248,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	).On("Set", float64(0)).NotBefore(gaugeSet1IDCall)
 	require.NoError(t, err)
 	time.Sleep(hangingTaskTimeout * 2)
-	reqCtx := getRequestContext(t, ctx)
-	cancelling, err := s.scheduler.CancelTask(reqCtx, taskId)
+	cancelling, err := s.scheduler.CancelTask(ctx, taskId)
 	require.NoError(t, err)
 	require.False(t, cancelling)
 	registry.AssertAllExpectations(t)
