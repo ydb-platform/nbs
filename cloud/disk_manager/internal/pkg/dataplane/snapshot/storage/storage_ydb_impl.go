@@ -43,8 +43,7 @@ func (s *storageYDB) getIncremental(
 	disk *types.Disk,
 ) (snapshotID string, checkpointID string, err error) {
 
-	logging.Info(ctx, "getting incremental")
-
+	logging.Info(ctx, "Getting incremental snapshot for disk %+v", disk)
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -75,7 +74,7 @@ func (s *storageYDB) getIncremental(
 		}
 	}
 
-	logging.Info(ctx, "incremental is %v and %v", snapshotID, checkpointID)
+	logging.Info(ctx, "snapshot %v is incremental for disk %+v", snapshotID, disk)
 	return
 }
 
@@ -446,7 +445,7 @@ func (s *storageYDB) deletingSnapshot(
 
 			logging.Info(
 				ctx,
-				"Snapshot with id %v is locked, can't delete",
+				"Snapshot with id %v is locked and can't be deleted",
 				snapshotID,
 			)
 			// Prevent deletion.
@@ -1249,7 +1248,7 @@ func (s *storageYDB) lockSnapshot(
 			return true, nil
 		}
 
-		// Unlikely situation. Another lock is found.
+		logging.Info(ctx, "Another lock %v was found for snapshot %v", lockTaskID, snapshotID)
 		return false, errors.NewInterruptExecutionError()
 	}
 
@@ -1275,6 +1274,7 @@ func (s *storageYDB) lockSnapshot(
 		return false, err
 	}
 
+	logging.Info(ctx, "Successfully locked snapshot with id %v", snapshotID)
 	return true, nil
 }
 

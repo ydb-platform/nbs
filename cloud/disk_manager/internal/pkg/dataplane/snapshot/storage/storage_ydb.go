@@ -76,13 +76,13 @@ func (s *storageYDB) DeletingSnapshot(
 	taskID string,
 ) (*SnapshotMeta, error) {
 
-	var deleting *SnapshotMeta
+	var snapshotMeta *SnapshotMeta
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			deleting, err = s.deletingSnapshot(
+			snapshotMeta, err = s.deletingSnapshot(
 				ctx,
 				session,
 				snapshotID,
@@ -91,7 +91,7 @@ func (s *storageYDB) DeletingSnapshot(
 			return err
 		},
 	)
-	return deleting, err
+	return snapshotMeta, err
 }
 
 func (s *storageYDB) DeleteSnapshotData(
