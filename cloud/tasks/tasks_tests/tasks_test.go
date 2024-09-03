@@ -356,7 +356,7 @@ func (t *hangingTask) GetResponse() proto.Message {
 
 func registerHangingTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution(
-		"hanging",
+		"tasks.hanging",
 		func() tasks.Task {
 			return &hangingTask{}
 		},
@@ -370,7 +370,7 @@ func scheduleHangingeTask(
 
 	return scheduler.ScheduleTask(
 		ctx,
-		"hanging",
+		"tasks.hanging",
 		"Hanging task",
 		&empty.Empty{},
 	)
@@ -1240,19 +1240,19 @@ func TestHangingTasksMetrics(t *testing.T) {
 
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "hanging", "id": "all"},
+		map[string]string{"type": "tasks.hanging", "id": "all"},
 	).On("Set", float64(1)).Once()
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "hanging", "id": taskId},
+		map[string]string{"type": "tasks.hanging", "id": taskId},
 	).On("Set", float64(1))
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "hanging", "id": "all"},
+		map[string]string{"type": "tasks.hanging", "id": "all"},
 	).On("Set", float64(0)).NotBefore(gaugeSet1TypeCall)
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": "hanging", "id": taskId},
+		map[string]string{"type": "tasks.hanging", "id": taskId},
 	).On("Set", float64(0)).NotBefore(gaugeSet1IDCall)
 
 	time.Sleep(hangingTaskTimeout * 2)

@@ -39,6 +39,7 @@ func (c *collectListerMetricsTask) Run(
 	execCtx ExecutionContext,
 ) error {
 
+	logging.Info(ctx, "Collect lister metrics task started")
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
 
