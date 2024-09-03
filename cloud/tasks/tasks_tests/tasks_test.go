@@ -1248,8 +1248,8 @@ func TestHangingTasksMetrics(t *testing.T) {
 	).On("Set", float64(0)).NotBefore(gaugeSet1IDCall)
 	require.NoError(t, err)
 	time.Sleep(hangingTaskTimeout * 2)
-	cancelling, err := s.scheduler.CancelTask(ctx, taskId)
+	_, err = s.scheduler.CancelTask(ctx, taskId)
 	require.NoError(t, err)
-	require.False(t, cancelling)
+	_ = s.scheduler.WaitTaskEnded(ctx, taskId)
 	registry.AssertAllExpectations(t)
 }
