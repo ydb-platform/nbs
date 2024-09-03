@@ -25,6 +25,14 @@ constexpr TStringBuf NBD_DEVICE_SUFFIX = "/dev/nbd";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline TString ErrorText(int err) {
+    char buf[64];
+    strerror_r(err, buf, sizeof(buf));
+    return TStringBuilder() << buf << " (" << err << ")";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TNetlinkSocket
 {
 private:
@@ -55,6 +63,25 @@ public:
                 << "unable to resolve nbd netlink family: "
                 << nl_geterror(Family);
         }
+    }
+
+    template <typename A>
+    void SetCallback(
+        nl_cb_type type,
+        nl_recvmsg_msg_cb_t func,
+        std::unique_ptr<A> arg)
+    {
+        if (int err = nl_socket_modify_cb(
+                Socket,
+                type,
+                NL_CB_CUSTOM,
+                func,
+                arg.get()))
+        {
+            throw TServiceError(E_FAIL)
+                << "unable to set socket callback: " << nl_geterror(err);
+        }
+        arg.release();
     }
 
     ~TNetlinkSocket()
@@ -189,6 +216,7 @@ private:
 
     TPromise<NProto::TError> StartResult = NewPromise<NProto::TError>();
     TPromise<NProto::TError> StopResult = NewPromise<NProto::TError>();
+    TPromise<NProto::TError> ResizeResult;
 
 public:
     TNetlinkDevice(
@@ -213,73 +241,9 @@ public:
         Stop(false).GetValueSync();
     }
 
-    TFuture<NProto::TError> Start() override
-    {
-        try {
-            ParseIndex();
-            ConnectSocket();
-            ConnectDevice();
-        } catch (const TServiceError& e) {
-            StartResult.SetValue(MakeError(
-                e.GetCode(),
-                TStringBuilder() << "unable to configure " << DeviceName
-                                 << ": " << e.what()));
-        }
-
-        // will be set asynchronously in Connect > HandleStatus > DoConnect
-        return StartResult.GetFuture();
-    }
-
-    TFuture<NProto::TError> Stop(bool deleteDevice) override
-    {
-        if (AtomicSwap(&ShouldStop, 1) == 1) {
-            return StopResult.GetFuture();
-        }
-
-        if (!deleteDevice) {
-            StopResult.SetValue(MakeError(S_OK));
-            return StopResult.GetFuture();
-        }
-
-        try {
-            DisconnectDevice();
-            DisconnectSocket();
-            StopResult.SetValue(MakeError(S_OK));
-        } catch (const TServiceError& e) {
-            StopResult.SetValue(MakeError(
-                e.GetCode(),
-                TStringBuilder() << "unable to disconnect " << DeviceName
-                                 << ": " << e.what()));
-        }
-
-        return StopResult.GetFuture();
-    }
-
-    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
-    {
-        try {
-            TNetlinkSocket socket;
-            TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
-
-            message.Put(NBD_ATTR_INDEX, DeviceIndex);
-            message.Put(NBD_ATTR_SIZE_BYTES, deviceSizeInBytes);
-
-            {
-                auto attr = message.Nest(NBD_ATTR_SOCKETS);
-                auto item = message.Nest(NBD_SOCK_ITEM);
-                message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
-            }
-
-            message.Send(socket);
-        } catch (const TServiceError& e) {
-            return NThreading::MakeFuture(MakeError(
-                e.GetCode(),
-                TStringBuilder()
-                    << "unable to resize " << DeviceName << ": " << e.what()));
-        }
-
-        return NThreading::MakeFuture(MakeError(S_OK));
-    }
+    TFuture<NProto::TError> Start() override;
+    TFuture<NProto::TError> Stop(bool deleteDevice) override;
+    TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override;
 
 private:
     void ParseIndex();
@@ -292,9 +256,98 @@ private:
     void DisconnectDevice();
 
     static int StatusHandler(nl_msg* message, void* argument);
+    static int ResizeHandler(nl_msg* message, void* argument);
+    static int ConnectHandler(nl_msg* message, void* argment);
+    static int DisconnectHandler(nl_msg* message, void* argument);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TFuture<NProto::TError> TNetlinkDevice::Start()
+{
+    try {
+        ParseIndex();
+        ConnectSocket();
+        ConnectDevice();
+    } catch (const TServiceError& e) {
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder() << "unable to configure " << DeviceName
+                             << ": " << e.what()));
+    }
+
+    // will be set asynchronously in
+    // Connect > StatusHandler > DoConnect > ConnectHandler
+    return StartResult.GetFuture();
+}
+
+TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
+{
+    if (AtomicSwap(&ShouldStop, 1) == 1) {
+        return StopResult.GetFuture();
+    }
+
+    if (!deleteDevice) {
+        StopResult.SetValue(MakeError(S_OK));
+        return StopResult.GetFuture();
+    }
+
+    try {
+        DisconnectDevice();
+        DisconnectSocket();
+        StopResult.SetValue(MakeError(S_OK));
+    } catch (const TServiceError& e) {
+        StopResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder() << "unable to disconnect " << DeviceName << ": "
+                             << e.what()));
+    }
+
+    return StopResult.GetFuture();
+}
+
+NThreading::TFuture<NProto::TError> TNetlinkDevice::Resize(
+    ui64 deviceSizeInBytes)
+{
+    if (ResizeResult.Initialized()) {
+        return MakeFuture(MakeError(
+            E_TRY_AGAIN,
+            TStringBuilder() << "unable to resize " << DeviceName << ": "
+                             << ErrorText(EINPROGRESS)));
+    }
+    ResizeResult = NewPromise<NProto::TError>();
+
+    try {
+        TNetlinkSocket socket;
+        socket.SetCallback(
+            NL_CB_MSG_IN,
+            TNetlinkDevice::ResizeHandler,
+            std::make_unique<THandlerContext>(shared_from_this()));
+
+        TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
+
+        message.Put(NBD_ATTR_INDEX, DeviceIndex);
+        message.Put(NBD_ATTR_SIZE_BYTES, deviceSizeInBytes);
+
+        {
+            auto attr = message.Nest(NBD_ATTR_SOCKETS);
+            auto item = message.Nest(NBD_SOCK_ITEM);
+            message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
+        }
+
+        message.Send(socket);
+
+    } catch (const TServiceError& e) {
+        auto resizeResult = std::move(ResizeResult);
+
+        return MakeFuture(MakeError(
+            e.GetCode(),
+            TStringBuilder() << "unable to resize "
+                << DeviceName << ": " << e.what()));
+    }
+
+    return ResizeResult.GetFuture();
+}
 
 void TNetlinkDevice::ParseIndex()
 {
@@ -331,6 +384,21 @@ void TNetlinkDevice::DisconnectSocket()
     Socket.Close();
 }
 
+// queries device status and registers callback that will connect
+// or reconfigure (if Reconfigure == true) specified device
+void TNetlinkDevice::ConnectDevice()
+{
+    TNetlinkSocket socket;
+    socket.SetCallback(
+        NL_CB_MSG_IN,
+        TNetlinkDevice::StatusHandler,
+        std::make_unique<THandlerContext>(shared_from_this()));
+
+    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
+    message.Put(NBD_ATTR_INDEX, DeviceIndex);
+    message.Send(socket);
+}
+
 void TNetlinkDevice::DoConnectDevice(bool connected)
 {
     try {
@@ -346,6 +414,11 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         TNetlinkSocket socket;
+        socket.SetCallback(
+            NL_CB_MSG_IN,
+            TNetlinkDevice::ConnectHandler,
+            std::make_unique<THandlerContext>(shared_from_this()));
+
         TNetlinkMessage message(socket.GetFamily(), command);
 
         const auto& info = Handler->GetExportInfo();
@@ -373,13 +446,12 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         message.Send(socket);
-        StartResult.SetValue(MakeError(S_OK));
 
     } catch (const TServiceError& e) {
         StartResult.SetValue(MakeError(
             e.GetCode(),
-            TStringBuilder()
-                << "unable to configure " << DeviceName << ": " << e.what()));
+            TStringBuilder() << "unable to configure " << DeviceName
+                             << ": " << e.what()));
     }
 }
 
@@ -388,30 +460,12 @@ void TNetlinkDevice::DisconnectDevice()
     STORAGE_INFO("disconnect " << DeviceName);
 
     TNetlinkSocket socket;
+    socket.SetCallback(
+        NL_CB_MSG_IN,
+        TNetlinkDevice::DisconnectHandler,
+        std::make_unique<THandlerContext>(shared_from_this()));
+
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
-    message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    message.Send(socket);
-}
-
-// queries device status and registers callback that will connect
-// or reconfigure (if Reconfigure == true) specified device
-void TNetlinkDevice::ConnectDevice()
-{
-    TNetlinkSocket socket;
-    auto context = std::make_unique<THandlerContext>(shared_from_this());
-
-    if (int err = nl_socket_modify_cb(
-            socket,
-            NL_CB_VALID,
-            NL_CB_CUSTOM,
-            TNetlinkDevice::StatusHandler,
-            context.release())) // libnl doesn't throw
-    {
-        throw TServiceError(E_FAIL)
-            << "unable to set socket callback: " << nl_geterror(err);
-    }
-
-    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
     message.Send(socket);
 }
@@ -495,6 +549,85 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     }
 
     context->Device->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
+
+    return NL_OK;
+}
+
+int TNetlinkDevice::ConnectHandler(nl_msg* message, void* argument)
+{
+    nlmsghdr* header = nlmsg_hdr(message);
+    auto context = std::unique_ptr<THandlerContext>(
+        static_cast<THandlerContext*>(argument));
+
+    NProto::TError result = MakeError(S_OK);
+
+    // since NL_F_ACK is set by default, NLMSG_ERROR will be sent even if there
+    // is no error
+    if (header->nlmsg_type != NLMSG_ERROR) {
+        return NL_OK;
+    }
+    nlmsgerr *error = static_cast<nlmsgerr*>(nlmsg_data(header));
+
+    if (error->error) {
+        result = MakeError(
+            E_FAIL,
+            TStringBuilder() << "unable to connect "
+                             << context->Device->DeviceName << ": "
+                             << ErrorText(error->error));
+    }
+    context->Device->StartResult.SetValue(std::move(result));
+
+    return NL_OK;
+}
+
+int TNetlinkDevice::DisconnectHandler(nl_msg* message, void* argument)
+{
+    nlmsghdr* header = nlmsg_hdr(message);
+    auto context = std::unique_ptr<THandlerContext>(
+        static_cast<THandlerContext*>(argument));
+
+    // since NL_F_ACK is set by default, NLMSG_ERROR will be sent even if there
+    // is no error
+    if (header->nlmsg_type != NLMSG_ERROR) {
+        return NL_OK;
+    }
+    nlmsgerr *error = static_cast<nlmsgerr*>(nlmsg_data(header));
+
+    if (error->error) {
+        auto Log = context->Device->Log;
+        STORAGE_ERROR(
+            TStringBuilder() << "unable to disconnect "
+                             << context->Device->DeviceName
+                             << ": " << ErrorText(error->error));
+    }
+    return NL_OK;
+}
+
+int TNetlinkDevice::ResizeHandler(nl_msg* message, void* argument)
+{
+    nlmsghdr* header = nlmsg_hdr(message);
+    auto context = std::unique_ptr<THandlerContext>(
+        static_cast<THandlerContext*>(argument));
+
+    NProto::TError result = MakeError(S_OK);
+
+    // since NL_F_ACK is set by default, NLMSG_ERROR will be sent even if there
+    // is no error
+    if (header->nlmsg_type != NLMSG_ERROR) {
+        return NL_OK;
+    }
+    nlmsgerr *error = static_cast<nlmsgerr*>(nlmsg_data(header));
+
+    if (error->error) {
+        result = MakeError(
+            E_FAIL,
+            TStringBuilder() << "unable to resize "
+                             << context->Device->DeviceName
+                             << ": " << ErrorText(error->error));
+    }
+
+    auto resizeResult = std::move(context->Device->ResizeResult);
+    resizeResult.SetValue(std::move(result));
 
     return NL_OK;
 }
