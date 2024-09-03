@@ -86,6 +86,8 @@ void TServiceActor::HandleExecuteAction(
         {"waitdependentdiskstoswitchnode",    &TServiceActor::CreateWaitDependentDisksToSwitchNodeActor    },
         {"partiallysuspenddiskagent",         &TServiceActor::CreatePartiallySuspendDiskAgentActor         },
         {"getstorageconfig",                  &TServiceActor::CreateGetStorageConfigActor                  },
+        {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
+        {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
     };
 
     NProto::TError error;
