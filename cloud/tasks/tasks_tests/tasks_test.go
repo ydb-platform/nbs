@@ -1288,5 +1288,8 @@ func TestHangingTasksMetrics(t *testing.T) {
 	_, err = s.scheduler.CancelTask(ctx, taskId)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskId)
+	// Additional interval to wait for collect lister metrics
+	// to finish previous iteration
+	time.Sleep(time.Second)
 	registry.AssertAllExpectations(t)
 }
