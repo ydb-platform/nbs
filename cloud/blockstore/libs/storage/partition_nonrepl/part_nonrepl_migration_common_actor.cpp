@@ -227,6 +227,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
+        IgnoreFunc(TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse);
+
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
