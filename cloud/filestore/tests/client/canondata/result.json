@@ -20,6 +20,9 @@
     "test.test_multitablet_ls": {
         "uri": "file://test.test_multitablet_ls/results.txt"
     },
+    "test.test_resize": {
+        "uri": "file://test.test_resize/results.txt"
+    },
     "test.test_stat": {
         "uri": "file://test.test_stat/results.txt"
     },
