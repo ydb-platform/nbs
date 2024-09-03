@@ -249,7 +249,7 @@ func (s *storageYDB) ListTasksCancelling(
 func (s *storageYDB) ListTasksHanging(
 	ctx context.Context,
 	limit uint64,
-	tasksTypeBlackList []string,
+	exceptHangingTaskTypes []string,
 	defaultHangingTaskTimeout time.Duration,
 ) ([]TaskInfo, error) {
 	var tasks []TaskInfo
@@ -262,7 +262,7 @@ func (s *storageYDB) ListTasksHanging(
 				ctx,
 				session,
 				limit,
-				tasksTypeBlackList,
+				exceptHangingTaskTypes,
 				defaultHangingTaskTimeout,
 			)
 			return err

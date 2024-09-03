@@ -30,7 +30,7 @@ type ExecutionContext interface {
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
-	GetEstimate() (time.Time, bool)
+	GetDeadline() (time.Time, bool)
 
 	SetEstimate(estimatedDuration time.Duration)
 
@@ -114,7 +114,7 @@ func (c *executionContext) AddTaskDependency(
 	})
 }
 
-func (c *executionContext) GetEstimate() (time.Time, bool) {
+func (c *executionContext) GetDeadline() (time.Time, bool) {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
