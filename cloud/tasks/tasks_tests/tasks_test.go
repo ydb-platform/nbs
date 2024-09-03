@@ -147,6 +147,7 @@ func createServicesWithConfig(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	config *tasks_config.TasksConfig,
+	schedulerRegistry metrics.Registry,
 ) services {
 
 	registry := tasks.NewRegistry()
@@ -164,7 +165,7 @@ func createServicesWithConfig(
 		registry,
 		storage,
 		config,
-		metrics_empty.NewRegistry(),
+		schedulerRegistry,
 	)
 	require.NoError(t, err)
 
@@ -181,12 +182,13 @@ func createServices(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	runnersCount uint64,
+	schedulerRegistry metrics.Registry,
 ) services {
 
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
-	return createServicesWithConfig(t, ctx, db, config)
+	return createServicesWithConfig(t, ctx, db, config, schedulerRegistry)
 }
 
 func (s *services) startRunners(ctx context.Context) error {
@@ -600,7 +602,7 @@ func TestTasksInitInfra(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = s.startRunners(ctx)
 	require.NoError(t, err)
@@ -614,7 +616,7 @@ func TestTasksRunningOneTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -639,7 +641,13 @@ func TestTasksRunningLimit(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 10*inflightLongTaskPerNodeLimit)
+	s := createServices(
+		t,
+		ctx,
+		db,
+		10*inflightLongTaskPerNodeLimit,
+		metrics_empty.NewRegistry(),
+	)
 
 	err = registerLongTask(s.registry)
 	require.NoError(t, err)
@@ -706,7 +714,13 @@ func TestTasksSendEvent(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(
+		t,
+		ctx,
+		db,
+		2,
+		metrics_empty.NewRegistry(),
+	)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -770,7 +784,7 @@ func TestTasksShouldNotRunTasksThatWereNotRegisteredForExecution(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -814,7 +828,7 @@ func TestTasksShouldRestoreRunningAfterRetriableError(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerUnstableTask(s.registry)
 	require.NoError(t, err)
@@ -843,7 +857,7 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerUnstableTask(s.registry)
 	require.NoError(t, err)
@@ -877,7 +891,7 @@ func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	failure := errors.NewNonRetriableError(assert.AnError)
 
@@ -907,7 +921,7 @@ func TestTasksRunningTwoConcurrentTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -940,7 +954,7 @@ func TestTasksRunningTwoConcurrentTasksReverseWaiting(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -975,7 +989,7 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunners(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -1010,7 +1024,7 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunnersReverseWaiting(t *testing.T) 
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -1043,7 +1057,7 @@ func TestTasksRunningDependentTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -1073,7 +1087,7 @@ func TestTasksRunningDependentTaskOnTwoRunners(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -1102,7 +1116,7 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	s := createServices(t, ctx, db, 2, metrics_empty.NewRegistry())
 
 	err = s.registry.RegisterForExecution("regular", func() tasks.Task {
 		return &regularTask{}
