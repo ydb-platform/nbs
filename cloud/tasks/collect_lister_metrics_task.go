@@ -14,9 +14,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type collectListerMetricsTask struct {
-	registry metrics.Registry
-	storage  storage.Storage
-
+	registry                  metrics.Registry
+	storage                   storage.Storage
 	metricsCollectionInterval time.Duration
 
 	hangingTaskGaugesByID     map[string]metrics.Gauge
@@ -178,16 +177,22 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	newHangingsTaskGaugesByID := make(map[string]metrics.Gauge)
 	newHangingTaskGaugesByType := make(map[string]metrics.Gauge)
 
+	sensorName := "hangingTasks"
 	for _, taskInfo := range taskInfos {
 		tasksByType[taskInfo.TaskType]++
 		if reportedTaskIDCount < c.maxHangingTaskIDsToReport {
-			logging.Info(ctx, "Task %s is hanging.", taskInfo.ID)
+			logging.Info(
+				ctx,
+				"Task type %s, id %s is hanging",
+				taskInfo.TaskType,
+				taskInfo.ID,
+			)
 			subRegistry := c.registry.WithTags(
 				map[string]string{
 					"type": taskInfo.TaskType, "id": taskInfo.ID,
 				},
 			)
-			gauge := subRegistry.Gauge("hangingTasks")
+			gauge := subRegistry.Gauge(sensorName)
 			gauge.Set(float64(1))
 			newHangingsTaskGaugesByID[taskInfo.ID] = gauge
 			reportedTaskIDCount++
@@ -199,7 +204,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		if !ok {
 			logging.Info(
 				ctx,
-				"Tasks with id %s is not hanging no more.",
+				"Task with id %s is not hanging anymore",
 				id,
 			)
 			gauge.Set(float64(0))
@@ -212,7 +217,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		subRegistry := c.registry.WithTags(map[string]string{
 			"type": taskType, "id": "all",
 		})
-		gauge := subRegistry.Gauge("hangingTasks")
+		gauge := subRegistry.Gauge(sensorName)
 		gauge.Set(float64(count))
 		newHangingTaskGaugesByType[taskType] = gauge
 	}
@@ -222,7 +227,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		if !ok {
 			logging.Info(
 				ctx,
-				"Tasks with type %s is not hanging no more.",
+				"Task with type %s is not hanging anymore",
 				taskType,
 			)
 			gauge.Set(float64(0))
