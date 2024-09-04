@@ -326,7 +326,7 @@ type Storage interface {
 	ListTasksHanging(
 		ctx context.Context,
 		limit uint64,
-		tasksTypeBlackList []string,
+		exceptTaskTypes []string,
 		defaultHangingTaskTimeout time.Duration,
 	) ([]TaskInfo, error)
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)

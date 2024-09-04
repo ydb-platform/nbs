@@ -931,7 +931,7 @@ func (s *storageYDB) listTasksHanging(
 	ctx context.Context,
 	session *persistence.Session,
 	limit uint64,
-	exceptHangingTaskTypes []string,
+	exceptTaskTypes []string,
 	hangingTaskTimeout time.Duration,
 ) ([]TaskInfo, error) {
 
@@ -941,7 +941,7 @@ func (s *storageYDB) listTasksHanging(
 		pragma TablePathPrefix = "%v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
-		declare $except_hanging_task_types as List<Utf8>;
+		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
 		declare $now as Timestamp;
 		
@@ -954,8 +954,8 @@ func (s *storageYDB) listTasksHanging(
 		select * from tasks
 		where id in $task_ids and 
 		(
-			(ListLength($except_hanging_task_types) == 0) or
-			(task_type not in $except_hanging_task_types)
+			(ListLength($except_task_types) == 0) or
+			(task_type not in $except_task_types)
 		)  and 
 		(
 			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $hanging_task_timeout) or 
@@ -964,8 +964,8 @@ func (s *storageYDB) listTasksHanging(
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam(
-			"$except_hanging_task_types",
-			strListValue(exceptHangingTaskTypes),
+			"$except_task_types",
+			strListValue(exceptTaskTypes),
 		),
 		persistence.ValueParam(
 			"$hanging_task_timeout",

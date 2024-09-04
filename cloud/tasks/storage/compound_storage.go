@@ -250,7 +250,7 @@ func (s *compoundStorage) ListTasksCancelling(
 func (s *compoundStorage) ListTasksHanging(
 	ctx context.Context,
 	limit uint64,
-	tasksTypeBlackList []string,
+	exceptTaskTypes []string,
 	defaultHangingTaskTimeout time.Duration,
 ) ([]TaskInfo, error) {
 
@@ -261,7 +261,7 @@ func (s *compoundStorage) ListTasksHanging(
 			values, err := storage.ListTasksHanging(
 				ctx,
 				limit,
-				tasksTypeBlackList,
+				exceptTaskTypes,
 				defaultHangingTaskTimeout,
 			)
 			tasks = append(tasks, values...)
