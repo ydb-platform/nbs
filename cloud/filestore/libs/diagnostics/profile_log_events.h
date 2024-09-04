@@ -30,6 +30,7 @@ namespace NFuse {
 #define FILESTORE_FUSE_REQUESTS(xxx, ...)                                      \
     xxx(Flush,              __VA_ARGS__)                                       \
     xxx(Fsync,              __VA_ARGS__)                                       \
+    xxx(FsyncDir,           __VA_ARGS__)                                       \
 // FILESTORE_FUSE_REQUESTS
 
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) name,

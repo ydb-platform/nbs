@@ -418,6 +418,27 @@ void InitProfileLogRequestInfo(
     nodeInfo->SetNodeName(request.GetCheckpointId());
 }
 
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TFsyncRequest& request)
+{
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetHandle(request.GetHandle());
+    nodeInfo->SetFlags(request.GetDataSync());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TFsyncDirRequest& request)
+{
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetFlags(request.GetDataSync());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define IMPLEMENT_DEFAULT_METHOD(name, ns)                                     \
@@ -474,6 +495,8 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
+    IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 

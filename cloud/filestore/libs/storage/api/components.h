@@ -18,12 +18,13 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_ACTORS(xxx)                                                  \
     xxx(SCHEMESHARD)                                                           \
     xxx(SERVICE)                                                               \
-    xxx(SERVICE_WORKER)                                                        \
+    xxx(SERVICE_PART2)                                                         \
     xxx(SERVICE_PROXY)                                                         \
     xxx(TABLET)                                                                \
     xxx(TABLET_WORKER)                                                         \
     xxx(TABLET_PROXY)                                                          \
     xxx(SS_PROXY)                                                              \
+    xxx(SERVICE_WORKER)                                                        \
 // FILESTORE_ACTORS
 
 #define FILESTORE_COMPONENTS(xxx)                                              \
@@ -80,6 +81,8 @@ struct TFileStoreEvents
         END
     };
 
+    static_assert(SERVICE_END + 1 == SERVICE_PART2_START,
+        "SERVICE_PART2 should follow SERVICE since SERVICE has more than 100 events");
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE),
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE)");
 };

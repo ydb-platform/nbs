@@ -266,11 +266,17 @@ struct TEvService
         EvExecuteActionRequest = EvBegin + 95,
         EvExecuteActionResponse,
 
+        EvFsyncRequest = EvBegin + 97,
+        EvFsyncResponse,
+
+        EvFsyncDirRequest = EvBegin + 99,
+        EvFsyncDirResponse,
+
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
-        "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
+    static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_PART2_END,
+        "EvEnd expected to be < TFileStoreEvents::SERVICE_PART2_END");
 
     FILESTORE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 

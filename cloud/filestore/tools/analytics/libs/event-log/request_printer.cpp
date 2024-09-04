@@ -567,6 +567,7 @@ IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
         switch (static_cast<NFuse::EFileStoreFuseRequest>(requestType)) {
             case NFuse::EFileStoreFuseRequest::Flush:
             case NFuse::EFileStoreFuseRequest::Fsync:
+            case NFuse::EFileStoreFuseRequest::FsyncDir:
                 return std::make_shared<TFlushFsyncRequestPrinter>();
             default:
                 break;

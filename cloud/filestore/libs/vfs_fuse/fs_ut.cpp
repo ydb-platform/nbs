@@ -267,6 +267,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        int fsyncCalled[2] = {0, 0};
+        bootstrap.Service->FsyncHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            fsyncCalled[request->GetDataSync() ? 1 : 0]++;
+            NProto::TFsyncResponse result;
+            return MakeFuture(result);
+        };
+
         bootstrap.Start();
 
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
@@ -275,6 +285,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        for (auto datasync: {true, false}) {
+            auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+                nodeId, handleId, datasync);
+            UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalled[0]);
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalled[1]);
     }
 
     Y_UNIT_TEST(ShouldPassSessionId)
@@ -500,6 +519,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        int fsyncDirCalled[2] = {0, 0};
+        bootstrap.Service->FsyncDirHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            fsyncDirCalled[request->GetDataSync() ? 1 : 0]++;
+            NProto::TFsyncDirResponse result;
+            return MakeFuture(result);
+        };
+
         bootstrap.Start();
 
         const ui64 nodeId = 123;
@@ -518,6 +547,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         size = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size, 0);
+
+        for (auto datasync: {true, false}) {
+            auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+                nodeId, handleId, datasync);
+            UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled[0]);
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled[1]);
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
