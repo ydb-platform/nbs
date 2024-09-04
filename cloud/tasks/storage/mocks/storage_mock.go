@@ -122,10 +122,17 @@ func (s *StorageMock) ListTasksHanging(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
-	defaultHangingTaskTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
+	estimateMissMultiplier uint64,
 ) ([]tasks_storage.TaskInfo, error) {
 
-	args := s.Called(ctx, limit, exceptTaskTypes, defaultHangingTaskTimeout)
+	args := s.Called(
+		ctx,
+		limit,
+		exceptTaskTypes,
+		hangingTaskTimeout,
+		estimateMissMultiplier,
+	)
 	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
 	return res, args.Error(1)
 }

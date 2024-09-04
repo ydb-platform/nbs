@@ -23,6 +23,7 @@ type collectListerMetricsTask struct {
 	hangingTaskTimeout        time.Duration
 	exceptHangingTaskTypes    []string
 	maxHangingTaskIDsToReport int64
+	estimateMissMultiplier    uint64
 }
 
 func (c *collectListerMetricsTask) Save() ([]byte, error) {
@@ -168,6 +169,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		^uint64(0),
 		c.exceptHangingTaskTypes,
 		c.hangingTaskTimeout,
+		c.estimateMissMultiplier,
 	)
 	if err != nil {
 		return err

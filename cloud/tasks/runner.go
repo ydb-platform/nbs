@@ -80,6 +80,7 @@ type runnerForRun struct {
 	maxRetriableErrorCount uint64
 	maxPanicCount          uint64
 	hangingTaskTimeout     time.Duration
+	estimateMissMultiplier uint64
 }
 
 func (r *runnerForRun) receiveTask(
@@ -317,21 +318,23 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.estimateMissMultiplier,
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage            storage.Storage
-	registry           *Registry
-	metrics            runnerMetrics
-	channel            *channel
-	pingPeriod         time.Duration
-	pingTimeout        time.Duration
-	host               string
-	id                 string
-	hangingTaskTimeout time.Duration
+	storage                storage.Storage
+	registry               *Registry
+	metrics                runnerMetrics
+	channel                *channel
+	pingPeriod             time.Duration
+	pingTimeout            time.Duration
+	host                   string
+	id                     string
+	hangingTaskTimeout     time.Duration
+	estimateMissMultiplier uint64
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -441,6 +444,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.estimateMissMultiplier,
 	)
 }
 
@@ -507,6 +511,7 @@ func lockAndExecuteTask(
 	runner runner,
 	taskInfo storage.TaskInfo,
 	hangingTaskTimeout time.Duration,
+	estimateMissMultiplier uint64,
 ) error {
 
 	taskState, err := runner.lockTask(ctx, taskInfo)
@@ -560,6 +565,7 @@ func lockAndExecuteTask(
 		taskStorage,
 		taskState,
 		hangingTaskTimeout,
+		estimateMissMultiplier,
 	)
 
 	pingCtx, cancelPing := context.WithCancel(ctx)
@@ -621,6 +627,7 @@ func startRunner(
 	idForCancel string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	estimateMissMultiplier uint64,
 ) error {
 
 	// TODO: More granular control on runners and cancellers.
@@ -644,6 +651,7 @@ func startRunner(
 		maxRetriableErrorCount: maxRetriableErrorCount,
 		maxPanicCount:          maxPanicCount,
 		hangingTaskTimeout:     hangingTaskTimeout,
+		estimateMissMultiplier: estimateMissMultiplier,
 	})
 
 	runnerForCancelMetrics := newRunnerMetrics(
@@ -654,15 +662,16 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:            taskStorage,
-		registry:           registry,
-		metrics:            runnerForCancelMetrics,
-		channel:            channelForCancel,
-		pingPeriod:         pingPeriod,
-		pingTimeout:        pingTimeout,
-		host:               host,
-		id:                 idForCancel,
-		hangingTaskTimeout: hangingTaskTimeout,
+		storage:                taskStorage,
+		registry:               registry,
+		metrics:                runnerForCancelMetrics,
+		channel:                channelForCancel,
+		pingPeriod:             pingPeriod,
+		pingTimeout:            pingTimeout,
+		host:                   host,
+		id:                     idForCancel,
+		hangingTaskTimeout:     hangingTaskTimeout,
+		estimateMissMultiplier: estimateMissMultiplier,
 	})
 
 	return nil
@@ -683,6 +692,7 @@ func startRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	estimateMissMultiplier uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -702,6 +712,7 @@ func startRunners(
 			fmt.Sprintf("cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
+			estimateMissMultiplier,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start runner #%d: %w", i, err)
@@ -726,6 +737,7 @@ func startStalkingRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
+	estimateMissMultiplier uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -745,6 +757,7 @@ func startStalkingRunners(
 			fmt.Sprintf("stalker_cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
+			estimateMissMultiplier,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start stalking runner #%d: %w", i, err)
@@ -895,6 +908,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
+		config.GetEstimateMissMultiplier(),
 	)
 	if err != nil {
 		return err
@@ -946,6 +960,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
+		config.GetEstimateMissMultiplier(),
 	)
 	if err != nil {
 		return err

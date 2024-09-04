@@ -250,7 +250,8 @@ func (s *storageYDB) ListTasksHanging(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
-	defaultHangingTaskTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
+	estimateMissMultiplier uint64,
 ) ([]TaskInfo, error) {
 	var tasks []TaskInfo
 
@@ -263,7 +264,8 @@ func (s *storageYDB) ListTasksHanging(
 				session,
 				limit,
 				exceptTaskTypes,
-				defaultHangingTaskTimeout,
+				hangingTaskTimeout,
+				estimateMissMultiplier,
 			)
 			return err
 		},

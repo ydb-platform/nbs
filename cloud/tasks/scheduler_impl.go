@@ -625,6 +625,7 @@ func NewScheduler(
 				hangingTaskTimeout:        hangingTasksDefaultDuration,
 				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
 				maxHangingTaskIDsToReport: config.GetMaxReportedHangingTaskIDs(),
+				estimateMissMultiplier:    config.GetEstimateMissMultiplier(),
 			}
 		},
 	)

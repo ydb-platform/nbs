@@ -251,7 +251,8 @@ func (s *compoundStorage) ListTasksHanging(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
-	defaultHangingTaskTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
+	estimateMissMultiplier uint64,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
@@ -262,7 +263,8 @@ func (s *compoundStorage) ListTasksHanging(
 				ctx,
 				limit,
 				exceptTaskTypes,
-				defaultHangingTaskTimeout,
+				hangingTaskTimeout,
+				estimateMissMultiplier,
 			)
 			tasks = append(tasks, values...)
 			return err

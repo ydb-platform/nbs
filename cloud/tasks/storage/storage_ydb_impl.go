@@ -933,6 +933,7 @@ func (s *storageYDB) listTasksHanging(
 	limit uint64,
 	exceptTaskTypes []string,
 	hangingTaskTimeout time.Duration,
+	estimateMissMultiplier uint64,
 ) ([]TaskInfo, error) {
 
 	now := time.Now()
@@ -943,6 +944,7 @@ func (s *storageYDB) listTasksHanging(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
+		declare $estimate_miss_multiplier as Uint64;
 		declare $now as Timestamp;
 		
 		$task_ids = (
@@ -959,7 +961,7 @@ func (s *storageYDB) listTasksHanging(
 		)  and 
 		(
 			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $hanging_task_timeout) or 
-			(estimated_time > created_at and $now >= created_at + (estimated_time - created_at) * 2)
+			(estimated_time > created_at and $now >= created_at + (estimated_time - created_at) * $estimate_miss_multiplier)
 		) limit $limit;
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
@@ -970,6 +972,10 @@ func (s *storageYDB) listTasksHanging(
 		persistence.ValueParam(
 			"$hanging_task_timeout",
 			persistence.IntervalValue(hangingTaskTimeout),
+		),
+		persistence.ValueParam(
+			"$estimate_miss_multiplier",
+			persistence.Uint64Value(estimateMissMultiplier),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)
