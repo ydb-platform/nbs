@@ -28,17 +28,14 @@ TOptionsCommon::TOptionsCommon()
 
     Opts.AddLongOption("node-registration-attempts")
         .RequiredArgument("NUM")
-        .DefaultValue(NodeRegistrationMaxAttempts)
         .StoreResult(&NodeRegistrationMaxAttempts);
 
     Opts.AddLongOption("node-registration-timeout")
         .RequiredArgument("DURATION")
-        .DefaultValue(NodeRegistrationTimeout)
         .StoreResult(&NodeRegistrationTimeout);
 
     Opts.AddLongOption("node-registration-error-timeout")
         .RequiredArgument("DURATION")
-        .DefaultValue(NodeRegistrationErrorTimeout)
         .StoreResult(&NodeRegistrationErrorTimeout);
 
     Opts.AddLongOption("service")

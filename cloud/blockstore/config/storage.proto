@@ -3,6 +3,7 @@ syntax = "proto2";
 package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
+import "cloud/storage/core/protos/certificate.proto";
 
 option go_package = "a.yandex-team.ru/cloud/blockstore/config";
 
@@ -1007,4 +1008,23 @@ message TStorageServiceConfig
 
     // Resync range, if scrubbing found a mismatch.
     optional bool ResyncRangeAfterScrubbing = 376;
+
+    // Delay that DR uses to wait unavailable agents to register before allowing
+    // infra to deploy a host.
+    optional uint32 IdleAgentDeployByCmsDelay = 377;
+
+    // Dynamic node registration params.
+    optional uint32 NodeRegistrationMaxAttempts = 378;
+    optional uint32 NodeRegistrationTimeout = 379;   // in ms
+    optional uint32 NodeRegistrationErrorTimeout = 380;  // in ms
+
+    // auth token for node registration via ydb discovery api.
+    optional string NodeRegistrationToken = 381;
+
+    // TLS node registration details.
+    optional string NodeRegistrationRootCertsFile = 382;
+    optional NCloud.NProto.TCertificate NodeRegistrationCert = 383;
+
+    // Node type
+    optional string NodeType = 384;
 }

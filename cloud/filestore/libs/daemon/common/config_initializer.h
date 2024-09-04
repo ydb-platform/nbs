@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -29,6 +30,13 @@ struct TConfigInitializerCommon
     void InitFeaturesConfig();
 
     NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
+
+private:
+    void ApplyDiagnosticsConfig(const TString& text);
+    void ApplyStorageConfig(const TString& text);
+    void ApplyFeaturesConfig(const TString& text);
+
+    void ApplyOptionsToStorageConfig(NProto::TStorageConfig& storageConfig);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

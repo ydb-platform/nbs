@@ -184,7 +184,6 @@ def __run_test(test_case):
         server_app_config.ServerConfig.CopyFrom(TServerConfig())
         server_app_config.ServerConfig.ThreadsCount = thread_count()
         server_app_config.ServerConfig.StrictContractValidation = False
-        server_app_config.ServerConfig.NodeType = 'main'
         server_app_config.ServerConfig.NbdEnabled = True
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
@@ -202,6 +201,7 @@ def __run_test(test_case):
         storage.MaxMigrationBandwidth = 1024 * 1024 * 1024
         storage.UseMirrorResync = True
         storage.MirroredMigrationStartAllowed = True
+        storage.NodeType = 'main'
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
