@@ -1,10 +1,9 @@
 #include "server.h"
 
 #include <cloud/blockstore/libs/endpoint_proxy/client/client.h>
-
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/scheduler.h>
-#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -14,7 +13,12 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 std::shared_ptr<NProto::TStartProxyEndpointRequest> CreateStartRequest(
     ui64 blocksCount,
     ui32 blockSize,
@@ -28,6 +32,7 @@ std::shared_ptr<NProto::TStartProxyEndpointRequest> CreateStartRequest(
     startRequest->SetNbdDevice(std::move(nbdDevice));
     return startRequest;
 }
+
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TServerTest)
@@ -56,8 +61,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = CreateServer(
             serverConfig,
-            CreateWallClockTimer(),
-            CreateScheduler(),
+            std::make_shared<TTestTimer>(),
+            std::make_shared<TTestScheduler>(),
             CreateLoggingService("server", TLogSettings{}));
         UNIT_ASSERT(server);
         server->Start();
@@ -68,8 +73,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         clientConfig.UnixSocketPath = unixSocketPath;
         auto client = NClient::CreateClient(
             clientConfig,
-            CreateScheduler(),
-            CreateWallClockTimer(),
+            std::make_shared<TTestScheduler>(),
+            std::make_shared<TTestTimer>(),
             CreateLoggingService("client", TLogSettings{}));
         UNIT_ASSERT(client);
         client->Start();
@@ -84,7 +89,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
                              unixSocketPath,
                              nbdDevice))
                          .GetValueSync();
-        UNIT_ASSERT(HasError(resp1));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FAIL,
+            resp1.GetError().GetCode(),
+            resp1.GetError().GetMessage());
 
         auto resp2 = client
                          ->StartProxyEndpoint(CreateStartRequest(
@@ -93,7 +101,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
                              unixSocketPath,
                              nbdDevice))
                          .GetValueSync();
-        UNIT_ASSERT(HasError(resp2));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FAIL,
+            resp2.GetError().GetCode(),
+            resp2.GetError().GetMessage());
 
         client->Stop();
         server->Stop();
