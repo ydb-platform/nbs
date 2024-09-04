@@ -366,7 +366,7 @@ func registerHangingTask(registry *tasks.Registry) error {
 	)
 }
 
-func scheduleHangingeTask(
+func scheduleHangingTask(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
 ) (string, error) {
@@ -1241,7 +1241,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	reqCtx := getRequestContext(t, ctx)
-	taskId, err := scheduleHangingeTask(reqCtx, s.scheduler)
+	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
 	collectedTaskStatuses := []tasks_storage.TaskStatus{
