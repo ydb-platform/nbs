@@ -102,6 +102,7 @@ message TServerConfig
     optional bool NvmfInitiatorEnabled = 31;
 
     // Node type
+    // deprecated. moved to storage config.
     optional string NodeType = 32;
 
     // Endpoint storage details.
@@ -118,6 +119,7 @@ message TServerConfig
     optional TAffinity NbdAffinity = 38;
 
     // Dynamic node registration params.
+    // The following 3 are deprecated in favor of params in storage config
     optional uint32 NodeRegistrationMaxAttempts = 39;
     optional uint32 NodeRegistrationTimeout = 40;   // in ms
     optional uint32 NodeRegistrationErrorTimeout = 41;  // in ms
@@ -196,6 +198,7 @@ message TServerConfig
     optional bool EndpointStorageNotImplementedErrorIsFatal = 116;
 
     // auth token for node registration via ydb discovery api.
+    // deprecated. moved to storage config.
     optional string NodeRegistrationToken = 117;
 
     // How many seconds will the external vhost server continue to work after

@@ -345,6 +345,157 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT(ci.KikimrConfig->GetFeatureFlags().GetEnableVPatch());
         }
     }
+
+    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParams)
+    {
+        TTempDir dir;
+
+        auto serverConfigPath = dir.Path() / "nbs-server.txt";
+
+        auto serverConfigStr = R"(ServerConfig {
+                NodeRegistrationMaxAttempts: 100
+                NodeRegistrationTimeout: 200
+                NodeRegistrationErrorTimeout: 300
+                NodeRegistrationToken: "xyz"
+                NodeType: "abc"
+            }
+        )";
+
+        TOFStream(serverConfigPath.GetPath()).Write(serverConfigStr);
+
+        auto storageConfigPath = dir.Path() / "nbs-storage.txt";
+
+        TOFStream(storageConfigPath.GetPath()).Write("");
+
+        auto options = CreateOptions();
+        options->ServerConfig = serverConfigPath.GetPath();
+        options->StorageConfig = storageConfigPath.GetPath();
+
+        auto ci = TConfigInitializerYdb(std::move(options));
+        ci.InitServerConfig();
+        ci.InitStorageConfig();
+
+        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+
+        UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
+        UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
+        UNIT_ASSERT_VALUES_EQUAL("abc", proto.GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceNodeRegistrationParamsInStorageConfig)
+    {
+        TTempDir dir;
+
+        auto serverConfigPath = dir.Path() / "nbs-server.txt";
+
+        auto serverConfigStr = R"(ServerConfig {
+                NodeRegistrationMaxAttempts: 100
+                NodeRegistrationTimeout: 200
+                NodeRegistrationErrorTimeout: 300
+                NodeRegistrationToken: "xyz"
+                NodeType: "abc"
+            }
+        )";
+
+        TOFStream(serverConfigPath.GetPath()).Write(serverConfigStr);
+
+        auto storageConfigPath = dir.Path() / "nbs-storage.txt";
+
+        auto storageConfigStr = R"(
+            NodeType: "123"
+        )";
+
+        TOFStream(storageConfigPath.GetPath()).Write(storageConfigStr);
+
+        auto options = CreateOptions();
+        options->ServerConfig = serverConfigPath.GetPath();
+        options->StorageConfig = storageConfigPath.GetPath();
+
+        auto ci = TConfigInitializerYdb(std::move(options));
+        ci.InitServerConfig();
+        ci.InitStorageConfig();
+
+        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+
+        UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
+        UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
+        UNIT_ASSERT_VALUES_EQUAL("123", proto.GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParamsWhebLoadingFromCms)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitStorageConfig();
+
+        NKikimrConfig::TAppConfig appCfg;
+        auto* serverCfg = appCfg.MutableNamedConfigs()->Add();
+
+        serverCfg->SetName("Cloud.NBS.ServerAppConfig");
+        auto serverConfigStr = R"(ServerConfig {
+                NodeRegistrationMaxAttempts: 100
+                NodeRegistrationTimeout: 200
+                NodeRegistrationErrorTimeout: 300
+                NodeRegistrationToken: "xyz"
+                NodeType: "abc"
+            }
+        )";
+        serverCfg->SetConfig(serverConfigStr);
+
+        auto* storageCfg = appCfg.MutableNamedConfigs()->Add();
+        storageCfg->SetName("Cloud.NBS.StorageServiceConfig");
+        storageCfg->SetConfig("");
+
+        ci.ApplyCustomCMSConfigs(appCfg);
+
+        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+
+        UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
+        UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
+        UNIT_ASSERT_VALUES_EQUAL("abc", proto.GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceNodeRegistrationParamsInStorageConfigWithCms)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitStorageConfig();
+
+        NKikimrConfig::TAppConfig appCfg;
+        auto* serverCfg = appCfg.MutableNamedConfigs()->Add();
+
+        serverCfg->SetName("Cloud.NBS.ServerAppConfig");
+        auto serverConfigStr = R"(ServerConfig {
+                NodeRegistrationMaxAttempts: 100
+                NodeRegistrationTimeout: 200
+                NodeRegistrationErrorTimeout: 300
+                NodeRegistrationToken: "xyz"
+                NodeType: "abc"
+            }
+        )";
+        serverCfg->SetConfig(serverConfigStr);
+
+        auto* storageCfg = appCfg.MutableNamedConfigs()->Add();
+        storageCfg->SetName("Cloud.NBS.StorageServiceConfig");
+        auto storageConfigStr = R"(
+            NodeType: "123"
+        )";
+        storageCfg->SetConfig(storageConfigStr);
+
+        ci.ApplyCustomCMSConfigs(appCfg);
+
+        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+
+        UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
+        UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
+        UNIT_ASSERT_VALUES_EQUAL("123", proto.GetNodeType());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer
