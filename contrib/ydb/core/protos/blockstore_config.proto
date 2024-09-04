@@ -19,9 +19,15 @@ enum EPartitionType {
     NonReplicated = 1; // directly mapped network partitions
 }
 
+message TEncryptedDEK {
+    optional string KekId = 1;
+    optional bytes Ciphertext = 2;
+};
+
 message TEncryptionDesc {
     optional uint32 Mode = 1;
     optional bytes KeyHash = 2;
+    optional TEncryptedDEK EncryptedDEK = 3;
 }
 
 message TVolumeConfig {
