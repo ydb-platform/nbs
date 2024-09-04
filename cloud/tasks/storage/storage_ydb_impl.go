@@ -932,7 +932,7 @@ func (s *storageYDB) listTasksHanging(
 	session *persistence.Session,
 	limit uint64,
 	exceptHangingTaskTypes []string,
-	defaultHangingTasksTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
 ) ([]TaskInfo, error) {
 
 	now := time.Now()
@@ -942,7 +942,7 @@ func (s *storageYDB) listTasksHanging(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $except_hanging_task_types as List<Utf8>;
-		declare $default_hanging_task_duration as Interval;
+		declare $hanging_task_timeout as Interval;
 		declare $now as Timestamp;
 		
 		$task_ids = (
@@ -958,7 +958,7 @@ func (s *storageYDB) listTasksHanging(
 			(task_type not in $except_hanging_task_types)
 		)  and 
 		(
-			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $default_hanging_task_duration) or 
+			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $hanging_task_timeout) or 
 			(estimated_time > created_at and $now >= created_at + (estimated_time - created_at) * 2)
 		) limit $limit;
 	`, s.tablesPath),
@@ -968,8 +968,8 @@ func (s *storageYDB) listTasksHanging(
 			strListValue(exceptHangingTaskTypes),
 		),
 		persistence.ValueParam(
-			"$default_hanging_task_duration",
-			persistence.IntervalValue(defaultHangingTasksTimeout),
+			"$hanging_task_timeout",
+			persistence.IntervalValue(hangingTaskTimeout),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)
