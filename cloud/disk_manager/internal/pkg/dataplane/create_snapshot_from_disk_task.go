@@ -180,7 +180,7 @@ func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 			)
 			logging.Info(
 				ctx,
-				"Should perform full snapshot %v of disk %v",
+				"Performing full snapshot %v of disk %v",
 				snapshotMeta.ID,
 				t.request.SrcDisk.DiskId,
 			)
