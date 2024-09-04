@@ -42,6 +42,13 @@ class TDiskAgentActor final
         NActors::IEventHandlePtr Event;
     };
 
+    enum class ERegistrationState
+    {
+        NotStarted,
+        InProgress,
+        Registered,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -63,7 +70,7 @@ private:
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
 
-    bool RegistrationInProgress = false;
+    ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 
     NActors::TActorId StatsActor;
     TOldRequestCounters OldRequestCounters;
