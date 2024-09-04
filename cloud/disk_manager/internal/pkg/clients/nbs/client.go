@@ -607,13 +607,6 @@ func (c *client) Create(
 
 	defer c.metrics.StatRequest("Create")(&err)
 
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"NBS.Create",
-	)
-	defer span.End()
-	defer tracing.SetError(span, err)
-
 	kind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
 		return err
@@ -1552,7 +1545,7 @@ func (c *client) withTimeoutHeader(ctx context.Context) context.Context {
 
 func (c *client) createVolume(
 	ctx context.Context,
-	diskId string,
+	diskID string,
 	blocksCount uint64,
 	opts *nbs_client.CreateVolumeOpts,
 ) error {
@@ -1560,15 +1553,15 @@ func (c *client) createVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"NBS.CreateVolume",
+		"Blockstore.CreateVolume",
 		tracing.WithAttributes(
-			tracing.AttributeString("disk_id", diskId),
+			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
 		),
 	)
 	defer span.End()
 
-	err := c.nbs.CreateVolume(ctx, diskId, blocksCount, opts)
+	err := c.nbs.CreateVolume(ctx, diskID, blocksCount, opts)
 	if err != nil {
 		err = wrapError(err)
 		tracing.SetError(span, err)

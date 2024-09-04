@@ -37,9 +37,8 @@ func StartSpan(
 ////////////////////////////////////////////////////////////////////////////////
 
 func SetError(span trace.Span, err error) {
-
 	if err != nil {
-		span.SetStatus(codes.Error, fmt.Sprintf("%v", err))
+		span.SetStatus(codes.Error, err.Error())
 	}
 }
 
