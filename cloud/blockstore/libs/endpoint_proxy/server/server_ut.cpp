@@ -34,6 +34,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
 {
     Y_UNIT_TEST(StartRequestShouldNotReturnAlreadyAfterFailure)
     {
+        // Test scenario:
+        // 1. Start endpoint proxy server
+        // 2. Start endpoint proxy client
+        // 3. Send start endpoint request with invalid device path
+        // 4. Expect response with error
+        // 5. Send start endpoint request with invalid device path again
+        // 6. Expect response with error
         const ui16 port = 8122;
         auto unixSocketPath = CreateGuidAsString();
         TEndpointProxyServerConfig serverConfig(
