@@ -114,15 +114,12 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execContext ExecutionContext) {
 					return
 				case <-time.After(checkTaskHangingPeriod):
 				}
-
 				deadline = execContext.GetDeadline()
-
 				m.checkTaskHanging(ctx, deadline)
 			}
+
 		}()
-
 		deadline = execContext.GetDeadline()
-
 		m.checkTaskHangingImpl(deadline)
 	}
 

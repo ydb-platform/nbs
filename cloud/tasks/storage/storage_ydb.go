@@ -253,8 +253,8 @@ func (s *storageYDB) ListTasksHanging(
 	hangingTaskTimeout time.Duration,
 	estimateMissMultiplier uint64,
 ) ([]TaskInfo, error) {
-	var tasks []TaskInfo
 
+	var tasks []TaskInfo
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
