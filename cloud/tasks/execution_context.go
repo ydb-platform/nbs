@@ -121,14 +121,20 @@ func (c *executionContext) GetDeadline() time.Time {
 	defer c.taskStateMutex.Unlock()
 
 	var estimatedDuration time.Duration
+	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
 	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
 		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
 	} else {
-		return c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+		return defaultDeadline
 	}
 
-	return c.taskState.CreatedAt.Add(
+	deadline := c.taskState.CreatedAt.Add(
 		estimatedDuration * time.Duration(c.estimateMissMultiplier))
+	if deadline.Before(defaultDeadline) {
+		return defaultDeadline
+	}
+
+	return deadline
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {

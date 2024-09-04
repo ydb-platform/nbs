@@ -960,8 +960,14 @@ func (s *storageYDB) listTasksHanging(
 			(task_type not in $except_task_types)
 		)  and 
 		(
-			(estimated_time == DateTime::FromSeconds(0) and ($now - created_at) > $hanging_task_timeout) or 
-			(estimated_time > created_at and $now >= created_at + (estimated_time - created_at) * $estimate_miss_multiplier)
+			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or 
+			(
+				estimated_time > created_at and
+				$now >= MAX_OF(
+					created_at + (estimated_time - created_at) * $estimate_miss_multiplier,
+					created_at + $hanging_task_timeout
+				)
+			)
 		) limit $limit;
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
