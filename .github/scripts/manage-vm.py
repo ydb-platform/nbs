@@ -399,17 +399,25 @@ def remove_runner_from_github(
         return
 
     if apply:
-        delete_status_code = requests.delete(
+        delete_status = requests.delete(
             f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/{runner_id}",
             headers={
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
                 "X-Github-Api-Version": "2022-11-28",
             },
-        ).status_code
+        )
 
-        if delete_status_code != 204:
-            raise ValueError("Failed to remove runner with name %s", vm_id)
+        if delete_status.status_code != 204:
+            # removed throwing exception here, because removing VM is more important
+            # added additional logging to see what went wrong
+            logger.info(
+                "Failed to remove runner with name %s, status_code: %d",
+                vm_id,
+                delete_status.status_code,
+            )
+            logger.info("Response: %s", delete_status.text)
+            return
 
         logger.info("Removed runner with name %s and id %s", vm_id, runner_id)
     else:
