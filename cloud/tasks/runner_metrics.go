@@ -106,7 +106,6 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execContext ExecutionContext) {
 	// Should not report some tasks as hanging (NBS-4341).
 	if !common.Find(m.exceptHangingTaskTypes, execContext.GetTaskType()) {
 		var deadline time.Time
-
 		go func() {
 			for {
 				select {
