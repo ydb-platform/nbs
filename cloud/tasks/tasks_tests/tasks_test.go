@@ -1228,36 +1228,6 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
-func prepareMiscellaneousMockGauges(
-	config *tasks_config.TasksConfig,
-	registry *mocks.RegistryMock,
-) {
-
-	// These mocks are not checked and required because
-	// we can't simply mock the functions we need and ignore other functions
-	collectedTaskStatuses := []tasks_storage.TaskStatus{
-		tasks_storage.TaskStatusReadyToRun,
-		tasks_storage.TaskStatusRunning,
-		tasks_storage.TaskStatusReadyToCancel,
-		tasks_storage.TaskStatusCancelling,
-	}
-	for _, taskStatus := range collectedTaskStatuses {
-		for _, taskType := range config.ExceptHangingTaskTypes {
-			registry.GetGauge(
-				tasks_storage.TaskStatusToString(taskStatus),
-				map[string]string{"type": taskType},
-			).On("Set", mock.Anything).Maybe()
-		}
-
-		registry.GetGauge(
-			tasks_storage.TaskStatusToString(taskStatus),
-			map[string]string{"type": hangingTaskType},
-		).On("Set", mock.Anything).Maybe()
-
-	}
-
-}
-
 func prepareTestMockGauges(registry *mocks.RegistryMock, taskId string) {
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
@@ -1287,7 +1257,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	registry := mocks.NewRegistryMock()
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 
 	config := newHangingTaskTestConfig()
 	hangingTaskTimeout, err := time.ParseDuration(
@@ -1306,7 +1276,6 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	prepareMiscellaneousMockGauges(config, registry)
 	prepareTestMockGauges(registry, taskId)
 
 	time.Sleep(hangingTaskTimeout * 2)
