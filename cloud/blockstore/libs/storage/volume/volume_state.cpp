@@ -248,10 +248,11 @@ void TVolumeState::Reset()
         // TODO(drbasic)
         // For encrypted disk-registry based disks, we will continue to
         // write a map of encrypted blocks for a while.
-        const bool encrypted =
+        const bool encryptedByUser =
             Meta.GetVolumeConfig().GetEncryptionDesc().GetMode() ==
-            NProto::ENCRYPTION_AES_XTS;
-        if (encrypted || overlay) {
+            NProto::ENCRYPTION_AES_XTS;   // default encryption doesn't require
+                                          // tracking of used blocks
+        if (encryptedByUser || overlay) {
             TrackUsedBlocks = true;
         }
     } else {

@@ -347,6 +347,10 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("KmsKeyProvider initialized");
 
+    RootKmsKeyProvider = CreateRootKmsKeyProvider(Executor);
+
+    STORAGE_INFO("RootKmsKeyProvider initialized");
+
     auto discoveryConfig = Configs->DiscoveryConfig;
     if (discoveryConfig->GetConductorGroups()
             || discoveryConfig->GetInstanceListFile())

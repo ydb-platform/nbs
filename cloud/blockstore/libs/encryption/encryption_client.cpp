@@ -258,7 +258,7 @@ TFuture<NProto::TMountVolumeResponse> TEncryptionClient::MountVolume(
         if (!ptr) {
             return static_cast<NProto::TMountVolumeResponse>(TErrorResponse(
                 E_REJECTED,
-                "Encryption client is destroyed"));
+                "Encryption client is destroyed after MountVolume"));
         }
 
         ptr->HandleMountVolumeResponse(response);
@@ -309,7 +309,7 @@ TFuture<NProto::TReadBlocksResponse> TEncryptionClient::ReadBlocks(
         if (!ptr) {
             return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
                 E_REJECTED,
-                "Encryption client is destroyed"));
+                "Encryption client is destroyed after ReadBlocks"));
         }
 
         return ptr->HandleReadBlocksResponse(
@@ -412,7 +412,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
 
     ui64 bufferSize = static_cast<ui64>(request->GetBlocksCount()) *
         request->BlockSize;
-    // XXX: why not inplace decrypt?
+    // TODO: inplace decryption
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
     auto sgListOrError = SgListNormalize(
         { buffer.get(), bufferSize },
@@ -451,8 +451,9 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
 
         auto ptr = weakPtr.lock();
         if (!ptr) {
-            return NProto::TReadBlocksLocalResponse(
-                TErrorResponse(E_REJECTED, "Encryption client is destroyed"));
+            return NProto::TReadBlocksLocalResponse(TErrorResponse(
+                E_REJECTED,
+                "Encryption client is destroyed after ReadBlocksLocal"));
         }
 
         Y_UNUSED(buf);
@@ -757,7 +758,7 @@ public:
             if (!ptr) {
                 return FutureErrorResponse<NProto::TMountVolumeResponse>(
                     E_REJECTED,
-                    "Encryption client is destroyed");
+                    "Encryption client is destroyed after MountVolume");
             }
 
             return ptr->HandleMountVolumeResponse(response);
@@ -789,7 +790,7 @@ private:
                 if (!ptr) {
                     return FutureErrorResponse<NProto::TMountVolumeResponse>(
                         E_REJECTED,
-                        "Encryption client is destroyed");
+                        "Encryption client is destroyed MountVolume");
                 }
 
                 ptr->Client = std::move(client);
@@ -1074,27 +1075,42 @@ public:
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }
 
-        if (desc.GetKeyHash().empty()) {
+        STORAGE_INFO("====== volume: " << volume);
+        STORAGE_INFO("====== desc: " << desc);
+
+        if (!desc.HasDataKey()) {
             return MakeFuture<TResponse>(
-                MakeError(E_ARGUMENT, "Empty KeyHash"));
+                MakeError(E_ARGUMENT, "Empty DataKey"));
         }
 
         STORAGE_INFO(
             "Use default AES XTS encryption for volume "
             << volume.GetDiskId().Quote());
 
-        // XXX: use EncryptionKeyProvider
-        Y_UNUSED(EncryptionKeyProvider);
+        NProto::TEncryptionSpec spec;
+        spec.SetMode(desc.GetMode());
+        spec.MutableKeyPath()->MutableKmsKey()->CopyFrom(desc.GetDataKey());
 
-        TEncryptionKey key{Base64Decode(volume.GetEncryptionDesc().GetKeyHash())};
+        return EncryptionKeyProvider->GetKey(spec, volume.GetDiskId())
+            .Apply(
+                [client = std::move(client),
+                 volume = volume,
+                 logging = Logging](auto future) mutable
+                -> TResultOrError<IBlockStorePtr>
+                {
+                    auto [key, error] = future.ExtractValue();
 
-        IBlockStorePtr encryptionClient = std::make_shared<TEncryptionClient>(
-            std::move(client),
-            Logging,
-            CreateAesXtsEncryptor(std::move(key)),
-            volume);
+                    if (HasError(error)) {
+                        return error;
+                    }
 
-        return MakeFuture<TResponse>(std::move(encryptionClient));
+                    return static_cast<IBlockStorePtr>(
+                        std::make_shared<TEncryptionClient>(
+                            std::move(client),
+                            std::move(logging),
+                            CreateAesXtsEncryptor(std::move(key)),
+                            volume));
+                });
     }
 };
 

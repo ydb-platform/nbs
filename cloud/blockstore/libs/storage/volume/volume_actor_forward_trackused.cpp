@@ -39,12 +39,13 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             // TODO(drbasic)
             // For encrypted disk-registry based disks, we will continue to
             // write a map of encrypted blocks for a while.
-            const bool encryptedDiskRegistryBasedDisk =
+            const bool encryptedByUserDiskRegistryBasedDisk =
                 State->IsDiskRegistryMediaKind() &&
                 State->GetMeta()
                         .GetVolumeConfig()
                         .GetEncryptionDesc()
-                        // Encrypted by the user
+                        // Default encryption doesn't require tracking of used
+                        // blocks.
                         .GetMode() == NProto::ENCRYPTION_AES_XTS;
 
             // For overlay disks we need to ensure that the only bits that are
@@ -53,7 +54,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
             // update the map only after the block has been successfully
             // written.
             const bool needReliableUsedBlockTracking =
-                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
+                encryptedByUserDiskRegistryBasedDisk ||
+                overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),

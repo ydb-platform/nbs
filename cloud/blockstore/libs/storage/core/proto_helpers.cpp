@@ -100,6 +100,12 @@ NProto::TEncryptionDesc ConvertToEncryptionDesc(
     NProto::TEncryptionDesc resultDesc;
     resultDesc.SetMode(mode);
     resultDesc.SetKeyHash(desc.GetKeyHash());
+    if (desc.HasEncryptedDEK()) {
+        NProto::TKmsKey& key = *resultDesc.MutableDataKey();
+        key.SetKekId(desc.GetEncryptedDEK().GetKekId());
+        key.SetEncryptedDEK(desc.GetEncryptedDEK().GetCiphertext());
+    }
+
     return resultDesc;
 }
 

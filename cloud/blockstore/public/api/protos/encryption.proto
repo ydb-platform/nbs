@@ -10,10 +10,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 enum EEncryptionMode
 {
     NO_ENCRYPTION = 0;
+
+    // AES XTS encryption with DEK provided by the user.
     ENCRYPTION_AES_XTS = 1;
 
-    // Default AES XTS encryption. DEK is stored in
-    // VolumeConfig.EncryptionDesc: EncryptedDEK or UnencryptedDEK.
+    // Default AES XTS encryption. Encrypted DEK is stored in
+    // VolumeConfig.EncryptionDesc.EncryptedDEK. DEK decryption is performed by
+    // Root KMS.
     ENCRYPTION_DEFAULT_AES_XTS = 2;
 }
 

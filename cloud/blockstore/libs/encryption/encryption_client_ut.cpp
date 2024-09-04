@@ -1232,7 +1232,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         auto testClient = std::make_shared<TTestService>();
 
-        // Mount a volume with an unexpected encription mode
+        // Mount a volume with an unexpected encryption mode
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
                 UNIT_ASSERT(!request->HasEncryptionSpec());
@@ -1249,7 +1249,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT, // Unexpected encription mode
+                E_ARGUMENT, // Unexpected encryption mode
                 response.GetError().GetCode(),
                 FormatError(response.GetError()));
         }
@@ -1263,9 +1263,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
                 volume.SetBlockSize(blockSize);
 
-                auto& desc = *volume.MutableEncryptionDesc();
+                NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
                 desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-                desc.SetKeyHash(Base64Encode(key));
+                desc.MutableDataKey()->SetEncryptedDEK(Base64Encode(key));
 
                 return MakeFuture(std::move(response));
             };

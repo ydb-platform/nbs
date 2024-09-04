@@ -241,7 +241,8 @@ struct TEvServicePrivate
 
     struct TCreateEncryptionKeyResponse
     {
-        TString EncryptionKey;
+        TString KekId;
+        TString EncryptedDEK;
     };
 
     //

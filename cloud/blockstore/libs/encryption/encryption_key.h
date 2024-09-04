@@ -18,7 +18,7 @@ private:
     TString Key;
 
 public:
-    TEncryptionKey(TString key = {});
+    explicit TEncryptionKey(TString key = {});
     ~TEncryptionKey();
 
     TEncryptionKey(TEncryptionKey&&) noexcept = default;

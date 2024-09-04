@@ -56,28 +56,32 @@ private:
     const IKmsKeyProviderPtr KmsKeyProvider;
 
 public:
-    TEncryptionKeyProvider(IKmsKeyProviderPtr kmsKeyProvider)
+    explicit TEncryptionKeyProvider(IKmsKeyProviderPtr kmsKeyProvider)
         : KmsKeyProvider(std::move(kmsKeyProvider))
     {}
 
     TFuture<TResponse> GetKey(
         const NProto::TEncryptionSpec& spec,
-        const TString& diskId)
+        const TString& diskId) override
     {
-        auto len = GetExpectedKeyLength(spec.GetMode());
+        const auto len = GetExpectedKeyLength(spec.GetMode());
         const auto& keyPath = spec.GetKeyPath();
 
         if (keyPath.HasKeyringId()) {
             return MakeFuture(ReadKeyFromKeyring(keyPath.GetKeyringId(), len));
-        } else if (keyPath.HasFilePath()) {
-            return MakeFuture(ReadKeyFromFile(keyPath.GetFilePath(), len));
-        } else if (keyPath.HasKmsKey()) {
-            return ReadKeyFromKMS(keyPath.GetKmsKey(), diskId, len);
-        } else {
-            return MakeFuture<TResponse>(TErrorResponse(
-                E_ARGUMENT,
-                "KeyPath should contain path to encryption key"));
         }
+
+        if (keyPath.HasFilePath()) {
+            return MakeFuture(ReadKeyFromFile(keyPath.GetFilePath(), len));
+        }
+
+        if (keyPath.HasKmsKey()) {
+            return ReadKeyFromKMS(keyPath.GetKmsKey(), diskId, len);
+        }
+
+        return MakeFuture<TResponse>(TErrorResponse(
+            E_ARGUMENT,
+            "KeyPath should contain path to encryption key"));
     }
 
 private:
@@ -151,8 +155,7 @@ class TKmsKeyProviderStub
     : public IKmsKeyProvider
 {
 public:
-    TKmsKeyProviderStub()
-    {}
+    TKmsKeyProviderStub() = default;
 
     TFuture<TResponse> GetKey(
         const NProto::TKmsKey& kmsKey,

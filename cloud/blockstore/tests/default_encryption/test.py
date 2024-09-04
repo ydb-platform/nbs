@@ -44,11 +44,8 @@ def create_storage():
     p = os.path.join(p, "dev", "disk", "by-partlabel")
     ensure_path_exists(p)
 
-    for i in range(DEVICE_COUNT):
-        with open(os.path.join(p, f"NVMENBS{i + 1:02}"), 'wb') as f:
-            f.seek(DEVICE_SIZE - 1)
-            f.write(b'\0')
-            f.flush()
+    with open(os.path.join(p, "NVMENBS01"), 'wb') as f:
+        os.truncate(f.fileno(), DEVICE_COUNT * (4096 + DEVICE_SIZE))
 
     return p
 
@@ -59,18 +56,20 @@ def create_disk_agent_configurator(ydb, data_path):
     configurator = NbsConfigurator(ydb, 'disk-agent')
     configurator.generate_default_nbs_configs()
 
-    disk_agent_config = generate_disk_agent_txt(
+    configurator.files["disk-agent"] = generate_disk_agent_txt(
         agent_id='',
         device_erase_method='DEVICE_ERASE_METHOD_NONE',  # speed up tests
         storage_discovery_config={
             "PathConfigs": [{
                 "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
                 "PoolConfigs": [{
-                    "MinSize": DEVICE_SIZE,
-                }]}]
-            })
-
-    configurator.files["disk-agent"] = disk_agent_config
+                    "Layout": {
+                        "DeviceSize": DEVICE_SIZE,
+                        "DevicePadding": 4096,
+                        "HeaderSize": 4096
+                    }
+                }]}
+            ]})
 
     return configurator
 

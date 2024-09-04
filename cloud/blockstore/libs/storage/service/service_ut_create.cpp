@@ -868,7 +868,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             auto desc = response->Record.GetVolume().GetEncryptionDesc();
             UNIT_ASSERT(NProto::ENCRYPTION_DEFAULT_AES_XTS == desc.GetMode());
-            UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetKeyHash());
+            UNIT_ASSERT(desc.HasUnencryptedDEK());
+            UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetUnencryptedDEK());
         }
 
         {

@@ -69,6 +69,8 @@ void TCreateEncryptionKeyActor::Bootstrap(const TActorContext& ctx)
 
         ReplyAndDie(ctx, {}, Base64Encode(key));
     } catch(...) {
+        // TODO: crit event
+
         ReplyAndDie(ctx, MakeError(E_FAIL, CurrentExceptionMessage()), {});
     }
 }
@@ -76,14 +78,15 @@ void TCreateEncryptionKeyActor::Bootstrap(const TActorContext& ctx)
 void TCreateEncryptionKeyActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error,
-    TString key)
+    TString ciphertext)
 {
     NCloud::Send(
         ctx,
         Owner,
         std::make_unique<TEvServicePrivate::TEvCreateEncryptionKeyResponse>(
             error,
-            std::move(key)));
+            TString{},  // kekId
+            std::move(ciphertext)));
 }
 
 STFUNC(TCreateEncryptionKeyActor::StateWork)
@@ -223,13 +226,17 @@ bool TCreateVolumeActor::ShouldCreateVolumeWithDefaultEncryption() const
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
 {
     if (ShouldCreateVolumeWithDefaultEncryption()) {
-        // TODO(): use EncryptionKeyProvider::CreateKey(...)
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Create DEK for " << Request.GetDiskId().Quote());
+
         auto actor = std::make_unique<TCreateEncryptionKeyActor>(ctx.SelfID);
 
         ctx.Register(
             actor.release(),
             TMailboxType::HTSwap,
-            NKikimr::AppData()->IOPoolId);
+            NKikimr::AppData()->BatchPoolId);
 
         return;
     }
@@ -270,7 +277,8 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
         auto& desc = encryptionDesc.emplace();
         desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-        desc.SetKeyHash(msg->EncryptionKey);
+        desc.MutableEncryptedDEK()->SetKekId(msg->KekId);
+        desc.MutableEncryptedDEK()->SetCiphertext(msg->EncryptedDEK);
     }
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
@@ -371,6 +379,11 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
     if (encryptionDesc) {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "========== EncryptionDesc: " << *encryptionDesc);
+
         *config.MutableEncryptionDesc() = std::move(*encryptionDesc);
     }
 
