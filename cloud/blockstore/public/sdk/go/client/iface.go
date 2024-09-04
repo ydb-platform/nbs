@@ -259,4 +259,13 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TQueryAgentsInfoRequest,
 	) (*protos.TQueryAgentsInfoResponse, error)
+
+	//
+	// Resize NBD Device.
+	//
+
+	ResizeDevice(
+		ctx context.Context,
+		req *protos.TResizeDeviceRequest,
+	) (*protos.TResizeDeviceResponse, error)
 }
