@@ -22,7 +22,6 @@ def daemon_log_files(prefix, id, cwd):
     files = [
         ("stdout_file", ".out"),
         ("stderr_file", ".err"),
-        ("stdin_file", ".in"),
     ]
 
     ret = {}
