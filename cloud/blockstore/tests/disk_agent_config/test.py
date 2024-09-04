@@ -208,7 +208,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
     # restart agents
     for i, agent in enumerate(agents):
         agent.kill()
-        agent = start_disk_agent(disk_agent_configurators[i], name=f'{agent_id}.new')
+        agent = start_disk_agent(disk_agent_configurators[i], name=f'{agent_ids[i]}.new')
         agent.wait_for_registration()
         agents[i] = agent
 

@@ -32,10 +32,16 @@ void TDiskAgentActor::HandleHttpInfo(
         if (CurrentStateFunc() == &TThis::StateIdle) {
             DIV() { out << "Unregistered (Idle)"; }
         } else {
-            if (RegistrationInProgress) {
-                DIV() { out << "Registration in progress"; }
-            } else {
-                DIV() { out << "Registered"; }
+            switch (RegistrationState) {
+                case ERegistrationState::NotStarted:
+                    DIV() { out << "Initialization in progress"; }
+                    break;
+                case ERegistrationState::InProgress:
+                    DIV() { out << "Registration in progress"; }
+                    break;
+                case ERegistrationState::Registered:
+                    DIV() { out << "Registered"; }
+                    break;
             }
         }
 
