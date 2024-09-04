@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/protos/certificate.pb.h>
 
 #include <ydb/core/control/immediate_control_board_impl.h>
 
@@ -114,6 +115,14 @@ TDuration MSeconds(ui32 value)
     xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
                                                                                \
     xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
+                                                                               \
+    xxx(NodeRegistrationToken,                TString,     "root@builtin"     )\
+    xxx(NodeRegistrationMaxAttempts,          ui32,        10                 )\
+    xxx(NodeRegistrationTimeout,              TDuration,   Seconds(5)         )\
+    xxx(NodeRegistrationErrorTimeout,         TDuration,   Seconds(1)         )\
+    xxx(NodeType,                             TString,               {}       )\
+    xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
+    xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -575,6 +584,12 @@ TVector<TString> ConvertValue(
     return TVector<TString>(value.begin(), value.end());
 }
 
+template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
+}
+
 template <typename T>
 bool IsEmpty(const T& t)
 {
@@ -585,6 +600,12 @@ template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 {
     return value.empty();
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -626,6 +647,16 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
         }
         os << value[i];
     }
+}
+
+template <>
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
 }
 
 }   // namespace
@@ -921,7 +952,6 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 
     return {value};
 }
-
 
 const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
 {

@@ -233,7 +233,6 @@ def setup_nbs_control(paths, kikimr_cluster, configurator):
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    server_app_config.ServerConfig.NodeType = 'nbs_control'
 
     server_app_config.ServerConfig.RootCertsFile = os.path.join(
         paths.certs_dir, 'server.crt')
@@ -246,6 +245,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator):
     storage = TStorageServiceConfig()
     storage.DisableLocalService = False
     storage.SchemeShardDir = "/Root/nbs"
+    storage.NodeType = 'nbs_control'
 
     nbs = Nbs(
         kikimr_port,
@@ -268,7 +268,6 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator):
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    server_app_config.ServerConfig.NodeType = 'nbs'
 
     server_app_config.ServerConfig.RootCertsFile = os.path.join(
         paths.certs_dir, 'server.crt')
@@ -282,6 +281,7 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator):
     storage.DisableLocalService = True
     storage.SchemeShardDir = "/Root/nbs"
     storage.MaxLocalVolumes = 1
+    storage.NodeType = 'nbs'
 
     nbs = Nbs(
         kikimr_port,
