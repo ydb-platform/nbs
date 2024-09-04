@@ -28,7 +28,7 @@ namespace NCloud {
 // obtained. This is done via operator bool(). Next, you can get a list of
 // blocks from TGuard, it is not formally guaranteed that the list of
 // blocks is not empty. When the owner of the memory wants to stop accessing it,
-// he calls the Destroy() method from his TGuardedSgList instance. The Destroy()
+// he calls the Close() method from his TGuardedSgList instance. The Close()
 // call blocks the thread in SpinLock until all clients finish access (delete
 // their TGuards).
 
@@ -38,11 +38,11 @@ namespace NCloud {
 // TUnionGuardedObject stores the TGuardedSgList vector, and
 // TDependentGuardedObject stores only one. The Acquire() call on such objects
 // will be successful if it is possible to set its own lock and the lock of the
-// child IGuardedObject. For such objects, after Destroy(), access is
+// child IGuardedObject. For such objects, after Close(), access is
 // terminated for objects located at the current level and lower in the
 // hierarchy. This is the difference between the behavior of Create() and
 // CreateDepender(). In the case of objects constructed via Create(), all
-// instances are equivalent and calling Destroy() on any instance blocks access
+// instances are equivalent and calling Close() on any instance blocks access
 // for everyone (there is no hierarchy). In the case of CreateDepender(), a
 // hierarchy is created and access is blocked in the chain below.
 
@@ -65,7 +65,7 @@ namespace NCloud {
 //   }
 // }
 // guardedSgList.Close(); // Finish access to sharedData
-// Here you can safely destroy sharedData, it is guaranteed that no one accesses
+// Here you can safely close sharedData, it is guaranteed that no one accesses
 // it.
 
 class TGuardedSgList final
@@ -99,12 +99,12 @@ public:
     explicit TGuardedSgList(TSgList sglist);
 
     // Creates a new TGuardedSgList that depends on the current one. The
-    // connection is one-way, Destroy() called from a new object does not
+    // connection is one-way, Close() called from a new object does not
     // terminate access to the original one.
     TGuardedSgList CreateDepender() const;
 
     // Creates a new TGuardedSgList that is equal to the current one. A two-way
-    // connection is created, Destroy() called on the new object also terminates
+    // connection is created, Close() called on the new object also terminates
     // access to the original one.
     TGuardedSgList Create(TSgList sglist) const;
 
@@ -140,8 +140,8 @@ public:
     // Terminates memory access of all associated TGuardedSgList on other
     // threads.
     // This call can be blocked until everyone who has previously gained access
-    // destroys their TGuard.
-    // It is safe to call Destroy() multiple times.
+    // closes their TGuard.
+    // It is safe to call Close() multiple times.
     // Attention! A sequential call to Acquire() and Close() on the same
     // thread will result in a deadlock.
     void Close();
