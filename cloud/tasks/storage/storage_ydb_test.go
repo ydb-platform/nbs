@@ -1106,7 +1106,9 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		return createTask(
 			taskType,
 			taskStatus,
-			time.Now().Add(-time.Hour*2).Add(-time.Minute),
+			time.Now().Add(
+				-(hangingTasksDefaultDuration+time.Hour)*2,
+			).Add(-time.Minute),
 			time.Hour,
 		)
 	}
@@ -1132,7 +1134,19 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 			createTask(taskType, taskStatus, time.Now(), -1)
 			createTask(taskType, taskStatus, time.Now(), time.Hour)
 			// estimate is missed, but task duration does not exceed x2 estimate duration
-			createTask(taskType, taskStatus, time.Now().Add(-119*time.Minute), time.Hour)
+			createTask(
+				taskType,
+				taskStatus,
+				time.Now().Add(-719*time.Minute),
+				hangingTasksDefaultDuration+time.Hour,
+			)
+			// estimate is missed but default estimate is not
+			createTask(
+				taskType,
+				taskStatus,
+				time.Now().Add(-time.Hour),
+				time.Minute*15,
+			)
 		}
 
 		for _, taskType := range exceptHangingTaskTypes {
@@ -1153,7 +1167,19 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 			createTask(taskType, taskStatus, time.Now(), -1)
 			createTask(taskType, taskStatus, time.Now(), time.Hour)
 			// estimate is missed, but task duration does not exceed x2 estimate duration
-			createTask(taskType, taskStatus, time.Now().Add(-119*time.Minute), time.Hour)
+			createTask(
+				taskType,
+				taskStatus,
+				time.Now().Add(-719*time.Minute),
+				hangingTasksDefaultDuration+time.Hour,
+			)
+			// estimate is missed but default estimate is not
+			createTask(
+				taskType,
+				taskStatus,
+				time.Now().Add(-time.Hour),
+				time.Minute*15,
+			)
 		}
 	}
 	someOtherAllowedType := "allowedType"
@@ -1166,8 +1192,8 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 	createTask(
 		someOtherAllowedType,
 		TaskStatusCancelled,
-		time.Now().Add(-time.Hour),
-		time.Minute*15,
+		time.Now().Add(-time.Hour*14),
+		hangingTasksDefaultDuration+time.Hour,
 	)
 
 	getIds := func(tasks []TaskInfo) []string {
