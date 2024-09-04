@@ -1207,25 +1207,17 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 	}
 }
 
-func TestHangingTasksMetrics(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	registry := mocks.NewRegistryMock()
-
+func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
 	runnersCount := uint64(10)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
+
 	taskWaitingTimeout := "10s"
 	config.TaskWaitingTimeout = &taskWaitingTimeout
-	hangingTaskTimeout := time.Second * 5
-	timeoutString := hangingTaskTimeout.String()
+	timeoutString := "5s"
 	config.HangingTaskTimeout = &timeoutString
+
 	metricsCollectionInterval := "10ms"
 	config.ListerMetricsCollectionInterval = &metricsCollectionInterval
 	config.ExceptHangingTaskTypes = []string{
@@ -1233,17 +1225,16 @@ func TestHangingTasksMetrics(t *testing.T) {
 		"tasks.ClearEndedTasks",
 	}
 
-	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
-	require.NoError(t, err)
+	return config
+}
 
-	err = s.startRunners(ctx)
-	require.NoError(t, err)
+func prepareMiscellaneousMockGauges(
+	config *tasks_config.TasksConfig,
+	registry *mocks.RegistryMock,
+) {
 
-	reqCtx := getRequestContext(t, ctx)
-	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
-	require.NoError(t, err)
-
+	// These mocks are not checked and required because
+	// we can't simply mock the functions we need and ignore other functions
 	collectedTaskStatuses := []tasks_storage.TaskStatus{
 		tasks_storage.TaskStatusReadyToRun,
 		tasks_storage.TaskStatusRunning,
@@ -1265,6 +1256,9 @@ func TestHangingTasksMetrics(t *testing.T) {
 
 	}
 
+}
+
+func prepareTestMockGauges(registry *mocks.RegistryMock, taskId string) {
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": "all"},
@@ -1283,6 +1277,37 @@ func TestHangingTasksMetrics(t *testing.T) {
 		map[string]string{"type": hangingTaskType, "id": taskId},
 	).On("Set", float64(0)).NotBefore(
 		gaugeSet1IDCall).Return(mock.Anything)
+}
+
+func TestHangingTasksMetrics(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewRegistryMock()
+
+	config := newHangingTaskTestConfig()
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerHangingTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	prepareMiscellaneousMockGauges(config, registry)
+	prepareTestMockGauges(registry, taskId)
 
 	time.Sleep(hangingTaskTimeout * 2)
 	_, err = s.scheduler.CancelTask(ctx, taskId)
