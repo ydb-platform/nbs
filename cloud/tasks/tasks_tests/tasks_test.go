@@ -1228,7 +1228,12 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
-func prepareTestMockGauges(registry *mocks.RegistryMock, taskId string) {
+func prepareTestMockGauges(
+	registry *mocks.RegistryMock,
+	notifierChannelForType <-chan time.Time,
+	notifierChannelForId <-chan time.Time,
+	taskId string,
+) {
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": "all"},
@@ -1241,12 +1246,13 @@ func prepareTestMockGauges(registry *mocks.RegistryMock, taskId string) {
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": "all"},
 	).On("Set", float64(0)).NotBefore(
-		gaugeSet1TypeCall).Return(mock.Anything)
+		gaugeSet1TypeCall).Return(mock.Anything).WaitUntil(
+		notifierChannelForType)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": taskId},
 	).On("Set", float64(0)).NotBefore(
-		gaugeSet1IDCall).Return(mock.Anything)
+		gaugeSet1IDCall).Return(mock.Anything).WaitUntil(notifierChannelForId)
 }
 
 func TestHangingTasksMetrics(t *testing.T) {
@@ -1276,7 +1282,14 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	prepareTestMockGauges(registry, taskId)
+	notifierChannelForType := make(chan time.Time)
+	notifierChannelForId := make(chan time.Time)
+	prepareTestMockGauges(
+		registry,
+		notifierChannelForType,
+		notifierChannelForId,
+		taskId,
+	)
 
 	time.Sleep(hangingTaskTimeout * 2)
 	_, err = s.scheduler.CancelTask(ctx, taskId)
@@ -1284,6 +1297,19 @@ func TestHangingTasksMetrics(t *testing.T) {
 	_ = s.scheduler.WaitTaskEnded(ctx, taskId)
 	// Additional interval to wait for collect lister metrics
 	// to finish previous iteration
-	time.Sleep(time.Second)
+
+	i := 0
+	afterwards := time.After(time.Second * 10)
+	for i < 2 {
+		select {
+		case notifierChannelForId <- time.Now():
+			i++
+		case notifierChannelForType <- time.Now():
+			i++
+		case <-afterwards:
+			t.Fatal("Timeout error waiting for hangingTasks metric")
+		}
+	}
+
 	registry.AssertAllExpectations(t)
 }
