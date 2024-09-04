@@ -155,7 +155,8 @@ func (t *createSnapshotFromLegacySnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.storage.DeletingSnapshot(ctx, t.request.DstSnapshotId)
+	_, err := t.storage.DeletingSnapshot(ctx, t.request.DstSnapshotId, execCtx.GetTaskID())
+	return err
 }
 
 func (t *createSnapshotFromLegacySnapshotTask) GetMetadata(

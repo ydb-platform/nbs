@@ -220,7 +220,7 @@ func diskStateStructTypeString() string {
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
-		
+
 		fill_generation: Uint64>`
 }
 
@@ -533,11 +533,6 @@ func (s *storageYDB) deleteDisk(
 	state.deletingAt = deletingAt
 
 	err = s.updateDiskState(ctx, tx, state)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.deleteDiskFromIncremental(ctx, tx, state.id, state.zoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -1095,12 +1090,7 @@ func (s *storageYDB) DiskRelocated(
 
 	state.zoneID = dstZoneID
 
-	err = s.updateDiskState(ctx, tx, state)
-	if err != nil {
-		return err
-	}
-
-	return s.deleteDiskFromIncremental(ctx, tx, diskID, oldZoneID)
+	return s.updateDiskState(ctx, tx, state)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

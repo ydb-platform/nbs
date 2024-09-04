@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -35,6 +36,47 @@ func makeShardID(s string) uint64 {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) getIncremental(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	disk *types.Disk,
+) (snapshotID string, checkpointID string, err error) {
+
+	logging.Info(ctx, "Getting incremental snapshot for disk %+v", disk)
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $zone_id as Utf8;
+		declare $disk_id as Utf8;
+
+		select *
+		from incremental
+		where zone_id = $zone_id and disk_id = $disk_id
+	`, s.tablesPath),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(disk.ZoneId)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(disk.DiskId)),
+	)
+	if err != nil {
+		return "", "", err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("snapshot_id", &snapshotID),
+				persistence.OptionalWithDefault("checkpoint_id", &checkpointID),
+			)
+			if err != nil {
+				return "", "", err
+			}
+		}
+	}
+
+	logging.Info(ctx, "snapshot %v is incremental for disk %+v", snapshotID, disk)
+	return
+}
 
 func (s *storageYDB) createSnapshot(
 	ctx context.Context,
@@ -91,15 +133,26 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
-		id:         snapshotMeta.ID,
-		creatingAt: time.Now(),
-		status:     snapshotStatusCreating,
+		id:           snapshotMeta.ID,
+		createTaskID: snapshotMeta.CreateTaskID,
+		creatingAt:   time.Now(),
+		status:       snapshotStatusCreating,
 	}
 	if snapshotMeta.Disk != nil {
 		state.zoneID = snapshotMeta.Disk.ZoneId
 		state.diskID = snapshotMeta.Disk.DiskId
 		state.checkpointID = snapshotMeta.CheckpointID
-		state.baseSnapshotID = snapshotMeta.BaseSnapshotID
+
+		baseSnapshotID, baseCheckpointID, err := s.getIncremental(
+			ctx,
+			tx,
+			snapshotMeta.Disk,
+		)
+		if err != nil {
+			return nil, err
+		}
+		state.baseSnapshotID = baseSnapshotID
+		state.baseCheckpointID = baseCheckpointID
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -333,7 +386,8 @@ func (s *storageYDB) deletingSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-) (err error) {
+	taskID string,
+) (deleting *SnapshotMeta, err error) {
 
 	defer s.metrics.StatOperation("deletingSnapshot")(&err)
 
@@ -341,7 +395,7 @@ func (s *storageYDB) deletingSnapshot(
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -357,13 +411,13 @@ func (s *storageYDB) deletingSnapshot(
 		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Close()
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var state snapshotState
@@ -376,11 +430,26 @@ func (s *storageYDB) deletingSnapshot(
 
 			err = tx.Commit(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			// Should be idempotent.
-			return nil
+			return state.toSnapshotMeta(), err
+		}
+
+		if len(state.lockTaskID) != 0 && state.lockTaskID != taskID {
+			err = tx.Commit(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			logging.Info(
+				ctx,
+				"Snapshot with id %v is locked and can't be deleted",
+				snapshotID,
+			)
+			// Prevent deletion.
+			return nil, errors.NewInterruptExecutionError()
 		}
 	}
 
@@ -400,7 +469,7 @@ func (s *storageYDB) deletingSnapshot(
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -416,7 +485,7 @@ func (s *storageYDB) deletingSnapshot(
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -434,10 +503,10 @@ func (s *storageYDB) deletingSnapshot(
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return tx.Commit(ctx)
+	return state.toSnapshotMeta(), tx.Commit(ctx)
 }
 
 func (s *storageYDB) GetSnapshotsToDelete(
@@ -1123,4 +1192,169 @@ func (s *storageYDB) getChunkStorage(useS3 bool) chunks.Storage {
 	} else {
 		return s.chunkStorageYDB
 	}
+}
+
+func (s *storageYDB) lockSnapshot(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	lockTaskID string,
+) (locked bool, err error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return false, err
+	}
+
+	if len(states) == 0 {
+		return false, tx.Commit(ctx)
+	}
+
+	state := states[0]
+	if state.status >= snapshotStatusDeleting {
+		return false, tx.Commit(ctx)
+	}
+
+	if len(state.lockTaskID) != 0 {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		if state.lockTaskID == lockTaskID {
+			// Should be idempotent.
+			return true, nil
+		}
+
+		logging.Info(ctx, "Another lock %v was found for snapshot %v", lockTaskID, snapshotID)
+		return false, errors.NewInterruptExecutionError()
+	}
+
+	state.lockTaskID = lockTaskID
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $states as List<%v>;
+
+		upsert into snapshots
+		select *
+		from AS_TABLE($states)
+	`, s.tablesPath, snapshotStateStructTypeString()),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
+	)
+	if err != nil {
+		return false, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	logging.Info(ctx, "Locked snapshot with id %v", snapshotID)
+	return true, nil
+}
+
+func (s *storageYDB) unlockSnapshot(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	lockTaskID string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		// Should be idempotent.
+		return tx.Commit(ctx)
+	}
+
+	state := states[0]
+	if state.status >= snapshotStatusDeleting {
+		// Should be idempotent.
+		return tx.Commit(ctx)
+	}
+
+	if len(state.lockTaskID) == 0 {
+		// Should be idempotent.
+		return tx.Commit(ctx)
+	}
+
+	if state.lockTaskID != lockTaskID {
+		// Our lock is not present, so it's a success.
+		return tx.Commit(ctx)
+	}
+
+	state.lockTaskID = ""
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $states as List<%v>;
+
+		upsert into snapshots
+		select *
+		from AS_TABLE($states)
+	`, s.tablesPath, snapshotStateStructTypeString()),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Unlocked snapshot with id %v", snapshotID)
+	return nil
 }
