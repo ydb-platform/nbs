@@ -32,8 +32,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().Empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())
-        {
+        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight()) {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -45,7 +44,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 State->GetMeta()
                         .GetVolumeConfig()
                         .GetEncryptionDesc()
-                        .GetMode() != NProto::NO_ENCRYPTION;
+                        // Encrypted by the user
+                        .GetMode() == NProto::ENCRYPTION_AES_XTS;
 
             // For overlay disks we need to ensure that the only bits that are
             // set in the used block map are the bits that correspond to the

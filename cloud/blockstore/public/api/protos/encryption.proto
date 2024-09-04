@@ -11,6 +11,10 @@ enum EEncryptionMode
 {
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
+
+    // Default AES XTS encryption. DEK is stored in
+    // VolumeConfig.EncryptionDesc: EncryptedDEK or UnencryptedDEK.
+    ENCRYPTION_DEFAULT_AES_XTS = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
