@@ -47,7 +47,7 @@ func printStackTraces() string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerMetrics interface {
-	OnExecutionStarted(state *executionContext)
+	OnExecutionStarted(state ExecutionContext)
 	OnExecutionStopped()
 	OnExecutionError(err error)
 	OnError(err error)
@@ -80,13 +80,12 @@ type runnerMetricsImpl struct {
 	logger                 logging.Logger
 }
 
-func (m *runnerMetricsImpl) OnExecutionStarted(execContext *executionContext) {
+func (m *runnerMetricsImpl) OnExecutionStarted(execContext ExecutionContext) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
-	state := execContext.taskState
 	subRegistry := m.registry.WithTags(map[string]string{
-		"type": state.TaskType,
+		"type": execContext.GetTaskType(),
 	})
 
 	m.taskMetrics = &taskMetrics{
@@ -97,16 +96,16 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execContext *executionContext) {
 		nonRetriableErrorsCounter:    subRegistry.Counter("errors/nonRetriable"),
 		nonCancellableErrorsCounter:  subRegistry.Counter("errors/nonCancellable"),
 		inflightTasksGauge:           subRegistry.Gauge("inflightTasks"),
-		taskID:                       state.ID,
-		taskType:                     state.TaskType,
+		taskID:                       execContext.GetTaskID(),
+		taskType:                     execContext.GetTaskType(),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.onExecutionStopped = cancel
 
 	// Should not report some tasks as hanging (NBS-4341).
-	if !common.Find(m.exceptHangingTaskTypes, state.TaskType) {
-		deadline := state.CreatedAt.Add(m.hangingTaskTimeout)
+	if !common.Find(m.exceptHangingTaskTypes, execContext.GetTaskType()) {
+		var deadline time.Time
 
 		go func() {
 			for {
@@ -116,19 +115,13 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execContext *executionContext) {
 				case <-time.After(checkTaskHangingPeriod):
 				}
 
-				execContextDeadline, ok := execContext.GetDeadline()
-				if ok {
-					deadline = execContextDeadline
-				}
+				deadline = execContext.GetDeadline()
 
 				m.checkTaskHanging(ctx, deadline)
 			}
 		}()
 
-		execContextDeadline, ok := execContext.GetDeadline()
-		if ok {
-			deadline = execContextDeadline
-		}
+		deadline = execContext.GetDeadline()
 
 		m.checkTaskHangingImpl(deadline)
 	}

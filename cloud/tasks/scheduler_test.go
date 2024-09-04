@@ -86,9 +86,9 @@ func (c *executionContextMock) AddTaskDependency(
 	return args.Error(0)
 }
 
-func (c *executionContextMock) GetDeadline() (time.Time, bool) {
+func (c *executionContextMock) GetDeadline() time.Time {
 	c.Called()
-	return time.Time{}, false
+	return time.Time{}
 }
 
 func (c *executionContextMock) SetEstimate(estimatedDuration time.Duration) {

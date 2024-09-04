@@ -79,6 +79,7 @@ type runnerForRun struct {
 	id                     string
 	maxRetriableErrorCount uint64
 	maxPanicCount          uint64
+	hangingTaskTimeout     time.Duration
 }
 
 func (r *runnerForRun) receiveTask(
@@ -315,20 +316,22 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r.pingTimeout,
 		r,
 		taskInfo,
+		r.hangingTaskTimeout,
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage     storage.Storage
-	registry    *Registry
-	metrics     runnerMetrics
-	channel     *channel
-	pingPeriod  time.Duration
-	pingTimeout time.Duration
-	host        string
-	id          string
+	storage            storage.Storage
+	registry           *Registry
+	metrics            runnerMetrics
+	channel            *channel
+	pingPeriod         time.Duration
+	pingTimeout        time.Duration
+	host               string
+	id                 string
+	hangingTaskTimeout time.Duration
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -437,6 +440,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r.pingTimeout,
 		r,
 		taskInfo,
+		r.hangingTaskTimeout,
 	)
 }
 
@@ -502,6 +506,7 @@ func lockAndExecuteTask(
 	pingTimeout time.Duration,
 	runner runner,
 	taskInfo storage.TaskInfo,
+	hangingTaskTimeout time.Duration,
 ) error {
 
 	taskState, err := runner.lockTask(ctx, taskInfo)
@@ -550,7 +555,12 @@ func lockAndExecuteTask(
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
 	runCtx = logging.WithCommonFields(runCtx)
 
-	execCtx := newExecutionContext(task, taskStorage, taskState)
+	execCtx := newExecutionContext(
+		task,
+		taskStorage,
+		taskState,
+		hangingTaskTimeout,
+	)
 
 	pingCtx, cancelPing := context.WithCancel(ctx)
 	go taskPinger(pingCtx, execCtx, pingPeriod, pingTimeout, cancelRun)
@@ -633,6 +643,7 @@ func startRunner(
 		id:                     idForRun,
 		maxRetriableErrorCount: maxRetriableErrorCount,
 		maxPanicCount:          maxPanicCount,
+		hangingTaskTimeout:     hangingTaskTimeout,
 	})
 
 	runnerForCancelMetrics := newRunnerMetrics(
@@ -643,14 +654,15 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:     taskStorage,
-		registry:    registry,
-		metrics:     runnerForCancelMetrics,
-		channel:     channelForCancel,
-		pingPeriod:  pingPeriod,
-		pingTimeout: pingTimeout,
-		host:        host,
-		id:          idForCancel,
+		storage:            taskStorage,
+		registry:           registry,
+		metrics:            runnerForCancelMetrics,
+		channel:            channelForCancel,
+		pingPeriod:         pingPeriod,
+		pingTimeout:        pingTimeout,
+		host:               host,
+		id:                 idForCancel,
+		hangingTaskTimeout: hangingTaskTimeout,
 	})
 
 	return nil
