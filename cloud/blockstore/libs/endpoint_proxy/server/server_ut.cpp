@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/testing/common/network.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/core/future.h>
 
@@ -46,7 +47,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         // 4. Expect response with error
         // 5. Send start endpoint request with invalid device path again
         // 6. Expect response with error
-        const ui16 port = 8122;
+        const auto port = NTesting::GetFreePort();
         auto unixSocketPath = CreateGuidAsString();
         TEndpointProxyServerConfig serverConfig(
             port,
