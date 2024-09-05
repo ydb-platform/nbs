@@ -22,6 +22,7 @@ target_link_options(cloud-blockstore-libs-endpoint_proxy-server-ut PRIVATE
 )
 target_sources(cloud-blockstore-libs-endpoint_proxy-server-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/proxy_storage_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/server_ut.cpp
 )
 set_property(
   TARGET
