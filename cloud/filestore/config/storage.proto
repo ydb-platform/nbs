@@ -351,11 +351,11 @@ message TStorageConfig
     optional bool InMemoryIndexCacheEnabled = 371;
     // Capacity of in-memory index cache, in number of entries per each table
     optional uint64 InMemoryIndexCacheNodesCapacity = 372;
-    optional uint64 InMemoryIndexCacheNodesVerCapacity = 373;
+    reserved 373; // InMemoryIndexCacheNodesVerCapacity
     optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 374;
-    optional uint64 InMemoryIndexCacheNodeAttrsVerCapacity = 375;
+    reserved 375; // InMemoryIndexCacheNodeAttrsVerCapacity
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
-    optional uint64 InMemoryIndexCacheNodeRefsVerCapacity = 377;
+    reserved 377; // InMemoryIndexCacheNodeRefsVerCapacity
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
