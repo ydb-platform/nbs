@@ -395,7 +395,6 @@ void TNetlinkDevice::DisconnectDevice()
 void TNetlinkDevice::DoConnectDevice(bool connected)
 {
     try {
-        /*
         auto command = NBD_CMD_CONNECT;
         if (connected) {
             if (!Reconfigure) {
@@ -406,9 +405,6 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         } else {
             STORAGE_INFO("connect " << DeviceName);
         }
-        */
-        Y_UNUSED(connected);
-        auto command = Reconfigure ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT;
 
         TNetlinkSocket socket;
         TNetlinkMessage message(socket.GetFamily(), command);
