@@ -5977,6 +5977,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(
                 2 * blobSize / block,
                 stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
         }
 
@@ -5988,13 +5989,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetDeletionMarkersCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 (3_TB - 1_GB) / block,
                 stats.GetLargeDeletionMarkersCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                blobSize / block,
+                2 * blobSize / block,
                 stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobSize / block,
+                stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
         }
     }
