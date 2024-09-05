@@ -4,6 +4,7 @@ import pytest
 import yatest.common as common
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+import cloud.blockstore.public.sdk.python.protos as protos
 from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import run_test
@@ -13,15 +14,11 @@ from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_
 
 def default_storage_config(cache_folder):
     storage = storage_config_with_default_limits()
-    storage.HDDSystemChannelPoolKind = "rot"
-    storage.SSDSystemChannelPoolKind = "rot"
-    storage.HybridSystemChannelPoolKind = "rot"
-    storage.HDDLogChannelPoolKind = "rot"
-    storage.SSDLogChannelPoolKind = "rot"
-    storage.HybridLogChannelPoolKind = "rot"
-    storage.HDDIndexChannelPoolKind = "rot"
-    storage.SSDIndexChannelPoolKind = "rot"
-    storage.HybridIndexChannelPoolKind = "rot"
+    storage.SSDSystemChannelPoolKind = "ssd"
+    storage.SSDLogChannelPoolKind = "ssd"
+    storage.SSDIndexChannelPoolKind = "ssd"
+    storage.SSDMixedChannelPoolKind = "ssd"
+    storage.SSDMergedChannelPoolKind = "ssd"
 
     storage.TabletBootInfoBackupFilePath = \
         cache_folder + "/tablet_boot_info_backup.txt"
@@ -46,11 +43,10 @@ class TestCase(object):
 
 
 TESTS = [
-    # NBS-2025: temporarily disabled.
-    #    TestCase(
-    #        "default",
-    #        "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
-    #    ),
+    TestCase(
+        "default",
+        "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
+    ),
 ]
 
 
@@ -72,13 +68,13 @@ def __run_test(test_case):
         dynamic_pdisks=[dict(user_kind=1)],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="rot", pdisk_user_kind=1)
+            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=1)
         ],
         bs_cache_file_path=cache_folder + "/bs_cache.txt",
     )
 
     client = CreateClient(env.endpoint)
-    client.create_volume("vol0", 4096, 1000000)
+    client.create_volume("vol0", 4096, 1000000, 1, protos.EStorageMediaKind.Value("STORAGE_MEDIA_SSD"))
 
     session = Session(client, "vol0", "")
     session.mount_volume()

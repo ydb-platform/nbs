@@ -42,6 +42,8 @@ target_sources(libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_backup_disk_registry_state.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_backup_path_descriptions.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_backup_tablet_boot_infos.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_change_disk_device.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_change_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_check_blob.cpp
