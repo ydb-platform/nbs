@@ -942,7 +942,7 @@ func (s *storageYDB) listHangingTasks(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
-		declare missed_estimates_until_hanging as Uint64;
+		declare $missed_estimates_until_hanging as Uint64;
 		declare $now as Timestamp;
 		
 		$task_ids = (
@@ -962,7 +962,7 @@ func (s *storageYDB) listHangingTasks(
 			(
 				estimated_time > created_at and
 				$now >= MAX_OF(
-					created_at + (estimated_time - created_at) * missed_estimates_until_hanging,
+					created_at + (estimated_time - created_at) * $missed_estimates_until_hanging,
 					created_at + $hanging_task_timeout
 				)
 			)
@@ -978,7 +978,7 @@ func (s *storageYDB) listHangingTasks(
 			persistence.IntervalValue(s.hangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"missed_estimates_until_hanging",
+			"$missed_estimates_until_hanging",
 			persistence.Uint64Value(s.missedEstimatesUntilHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
