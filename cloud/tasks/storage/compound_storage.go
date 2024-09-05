@@ -476,7 +476,7 @@ func NewStorage(
 			ZoneIDs:                     config.GetZoneIds(),
 			metrics:                     metrics,
 			hangingTaskTimeout:          hangingTaskTimeout,
-			missedEstimatesUntilHanging: config.GetEstimateMissMultiplier(),
+			missedEstimatesUntilHanging: config.GetMissedEstimatesUntilHanging(),
 		}
 	}
 

@@ -908,7 +908,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.GetEstimateMissMultiplier(),
+		config.GetMissedEstimatesUntilHanging(),
 	)
 	if err != nil {
 		return err
@@ -960,7 +960,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.GetEstimateMissMultiplier(),
+		config.GetMissedEstimatesUntilHanging(),
 	)
 	if err != nil {
 		return err
