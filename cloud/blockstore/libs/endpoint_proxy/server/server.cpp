@@ -647,6 +647,7 @@ struct TServer: IEndpointProxyServer
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "
                 << status.GetMessage());
+            *response.MutableError() = std::move(status);
             return;
         }
 
@@ -676,7 +677,15 @@ struct TServer: IEndpointProxyServer
             ep->UnixSocketPath = request.GetUnixSocketPath();
             try {
                 DoProcessRequest(request, *ep, response);
-                StoreEndpointIfNeeded(*ep);
+                if (HasError(response)) {
+                    NProto::TStopProxyEndpointRequest stopRequest;
+                    NProto::TStopProxyEndpointResponse stopResponse;
+                    stopRequest.SetUnixSocketPath(request.GetUnixSocketPath());
+                    DoProcessRequest(stopRequest, *ep, stopResponse);
+                    Socket2Endpoint.erase(request.GetUnixSocketPath());
+                } else {
+                    StoreEndpointIfNeeded(*ep);
+                }
             } catch (...) {
                 ShitHappened(response);
             }
