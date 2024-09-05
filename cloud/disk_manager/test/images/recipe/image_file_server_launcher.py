@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -25,11 +27,35 @@ class ImageFileServer(Daemon):
             service_name=SERVICE_NAME)
 
 
+def _check_file_is_valid(path: Path, expected_image_file_size: str):
+    if not path.is_file():
+        raise RuntimeError(f"Image file path {path} does not exist")
+    actual_image_file_size = path.stat().st_size
+    if actual_image_file_size != int(expected_image_file_size):
+        raise RuntimeError(
+            f"Image file size {actual_image_file_size} does not match expected"
+        )
+
+
 class ImageFileServerLauncher:
 
-    def __init__(self, image_file_path, other_image_file_path=""):
-        self.__image_file_path = image_file_path
-        self.__other_image_file_path = other_image_file_path
+    def __init__(
+            self,
+            image_file_path,
+            expected_image_file_size,
+            other_image_file_path="",
+            other_expected_image_file_size=None,
+    ):
+
+        self.__image_file_path = Path(image_file_path)
+        _check_file_is_valid(expected_image_file_size, image_file_path)
+        if other_image_file_path != "":
+            self.__other_image_file_path = Path(other_image_file_path)
+            if other_expected_image_file_size is None:
+                raise RuntimeError(
+                    "other_expected_image_file_size can not be None if other_image_file_path is present"
+                )
+            _check_file_is_valid(self.__other_image_file_path, other_expected_image_file_size)
 
         self.__port_manager = yatest_common.PortManager()
         self.__port = self.__port_manager.get_port()
@@ -43,8 +69,8 @@ class ImageFileServerLauncher:
         self.__daemon = ImageFileServer(
             self.__port,
             working_dir,
-            self.__image_file_path,
-            self.__other_image_file_path)
+            str(self.__image_file_path),
+            str(self.__other_image_file_path))
 
     def start(self):
         self.__daemon.start()
