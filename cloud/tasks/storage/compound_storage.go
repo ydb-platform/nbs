@@ -251,8 +251,6 @@ func (s *compoundStorage) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
-	hangingTaskTimeout time.Duration,
-	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
@@ -263,8 +261,6 @@ func (s *compoundStorage) ListHangingTasks(
 				ctx,
 				limit,
 				exceptTaskTypes,
-				hangingTaskTimeout,
-				missedEstimatesUntilHanging,
 			)
 			tasks = append(tasks, values...)
 			return err
@@ -462,16 +458,25 @@ func NewStorage(
 		return nil, err
 	}
 
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	newStorage := func(storageFolder string, metrics storageMetrics) *storageYDB {
 		return &storageYDB{
-			db:                  db,
-			folder:              storageFolder,
-			tablesPath:          db.AbsolutePath(storageFolder),
-			taskStallingTimeout: taskStallingTimeout,
-			updateTaskTimeout:   updateTaskTimeout,
-			livenessWindow:      livenessWindow,
-			ZoneIDs:             config.GetZoneIds(),
-			metrics:             metrics,
+			db:                          db,
+			folder:                      storageFolder,
+			tablesPath:                  db.AbsolutePath(storageFolder),
+			taskStallingTimeout:         taskStallingTimeout,
+			updateTaskTimeout:           updateTaskTimeout,
+			livenessWindow:              livenessWindow,
+			ZoneIDs:                     config.GetZoneIds(),
+			metrics:                     metrics,
+			hangingTaskTimeout:          hangingTaskTimeout,
+			missedEstimatesUntilHanging: config.GetEstimateMissMultiplier(),
 		}
 	}
 

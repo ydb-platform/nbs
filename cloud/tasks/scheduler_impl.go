@@ -608,12 +608,6 @@ func NewScheduler(
 		return nil, err
 	}
 
-	hangingTaskTimeout, err := time.ParseDuration(
-		config.GetHangingTaskTimeout())
-	if err != nil {
-		return nil, err
-	}
-
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
@@ -621,12 +615,10 @@ func NewScheduler(
 				storage:                   storage,
 				metricsCollectionInterval: listerMetricsCollectionInterval,
 
-				hangingTaskGaugesByID:       make(map[string]metrics.Gauge),
-				hangingTaskGaugesByType:     make(map[string]metrics.Gauge),
-				hangingTaskTimeout:          hangingTaskTimeout,
-				exceptHangingTaskTypes:      config.GetExceptHangingTaskTypes(),
-				maxHangingTaskIDsToReport:   config.GetMaxReportedHangingTaskIDs(),
-				missedEstimatesUntilHanging: config.GetEstimateMissMultiplier(),
+				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
+				hangingTaskGaugesByType:   make(map[string]metrics.Gauge),
+				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
+				maxHangingTaskIDsToReport: config.GetMaxReportedHangingTaskIDs(),
 			}
 		},
 	)

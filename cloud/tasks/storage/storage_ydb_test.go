@@ -1205,21 +1205,16 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		return result
 	}
 
-	missedEstimatesUntilHanging := uint64(2)
 	hangingTasks, err := storage.ListHangingTasks(
 		ctx,
 		^uint64(0),
 		exceptHangingTaskTypes,
-		hangingTaskTimeout,
-		missedEstimatesUntilHanging,
 	)
 	require.NoError(t, err)
 	hangingTasksWithoutBlackList, err := storage.ListHangingTasks(
 		ctx,
 		^uint64(0),
 		[]string{},
-		hangingTaskTimeout,
-		missedEstimatesUntilHanging,
 	)
 	require.NoError(t, err)
 	logging.Info(ctx, "hanging tasks %v", hangingTasks)

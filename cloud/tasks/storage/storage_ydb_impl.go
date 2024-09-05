@@ -932,8 +932,6 @@ func (s *storageYDB) listHangingTasks(
 	session *persistence.Session,
 	limit uint64,
 	exceptTaskTypes []string,
-	hangingTaskTimeout time.Duration,
-	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	now := time.Now()
@@ -977,11 +975,11 @@ func (s *storageYDB) listHangingTasks(
 		),
 		persistence.ValueParam(
 			"$hanging_task_timeout",
-			persistence.IntervalValue(hangingTaskTimeout),
+			persistence.IntervalValue(s.hangingTaskTimeout),
 		),
 		persistence.ValueParam(
 			"missed_estimates_until_hanging",
-			persistence.Uint64Value(missedEstimatesUntilHanging),
+			persistence.Uint64Value(s.missedEstimatesUntilHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)

@@ -18,12 +18,10 @@ type collectListerMetricsTask struct {
 	storage                   storage.Storage
 	metricsCollectionInterval time.Duration
 
-	hangingTaskGaugesByID       map[string]metrics.Gauge
-	hangingTaskGaugesByType     map[string]metrics.Gauge
-	hangingTaskTimeout          time.Duration
-	exceptHangingTaskTypes      []string
-	maxHangingTaskIDsToReport   int64
-	missedEstimatesUntilHanging uint64
+	hangingTaskGaugesByID     map[string]metrics.Gauge
+	hangingTaskGaugesByType   map[string]metrics.Gauge
+	exceptHangingTaskTypes    []string
+	maxHangingTaskIDsToReport int64
 }
 
 func (c *collectListerMetricsTask) Save() ([]byte, error) {
@@ -168,8 +166,6 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		ctx,
 		^uint64(0),
 		c.exceptHangingTaskTypes,
-		c.hangingTaskTimeout,
-		c.missedEstimatesUntilHanging,
 	)
 	if err != nil {
 		return err

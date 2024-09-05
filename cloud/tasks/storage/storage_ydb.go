@@ -10,14 +10,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db                  *persistence.YDBClient
-	folder              string
-	tablesPath          string
-	taskStallingTimeout time.Duration
-	updateTaskTimeout   time.Duration
-	livenessWindow      time.Duration
-	ZoneIDs             []string
-	metrics             storageMetrics
+	db                          *persistence.YDBClient
+	folder                      string
+	tablesPath                  string
+	taskStallingTimeout         time.Duration
+	updateTaskTimeout           time.Duration
+	livenessWindow              time.Duration
+	ZoneIDs                     []string
+	metrics                     storageMetrics
+	hangingTaskTimeout          time.Duration
+	missedEstimatesUntilHanging uint64
 }
 
 func (s *storageYDB) CreateTask(
@@ -250,8 +252,6 @@ func (s *storageYDB) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
-	hangingTaskTimeout time.Duration,
-	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	var tasks []TaskInfo
@@ -264,8 +264,6 @@ func (s *storageYDB) ListHangingTasks(
 				session,
 				limit,
 				exceptTaskTypes,
-				hangingTaskTimeout,
-				missedEstimatesUntilHanging,
 			)
 			return err
 		},
