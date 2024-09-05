@@ -429,10 +429,9 @@ func (c *client) updateVolume(
 
 	retries := 0
 	for {
-		ctx = c.withTimeoutHeader(ctx)
-		volume, err := c.nbs.DescribeVolume(ctx, diskID)
+		volume, err := c.describeVolume(ctx, diskID)
 		if err != nil {
-			return wrapError(err)
+			return err
 		}
 
 		err = saveState()
@@ -468,10 +467,9 @@ func (c *client) updatePlacementGroup(
 
 	retries := 0
 	for {
-		ctx = c.withTimeoutHeader(ctx)
-		group, err := c.nbs.DescribePlacementGroup(ctx, groupID)
+		group, err := c.describePlacementGroup(ctx, groupID)
 		if err != nil {
-			return wrapError(err)
+			return err
 		}
 
 		err = saveState()
@@ -502,7 +500,17 @@ func (c *client) executeAction(
 	action string,
 	request proto.Message,
 	response proto.Message,
-) error {
+) (err error) {
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.ExecuteAction",
+		tracing.WithAttributes(
+			tracing.AttributeString("action", action),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
 
 	input, err := new(jsonpb.Marshaler).MarshalToString(request)
 	if err != nil {
@@ -511,6 +519,8 @@ func (c *client) executeAction(
 			err,
 		)
 	}
+
+	span.SetAttributes(tracing.AttributeString("input", input))
 
 	ctx = c.withTimeoutHeader(ctx)
 	output, err := c.nbs.ExecuteAction(ctx, action, []byte(input))
@@ -1548,7 +1558,7 @@ func (c *client) createVolume(
 	diskID string,
 	blocksCount uint64,
 	opts *nbs_client.CreateVolumeOpts,
-) error {
+) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
@@ -1560,12 +1570,60 @@ func (c *client) createVolume(
 		),
 	)
 	defer span.End()
+	defer tracing.SetError(span, &err)
 
-	err := c.nbs.CreateVolume(ctx, diskID, blocksCount, opts)
+	err = c.nbs.CreateVolume(ctx, diskID, blocksCount, opts)
 	if err != nil {
-		err = wrapError(err)
-		tracing.SetError(span, err)
+		return wrapError(err)
 	}
 
-	return err
+	return nil
+}
+
+func (c *client) describeVolume(
+	ctx context.Context,
+	diskID string,
+) (volume *protos.TVolume, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DescribeVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	volume, err = c.nbs.DescribeVolume(ctx, diskID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+
+	return volume, nil
+}
+
+func (c *client) describePlacementGroup(
+	ctx context.Context,
+	groupID string,
+) (group *protos.TPlacementGroup, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DescribePlacementGroup",
+		tracing.WithAttributes(
+			tracing.AttributeString("group_id", groupID),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	group, err = c.nbs.DescribePlacementGroup(ctx, groupID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+
+	return group, nil
 }
