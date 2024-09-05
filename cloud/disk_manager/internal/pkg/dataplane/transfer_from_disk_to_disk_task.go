@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,14 +151,11 @@ func (t *transferFromDiskToDiskTask) saveProgress(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	if t.state.Progress == 1 {
-		return nil
-	}
-
 	if t.state.ChunkCount != 0 {
 		t.state.Progress =
 			float64(t.state.MilestoneChunkIndex) / float64(t.state.ChunkCount)
 	}
 
+	logging.Debug(ctx, "saving state %+v", t.state)
 	return execCtx.SaveState(ctx)
 }
