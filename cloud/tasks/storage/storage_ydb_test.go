@@ -1004,7 +1004,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
-func TestStorageYDBListTasksHanging(t *testing.T) {
+func TestStorageYDBListHangingTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -1043,9 +1043,9 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		"allowed_task_type_3",
 	}
 
-	expectedHangingTasksIds := make([]string, 0, 36)
+	expectedHangingTaskIDs := make([]string, 0, 36)
 	expectedTaskIdsWithoutBlackList := make([]string, 0, 72)
-	hangingTasksDefaultDuration := time.Hour * 5
+	hangingTaskTimeout := time.Hour * 5
 
 	createTask := func(
 		taskType string,
@@ -1084,7 +1084,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 	}
 
 	timeBeforeHangingTaskDuration := func() time.Time {
-		return time.Now().Add(-hangingTasksDefaultDuration).Add(-time.Minute)
+		return time.Now().Add(-hangingTaskTimeout).Add(-time.Minute)
 	}
 	createHangingTaskNoEstimate := func(
 		taskType string,
@@ -1107,7 +1107,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 			taskType,
 			taskStatus,
 			time.Now().Add(
-				-(hangingTasksDefaultDuration+time.Hour)*2,
+				-(hangingTaskTimeout+time.Hour)*2,
 			).Add(-time.Minute),
 			time.Hour,
 		)
@@ -1117,14 +1117,14 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		for _, taskType := range allowedHangingTaskTypes {
 			// task without estimate
 			taskId := createHangingTaskNoEstimate(taskType, taskStatus)
-			expectedHangingTasksIds = append(expectedHangingTasksIds, taskId)
+			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskId)
 			expectedTaskIdsWithoutBlackList = append(
 				expectedTaskIdsWithoutBlackList,
 				taskId,
 			)
 			// task  with missed estimate by two
 			taskId = createHangingTaskWithEstimate(taskType, taskStatus)
-			expectedHangingTasksIds = append(expectedHangingTasksIds, taskId)
+			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskId)
 			expectedTaskIdsWithoutBlackList = append(
 				expectedTaskIdsWithoutBlackList,
 				taskId,
@@ -1138,7 +1138,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 				taskType,
 				taskStatus,
 				time.Now().Add(-719*time.Minute),
-				hangingTasksDefaultDuration+time.Hour,
+				hangingTaskTimeout+time.Hour,
 			)
 			// estimate is missed but default estimate is not
 			createTask(
@@ -1171,7 +1171,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 				taskType,
 				taskStatus,
 				time.Now().Add(-719*time.Minute),
-				hangingTasksDefaultDuration+time.Hour,
+				hangingTaskTimeout+time.Hour,
 			)
 			// estimate is missed but default estimate is not
 			createTask(
@@ -1193,7 +1193,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		someOtherAllowedType,
 		TaskStatusCancelled,
 		time.Now().Add(-time.Hour*14),
-		hangingTasksDefaultDuration+time.Hour,
+		hangingTaskTimeout+time.Hour,
 	)
 
 	getIds := func(tasks []TaskInfo) []string {
@@ -1205,21 +1205,21 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		return result
 	}
 
-	estimateMissMultiplier := uint64(2)
-	hangingTasks, err := storage.ListTasksHanging(
+	missedEstimatesUntilHanging := uint64(2)
+	hangingTasks, err := storage.ListHangingTasks(
 		ctx,
 		^uint64(0),
 		exceptHangingTaskTypes,
-		hangingTasksDefaultDuration,
-		estimateMissMultiplier,
+		hangingTaskTimeout,
+		missedEstimatesUntilHanging,
 	)
 	require.NoError(t, err)
-	hangingTasksWithoutBlackList, err := storage.ListTasksHanging(
+	hangingTasksWithoutBlackList, err := storage.ListHangingTasks(
 		ctx,
 		^uint64(0),
 		[]string{},
-		hangingTasksDefaultDuration,
-		estimateMissMultiplier,
+		hangingTaskTimeout,
+		missedEstimatesUntilHanging,
 	)
 	require.NoError(t, err)
 	logging.Info(ctx, "hanging tasks %v", hangingTasks)
@@ -1228,7 +1228,7 @@ func TestStorageYDBListTasksHanging(t *testing.T) {
 		"hanging tasks without blacklist %v",
 		hangingTasksWithoutBlackList,
 	)
-	require.ElementsMatch(t, expectedHangingTasksIds, getIds(hangingTasks))
+	require.ElementsMatch(t, expectedHangingTaskIDs, getIds(hangingTasks))
 	require.ElementsMatch(
 		t,
 		expectedTaskIdsWithoutBlackList,

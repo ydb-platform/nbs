@@ -34,8 +34,8 @@ type mockRunnerMetrics struct {
 	mock.Mock
 }
 
-func (m *mockRunnerMetrics) OnExecutionStarted(state ExecutionContext) {
-	m.Called(state)
+func (m *mockRunnerMetrics) OnExecutionStarted(execCtx ExecutionContext) {
+	m.Called(execCtx)
 }
 
 func (m *mockRunnerMetrics) OnExecutionStopped() {

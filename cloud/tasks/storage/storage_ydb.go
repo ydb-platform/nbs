@@ -246,12 +246,12 @@ func (s *storageYDB) ListTasksCancelling(
 	return tasks, err
 }
 
-func (s *storageYDB) ListTasksHanging(
+func (s *storageYDB) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
 	hangingTaskTimeout time.Duration,
-	estimateMissMultiplier uint64,
+	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	var tasks []TaskInfo
@@ -259,13 +259,13 @@ func (s *storageYDB) ListTasksHanging(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listTasksHanging(
+			tasks, err = s.listHangingTasks(
 				ctx,
 				session,
 				limit,
 				exceptTaskTypes,
 				hangingTaskTimeout,
-				estimateMissMultiplier,
+				missedEstimatesUntilHanging,
 			)
 			return err
 		},

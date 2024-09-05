@@ -45,13 +45,13 @@ type ExecutionContext interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type executionContext struct {
-	task                   Task
-	storage                storage.Storage
-	taskState              storage.TaskState
-	taskStateMutex         sync.Mutex
-	finished               bool
-	hangingTaskTimeout     time.Duration
-	estimateMissMultiplier uint64
+	task                        Task
+	storage                     storage.Storage
+	taskState                   storage.TaskState
+	taskStateMutex              sync.Mutex
+	finished                    bool
+	hangingTaskTimeout          time.Duration
+	missedEstimatesUntilHanging uint64
 }
 
 // HACK from https://github.com/stretchr/testify/pull/694/files to avoid fake race detection
@@ -129,7 +129,7 @@ func (c *executionContext) GetDeadline() time.Time {
 	}
 
 	deadline := c.taskState.CreatedAt.Add(
-		estimatedDuration * time.Duration(c.estimateMissMultiplier))
+		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging))
 	if deadline.Before(defaultDeadline) {
 		return defaultDeadline
 	}
@@ -358,15 +358,15 @@ func newExecutionContext(
 	storage storage.Storage,
 	taskState storage.TaskState,
 	hangingTaskTimeout time.Duration,
-	estimateMissMultiplier uint64,
+	missedEstimatesUntilHanging uint64,
 ) *executionContext {
 
 	return &executionContext{
-		task:                   task,
-		storage:                storage,
-		taskState:              taskState,
-		hangingTaskTimeout:     hangingTaskTimeout,
-		estimateMissMultiplier: estimateMissMultiplier,
+		task:                        task,
+		storage:                     storage,
+		taskState:                   taskState,
+		hangingTaskTimeout:          hangingTaskTimeout,
+		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
 	}
 }
 

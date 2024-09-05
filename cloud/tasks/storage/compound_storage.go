@@ -247,24 +247,24 @@ func (s *compoundStorage) ListTasksCancelling(
 	return tasks, err
 }
 
-func (s *compoundStorage) ListTasksHanging(
+func (s *compoundStorage) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
 	exceptTaskTypes []string,
 	hangingTaskTimeout time.Duration,
-	estimateMissMultiplier uint64,
+	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
 	err := s.visit(
 		ctx,
 		func(storage Storage) error {
-			values, err := storage.ListTasksHanging(
+			values, err := storage.ListHangingTasks(
 				ctx,
 				limit,
 				exceptTaskTypes,
 				hangingTaskTimeout,
-				estimateMissMultiplier,
+				missedEstimatesUntilHanging,
 			)
 			tasks = append(tasks, values...)
 			return err

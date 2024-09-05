@@ -608,7 +608,7 @@ func NewScheduler(
 		return nil, err
 	}
 
-	hangingTasksDefaultDuration, err := time.ParseDuration(
+	hangingTaskTimeout, err := time.ParseDuration(
 		config.GetHangingTaskTimeout())
 	if err != nil {
 		return nil, err
@@ -619,13 +619,14 @@ func NewScheduler(
 			return &collectListerMetricsTask{
 				registry:                  metricsRegistry,
 				storage:                   storage,
-				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
-				hangingTaskGaugesByType:   make(map[string]metrics.Gauge),
 				metricsCollectionInterval: listerMetricsCollectionInterval,
-				hangingTaskTimeout:        hangingTasksDefaultDuration,
-				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
-				maxHangingTaskIDsToReport: config.GetMaxReportedHangingTaskIDs(),
-				estimateMissMultiplier:    config.GetEstimateMissMultiplier(),
+
+				hangingTaskGaugesByID:       make(map[string]metrics.Gauge),
+				hangingTaskGaugesByType:     make(map[string]metrics.Gauge),
+				hangingTaskTimeout:          hangingTaskTimeout,
+				exceptHangingTaskTypes:      config.GetExceptHangingTaskTypes(),
+				maxHangingTaskIDsToReport:   config.GetMaxReportedHangingTaskIDs(),
+				missedEstimatesUntilHanging: config.GetEstimateMissMultiplier(),
 			}
 		},
 	)

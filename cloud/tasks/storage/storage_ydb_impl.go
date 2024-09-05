@@ -927,13 +927,13 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
-func (s *storageYDB) listTasksHanging(
+func (s *storageYDB) listHangingTasks(
 	ctx context.Context,
 	session *persistence.Session,
 	limit uint64,
 	exceptTaskTypes []string,
 	hangingTaskTimeout time.Duration,
-	estimateMissMultiplier uint64,
+	missedEstimatesUntilHanging uint64,
 ) ([]TaskInfo, error) {
 
 	now := time.Now()
@@ -944,7 +944,7 @@ func (s *storageYDB) listTasksHanging(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
-		declare $estimate_miss_multiplier as Uint64;
+		declare missed_estimates_until_hanging as Uint64;
 		declare $now as Timestamp;
 		
 		$task_ids = (
@@ -964,7 +964,7 @@ func (s *storageYDB) listTasksHanging(
 			(
 				estimated_time > created_at and
 				$now >= MAX_OF(
-					created_at + (estimated_time - created_at) * $estimate_miss_multiplier,
+					created_at + (estimated_time - created_at) * missed_estimates_until_hanging,
 					created_at + $hanging_task_timeout
 				)
 			)
@@ -980,8 +980,8 @@ func (s *storageYDB) listTasksHanging(
 			persistence.IntervalValue(hangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"$estimate_miss_multiplier",
-			persistence.Uint64Value(estimateMissMultiplier),
+			"missed_estimates_until_hanging",
+			persistence.Uint64Value(missedEstimatesUntilHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)

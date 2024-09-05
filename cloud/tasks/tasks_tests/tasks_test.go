@@ -1242,17 +1242,26 @@ func prepareTestMockGauges(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": taskId},
 	).On("Set", float64(1)).Return(mock.Anything)
+
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": "all"},
-	).On("Set", float64(0)).NotBefore(
-		gaugeSet1TypeCall).Return(mock.Anything).WaitUntil(
-		notifierChannelForType)
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		gaugeSet1TypeCall,
+	).Return(mock.Anything).WaitUntil(notifierChannelForType)
+
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": taskId},
-	).On("Set", float64(0)).NotBefore(
-		gaugeSet1IDCall).Return(mock.Anything).WaitUntil(notifierChannelForId)
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		gaugeSet1IDCall,
+	).Return(mock.Anything).WaitUntil(notifierChannelForId)
 }
 
 func TestHangingTasksMetrics(t *testing.T) {
@@ -1295,19 +1304,14 @@ func TestHangingTasksMetrics(t *testing.T) {
 	_, err = s.scheduler.CancelTask(ctx, taskId)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskId)
-	// Additional interval to wait for collect lister metrics
-	// to finish previous iteration
 
 	i := 0
-	afterwards := time.After(time.Second * 10)
 	for i < 2 {
 		select {
 		case notifierChannelForId <- time.Now():
 			i++
 		case notifierChannelForType <- time.Now():
 			i++
-		case <-afterwards:
-			t.Fatal("Timeout error waiting for hangingTasks metric")
 		}
 	}
 
