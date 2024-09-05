@@ -188,6 +188,7 @@ void FillDescribeDataResponse(
 class TReadDataVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
+    , public ILargeBlockVisitor
     , public IFreshBytesVisitor
 {
 private:
@@ -229,6 +230,20 @@ public:
 
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, blobId, blobOffset)) {
+            Args.Buffer->ClearBlock(blockOffset);
+        }
+    }
+
+    void Accept(const TBlockDeletion& block) override
+    {
+        TABLET_VERIFY(!ApplyingByteLayer);
+
+        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
+        TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
+
+        auto& prev = Args.Blocks[blockOffset];
+        if (prev.MinCommitId < block.CommitId) {
+            prev = {};
             Args.Buffer->ClearBlock(blockOffset);
         }
     }
@@ -789,6 +804,13 @@ void TIndexTabletActor::ExecuteTx_ReadData(
                 IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount);
         });
+
+    FindLargeBlocks(
+        visitor,
+        args.NodeId,
+        args.CommitId,
+        args.ActualRange().FirstBlock(),
+        args.ActualRange().BlockCount());
 
     // calling FindFreshBytes after FindFreshBlocks and FindMixedBlocks is
     // important since we compare bytes.MinCommitId with the corresponding

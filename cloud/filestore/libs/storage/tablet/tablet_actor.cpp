@@ -473,8 +473,8 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
     bool isPriority = false;
 
-    if (auto priorityRangeId = NextPriorityRangeIdForCleanup()) {
-        cleanupRangeId = *priorityRangeId;
+    if (auto priorityRange = NextPriorityRangeForCleanup()) {
+        cleanupRangeId = priorityRange->RangeId;
         cleanupScore = Max<ui32>();
         isPriority = true;
     }
@@ -487,7 +487,7 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         avgCleanupScore,
         Config->GetLargeDeletionMarkersThreshold(),
         GetLargeDeletionMarkersCount(),
-        GetPriorityRangeIdCount(),
+        GetPriorityRangeCount(),
         isPriority,
         Config->GetNewCleanupEnabled(),
         cleanupScore >= Config->GetCleanupThreshold()

@@ -47,6 +47,32 @@ struct TMarkerInfoLess
 
 using TRangeMap = TSet<TMarkerInfo, TMarkerInfoLess, TStlAllocator>;
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlockVisitor final: public ILargeBlockVisitor
+{
+    TBlock& Block;
+
+    explicit TBlockVisitor(TBlock& block)
+        : Block(block)
+    {}
+
+    void Accept(const TBlockDeletion& block) override
+    {
+        Block.MaxCommitId = Min(Block.MaxCommitId, block.CommitId);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNoOpVisitor final: public ILargeBlockVisitor
+{
+    void Accept(const TBlockDeletion& block) override
+    {
+        Y_UNUSED(block);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,50 +95,94 @@ struct TLargeBlocks::TImpl
     {
     }
 
-    void Apply(TVector<TBlock>& blocks, bool update)
+    void Apply(
+        ILargeBlockVisitor& visitor,
+        ui64 nodeId,
+        ui32 blockIndex,
+        ui32 blockCount,
+        ui64 commitId,
+        bool update)
     {
-        for (auto& block: blocks) {
-            auto it = NodeId2Markers.find(block.NodeId);
-            if (it == NodeId2Markers.end()) {
+        auto it = NodeId2Markers.find(nodeId);
+        if (it == NodeId2Markers.end()) {
+            return;
+        }
+
+        auto rangeIt = it->second.upper_bound(blockIndex);
+        const auto lastBlock = blockIndex + blockCount - 1;
+        while (rangeIt != it->second.end()) {
+            const ui64 end =
+                rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount;
+            if (lastBlock + MaxMarkerBlocks < end) {
+                break;
+            }
+
+            if (commitId < rangeIt->Marker.CommitId) {
                 continue;
             }
 
-            auto rangeIt = it->second.upper_bound(block.BlockIndex);
-            while (rangeIt != it->second.end()) {
-                const ui64 end =
-                    rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount;
-                if (block.BlockIndex + MaxMarkerBlocks < end) {
-                    break;
-                }
+            const auto intersectionStart = Max(
+                rangeIt->Marker.BlockIndex,
+                blockIndex);
+            const auto intersectionEnd = Min(
+                rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount,
+                blockIndex + blockCount);
 
-                const bool inside = rangeIt->Marker.BlockIndex <= block.BlockIndex
-                    && end > block.BlockIndex;
-                if (!inside) {
-                    ++rangeIt;
+            for (auto b = intersectionStart; b < intersectionEnd; ++b) {
+                visitor.Accept({
+                    rangeIt->Marker.NodeId,
+                    b,
+                    rangeIt->Marker.CommitId});
+
+            }
+
+            if (update) {
+                const_cast<TSparseSegment&>(rangeIt->UnprocessedPart)
+                    .PunchHole(intersectionStart, intersectionEnd);
+
+                if (rangeIt->UnprocessedPart.Empty()) {
+                    ProcessedMarkers.push_back(rangeIt->Marker);
+                    rangeIt = it->second.erase(rangeIt);
                     continue;
                 }
-
-                block.MaxCommitId =
-                    Min(block.MaxCommitId, rangeIt->Marker.CommitId);
-
-                if (update) {
-                    const_cast<TSparseSegment&>(rangeIt->UnprocessedPart)
-                        .PunchHole(block.BlockIndex, block.BlockIndex + 1);
-
-                    if (rangeIt->UnprocessedPart.Empty()) {
-                        ProcessedMarkers.push_back(rangeIt->Marker);
-                        rangeIt = it->second.erase(rangeIt);
-                        continue;
-                    }
-                }
-
-                ++rangeIt;
             }
 
-            if (update && it->second.empty()) {
-                NodeId2Markers.erase(it);
-            }
+            ++rangeIt;
         }
+
+        if (update && it->second.empty()) {
+            NodeId2Markers.erase(it);
+        }
+    }
+
+    void Apply(TVector<TBlock>& blocks, bool update)
+    {
+        for (auto& block: blocks) {
+            TBlockVisitor visitor(block);
+            Apply(
+                visitor,
+                block.NodeId,
+                block.BlockIndex,
+                1,
+                Max<ui64>(),
+                update);
+        }
+    }
+
+    void MarkProcessed(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount)
+    {
+        TNoOpVisitor visitor;
+        Apply(
+            visitor,
+            nodeId,
+            blockIndex,
+            blocksCount,
+            commitId,
+            true);
     }
 };
 
@@ -144,9 +214,13 @@ void TLargeBlocks::ApplyDeletionMarkers(TVector<TBlock>& blocks) const
     Impl->Apply(blocks, false);
 }
 
-void TLargeBlocks::ApplyAndUpdateDeletionMarkers(TVector<TBlock>& blocks)
+void TLargeBlocks::MarkProcessed(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount)
 {
-    Impl->Apply(blocks, true);
+    Impl->MarkProcessed(nodeId, commitId, blockIndex, blocksCount);
 }
 
 TDeletionMarker TLargeBlocks::GetOne() const
@@ -170,6 +244,16 @@ TVector<TDeletionMarker> TLargeBlocks::ExtractProcessedDeletionMarkers()
     auto res = std::move(Impl->ProcessedMarkers);
     Impl->ProcessedMarkers.clear();
     return res;
+}
+
+void TLargeBlocks::FindBlocks(
+    ILargeBlockVisitor& visitor,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount) const
+{
+    Impl->Apply(visitor, nodeId, blockIndex, blocksCount, commitId, false);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -455,6 +455,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     RemoveTransaction(*args.RequestInfo);
+    EnqueueBlobIndexOpIfNeeded(ctx);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);

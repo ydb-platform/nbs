@@ -56,9 +56,13 @@ void TIndexTabletActor::HandleCleanup(
     }
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s Cleanup started (range: #%u)",
+        "%s Cleanup started (range: #%u, priority queue size: %u"
+        ", large marker count: %lu / large cleanup threshold: %lu)",
         LogTag.c_str(),
-        msg->RangeId);
+        msg->RangeId,
+        GetPriorityRangeCount(),
+        GetLargeDeletionMarkersCount(),
+        Config->GetLargeDeletionMarkersCleanupThreshold());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

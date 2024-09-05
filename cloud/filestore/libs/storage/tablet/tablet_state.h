@@ -170,6 +170,7 @@ private:
     /*const*/ bool LargeDeletionMarkersEnabled = false;
     /*const*/ ui64 LargeDeletionMarkerBlocks = 0;
     /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
+    /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
 
     bool StateLoaded = false;
 
@@ -897,6 +898,18 @@ private:
     TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
 
     //
+    // LargeBlocks
+    //
+
+public:
+    void FindLargeBlocks(
+        ILargeBlockVisitor& visitor,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount) const;
+
+    //
     // Garbage
     //
 
@@ -1000,8 +1013,16 @@ public:
 
     TBlobIndexOpQueue BlobIndexOps;
 
+    struct TPriorityRange
+    {
+        ui64 NodeId = 0;
+        ui32 BlockIndex = 0;
+        ui32 BlockCount = 0;
+        ui32 RangeId = 0;
+    };
+
 private:
-    mutable TDeque<ui32> PriorityRangeIdsForCleanup;
+    mutable TDeque<TPriorityRange> PriorityRangesForCleanup;
 
     //
     // Compaction map
@@ -1013,8 +1034,8 @@ public:
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
-    TMaybe<ui32> NextPriorityRangeIdForCleanup() const;
-    ui32 GetPriorityRangeIdCount() const;
+    TMaybe<TPriorityRange> NextPriorityRangeForCleanup() const;
+    ui32 GetPriorityRangeCount() const;
 
     TCompactionMapStats GetCompactionMapStats(ui32 topSize) const;
 

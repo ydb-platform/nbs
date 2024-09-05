@@ -26,16 +26,27 @@ public:
 
     // applies the deletion markers to the provided blocks
     void ApplyDeletionMarkers(TVector<TBlock>& blocks) const;
-    // applies the deletion markers to the provided blocks AND marks the
-    // corresponding parts of the deletion markers as processed
-    void ApplyAndUpdateDeletionMarkers(TVector<TBlock>& blocks);
+    // marks the corresponding parts of the stored deletion markers as processed
+    void MarkProcessed(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount);
 
     // returns one of the deletion markers which haven't been fully processed
-    // yet - no assumptions should be made regarding which marker it is
+    // yet
     TDeletionMarker GetOne() const;
     // returns deletion markers which are not needed anymore and can be safely
     // deleted
     TVector<TDeletionMarker> ExtractProcessedDeletionMarkers();
+
+    // iterates the deletion subset that satisfies the provided filters
+    void FindBlocks(
+        ILargeBlockVisitor& visitor,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

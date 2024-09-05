@@ -53,7 +53,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LargeDeletionMarkersEnabled,            bool,   false                 )\
     xxx(LargeDeletionMarkerBlocks,              ui64,   1_GB / 4_KB           )\
     xxx(LargeDeletionMarkersThreshold,          ui64,   128_GB / 4_KB         )\
-    xxx(LargeDeletionMarkersCleanupThreshold,   ui64,   10_TB / 4_KB          )\
+    xxx(LargeDeletionMarkersCleanupThreshold,   ui64,   1_TB / 4_KB           )\
                                                                                \
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
     xxx(BlobIndexOpsPriority,                                                  \

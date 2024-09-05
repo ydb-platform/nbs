@@ -100,6 +100,8 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersEnabled = config.GetLargeDeletionMarkersEnabled();
     LargeDeletionMarkerBlocks = config.GetLargeDeletionMarkerBlocks();
     LargeDeletionMarkersThreshold = config.GetLargeDeletionMarkersThreshold();
+    LargeDeletionMarkersCleanupThreshold =
+        config.GetLargeDeletionMarkersCleanupThreshold();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
