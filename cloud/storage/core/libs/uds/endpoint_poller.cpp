@@ -159,6 +159,10 @@ public:
             Endpoints.clear();
         }
 
+        if (!Running()) {
+            return;
+        }
+
         SOCKET sockets[2];
         int ret = SocketPair(sockets);
         Y_ENSURE_EX(ret == 0, TSystemError() << "Can't create socket pair");
