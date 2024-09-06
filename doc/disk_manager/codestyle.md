@@ -1,22 +1,25 @@
-## Основная часть
-Кодстаил основан на https://go.dev/doc/effective_go и https://github.com/golang/go/wiki/CodeReviewComments, но есть свои исключения
+## Main Part
 
-## Исключения, для которых не планируется рефакторинг
-- Фиксированая длина строки в 80 символов
-- Обязательные пустые newline в начале каждой функции, если сигнатура многострочная
-- Не рекомендуется нестинг ошибок
-- По дефолту считается, что не поддержан nil value receiver для методов, и это отдельно не проверяется
-- Разрешены нижние подчеркивания в названии пакетов
-- Не обязательны комментарии к экспортируемым объектам
-- Не надо начинать комментарий с имени объекта, который ты комментириуешь
-- Ставим отступ после `}` (исключение: defer прижимаем к блоку выше без отступа, например https://github.com/ydb-platform/nbs/blob/9c6622e69132261561cf582d4c6d8ad4fdccd67f/cloud/disk_manager/pkg/admin/disks.go#L99)
-- Ставим отступ перед `)` в случае многострочного вызова (пример https://github.com/ydb-platform/nbs/blob/9c6622e69132261561cf582d4c6d8ad4fdccd67f/cloud/disk_manager/pkg/admin/images.go#L123)
-- Комментарии оформляются как валидные предложения: с большой буквы и с точкой в конце
-- Используем ID во всех идентификаторах (а не Id). (везде кроме протобуфов)
+The code style is based on https://go.dev/doc/effective_go and https://github.com/golang/go/wiki/CodeReviewComments, but there are some exceptions.
 
-## Исключения, которые можно отрефакторить во всем коде и после убрать
-- Конструктор классов не находится строчкой ниже объявления структуры
-- Конструктор к классам не обязателен (речь не про классы-контейнеры-данных типо Point, а про логические классы типо Storage)
-- Named function result arguments разрешается использовать где захочется, а не только где они добавляют читабельности к api
-- Функции Writer'ы в каналы логически не отделены от Reader'ов в некотором многопоточном коде
-- Разрешен миксинг receiver arguments в методах структур
+## Exceptions that will not be refactored
+
+- Fixed line length of 80 characters
+- Mandatory empty newlines at the beginning of each function if the signature is multiline
+- Nested errors are discouraged
+- By default, nil value receivers are not supported for methods, and this is not explicitly checked
+- Underscores are allowed in package names
+- Comments for exported objects are not mandatory
+- Comments do not need to start with the name of the object being commented on
+- Indent after `}` (exception: defer is pressed against the block above without indentation, for example: https://github.com/ydb-platform/nbs/blob/9c6622e69132261561cf582d4c6d8ad4fdccd67f/cloud/disk_manager/pkg/admin/disks.go#L99)
+- Indent before `)` in the case of multiline calls (example: https://github.com/ydb-platform/nbs/blob/9c6622e69132261561cf582d4c6d8ad4fdccd67f/cloud/disk_manager/pkg/admin/images.go#L123)
+- Comments are formatted as valid sentences: starting with a capital letter and ending with a period
+- Use ID in all identifiers (not Id) (except for protobufs)
+
+## Exceptions that can be refactored throughout the code and removed later
+
+- The constructor is not placed directly below the structure declaration
+- Constructors are not mandatory for classes (not talking about data container classes like Point, but rather logical ones like Storage)
+- Named function result arguments are allowed wherever desired, not only where they add readability to the API
+- Writer functions to channels are not logically separated from Readers in some multithreaded code
+- Mixing receiver arguments in struct methods is allowed
