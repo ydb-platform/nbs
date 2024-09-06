@@ -238,31 +238,27 @@ bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
 
 bool TIndexTabletState::IsWriteAllowed(
     const TIndexTabletState::TBackpressureThresholds& thresholds,
+    const TIndexTabletState::TBackpressureValues& values,
     TString* message) const
 {
-    const auto freshBlocksDataSize = GetFreshBlocksCount() * GetBlockSize();
-
-    if (freshBlocksDataSize >= thresholds.Flush) {
-        *message = TStringBuilder() << "freshBlocksDataSize: "
-            << freshBlocksDataSize;
+    if (values.Flush >= thresholds.Flush) {
+        *message = TStringBuilder() << "freshBlocksDataSize: " << values.Flush;
         return false;
     }
 
-    const auto freshBytesCount = GetFreshBytesCount();
-    if (freshBytesCount >= thresholds.FlushBytes) {
-        *message = TStringBuilder() << "freshBytesCount: " << freshBytesCount;
+    if (values.FlushBytes >= thresholds.FlushBytes) {
+        *message = TStringBuilder() << "freshBytesCount: " << values.FlushBytes;
         return false;
     }
 
-    const auto compactionScore = GetRangeToCompact().Score;
-    if (compactionScore >= thresholds.CompactionScore) {
-        *message = TStringBuilder() << "compactionScore: " << compactionScore;
+    if (values.CompactionScore >= thresholds.CompactionScore) {
+        *message = TStringBuilder()
+                   << "compactionScore: " << values.CompactionScore;
         return false;
     }
 
-    const auto cleanupScore = GetRangeToCleanup().Score;
-    if (cleanupScore >= thresholds.CleanupScore) {
-        *message = TStringBuilder() << "cleanupScore: " << cleanupScore;
+    if (values.CleanupScore >= thresholds.CleanupScore) {
+        *message = TStringBuilder() << "cleanupScore: " << values.CleanupScore;
         return false;
     }
 

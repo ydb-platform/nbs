@@ -306,6 +306,17 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     };
 }
 
+TIndexTabletState::TBackpressureValues
+TIndexTabletActor::GetBackpressureValues() const
+{
+    return {
+        GetFreshBlocksCount() * GetBlockSize(),
+        GetFreshBytesCount(),
+        GetRangeToCompact().Score,
+        GetRangeToCleanup().Score,
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::ResetThrottlingPolicy()
@@ -339,7 +350,11 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     }
 
     TString message;
-    if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
+    if (!IsWriteAllowed(
+            BuildBackpressureThresholds(),
+            GetBackpressureValues(),
+            &message))
+    {
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
