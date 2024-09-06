@@ -143,3 +143,8 @@ jobs:
     name: Launch scripts on test-data
     uses: ./.github/workflows/github_actions_scripts.yaml
     secrets: inherit
+
+  create-and-delete-vm:
+    name: Create and delete VM
+    uses: ./.github/workflows/create_and_delete_vm.yaml
+    secrets: inherit
