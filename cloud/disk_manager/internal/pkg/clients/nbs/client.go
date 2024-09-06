@@ -548,10 +548,9 @@ func (c *client) getMountFlags(
 ) (uint32, error) {
 
 	if len(c.enableThrottlingForMediaKinds) != 0 {
-		ctx = c.withTimeoutHeader(ctx)
-		volume, err := c.nbs.DescribeVolume(ctx, diskID)
+		volume, err := c.describeVolume(ctx, diskID)
 		if err != nil {
-			return 0, wrapError(err)
+			return 0, err
 		}
 
 		for _, throttledMediaKind := range c.enableThrottlingForMediaKinds {
@@ -604,10 +603,7 @@ func (m CheckpointStatus) String() string {
 
 func (c *client) Ping(ctx context.Context) (err error) {
 	defer c.metrics.StatRequest("Ping")(&err)
-
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.Ping(ctx)
-	return wrapError(err)
+	return c.ping(ctx)
 }
 
 func (c *client) Create(
@@ -659,10 +655,9 @@ func (c *client) CreateProxyOverlayDisk(
 
 	defer c.metrics.StatRequest("CreateProxyOverlayDisk")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	volume, err := c.nbs.DescribeVolume(ctx, baseDiskID)
+	volume, err := c.describeVolume(ctx, baseDiskID)
 	if err != nil {
-		return false, wrapError(err)
+		return false, err
 	}
 
 	if !canBeBaseDisk(volume) {
@@ -692,15 +687,14 @@ func (c *client) CreateProxyOverlayDisk(
 		return false, err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateCheckpoint(
+	err = c.createCheckpoint(
 		ctx,
 		diskID,
 		baseDiskCheckpointID,
 		CheckpointTypeNormal.toProto(),
 	)
 	if err != nil {
-		return false, wrapError(err)
+		return false, err
 	}
 
 	return true, nil
@@ -713,14 +707,12 @@ func (c *client) Delete(
 
 	defer c.metrics.StatRequest("Delete")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.DestroyVolume(
+	return c.destroyVolume(
 		ctx,
 		diskID,
 		false, // sync
 		0,     // fillGeneration
 	)
-	return wrapError(err)
 }
 
 func (c *client) DeleteSync(
@@ -730,14 +722,12 @@ func (c *client) DeleteSync(
 
 	defer c.metrics.StatRequest("DeleteSync")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.DestroyVolume(
+	return c.destroyVolume(
 		ctx,
 		diskID,
 		true, // sync
 		0,    // fillGeneration
 	)
-	return wrapError(err)
 }
 
 func (c *client) DeleteWithFillGeneration(
@@ -748,14 +738,12 @@ func (c *client) DeleteWithFillGeneration(
 
 	defer c.metrics.StatRequest("DeleteWithFillGeneration")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.DestroyVolume(
+	return c.destroyVolume(
 		ctx,
 		diskID,
 		false, // sync
 		fillGeneration,
 	)
-	return wrapError(err)
 }
 
 func (c *client) CreateCheckpoint(
@@ -765,14 +753,12 @@ func (c *client) CreateCheckpoint(
 
 	defer c.metrics.StatRequest("CreateCheckpoint")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateCheckpoint(
+	return c.createCheckpoint(
 		ctx,
 		params.DiskID,
 		params.CheckpointID,
 		params.CheckpointType.toProto(),
 	)
-	return wrapError(err)
 }
 
 func (c *client) GetCheckpointStatus(
@@ -781,8 +767,9 @@ func (c *client) GetCheckpointStatus(
 	checkpointID string,
 ) (CheckpointStatus, error) {
 
-	status, err := c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
-	return parseCheckpointStatus(status), wrapError(err)
+	// TODO:_ do we need timeout header for GetCheckpointStatus call?
+	status, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
+	return parseCheckpointStatus(status), err
 }
 
 func (c *client) DeleteCheckpoint(
@@ -791,15 +778,15 @@ func (c *client) DeleteCheckpoint(
 	checkpointID string,
 ) (err error) {
 
+	// TODO:_ should we make wrapping method for sdk call
+	// in case when the main method becomes trivial?
 	defer c.metrics.StatRequest("DeleteCheckpoint")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.DeleteCheckpoint(ctx, diskID, checkpointID)
+	err = c.deleteCheckpoint(ctx, diskID, checkpointID)
 	if IsNotFoundError(err) {
 		return nil
 	}
-
-	return wrapError(err)
+	return err
 }
 
 func (c *client) DeleteCheckpointData(
@@ -854,15 +841,13 @@ func (c *client) Resize(
 		}
 		newBlocksCount := size / uint64(volume.BlockSize)
 
-		ctx = c.withTimeoutHeader(ctx)
-		err := c.nbs.ResizeVolume(
+		return c.resizeVolume(
 			ctx,
 			diskID,
 			newBlocksCount,
 			0, // channelsCount
 			volume.ConfigVersion,
 		)
-		return wrapError(err)
 	})
 }
 
@@ -877,8 +862,7 @@ func (c *client) Alter(
 	defer c.metrics.StatRequest("Alter")(&err)
 
 	return c.updateVolume(ctx, saveState, diskID, func(volume *protos.TVolume) error {
-		ctx = c.withTimeoutHeader(ctx)
-		err := c.nbs.AlterVolume(
+		return c.alterVolume(
 			ctx,
 			diskID,
 			volume.ProjectId,
@@ -886,7 +870,6 @@ func (c *client) Alter(
 			cloudID,
 			volume.ConfigVersion,
 		)
-		return wrapError(err)
 	})
 }
 
@@ -935,15 +918,14 @@ func (c *client) Assign(
 
 	defer c.metrics.StatRequest("Assign")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	_, err = c.nbs.AssignVolume(
+	_, err = c.assignVolume(
 		ctx,
 		params.ID,
 		params.InstanceID,
 		params.Token,
 		params.Host,
 	)
-	return wrapError(err)
+	return err
 }
 
 func (c *client) Unassign(
@@ -953,8 +935,7 @@ func (c *client) Unassign(
 
 	defer c.metrics.StatRequest("Unassign")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	_, err = c.nbs.AssignVolume(
+	_, err = c.assignVolume(
 		ctx,
 		diskID,
 		"",
@@ -964,8 +945,7 @@ func (c *client) Unassign(
 	if IsNotFoundError(err) {
 		return nil
 	}
-
-	return wrapError(err)
+	return err
 }
 
 func (c *client) DescribeModel(
@@ -983,8 +963,7 @@ func (c *client) DescribeModel(
 		return DiskModel{}, err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	model, err := c.nbs.DescribeVolumeModel(
+	model, err := c.describeVolumeModel(
 		ctx,
 		blocksCount,
 		blockSize,
@@ -992,7 +971,7 @@ func (c *client) DescribeModel(
 		tabletVersion,
 	)
 	if err != nil {
-		return DiskModel{}, wrapError(err)
+		return DiskModel{}, err
 	}
 
 	return DiskModel{
@@ -1024,10 +1003,9 @@ func (c *client) Describe(
 
 	defer c.metrics.StatRequest("Describe")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	volume, err := c.nbs.DescribeVolume(ctx, diskID)
+	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
-		return DiskParams{}, wrapError(err)
+		return DiskParams{}, err
 	}
 
 	encryptionDesc, err := getEncryptionDesc(volume.EncryptionDesc)
@@ -1068,9 +1046,7 @@ func (c *client) CreatePlacementGroup(
 		return err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreatePlacementGroup(ctx, groupID, strategy, placementPartitionCount)
-	return wrapError(err)
+	return c.createPlacementGroup(ctx, groupID, strategy, placementPartitionCount)
 }
 
 func (c *client) DeletePlacementGroup(
@@ -1079,10 +1055,7 @@ func (c *client) DeletePlacementGroup(
 ) (err error) {
 
 	defer c.metrics.StatRequest("DeletePlacementGroup")(&err)
-
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.DestroyPlacementGroup(ctx, groupID)
-	return wrapError(err)
+	return c.destroyPlacementGroup(ctx, groupID)
 }
 
 func (c *client) AlterPlacementGroupMembership(
@@ -1097,8 +1070,7 @@ func (c *client) AlterPlacementGroupMembership(
 	defer c.metrics.StatRequest("AlterPlacementGroupMembership")(&err)
 
 	return c.updatePlacementGroup(ctx, saveState, groupID, func(group *protos.TPlacementGroup) error {
-		ctx = c.withTimeoutHeader(ctx)
-		err := c.nbs.AlterPlacementGroupMembership(
+		return c.alterPlacementGroupMembership(
 			ctx,
 			groupID,
 			placementPartitionIndex,
@@ -1106,7 +1078,6 @@ func (c *client) AlterPlacementGroupMembership(
 			disksToRemove,
 			group.ConfigVersion,
 		)
-		return wrapError(err)
 	})
 }
 
@@ -1116,10 +1087,9 @@ func (c *client) ListPlacementGroups(
 
 	defer c.metrics.StatRequest("ListPlacementGroups")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	groups, err = c.nbs.ListPlacementGroups(ctx)
+	groups, err = c.listPlacementGroups(ctx)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, err
 	}
 
 	return groups, nil
@@ -1132,10 +1102,9 @@ func (c *client) DescribePlacementGroup(
 
 	defer c.metrics.StatRequest("DescribePlacementGroup")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	group, err := c.nbs.DescribePlacementGroup(ctx, groupID)
+	group, err := c.describePlacementGroup(ctx, groupID)
 	if err != nil {
-		return PlacementGroup{}, wrapError(err)
+		return PlacementGroup{}, err
 	}
 
 	strategy, err := fromPlacementStrategy(group.PlacementStrategy)
@@ -1257,8 +1226,7 @@ func (c *client) GetChangedBlocks(
 
 	defer c.metrics.StatRequest("GetChangedBlocks")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	blockMask, err = c.nbs.GetChangedBlocks(
+	return c.getChangedBlocks(
 		ctx,
 		diskID,
 		startIndex,
@@ -1267,8 +1235,6 @@ func (c *client) GetChangedBlocks(
 		checkpointID,     // highCheckpointID
 		ignoreBaseDisk,
 	)
-
-	return blockMask, wrapError(err)
 }
 
 func (c *client) GetCheckpointSize(
@@ -1282,10 +1248,9 @@ func (c *client) GetCheckpointSize(
 
 	defer c.metrics.StatRequest("GetCheckpointSize")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	volume, err := c.nbs.DescribeVolume(ctx, diskID)
+	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
-		return wrapError(err)
+		return err
 	}
 
 	blockIndex := milestoneBlockIndex
@@ -1352,10 +1317,9 @@ func (c *client) GetChangedBytes(
 
 	defer c.metrics.StatRequest("GetChangedBytes")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	volume, err := c.nbs.DescribeVolume(ctx, diskID)
+	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
-		return 0, wrapError(err)
+		return 0, err
 	}
 
 	for blockIndex := uint64(0); blockIndex < volume.BlocksCount; blockIndex += maxChangedBlockCountPerIteration {
@@ -1412,10 +1376,9 @@ func (c *client) Stat(
 
 	defer c.metrics.StatRequest("Stat")(&err)
 
-	ctx = c.withTimeoutHeader(ctx)
-	volume, volumeStats, err := c.nbs.StatVolume(ctx, diskID, uint32(0))
+	volume, volumeStats, err := c.statVolume(ctx, diskID, uint32(0))
 	if err != nil {
-		return DiskStats{}, wrapError(err)
+		return DiskStats{}, err
 	}
 
 	return DiskStats{
@@ -1573,11 +1536,7 @@ func (c *client) createVolume(
 	defer tracing.SetError(span, &err)
 
 	err = c.nbs.CreateVolume(ctx, diskID, blocksCount, opts)
-	if err != nil {
-		return wrapError(err)
-	}
-
-	return nil
+	return wrapError(err)
 }
 
 func (c *client) describeVolume(
@@ -1600,7 +1559,6 @@ func (c *client) describeVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-
 	return volume, nil
 }
 
@@ -1624,6 +1582,444 @@ func (c *client) describePlacementGroup(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-
 	return group, nil
+}
+
+func (c *client) ping(ctx context.Context) (err error) {
+	ctx = c.withTimeoutHeader(ctx)
+	// TODO:_ do we really need span for ping? When and how often do we ping nbs?
+	ctx, span := tracing.StartSpan(ctx, "Blockstore.Ping")
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.Ping(ctx)
+	return wrapError(err)
+}
+
+func (c *client) createCheckpoint(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+	checkpointType protos.ECheckpointType,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.CreateCheckpoint",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("checkpoint_id", checkpointID),
+			tracing.AttributeString(
+				"checkpoint_type",
+				protos.ECheckpointType_name[int32(checkpointType)],
+			),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.CreateCheckpoint(ctx, diskID, checkpointID, checkpointType)
+	return wrapError(err)
+}
+
+func (c *client) destroyVolume(
+	ctx context.Context,
+	diskID string,
+	sync bool,
+	fillGeneration uint64,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DestroyVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeBool("sync", sync),
+			tracing.AttributeInt64("fill_generation", int64(fillGeneration)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.DestroyVolume(ctx, diskID, sync, fillGeneration)
+	// TODO:_ does wrapError work correct for nil error?
+	return wrapError(err)
+}
+
+func (c *client) getCheckpointStatus(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (status protos.ECheckpointStatus, err error) {
+
+	// TODO:_ do we need timeout header?
+	ctx = c.withTimeoutHeader(ctx)
+
+	// TODO:_ do we need span?
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.GetCheckpointStatus",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("checkpoint_id", checkpointID),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	status, err = c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
+	return status, wrapError(err)
+}
+
+func (c *client) deleteCheckpoint(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DeleteCheckpoint",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("checkpoint_id", checkpointID),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.DeleteCheckpoint(ctx, diskID, checkpointID)
+	// TODO:_ can/should we check IsNotFoundError in caller method?
+	// TODO:_ Does it commute with wrapping? (Seems yes, but test this)
+	return wrapError(err)
+}
+
+func (c *client) resizeVolume(
+	ctx context.Context,
+	diskID string,
+	blocksCount uint64,
+	channelsCount uint32,
+	configVersion uint32,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.ResizeVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
+			tracing.AttributeInt("channels_count", int(channelsCount)),
+			tracing.AttributeInt("config_version", int(configVersion)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.ResizeVolume(
+		ctx,
+		diskID,
+		blocksCount,
+		channelsCount,
+		configVersion,
+	)
+	return wrapError(err)
+}
+
+func (c *client) alterVolume(
+	ctx context.Context,
+	diskID string,
+	projectID string,
+	folderID string,
+	cloudID string,
+	configVersion uint32,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	// TODO:_ project, folder and cloud are sensitive, aren't they?
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.AlterVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeInt("config_version", int(configVersion)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.AlterVolume(
+		ctx,
+		diskID,
+		projectID,
+		folderID,
+		cloudID,
+		configVersion,
+	)
+	return wrapError(err)
+}
+
+func (c *client) assignVolume(
+	ctx context.Context,
+	diskID string,
+	instanceID string,
+	token string,
+	host string,
+) (volume *protos.TVolume, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.AssignVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("instance_id", instanceID),
+			tracing.AttributeString("host", host),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	volume, err = c.nbs.AssignVolume(
+		ctx,
+		diskID,
+		instanceID,
+		token,
+		host,
+	)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return volume, nil
+}
+
+func (c *client) describeVolumeModel(
+	ctx context.Context,
+	blocksCount uint64,
+	blockSize uint32,
+	storageMediaKind core_protos.EStorageMediaKind,
+	tabletVersion uint32,
+) (model *protos.TVolumeModel, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+	// TODO:_ no blank line here?
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DescribeVolumeModel",
+		tracing.WithAttributes(
+			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
+			tracing.AttributeInt("block_size", int(blockSize)),
+			tracing.AttributeString(
+				"storage_media_kind",
+				core_protos.EStorageMediaKind_name[int32(storageMediaKind)],
+			),
+			tracing.AttributeInt("tablet_version", int(tabletVersion)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	model, err = c.nbs.DescribeVolumeModel(
+		ctx,
+		blocksCount,
+		blockSize,
+		storageMediaKind,
+		tabletVersion,
+	)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return model, nil
+}
+
+func (c *client) createPlacementGroup(
+	ctx context.Context,
+	groupID string,
+	placementStrategy protos.EPlacementStrategy,
+	placementPartitionCount uint32,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.CreatePlacementGroup",
+		tracing.WithAttributes(
+			tracing.AttributeString("group_id", groupID),
+			tracing.AttributeString(
+				"placement_strategy",
+				protos.EPlacementStrategy_name[int32(placementStrategy)],
+			),
+			tracing.AttributeInt(
+				"placement_partition_count",
+				int(placementPartitionCount),
+			),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.CreatePlacementGroup(
+		ctx,
+		groupID,
+		placementStrategy,
+		placementPartitionCount,
+	)
+	return wrapError(err)
+}
+
+func (c *client) destroyPlacementGroup(
+	ctx context.Context,
+	groupID string,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DestroyPlacementGroup",
+		tracing.WithAttributes(
+			tracing.AttributeString("group_id", groupID),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.DestroyPlacementGroup(ctx, groupID)
+	return wrapError(err)
+}
+
+func (c *client) alterPlacementGroupMembership(
+	ctx context.Context,
+	groupID string,
+	placementPartitionIndex uint32,
+	disksToAdd []string,
+	disksToRemove []string,
+	configVersion uint32,
+) (err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.AlterPlacementGroupMembership",
+		tracing.WithAttributes(
+			tracing.AttributeString("group_id", groupID),
+			tracing.AttributeInt(
+				"placement_partition_index",
+				int(placementPartitionIndex),
+			),
+			tracing.AttributeInt("config_version", int(configVersion)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	err = c.nbs.AlterPlacementGroupMembership(
+		ctx,
+		groupID,
+		placementPartitionIndex,
+		disksToAdd,
+		disksToRemove,
+		configVersion,
+	)
+	return wrapError(err)
+}
+
+func (c *client) listPlacementGroups(
+	ctx context.Context,
+) (groups []string, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.ListPlacementGroups",
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	groups, err = c.nbs.ListPlacementGroups(ctx)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return groups, nil
+}
+
+func (c *client) getChangedBlocks(
+	ctx context.Context,
+	diskID string,
+	startIndex uint64,
+	blocksCount uint32,
+	lowCheckpointID string,
+	highCheckpointID string,
+	ignoreBaseDisk bool,
+) (blockMask []byte, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.GetChangedBlocks",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeInt64("start_index", int64(startIndex)),
+			tracing.AttributeInt("blocks_count", int(blocksCount)),
+			tracing.AttributeString("low_checkpoint_id", lowCheckpointID),
+			tracing.AttributeString("high_checkpoint_id", highCheckpointID),
+			tracing.AttributeBool("ignore_base_disk", ignoreBaseDisk),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	blockMask, err = c.nbs.GetChangedBlocks(
+		ctx,
+		diskID,
+		startIndex,
+		blocksCount,
+		lowCheckpointID,
+		highCheckpointID,
+		ignoreBaseDisk,
+	)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return blockMask, nil
+}
+
+func (c *client) statVolume(
+	ctx context.Context,
+	diskID string,
+	flags uint32,
+) (volume *protos.TVolume, stats *protos.TVolumeStats, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+	// TODO:_ do we need span for StatVolume?
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.StatVolume",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeInt("flags", int(flags)),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	volume, stats, err = c.nbs.StatVolume(ctx, diskID, flags)
+	if err != nil {
+		return nil, nil, wrapError(err)
+	}
+	return volume, stats, nil
 }
