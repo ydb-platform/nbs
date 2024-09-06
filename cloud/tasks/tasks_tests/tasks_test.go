@@ -1228,19 +1228,20 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
-func prepareTestMockGauges(
+func setupExpectationsForHangingTasksMetricsTest(
 	registry *mocks.RegistryMock,
 	notifierChannelForType <-chan time.Time,
 	notifierChannelForId <-chan time.Time,
-	taskId string,
+	taskID string,
 ) {
+
 	gaugeSet1TypeCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": "all"},
 	).On("Set", float64(1)).Return(mock.Anything)
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": taskId},
+		map[string]string{"type": hangingTaskType, "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything)
 
 	registry.GetGauge(
@@ -1255,7 +1256,7 @@ func prepareTestMockGauges(
 
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": taskId},
+		map[string]string{"type": hangingTaskType, "id": taskID},
 	).On(
 		"Set",
 		float64(0),
@@ -1288,22 +1289,22 @@ func TestHangingTasksMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	reqCtx := getRequestContext(t, ctx)
-	taskId, err := scheduleHangingTask(reqCtx, s.scheduler)
+	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
 	notifierChannelForType := make(chan time.Time)
 	notifierChannelForId := make(chan time.Time)
-	prepareTestMockGauges(
+	setupExpectationsForHangingTasksMetricsTest(
 		registry,
 		notifierChannelForType,
 		notifierChannelForId,
-		taskId,
+		taskID,
 	)
 
 	time.Sleep(hangingTaskTimeout * 2)
-	_, err = s.scheduler.CancelTask(ctx, taskId)
+	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
-	_ = s.scheduler.WaitTaskEnded(ctx, taskId)
+	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
 
 	i := 0
 	for i < 2 {
