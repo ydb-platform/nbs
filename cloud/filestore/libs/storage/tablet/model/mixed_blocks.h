@@ -56,7 +56,9 @@ public:
         const IBlockLocation2RangeIndex& hasher,
         TVector<TBlock>& blocks) const;
 
-    TVector<TMixedBlobMeta> ApplyDeletionMarkers(ui32 rangeId) const;
+    TVector<TMixedBlobMeta> ApplyDeletionMarkers(
+        ui32 rangeId,
+        bool returnAll) const;
 
     TVector<TMixedBlobMeta> GetBlobsForCompaction(ui32 rangeId) const;
 

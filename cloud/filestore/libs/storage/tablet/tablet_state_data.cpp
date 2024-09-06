@@ -857,7 +857,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    auto affectedBlobs = Impl->MixedBlocks.ApplyDeletionMarkers(rangeId);
+    auto affectedBlobs = Impl->MixedBlocks.ApplyDeletionMarkers(rangeId, true);
 
     ui64 removedBlobs = 0;
     for (auto& blob: affectedBlobs) {

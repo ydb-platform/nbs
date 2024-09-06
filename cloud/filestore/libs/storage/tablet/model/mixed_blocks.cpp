@@ -272,7 +272,9 @@ void TMixedBlocks::ApplyDeletionMarkers(
     range->DeletionMarkers.Apply(MakeArrayRef(blocks));
 }
 
-TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
+TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(
+    ui32 rangeId,
+    bool returnAll) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);
     Y_ABORT_UNLESS(range);
@@ -282,7 +284,9 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
     for (const auto& blob: range->Blobs) {
         auto blocks = blob.BlockList.DecodeBlocks();
 
-        if (range->DeletionMarkers.Apply(MakeArrayRef(blocks)) > 0) {
+        if (range->DeletionMarkers.Apply(MakeArrayRef(blocks)) > 0
+                || returnAll)
+        {
             result.emplace_back(blob.BlobId, std::move(blocks));
         }
     }

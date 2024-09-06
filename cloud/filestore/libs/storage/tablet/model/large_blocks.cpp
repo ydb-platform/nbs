@@ -133,7 +133,6 @@ struct TLargeBlocks::TImpl
                     rangeIt->Marker.NodeId,
                     b,
                     rangeIt->Marker.CommitId});
-
             }
 
             if (update) {
