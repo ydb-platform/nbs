@@ -3030,9 +3030,6 @@ func (s *storageYDB) getNonRetiringBaseDisks(
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-		declare $zone_id as Utf8;
-		declare $status as Int64;
 
 		select *
 		from base_disks
@@ -3131,6 +3128,7 @@ func (s *storageYDB) retireBaseDisk(
 		if err != nil {
 			return nil, err
 		}
+		logging.Info(ctx, "suitableBaseDisks is %+v", suitableBaseDisks)
 	}
 
 	var baseDiskTransitions []baseDiskTransition

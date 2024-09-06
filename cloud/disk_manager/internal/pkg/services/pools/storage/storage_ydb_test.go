@@ -2340,6 +2340,8 @@ func TestStorageYDBRetireBaseDiskForDeletedPoolUsingImageSize(t *testing.T) {
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
+
+	require.NotNil(t, nil)
 }
 
 func TestStorageYDBReleasingOneSlotShouldNotIncreaseSizeOfPoolIfBaseDiskIsStillUnfree(t *testing.T) {
