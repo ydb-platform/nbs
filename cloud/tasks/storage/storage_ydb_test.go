@@ -1108,7 +1108,10 @@ func newHangingTaskTestContext(
 	t *testing.T,
 	hangingTaskTimeout time.Duration,
 ) (hangingTaskTestContext, error) {
-	testCtx := hangingTaskTestContext{}
+	testCtx := hangingTaskTestContext{
+		t:                  t,
+		hangingTaskTimeout: hangingTaskTimeout,
+	}
 	ctx, cancel := context.WithCancel(newContext())
 	testCtx.ctx = ctx
 	testCtx.cancel = cancel
