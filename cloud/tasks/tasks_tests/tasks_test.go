@@ -1233,30 +1233,10 @@ func setupExpectationsForHangingTasksMetricsTest(
 	wg *sync.WaitGroup,
 	taskID string,
 ) {
-
-	gaugeSet1TypeCall := registry.GetGauge(
-		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": "all"},
-	).On("Set", float64(1)).Return(mock.Anything)
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": hangingTaskType, "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything)
-
-	registry.GetGauge(
-		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": "all"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		gaugeSet1TypeCall,
-	).Return(mock.Anything).Run(
-		func(args mock.Arguments) {
-			wg.Done()
-		},
-	)
-	wg.Add(1)
 
 	registry.GetGauge(
 		"hangingTasks",
