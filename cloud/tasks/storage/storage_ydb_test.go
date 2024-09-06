@@ -1013,7 +1013,9 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 	defer db.Close(ctx)
 
 	metricsRegistry := empty.NewRegistry()
+	hangingTaskTimeout := time.Hour * 5
 
+	stringDuration := hangingTaskTimeout.String()
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(
 		t,
@@ -1021,6 +1023,7 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		db,
 		&tasks_config.TasksConfig{
 			TaskStallingTimeout: &taskStallingTimeout,
+			HangingTaskTimeout:  &stringDuration,
 		},
 		metricsRegistry,
 	)
@@ -1045,7 +1048,6 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 
 	expectedHangingTaskIDs := make([]string, 0, 36)
 	expectedTaskIdsWithoutBlackList := make([]string, 0, 72)
-	hangingTaskTimeout := time.Hour * 5
 
 	createTask := func(
 		taskType string,
