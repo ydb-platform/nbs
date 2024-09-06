@@ -74,20 +74,21 @@ public:
         return Family;
     }
 
-    template <typename T>
-    void SetCallback(nl_cb_type type, std::unique_ptr<T> func)
+    template <typename F>
+    void SetCallback(nl_cb_type type, F func)
     {
+        auto arg = std::make_unique<TResponseHandler>(std::move(func));
         if (int err = nl_socket_modify_cb(
                 Socket,
                 type,
                 NL_CB_CUSTOM,
                 TNetlinkSocket::ResponseHandler,
-                func.get()))
+                arg.get()))
         {
             throw TServiceError(E_FAIL)
                 << "unable to set socket callback: " << nl_geterror(err);
         }
-        func.release();
+        arg.release();
     }
 
     static int ResponseHandler(nl_msg* msg, void* arg)
@@ -228,9 +229,9 @@ private:
     void ConnectSocket();
     void DisconnectSocket();
 
-    void ConnectDevice();
-    void DisconnectDevice();
-    void DoConnectDevice(bool connected);
+    void Connect();
+    void Disconnect();
+    void DoConnect(bool connected);
 
     int StatusHandler(genlmsghdr* header);
 };
@@ -264,7 +265,7 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
     try {
         ParseIndex();
         ConnectSocket();
-        ConnectDevice();
+        Connect();
 
     } catch (const TServiceError& e) {
         StartResult.SetValue(MakeError(
@@ -289,7 +290,7 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
     }
 
     try {
-        DisconnectDevice();
+        Disconnect();
         DisconnectSocket();
         StopResult.SetValue(MakeError(S_OK));
 
@@ -367,22 +368,21 @@ void TNetlinkDevice::DisconnectSocket()
 
 // queries device status eand registers callback that will connect
 // or reconfigure (if Reconfigure == true) specified device
-void TNetlinkDevice::ConnectDevice()
+void TNetlinkDevice::Connect()
 {
     TNetlinkSocket socket;
     socket.SetCallback(
         NL_CB_VALID,
-        std::make_unique<TResponseHandler>(
-            [device = shared_from_this()] (auto* header) {
-                return device->StatusHandler(header);
-            }));
+        [device = shared_from_this()] (auto* header) {
+            return device->StatusHandler(header);
+        });
 
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
     message.Send(socket);
 }
 
-void TNetlinkDevice::DisconnectDevice()
+void TNetlinkDevice::Disconnect()
 {
     STORAGE_INFO("disconnect " << DeviceName);
 
@@ -392,7 +392,7 @@ void TNetlinkDevice::DisconnectDevice()
     message.Send(socket);
 }
 
-void TNetlinkDevice::DoConnectDevice(bool connected)
+void TNetlinkDevice::DoConnect(bool connected)
 {
     try {
         auto command = NBD_CMD_CONNECT;
@@ -518,7 +518,7 @@ int TNetlinkDevice::StatusHandler(genlmsghdr* header)
         return NL_STOP;
     }
 
-    DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
+    DoConnect(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
     return NL_OK;
 }
 
