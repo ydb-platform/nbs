@@ -45,6 +45,11 @@ on:
         required: false
         default: "gh-2204-auto"
         type: string
+      check_vm_creation:
+        description: "Check VM creation"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       build:
@@ -87,6 +92,11 @@ on:
         required: false
         default: "gh-2204-auto"
         type: string
+      check_vm_creation:
+        description: "Check VM creation"
+        required: false
+        default: false
+        type: boolean
 
 env:
   build: ${{ github.event_name == 'schedule' && 'true' || inputs.build }}
@@ -98,6 +108,10 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      IMAGE_ID_2204: ${{ steps.build.outputs.IMAGE_ID_2204 }}
+      IMAGE_ALREADY_EXISTS: ${{ steps.check-image.outputs.image_already_exists }}
+      BUILD: ${{ env.build }}
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -235,7 +249,6 @@ jobs:
       id: build
       if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
       timeout-minutes: 120
-      # IMPORTANT: PASSWORD_HASH is in '' and with in-place variable to prevent need to escape $ in variable name
       run: |
         packer build -timestamp-ui -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
 
@@ -245,6 +258,38 @@ jobs:
     - name: Print IMAGE_ID_2204
       if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
       run: echo ${{ steps.build.outputs.IMAGE_ID_2204 }}
+
+    - name: Start runner
+      id: start-runner
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      uses: ./.github/actions/runner_create
+      timeout-minutes: 60
+      with:
+        repo_owner: ${{ github.repository_owner }}
+        repo: ${{ github.event.repository.name }}
+        service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        vm_folder: bjeuq5o166dq4ukv3eec
+        vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
+        vm_zone: eu-north1-c
+        vm_cpu: 60
+        vm_memory: 420
+        vm_disk_type: 'network-ssd-nonreplicated'
+        vm_disk_size: 1023
+        vm_subnet: f8uh0ml4rhb45nde9p75
+        vm_image: ${{ steps.build.outputs.IMAGE_ID_2204 }}
+        vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+        vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+    - name: Stop runner
+      uses: ./.github/actions/runner_remove
+      if: always() && env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      timeout-minutes: 60
+      with:
+        service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        repo_owner: ${{ github.repository_owner }}
+        repo: ${{ github.event.repository.name }}
+        vm_id: ${{ steps.start-runner.outputs.instance-id  }}
 
     - name: Set new image id
       if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
