@@ -183,7 +183,7 @@ message TServerConfig
     // NBD request timeout in seconds, only makes sense if using netlink
     optional uint32 NbdRequestTimeout = 112;
 
-    // NBD connection timeout in seconds, only makes sense if using netlink
+    // NBD connection timeout in seconds
     optional uint32 NbdConnectionTimeout = 113;
 
     // Endpoint Proxy unix socket path. Triggers proxy device factory usage
