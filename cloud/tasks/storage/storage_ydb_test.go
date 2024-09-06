@@ -1004,7 +1004,211 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
+type hangingTaskTestContext struct {
+	t                  *testing.T
+	storage            Storage
+	ctx                context.Context
+	hangingTaskTimeout time.Duration
+	db                 *persistence.YDBClient
+	cancel             context.CancelFunc
+}
+
+func (c hangingTaskTestContext) createTask(
+	taskType string,
+	taskStatus TaskStatus,
+	createdAt time.Time,
+	estimatedDuration time.Duration,
+) string {
+
+	state := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(c.t),
+		TaskType:       taskType,
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     time.Now(),
+		GenerationID:   10,
+		Status:         taskStatus,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	}
+	if estimatedDuration > 0 {
+		state.EstimatedTime = createdAt.Add(estimatedDuration)
+	}
+
+	taskId, err := c.storage.CreateTask(c.ctx, state)
+	require.NoError(c.t, err)
+	logging.Info(
+		c.ctx,
+		"task with id=%s, created_at=%v, status %s, estimate=%v",
+		taskId,
+		createdAt,
+		TaskStatusToString(taskStatus),
+		state.EstimatedTime,
+	)
+	return taskId
+}
+
+func (c hangingTaskTestContext) createHangingTaskNoEstimate(
+	taskType string,
+	taskStatus TaskStatus,
+) string {
+
+	return c.createTask(
+		taskType,
+		taskStatus,
+		time.Now().Add(-c.hangingTaskTimeout).Add(-time.Minute),
+		-1,
+	)
+}
+
+func (c hangingTaskTestContext) createHangingTaskWithEstimate(
+	taskType string,
+	taskStatus TaskStatus,
+) string {
+
+	return c.createTask(
+		taskType,
+		taskStatus,
+		time.Now().Add(
+			-(c.hangingTaskTimeout+time.Hour)*2,
+		).Add(-time.Minute),
+		time.Hour,
+	)
+}
+
+func (c hangingTaskTestContext) ListHangingTasksIDs(
+	exceptHangingTaskTypes []string,
+) []string {
+
+	hangingTasks, err := c.storage.ListHangingTasks(
+		c.ctx,
+		^uint64(0),
+		exceptHangingTaskTypes,
+	)
+	require.NoError(c.t, err)
+	hangingTaskIDs := make([]string, 0, len(hangingTasks))
+	for _, task := range hangingTasks {
+		hangingTaskIDs = append(hangingTaskIDs, task.ID)
+	}
+
+	return hangingTaskIDs
+}
+func (c hangingTaskTestContext) close() {
+	if c.db != nil && c.ctx != nil {
+		c.db.Close(c.ctx)
+	}
+
+	if c.cancel != nil {
+		c.cancel()
+	}
+}
+
+func newHangingTaskTestContext(
+	t *testing.T,
+	hangingTaskTimeout time.Duration,
+) (hangingTaskTestContext, error) {
+	testCtx := hangingTaskTestContext{}
+	ctx, cancel := context.WithCancel(newContext())
+	testCtx.ctx = ctx
+	testCtx.cancel = cancel
+	db, err := newYDB(ctx)
+	if err != nil {
+		testCtx.close()
+		return testCtx, err
+	}
+
+	testCtx.db = db
+	metricsRegistry := empty.NewRegistry()
+	stringDuration := hangingTaskTimeout.String()
+	storage, err := newStorage(
+		t,
+		ctx,
+		db,
+		&tasks_config.TasksConfig{
+			HangingTaskTimeout: &stringDuration,
+		},
+		metricsRegistry,
+	)
+	if err != nil {
+		testCtx.close()
+		return testCtx, err
+	}
+
+	testCtx.storage = storage
+	return testCtx, nil
+}
+
 func TestStorageYDBListHangingTasks(t *testing.T) {
+	hangingTaskTimeout := 5 * time.Hour
+	testCtx, err := newHangingTaskTestContext(t, hangingTaskTimeout)
+	require.NoError(t, err)
+	defer testCtx.close()
+
+	expectedHangingTaskIDs := make([]string, 0, 10)
+	hangingTasksStatuses := []TaskStatus{
+		TaskStatusReadyToRun,
+		TaskStatusRunning,
+		TaskStatusCancelling,
+		TaskStatusReadyToCancel,
+	}
+
+	for _, taskStatus := range hangingTasksStatuses {
+		taskID := testCtx.createHangingTaskNoEstimate("first", taskStatus)
+		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
+
+		taskID = testCtx.createHangingTaskWithEstimate("second", taskStatus)
+		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
+
+		testCtx.createTask("a", taskStatus, time.Now(), -1)
+		testCtx.createTask("a", taskStatus, time.Now(), time.Hour)
+		// estimate is missed,
+		// but task duration does not exceed x2 estimate duration
+		testCtx.createTask(
+			"b",
+			taskStatus,
+			time.Now().Add(-719*time.Minute),
+			hangingTaskTimeout+time.Hour,
+		)
+		// estimate is missed but default estimate is not
+		oneHourAgo := time.Now().Add(-time.Hour)
+		testCtx.createTask("c", taskStatus, oneHourAgo, time.Minute*15)
+	}
+
+	testCtx.createTask(
+		"d",
+		TaskStatusFinished,
+		time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
+		-1,
+	)
+	testCtx.createTask(
+		"e",
+		TaskStatusCancelled,
+		time.Now().Add(-time.Hour*14),
+		hangingTaskTimeout+time.Hour,
+	)
+
+	actualHangingTasks := testCtx.ListHangingTasksIDs([]string{})
+	require.ElementsMatch(t, expectedHangingTaskIDs, actualHangingTasks)
+}
+
+func TestStorageYDBListHangingTasksExceptsHangingTasks(t *testing.T) {
+	hangingTaskTimeout := 5 * time.Hour
+	testCtx, err := newHangingTaskTestContext(t, hangingTaskTimeout)
+	require.NoError(t, err)
+	defer testCtx.close()
+
+	exceptTaskType := "excepted"
+	taskID := testCtx.createHangingTaskNoEstimate("first", TaskStatusRunning)
+	testCtx.createHangingTaskNoEstimate(exceptTaskType, TaskStatusRunning)
+	require.ElementsMatch(
+		t,
+		[]string{taskID},
+		testCtx.ListHangingTasksIDs([]string{exceptTaskType}),
+	)
+}
+
+func TestStorageYDBListHangingTasksOld(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -1118,18 +1322,18 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 	for _, taskStatus := range hangingTasksStatuses {
 		for _, taskType := range allowedHangingTaskTypes {
 			// task without estimate
-			taskId := createHangingTaskNoEstimate(taskType, taskStatus)
-			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskId)
+			taskID := createHangingTaskNoEstimate(taskType, taskStatus)
+			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 			expectedTaskIdsWithoutBlackList = append(
 				expectedTaskIdsWithoutBlackList,
-				taskId,
+				taskID,
 			)
 			// task  with missed estimate by two
-			taskId = createHangingTaskWithEstimate(taskType, taskStatus)
-			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskId)
+			taskID = createHangingTaskWithEstimate(taskType, taskStatus)
+			expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 			expectedTaskIdsWithoutBlackList = append(
 				expectedTaskIdsWithoutBlackList,
-				taskId,
+				taskID,
 			)
 
 			// tasks not hanging
