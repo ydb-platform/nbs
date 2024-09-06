@@ -510,6 +510,25 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
+    {
+        const auto nodeId = handle->GetNodeId();
+        const auto flags = handle->GetFlags();
+        ChangeNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId), -1);
+        if (HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE)) {
+            ChangeNodeCounters(
+                Impl->NodeToSessionStat.AddWrite(
+                    nodeId,
+                    session->GetSessionId()),
+                1);
+        } else if (HasFlag(flags, NProto::TCreateHandleRequest::E_READ)) {
+            ChangeNodeCounters(
+                Impl->NodeToSessionStat.AddRead(
+                    nodeId,
+                    session->GetSessionId()),
+                1);
+        }
+    }
+
     return handle.release();
 }
 
@@ -527,6 +546,27 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
     if (--(it->second) == 0) {
         Impl->NodeRefsByHandle.erase(it);
     }
+
+    {
+        const auto nodeId = handle->GetNodeId();
+        ChangeNodeCounters(Impl->NodeToSessionStat.GetKind(nodeId), -1);
+        if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
+        {
+            ChangeNodeCounters(
+                Impl->NodeToSessionStat.RemoveWrite(
+                    nodeId,
+                    handle->GetSessionId()),
+                1);
+        } else if (
+            HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
+        {
+            ChangeNodeCounters(
+                Impl->NodeToSessionStat.RemoveRead(
+                    nodeId,
+                    handle->GetSessionId()),
+                1);
+        }
+    }
 }
 
 TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
@@ -537,6 +577,30 @@ TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
     }
 
     return nullptr;
+}
+
+void TIndexTabletState::ChangeNodeCounters(
+    const TNodeToSessionStat::EKind nodeKind,
+    i64 amount)
+{
+    switch (nodeKind) {
+        case TNodeToSessionStat::EKind::None:
+            break;
+        case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
+            NodeToSessionCounters.NodesOpenForWritingBySingleSession += amount;
+            break;
+        case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
+            NodeToSessionCounters.NodesOpenForWritingByMultipleSessions +=
+                amount;
+            break;
+        case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
+            NodeToSessionCounters.NodesOpenForReadingBySingleSession += amount;
+            break;
+        case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
+            NodeToSessionCounters.NodesOpenForReadingByMultipleSessions +=
+                amount;
+            break;
+    }
 }
 
 TSessionHandle* TIndexTabletState::CreateHandle(

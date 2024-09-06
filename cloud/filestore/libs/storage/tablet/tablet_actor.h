@@ -137,6 +137,11 @@ private:
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
+        std::atomic<i64> NodesOpenForWritingBySingleSession{0};
+        std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
+        std::atomic<i64> NodesOpenForReadingBySingleSession{0};
+        std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
+
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
@@ -213,7 +218,8 @@ private:
             const TSessionsStats& sessionsStats,
             const TChannelsStats& channelsStats,
             const TReadAheadCacheStats& readAheadStats,
-            const TNodeIndexCacheStats& nodeIndexCacheStats);
+            const TNodeIndexCacheStats& nodeIndexCacheStats,
+            const TNodeToSessionCounters& nodeToSessionCounters);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
