@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "tracing.h"
 #include "volume.h"
 #include "volume_counters.h"
 #include "volume_events_private.h"
@@ -14,8 +13,8 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
-#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
@@ -37,7 +36,6 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
 #include <contrib/ydb/core/mind/local.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -136,23 +134,27 @@ class TVolumeActor final
     {
         using TCancelRoutine = std::function<void(
             const NActors::TActorContext& ctx,
-            NActors::IEventHandle& request,
+            NActors::TActorId caller,
+            ui64 callerCookie,
             TCallContext& callContext,
             NProto::TError error)>;
 
-        NActors::IEventHandlePtr Request;
+        NActors::TActorId Caller;
+        ui64 CallerCookie;
         TCallContextPtr CallContext;
         TCallContextPtr ForkedContext;
         ui64 ReceiveTime;
         TCancelRoutine CancelRoutine;
 
         TVolumeRequest(
-                NActors::IEventHandlePtr request,
+                const NActors::TActorId& caller,
+                ui64 callerCookie,
                 TCallContextPtr callContext,
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
                 TCancelRoutine cancelRoutine)
-            : Request(std::move(request))
+            : Caller(caller)
+            , CallerCookie(callerCookie)
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
@@ -165,7 +167,8 @@ class TVolumeActor final
         {
             CancelRoutine(
                 ctx,
-                *Request,
+                Caller,
+                CallerCookie,
                 *CallContext,
                 std::move(error));
         }
