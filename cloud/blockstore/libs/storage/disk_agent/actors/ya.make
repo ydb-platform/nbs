@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     session_cache_actor.cpp
+    io_request_parser.cpp
 )
 
 PEERDIR(

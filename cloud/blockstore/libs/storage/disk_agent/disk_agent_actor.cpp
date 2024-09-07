@@ -10,6 +10,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -202,6 +204,11 @@ void TDiskAgentActor::HandlePoisonPill(
         }
     }
 
+    for (const auto& actor: IOParserActors) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+    IOParserActors.clear();
+
     Die(ctx);
 }
 
@@ -253,9 +260,39 @@ STFUNC(TDiskAgentActor::StateInit)
     }
 }
 
+bool TDiskAgentActor::ShouldOffloadRequest(ui32 eventType) const
+{
+    if (IOParserActors.empty()) {
+        return false;
+    }
+
+    if (eventType == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
+        return true;
+    }
+
+    if (!AgentConfig->GetOffloadAllIORequestsParsingEnabled()) {
+        return false;
+    }
+
+    return eventType == TEvDiskAgent::EvReadDeviceBlocksRequest ||
+           eventType == TEvDiskAgent::EvZeroDeviceBlocksRequest;
+}
+
 STFUNC(TDiskAgentActor::StateWork)
 {
     UpdateActorStatsSampled();
+
+    if (ShouldOffloadRequest(ev->GetTypeRewrite())) {
+        const size_t index = IOParserActors.size() == 1
+                                 ? 0
+                                 : RandomNumber(IOParserActors.size());
+
+        ev->Rewrite(ev->Type, IOParserActors[index]);
+        ActorContext().Send(ev);
+
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -284,6 +321,30 @@ STFUNC(TDiskAgentActor::StateWork)
         HFunc(
             TEvDiskAgentPrivate::TEvCancelSuspensionRequest,
             HandleCancelSuspension);
+
+        case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
+            HandleWriteDeviceBlocks(
+                *reinterpret_cast<
+                    typename TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr*>(
+                    &ev),
+                ActorContext());
+            break;
+
+        case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
+            HandleReadDeviceBlocks(
+                *reinterpret_cast<
+                    typename TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr*>(
+                    &ev),
+                ActorContext());
+            break;
+
+        case TEvDiskAgentPrivate::EvParsedZeroDeviceBlocksRequest:
+            HandleZeroDeviceBlocks(
+                *reinterpret_cast<
+                    typename TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr*>(
+                    &ev),
+                ActorContext());
+            break;
 
         default:
             if (!HandleRequests(ev)) {

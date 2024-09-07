@@ -1734,7 +1734,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);
@@ -1987,7 +1987,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldPerformIoWithoutSpdk)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
@@ -2168,7 +2168,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldSupportOffsetAndFileSizeInFileDevices)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
@@ -2431,7 +2431,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldHandleDeviceInitError)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -2543,7 +2543,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
     {
         TVector<NProto::TDeviceConfig> devices;
 
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetEnabled(true);
         agentConfig.SetAgentId("agent");
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_SPDK);
@@ -2597,7 +2597,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldSecureEraseAioDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE);
         agentConfig.SetAgentId("agent-id");
@@ -2622,7 +2622,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldZeroFillDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_ZERO_FILL);
         agentConfig.SetAgentId("agent-id");
@@ -3119,7 +3119,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TTestEnv env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetEnabled(true);
                 for (const auto& device: devices) {
                     auto* config = agentConfig.MutableFileDevices()->Add();
@@ -3430,7 +3430,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig config;
+                auto config = CreateDefaultAgentConfig();
                 config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);
@@ -3496,7 +3496,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig config;
+                auto config = CreateDefaultAgentConfig();
                 config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);
@@ -3626,7 +3626,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldReceiveIOErrorFromBrokenDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -3738,7 +3738,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);

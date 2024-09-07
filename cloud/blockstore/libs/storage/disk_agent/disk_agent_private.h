@@ -168,6 +168,10 @@ struct TEvDiskAgentPrivate
         EvReportDelayedDiskAgentConfigMismatch,
         EvCancelSuspensionRequest,
 
+        EvParsedReadDeviceBlocksRequest,
+        EvParsedWriteDeviceBlocksRequest,
+        EvParsedZeroDeviceBlocksRequest,
+
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd

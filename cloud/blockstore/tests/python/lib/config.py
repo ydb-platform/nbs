@@ -298,6 +298,8 @@ def generate_disk_agent_txt(
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = 0
+    config.IOParserActorCount = 4
+    config.OffloadAllIORequestsParsingEnabled = True
 
     if device_erase_method is not None:
         config.DeviceEraseMethod = EDeviceEraseMethod.Value(device_erase_method)

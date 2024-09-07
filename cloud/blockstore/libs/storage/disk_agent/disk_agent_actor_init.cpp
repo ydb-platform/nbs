@@ -1,9 +1,13 @@
 #include "disk_agent_actor.h"
 
+#include "actors/io_request_parser.h"
+
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+
+#include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/str.h>
@@ -127,6 +131,21 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         Become(&TThis::StateIdle);
 
         return;
+    }
+
+    if (ui32 count = AgentConfig->GetIOParserActorCount()) {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Create " << count << " IORequestParserActor actors");
+        IOParserActors.reserve(count);
+        for (ui32 i = 0; i != count; ++i) {
+            auto actor = NDiskAgent::CreateIORequestParserActor(ctx.SelfID);
+            IOParserActors.push_back(ctx.Register(
+                actor.release(),
+                TMailboxType::HTSwap,
+                NKikimr::AppData()->UserPoolId));
+        }
     }
 
     Become(&TThis::StateWork);
