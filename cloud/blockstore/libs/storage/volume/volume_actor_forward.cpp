@@ -86,17 +86,19 @@ void StoreThrottlerDelay(TResponse& response, TDuration delay)
 template <typename TMethod>
 void RejectVolumeRequest(
     const TActorContext& ctx,
-    IEventHandle& request,
+    const NActors::TActorId& caller,
+    ui64 callerCookie,
     TCallContext& callContext,
     NProto::TError error)
 {
-    auto response = std::make_unique<typename TMethod::TResponse>(std::move(error));
+    auto response =
+        std::make_unique<typename TMethod::TResponse>(std::move(error));
 
     StoreThrottlerDelay(
         *response,
         callContext.Time(EProcessingStage::Postponed));
 
-    NCloud::Reply(ctx, request, std::move(response));
+    NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
 
 }   // namespace
@@ -134,7 +136,7 @@ bool TVolumeActor::HandleRequest(
     }
 
     // Should always forward request via TPartitionRequestActor for
-    // DesribeBlocks method and multi-partitioned volume.
+    // DescribeBlocks method and multi-partitioned volume.
     if (State->GetPartitions().size() == 1 ||
         (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>))
     {
@@ -256,7 +258,7 @@ void TVolumeActor::SendRequestToPartition(
         ctx,
         ev,
         partActorId,
-        volumeRequestId);
+        TabletID());
 
     if (processed) {
         return;
@@ -284,7 +286,8 @@ void TVolumeActor::SendRequestToPartition(
     VolumeRequests.emplace(
         volumeRequestId,
         TVolumeRequest(
-            IEventHandlePtr(ev.Release()),
+            ev->Sender,
+            ev->Cookie,
             std::move(callContext),
             msg->CallContext,
             traceTime,
@@ -388,23 +391,29 @@ void TVolumeActor::HandleResponse(
     Y_UNUSED(ctx);
 
     auto* msg = ev->Get();
+    const ui64 volumeRequestId = ev->Cookie;
+    WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+    ReplyToDuplicateRequests(
+        ctx,
+        volumeRequestId,
+        msg->Record.GetError().GetCode());
 
-    WriteAndZeroRequestsInFlight.RemoveRequest(ev->Cookie);
-    ReplyToDuplicateRequests(ctx, ev->Cookie, msg->Record.GetError().GetCode());
-
-    if (auto it = VolumeRequests.find(ev->Cookie); it != VolumeRequests.end()) {
-        auto& cc = *it->second.CallContext;
+    if (auto it = VolumeRequests.find(volumeRequestId);
+        it != VolumeRequests.end())
+    {
+        const TVolumeRequest& volumeRequest = it->second;
+        auto& cc = *volumeRequest.CallContext;
         cc.LWOrbit.Join(it->second.ForkedContext->LWOrbit);
 
-        FillResponse<TMethod>(*msg, cc, it->second.ReceiveTime);
+        FillResponse<TMethod>(*msg, cc, volumeRequest.ReceiveTime);
 
         // forward response to the caller
         auto event = std::make_unique<IEventHandle>(
-            it->second.Request->Sender,
+            volumeRequest.Caller,
             ev->Sender,
             ev->ReleaseBase().Release(),
             ev->Flags,
-            it->second.Request->Cookie);
+            volumeRequest.CallerCookie);
 
         ctx.Send(event.release());
 
@@ -514,18 +523,30 @@ void TVolumeActor::ForwardRequest(
 {
     // PartitionRequests undelivery handing
     if (ev->Sender == SelfId()) {
-        auto it = VolumeRequests.find(ev->Cookie);
-        if (it != VolumeRequests.end()) {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, TStringBuilder()
-                    << "Volume not ready: " << State->GetDiskId().Quote()));
+        const ui64 volumeRequestId = ev->Cookie;
+        if (auto it = VolumeRequests.find(volumeRequestId);
+            it != VolumeRequests.end())
+        {
+            const TVolumeRequest& volumeRequest = it->second;
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Volume not ready: " << State->GetDiskId().Quote()));
 
-            FillResponse<TMethod>(*response, *it->second.CallContext, it->second.ReceiveTime);
+            FillResponse<TMethod>(
+                *response,
+                *volumeRequest.CallContext,
+                volumeRequest.ReceiveTime);
 
-            NCloud::Reply(ctx, *it->second.Request, std::move(response));
+            NCloud::Send(
+                ctx,
+                volumeRequest.Caller,
+                std::move(response),
+                volumeRequest.CallerCookie);
 
-            WriteAndZeroRequestsInFlight.RemoveRequest(ev->Cookie);
-            ReplyToDuplicateRequests(ctx, ev->Cookie, E_REJECTED);
+            WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+            ReplyToDuplicateRequests(ctx, volumeRequestId, E_REJECTED);
             VolumeRequests.erase(it);
             return;
         }
