@@ -293,6 +293,14 @@ void TVolumeActor::SendRequestToPartition(
             traceTime,
             &RejectVolumeRequest<TMethod>));
 
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        if (OnlineRequestMonitor) {
+            OnlineRequestMonitor->RequestStarted(
+                volumeRequestId,
+                BuildRequestBlockRange(*msg, State->GetBlockSize()));
+        }
+    }
+
     ctx.Send(std::move(event));
 }
 

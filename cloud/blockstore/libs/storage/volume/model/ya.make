@@ -5,11 +5,12 @@ LIBRARY()
 GENERATE_ENUM_SERIALIZATION(checkpoint.h)
 
 SRCS(
-    checkpoint.cpp
     checkpoint_light.cpp
+    checkpoint.cpp
     client_state.cpp
     merge.cpp
     meta.cpp
+    online_request_monitor.cpp
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp

@@ -28,6 +28,7 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/volume/model/online_request_monitor.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -293,6 +294,7 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
+    std::unique_ptr<TOnlineRequestMonitor> OnlineRequestMonitor;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -424,6 +426,7 @@ private:
         const TVector<TVolumeMetaHistoryItem>& metaHistory,
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
+    void RenderDiskMap(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -596,6 +599,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RenderNonreplPartitionInfo(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderChangedBlockJson(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

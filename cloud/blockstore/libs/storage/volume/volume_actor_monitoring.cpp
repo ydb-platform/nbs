@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
-
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -438,6 +437,7 @@ void TVolumeActor::HandleHttpInfo(
 
     const THttpHandlers getActions {{
         {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
+        {"getChangedBlocks", &TActor::HandleHttpInfo_RenderChangedBlockJson },
     }};
 
     auto* msg = ev->Get();
@@ -463,7 +463,7 @@ void TVolumeActor::HandleHttpInfo(
         auto params = GatherHttpParameters(*msg);
         const auto& action = params.Get("action");
 
-        if (auto* handler = postActions.FindPtr(action)) {
+        if (const auto* handler = postActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_POST) {
                 RejectHttpRequest(ctx, *requestInfo, "Wrong HTTP method");
                 return;
@@ -473,7 +473,7 @@ void TVolumeActor::HandleHttpInfo(
             return;
         }
 
-        if (auto* handler = getActions.FindPtr(action)) {
+        if (const auto* handler = getActions.FindPtr(action)) {
             std::invoke(*handler, this, ctx, params, std::move(requestInfo));
             return;
         }
@@ -539,6 +539,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTabName = "Overview";
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
+    const char* diskMapTabName = "DiskMap";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -549,6 +550,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTab = inactiveTab;
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
+    const char* diskMapTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -559,6 +561,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         historyTab = activeTab;
     } else if (tabName == checkpointsTabName) {
         checkpointsTab = activeTab;
+    } else if (tabName == diskMapTabName) {
+        diskMapTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -585,6 +589,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
                     RenderCheckpoints(out);
+                }
+
+                DIV_CLASS_ID(diskMapTab, diskMapTabName) {
+                    RenderDiskMap(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -804,6 +812,70 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
             </script>
         )___";
+    }
+}
+
+void TVolumeActor::RenderDiskMap(IOutputStream& out) const
+{
+    using namespace NMonitoringUtils;
+
+    const size_t diskSize = State->GetBlocksCount() *  State->GetBlockSize();
+    HTML(out) {
+
+        out << R"(
+        <canvas id='diskMap'>Update browser</canvas>
+
+        <script>
+            const TabletId = )" << TabletID() << R"(;
+            const diskSize = )" << diskSize << R"(;
+            const blockSize = )" << State->GetBlockSize() << R"(;
+            const visualBlockSize = 1024 * 1024;
+            const blockInVisualBlockCount = visualBlockSize / blockSize;
+            const visualBlockCount = diskSize / visualBlockSize;
+            const mapWidth = 1024;
+            const mapHeight = (visualBlockCount + mapWidth - 1) / mapWidth;
+
+            var diskMap = document.getElementById("diskMap");
+			var ctx     = diskMap.getContext('2d');
+            diskMap.width  = mapWidth;
+            diskMap.height = mapHeight;
+
+            function renderBlocksMap() {
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(0, 0, mapWidth, mapHeight);
+            }
+
+            function renderChangedBlocks(requests) {
+                renderBlocksMap();
+                ctx.fillStyle = '#FFFFFF';
+                for (const request of requests) {
+                    const blockIndex = request[0];
+                    const visualBlockIndex = blockIndex / blockInVisualBlockCount;
+                    const y = Math.floor(visualBlockIndex / mapWidth);
+                    const x = visualBlockIndex - y * mapWidth;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+
+            function loadChangedBlocks() {
+                var url = '?action=getChangedBlocks';
+                url += '&TabletID=' + TabletId;
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        renderChangedBlocks(result.requests);
+                    },
+                    error: function(jqXHR, status) {
+                        console.log('error');
+                    }
+                });
+            }
+
+            renderBlocksMap();
+            setInterval(function() { loadChangedBlocks(); }, 1000);
+
+        </script>
+        )";
     }
 }
 
@@ -1841,6 +1913,24 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
     }
 
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TVolumeActor::HandleHttpInfo_RenderChangedBlockJson(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    if (!OnlineRequestMonitor) {
+        OnlineRequestMonitor = std::make_unique<TOnlineRequestMonitor>();
+    }
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            OnlineRequestMonitor->TakeRequestInfo()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
