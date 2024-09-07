@@ -43,7 +43,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
-    xxx(FlushBytesThreshold,                ui32,   4_MB                      )\
+    xxx(FlushBytesThreshold,                ui64,   4_MB                      )\
     xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
@@ -63,7 +63,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
-    xxx(FlushBytesThresholdForBackpressure, ui32,      128_MB                 )\
+    xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
     xxx(HDDLogChannelPoolKind,         TString,   "rot"                       )\

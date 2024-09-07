@@ -5346,7 +5346,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST(ShouldTrimFreshBytesDeletionMarkersForLargeFiles)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(100_GB + 1);
 
         TTestEnv env({}, std::move(storageConfig));
         auto registry = env.GetRegistry();
@@ -5373,8 +5373,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), 100_GB);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(100_GB, stats.GetDeletedFreshBytesCount());
         }
 
         tablet.FlushBytes();
@@ -5382,8 +5382,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
         }
 
         {
