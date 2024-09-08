@@ -51,24 +51,7 @@ bool ToPartitionRequests(
     const ui32 blocksPerStripe,
     const typename TMethod::TRequest::TPtr& ev,
     TVector<TPartitionRequest<TMethod>>* requests,
-    TBlockRange64* blockRange)
-{
-    Y_UNUSED(blockSize);
-    Y_UNUSED(blocksPerStripe);
-    Y_UNUSED(ev);
-    Y_UNUSED(requests);
-    Y_UNUSED(blockRange);
-
-    Y_ABORT_UNLESS(!partitions.empty());
-    STORAGE_VERIFY_C(
-        false,
-        NCloud::TWellKnownEntityTypes::DISK,
-        partitions[0].PartitionConfig.GetDiskId(),
-        TStringBuilder() << "ToPartitionRequests not implemented for "
-            << TMethod::Name);
-
-    return false;
-}
+    TBlockRange64* blockRange);
 
 template <typename TMethod>
 ui32 InitPartitionRequest(
@@ -204,8 +187,6 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
     TVector<TPartitionRequest<TEvService::TReadBlocksMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(blockSize);
-
     const auto& proto = ev->Get()->Record;
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
@@ -408,14 +389,10 @@ bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
     TVector<TPartitionRequest<TEvVolume::TDescribeBlocksMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(blockSize);
-
     const auto& proto = ev->Get()->Record;
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -447,14 +424,10 @@ bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
     TVector<TPartitionRequest<TEvService::TGetChangedBlocksMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(blockSize);
-
     const auto& proto = ev->Get()->Record;
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -514,14 +487,10 @@ bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
     TVector<TPartitionRequest<TEvVolume::TCompactRangeMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(blockSize);
-
     const auto& proto = ev->Get()->Record;
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -658,6 +627,32 @@ bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
         ev,
         requests,
         blockRange);
+}
+
+template <>
+bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
+    const TPartitionInfoList& partitions,
+    const ui32 blockSize,
+    const ui32 blocksPerStripe,
+    const TEvVolume::TGetUsedBlocksMethod::TRequest::TPtr& ev,
+    TVector<TPartitionRequest<TEvVolume::TGetUsedBlocksMethod>>* requests,
+    TBlockRange64* blockRange)
+{
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(ev);
+    Y_UNUSED(requests);
+    Y_UNUSED(blockRange);
+
+    Y_ABORT_UNLESS(!partitions.empty());
+    STORAGE_VERIFY_C(
+        false,
+        NCloud::TWellKnownEntityTypes::DISK,
+        partitions[0].PartitionConfig.GetDiskId(),
+        TStringBuilder() << "ToPartitionRequests not implemented for "
+                            "TEvVolume::TGetUsedBlocksMethod");
+
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
