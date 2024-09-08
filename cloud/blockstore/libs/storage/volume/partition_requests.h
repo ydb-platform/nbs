@@ -10,17 +10,18 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
-
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/event.h>
+
 #include <library/cpp/lwtrace/all.h>
 
 #include <memory>
@@ -138,20 +139,13 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
     auto& proto = ev->Get()->Record;
     auto& buffers = *proto.MutableBlocks()->MutableBuffers();
 
-    ui32 originalBlocksCount = 0;
     ui32 bufferSize = 0;
     for (const auto& buffer: buffers) {
-        Y_ABORT_UNLESS(buffer.Size() % blockSize == 0);
-        Y_ABORT_UNLESS(buffer.Size() >= blockSize);
         Y_ABORT_UNLESS(bufferSize == 0 || bufferSize == buffer.Size());
-        originalBlocksCount += buffer.Size() / blockSize;
         bufferSize = buffer.Size();
     }
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        originalBlocksCount
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
@@ -163,7 +157,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
         auto& request = (*requests)[i];
         const auto blocksCount = InitIORequest<TEvService::TWriteBlocksMethod>(
             partitions,
-            originalBlocksCount,
+            blockRange->Size(),
             blocksPerStripe,
             i,
             proto,
@@ -214,10 +208,8 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
 
     const auto& proto = ev->Get()->Record;
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -254,10 +246,8 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
 
     const auto& proto = ev->Get()->Record;
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange =  BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -334,10 +324,8 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
 
     const auto& blockDatas = guard.Get();
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.BlocksCount
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,
@@ -384,10 +372,8 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
     const auto& blockDatas = guard.Get();
 
-    *blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        proto.GetBlocksCount()
-    );
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
+
     requests->resize(CalculateRequestCount(
         blocksPerStripe,
         *blockRange,

@@ -837,7 +837,15 @@ private:
         const ui64 volumeRequestId);
 
     template <typename TMethod>
-    bool HandleRequest(
+    bool HandleMultipartitionVolumeRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        ui64 volumeRequestId,
+        bool isTraced,
+        ui64 traceTs);
+
+    template <typename TMethod>
+    void HandleCheckpointRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,

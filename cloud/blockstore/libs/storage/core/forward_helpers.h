@@ -37,6 +37,17 @@ template <typename TMethod>
 constexpr bool IsReadOrWriteMethod =
     IsReadMethod<TMethod> || IsWriteMethod<TMethod>;
 
+template <typename T>
+constexpr bool IsDescribeBlocksMethod =
+    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
+
+template <typename TMethod>
+constexpr bool IsCheckpointMethod =
+    std::is_same_v<TMethod, TEvService::TCreateCheckpointMethod> ||
+    std::is_same_v<TMethod, TEvService::TDeleteCheckpointMethod> ||
+    std::is_same_v<TMethod, TEvVolume::TDeleteCheckpointDataMethod> ||
+    std::is_same_v<TMethod, TEvService::TGetCheckpointStatusMethod>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
