@@ -685,6 +685,23 @@ func (c *client) CreateProxyOverlayDisk(
 
 	defer c.metrics.StatRequest("CreateProxyOverlayDisk")(&err)
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.CreateProxyOverlayDisk",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("base_disk_id", baseDiskID),
+			tracing.AttributeString(
+				"base_disk_checkpoint_id",
+				baseDiskCheckpointID,
+			),
+		),
+	)
+	defer span.End()
+	defer func(created *bool) {
+		span.SetAttributes(tracing.AttributeBool("created", *created))
+	}(&created)
+
 	volume, err := c.describeVolume(ctx, baseDiskID)
 	if err != nil {
 		return false, err
@@ -1278,6 +1295,24 @@ func (c *client) GetCheckpointSize(
 
 	defer c.metrics.StatRequest("GetCheckpointSize")(&err)
 
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.GetCheckpointSize",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("checkpoint_id", checkpointID),
+			tracing.AttributeInt64(
+				"milestone_block_index",
+				int64(milestoneBlockIndex),
+			),
+			tracing.AttributeInt64(
+				"milestone_checkpoint_size",
+				int64(milestoneCheckpointSize),
+			),
+		),
+	)
+	defer span.End()
+
 	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
 		return err
@@ -1346,6 +1381,21 @@ func (c *client) GetChangedBytes(
 ) (diff uint64, err error) {
 
 	defer c.metrics.StatRequest("GetChangedBytes")(&err)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.GetChangedBytes",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString("base_checkpoint_id", baseCheckpointID),
+			tracing.AttributeString("checkpoint_id", checkpointID),
+			tracing.AttributeBool("ignore_base_disk", ignoreBaseDisk),
+		),
+	)
+	defer span.End()
+	defer func(diff *uint64) {
+		span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
+	}(&diff) // TODO:_ should set error here? And do we need return value in attributes?
 
 	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
@@ -1998,6 +2048,7 @@ func (c *client) getChangedBlocks(
 
 	ctx = c.withTimeoutHeader(ctx)
 
+	// TODO:_ maybe should not start span here (too many requests?)
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.GetChangedBlocks",
@@ -2056,6 +2107,9 @@ func (c *client) statVolume(
 
 // TODO:_ add some results to span attributes in some methods of client?
 // TODO:_ short return in some methods of client?
+// TODO:_ remove span for rediscover?
 
-// TODO:_ are there any other places where something complicated happens
-// on the level above SDK requests?
+// TODO:_ event for retries in nbs go sdk?
+// TODO:_ add host to attributes of spans for mount/rediscover?
+// TODO:_ store error in high-level spans?
+// TODO:_ should add zone_id to attributes anywhere?

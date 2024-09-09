@@ -7,6 +7,7 @@ import (
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +30,25 @@ func (c *multiZoneClient) Clone(
 ) (err error) {
 
 	defer c.metrics.StatRequest("Clone")(&err)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.Clone",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString(
+				"dst_placement_group_id",
+				dstPlacementGroupID,
+			),
+			tracing.AttributeInt(
+				"dst_placement_partition_index",
+				int(dstPlacementPartitionIndex),
+			),
+			tracing.AttributeInt64("fill_generation", int64(fillGeneration)),
+			tracing.AttributeString("base_disk_id", baseDiskID),
+		),
+	)
+	defer span.End()
 
 	err = c.clone(
 		ctx,
