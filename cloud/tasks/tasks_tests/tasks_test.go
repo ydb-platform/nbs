@@ -322,8 +322,6 @@ func scheduleLongTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const hangingTaskType = "tasks.hanging"
-
 type hangingTask struct{}
 
 func (t *hangingTask) Save() ([]byte, error) {
@@ -359,7 +357,7 @@ func (t *hangingTask) GetResponse() proto.Message {
 
 func registerHangingTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution(
-		hangingTaskType,
+		"tasks.hanging",
 		func() tasks.Task {
 			return &hangingTask{}
 		},
@@ -373,7 +371,7 @@ func scheduleHangingTask(
 
 	return scheduler.ScheduleTask(
 		ctx,
-		hangingTaskType,
+		"tasks.hanging",
 		"Hanging task",
 		&empty.Empty{},
 	)
@@ -1235,12 +1233,12 @@ func setupExpectationsForHangingTasksMetricsTest(
 ) {
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": taskID},
+		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything)
 
 	registry.GetGauge(
 		"hangingTasks",
-		map[string]string{"type": hangingTaskType, "id": taskID},
+		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On(
 		"Set",
 		float64(0),
