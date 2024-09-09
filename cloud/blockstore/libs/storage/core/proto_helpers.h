@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -199,6 +200,18 @@ TBlockRange64 BuildRequestBlockRange(
 
 TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvZeroBlocksRequest& request,
+    const ui32 blockSize);
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvVolume::TEvDescribeBlocksRequest& request,
+    const ui32 blockSize);
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvService::TEvGetChangedBlocksRequest& request,
+    const ui32 blockSize);
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvVolume::TEvCompactRangeRequest& request,
     const ui32 blockSize);
 
 TBlockRange64 BuildRequestBlockRange(
