@@ -1365,13 +1365,7 @@ func (s *storageYDB) checkBaseSnapshot(
 	expectedBaseSnapshotID string,
 ) error {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
@@ -1397,11 +1391,6 @@ func (s *storageYDB) checkBaseSnapshot(
 			"snapshot with id %v does not exists",
 			snapshotID,
 		)
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
 	}
 
 	state := states[0]
@@ -1423,13 +1412,7 @@ func (s *storageYDB) checkLockTaskID(
 	expectedLockTaskID string,
 ) error {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
@@ -1455,11 +1438,6 @@ func (s *storageYDB) checkLockTaskID(
 			"snapshot with id %v does not exists",
 			snapshotID,
 		)
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
 	}
 
 	state := states[0]

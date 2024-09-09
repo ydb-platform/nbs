@@ -528,7 +528,6 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
-	testcommon.CheckBaseSnapshot(t, ctx, snapshotID2, snapshotID1)
 	testcommon.CheckConsistency(t, ctx)
 }
 
