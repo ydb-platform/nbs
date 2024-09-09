@@ -1004,7 +1004,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
-type hangingTaskTestContext struct {
+type hangingTaskTestFixture struct {
 	t                  *testing.T
 	storage            Storage
 	ctx                context.Context
@@ -1013,7 +1013,7 @@ type hangingTaskTestContext struct {
 	cancel             context.CancelFunc
 }
 
-func (c hangingTaskTestContext) createTask(
+func (f hangingTaskTestFixture) createTask(
 	taskType string,
 	taskStatus TaskStatus,
 	createdAt time.Time,
@@ -1021,7 +1021,7 @@ func (c hangingTaskTestContext) createTask(
 ) string {
 
 	state := TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(c.t),
+		IdempotencyKey: getIdempotencyKeyForTest(f.t),
 		TaskType:       taskType,
 		Description:    "Some task",
 		CreatedAt:      createdAt,
@@ -1036,10 +1036,10 @@ func (c hangingTaskTestContext) createTask(
 		state.EstimatedTime = createdAt.Add(estimatedDuration)
 	}
 
-	taskID, err := c.storage.CreateTask(c.ctx, state)
-	require.NoError(c.t, err)
+	taskID, err := f.storage.CreateTask(f.ctx, state)
+	require.NoError(f.t, err)
 	logging.Info(
-		c.ctx,
+		f.ctx,
 		"task with id=%s, created_at=%v, status %s, estimate=%v",
 		taskID,
 		createdAt,
@@ -1049,44 +1049,44 @@ func (c hangingTaskTestContext) createTask(
 	return taskID
 }
 
-func (c hangingTaskTestContext) createHangingTaskNoEstimate(
+func (f hangingTaskTestFixture) createHangingTaskNoEstimate(
 	taskType string,
 	taskStatus TaskStatus,
 ) string {
 
-	return c.createTask(
+	return f.createTask(
 		taskType,
 		taskStatus,
-		time.Now().Add(-c.hangingTaskTimeout).Add(-time.Minute),
+		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
 		-1,
 	)
 }
 
-func (c hangingTaskTestContext) createHangingTaskWithEstimate(
+func (f hangingTaskTestFixture) createHangingTaskWithEstimate(
 	taskType string,
 	taskStatus TaskStatus,
 ) string {
 
-	return c.createTask(
+	return f.createTask(
 		taskType,
 		taskStatus,
 		time.Now().Add(
-			-(c.hangingTaskTimeout+time.Hour)*2,
+			-(f.hangingTaskTimeout+time.Hour)*2,
 		).Add(-time.Minute),
 		time.Hour,
 	)
 }
 
-func (c hangingTaskTestContext) ListHangingTasksIDs(
+func (f hangingTaskTestFixture) ListHangingTasksIDs(
 	exceptHangingTaskTypes []string,
 ) []string {
 
-	hangingTasks, err := c.storage.ListHangingTasks(
-		c.ctx,
+	hangingTasks, err := f.storage.ListHangingTasks(
+		f.ctx,
 		^uint64(0),
 		exceptHangingTaskTypes,
 	)
-	require.NoError(c.t, err)
+	require.NoError(f.t, err)
 	hangingTaskIDs := make([]string, 0, len(hangingTasks))
 	for _, task := range hangingTasks {
 		hangingTaskIDs = append(hangingTaskIDs, task.ID)
@@ -1095,35 +1095,30 @@ func (c hangingTaskTestContext) ListHangingTasksIDs(
 	return hangingTaskIDs
 }
 
-func (c hangingTaskTestContext) close() {
-	if c.db != nil && c.ctx != nil {
-		c.db.Close(c.ctx)
-	}
-
-	if c.cancel != nil {
-		c.cancel()
-	}
+func (f hangingTaskTestFixture) close() {
+	err := f.db.Close(f.ctx)
+	require.NoError(f.t, err)
+	f.cancel()
 }
 
-func newHangingTaskTestContext(
+func newHangingTaskTestFixture(
 	t *testing.T,
 	hangingTaskTimeout time.Duration,
-) (hangingTaskTestContext, error) {
+) hangingTaskTestFixture {
 
-	testCtx := hangingTaskTestContext{
+	ctx, cancel := context.WithCancel(newContext())
+	fixture := hangingTaskTestFixture{
 		t:                  t,
 		hangingTaskTimeout: hangingTaskTimeout,
+		ctx:                ctx,
+		cancel:             cancel,
 	}
-	ctx, cancel := context.WithCancel(newContext())
-	testCtx.ctx = ctx
-	testCtx.cancel = cancel
+	fixture.ctx = ctx
+	fixture.cancel = cancel
 	db, err := newYDB(ctx)
-	if err != nil {
-		testCtx.close()
-		return testCtx, err
-	}
+	require.NoError(t, err)
 
-	testCtx.db = db
+	fixture.db = db
 	metricsRegistry := empty.NewRegistry()
 	stringDuration := hangingTaskTimeout.String()
 	storage, err := newStorage(
@@ -1135,20 +1130,16 @@ func newHangingTaskTestContext(
 		},
 		metricsRegistry,
 	)
-	if err != nil {
-		testCtx.close()
-		return testCtx, err
-	}
+	require.NoError(t, err)
 
-	testCtx.storage = storage
-	return testCtx, nil
+	fixture.storage = storage
+	return fixture
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
-	testCtx, err := newHangingTaskTestContext(t, hangingTaskTimeout)
-	require.NoError(t, err)
-	defer testCtx.close()
+	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
+	defer fixture.close()
 
 	expectedHangingTaskIDs := make([]string, 0, 10)
 	hangingTasksStatuses := []TaskStatus{
@@ -1159,17 +1150,17 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 	}
 
 	for _, taskStatus := range hangingTasksStatuses {
-		taskID := testCtx.createHangingTaskNoEstimate("first", taskStatus)
+		taskID := fixture.createHangingTaskNoEstimate("first", taskStatus)
 		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 
-		taskID = testCtx.createHangingTaskWithEstimate("second", taskStatus)
+		taskID = fixture.createHangingTaskWithEstimate("second", taskStatus)
 		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 
-		testCtx.createTask("a", taskStatus, time.Now(), -1)
-		testCtx.createTask("a", taskStatus, time.Now(), time.Hour)
+		fixture.createTask("a", taskStatus, time.Now(), -1)
+		fixture.createTask("a", taskStatus, time.Now(), time.Hour)
 		// estimate is missed,
 		// but task duration does not exceed x2 estimate duration
-		testCtx.createTask(
+		fixture.createTask(
 			"b",
 			taskStatus,
 			time.Now().Add(-719*time.Minute),
@@ -1177,39 +1168,38 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		)
 		// estimate is missed but default estimate is not
 		oneHourAgo := time.Now().Add(-time.Hour)
-		testCtx.createTask("c", taskStatus, oneHourAgo, time.Minute*15)
+		fixture.createTask("c", taskStatus, oneHourAgo, time.Minute*15)
 	}
 
-	testCtx.createTask(
+	fixture.createTask(
 		"d",
 		TaskStatusFinished,
 		time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
 		-1,
 	)
-	testCtx.createTask(
+	fixture.createTask(
 		"e",
 		TaskStatusCancelled,
 		time.Now().Add(-time.Hour*14),
 		hangingTaskTimeout+time.Hour,
 	)
 
-	actualHangingTasks := testCtx.ListHangingTasksIDs([]string{})
+	actualHangingTasks := fixture.ListHangingTasksIDs([]string{})
 	require.ElementsMatch(t, expectedHangingTaskIDs, actualHangingTasks)
 }
 
 func TestStorageYDBListHangingTasksExceptsHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
-	testCtx, err := newHangingTaskTestContext(t, hangingTaskTimeout)
-	require.NoError(t, err)
-	defer testCtx.close()
+	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
+	defer fixture.close()
 
 	exceptTaskType := "excepted"
-	taskID := testCtx.createHangingTaskNoEstimate("first", TaskStatusRunning)
-	testCtx.createHangingTaskNoEstimate(exceptTaskType, TaskStatusRunning)
+	taskID := fixture.createHangingTaskNoEstimate("first", TaskStatusRunning)
+	fixture.createHangingTaskNoEstimate(exceptTaskType, TaskStatusRunning)
 	require.ElementsMatch(
 		t,
 		[]string{taskID},
-		testCtx.ListHangingTasksIDs([]string{exceptTaskType}),
+		fixture.ListHangingTasksIDs([]string{exceptTaskType}),
 	)
 }
 
