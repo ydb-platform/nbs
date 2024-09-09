@@ -143,7 +143,7 @@ void TDiskAgentActor::HandleInitAgentCompleted(
             auto actor = NDiskAgent::CreateIORequestParserActor(ctx.SelfID);
             IOParserActors.push_back(ctx.Register(
                 actor.release(),
-                TMailboxType::HTSwap,
+                TMailboxType::TinyReadAsFilled,
                 NKikimr::AppData()->UserPoolId));
         }
     }
