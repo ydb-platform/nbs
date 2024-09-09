@@ -1036,17 +1036,17 @@ func (c hangingTaskTestContext) createTask(
 		state.EstimatedTime = createdAt.Add(estimatedDuration)
 	}
 
-	taskId, err := c.storage.CreateTask(c.ctx, state)
+	taskID, err := c.storage.CreateTask(c.ctx, state)
 	require.NoError(c.t, err)
 	logging.Info(
 		c.ctx,
 		"task with id=%s, created_at=%v, status %s, estimate=%v",
-		taskId,
+		taskID,
 		createdAt,
 		TaskStatusToString(taskStatus),
 		state.EstimatedTime,
 	)
-	return taskId
+	return taskID
 }
 
 func (c hangingTaskTestContext) createHangingTaskNoEstimate(
