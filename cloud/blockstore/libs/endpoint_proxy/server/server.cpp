@@ -176,7 +176,11 @@ struct TClientStorage: NStorage::NServer::IClientStorage
     {
         Y_UNUSED(source);
 
-        grpc::AddInsecureChannelFromFd(&Server, clientSocket);
+        auto fileHandle = TFileHandle(clientSocket);
+        auto dupSocket = fileHandle.Duplicate();
+        fileHandle.Release();
+
+        grpc::AddInsecureChannelFromFd(&Server, dupSocket);
     }
 
     void RemoveClient(const TSocketHolder& clientSocket) override
