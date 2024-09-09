@@ -1926,6 +1926,8 @@ func (s *storageYDB) getPoolConfigs(
 	session *persistence.Session,
 ) ([]poolConfig, error) {
 
+	logging.Info(ctx, "getting pool configs")
+
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -1979,6 +1981,8 @@ func (s *storageYDB) getBaseDisksScheduling(
 	session *persistence.Session,
 ) ([]BaseDisk, error) {
 
+	logging.Info(ctx, "getting base disks for scheduling")
+
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -2007,6 +2011,8 @@ func (s *storageYDB) getBaseDisksScheduling(
 		}
 	}
 
+	logging.Info(ctx, "finding base disks from %v disks", len(ids))
+
 	found, err := s.findBaseDisks(ctx, session, ids)
 	if err != nil {
 		return nil, err
@@ -2025,6 +2031,8 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	session *persistence.Session,
 	config poolConfig,
 ) ([]BaseDisk, error) {
+
+	logging.Info(ctx, "started taking base disks to schedule for pool %v", config)
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
@@ -2163,6 +2171,8 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		res = append(res, baseDisk.toBaseDisk())
 	}
 
+	logging.Info(ctx, "Selected %v disks for pool %v", len(res), config)
+
 	return res, nil
 }
 
@@ -2170,6 +2180,8 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 	ctx context.Context,
 	session *persistence.Session,
 ) ([]BaseDisk, error) {
+
+	logging.Info(ctx, "started takeBaseDisksToSchedule")
 
 	configs, err := s.getPoolConfigs(ctx, session)
 	if err != nil {
@@ -2180,6 +2192,8 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 	if err != nil {
 		return nil, err
 	}
+
+	logging.Info(ctx, "got %v pool configs and %v disks", len(configs), len(scheduling))
 
 	var baseDisks []BaseDisk
 
@@ -2262,6 +2276,8 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 
 		startIndex = endIndex
 	}
+
+	logging.Info(ctx, "finished takeBaseDisksToSchedule")
 
 	return baseDisks, nil
 }
