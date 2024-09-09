@@ -857,14 +857,30 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    auto affectedBlobs = Impl->MixedBlocks.ApplyDeletionMarkers(rangeId, true);
+    auto affectedBlobs =
+        Impl->MixedBlocks.ApplyDeletionMarkersAndGetMetas(rangeId);
 
     ui64 removedBlobs = 0;
     for (auto& blob: affectedBlobs) {
-        Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
-        DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+        const bool affected =
+            Impl->LargeBlocks.ApplyDeletionMarkers(blob.BlobMeta.Blocks);
+        if (!blob.Affected && !affected) {
+            // small optimization - not rewriting blob metas for the blobs that
+            // were not affected by deletion markers
+            continue;
+        }
 
-        bool written = WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+        DeleteMixedBlocks(
+            db,
+            rangeId,
+            blob.BlobMeta.BlobId,
+            blob.BlobMeta.Blocks);
+
+        bool written = WriteMixedBlocks(
+            db,
+            rangeId,
+            blob.BlobMeta.BlobId,
+            blob.BlobMeta.Blocks);
         if (!written) {
             ++removedBlobs;
         }

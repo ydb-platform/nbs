@@ -373,7 +373,9 @@ message TStorageConfig
     optional uint32 NodeRegistrationErrorTimeout = 383;  // in ms
 
     // Max block count per file.
-    optional uint64 MaxFileBlocks = 384;
+    // uint32 is chosen deliberately - using values that exceed 2^32 - 1 or even
+    // 2^31 (which is 8TiB for a 4KiB block) should be thoroughly tested anyway
+    optional uint32 MaxFileBlocks = 384;
     // Enables the usage of large deletion markers (needed for efficient
     // truncate ops on large files).
     optional bool LargeDeletionMarkersEnabled = 385;

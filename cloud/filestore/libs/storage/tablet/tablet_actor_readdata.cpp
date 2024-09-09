@@ -234,15 +234,15 @@ public:
         }
     }
 
-    void Accept(const TBlockDeletion& block) override
+    void Accept(const TBlockDeletion& deletion) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
+        ui32 blockOffset = deletion.BlockIndex - Args.ActualRange().FirstBlock();
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
-        if (prev.MinCommitId < block.CommitId) {
+        if (prev.MinCommitId < deletion.CommitId) {
             prev = {};
             Args.Buffer->ClearBlock(blockOffset);
         }

@@ -56,12 +56,17 @@ public:
         const IBlockLocation2RangeIndex& hasher,
         TVector<TBlock>& blocks) const;
 
-    // returnAll flag causes this function to return metas for all the blobs
-    // that are indexed in this range - not just the blobs that are affected by
-    // the applied markers
-    TVector<TMixedBlobMeta> ApplyDeletionMarkers(
-        ui32 rangeId,
-        bool returnAll) const;
+    TVector<TMixedBlobMeta> ApplyDeletionMarkers(ui32 rangeId) const;
+
+    struct TDeletionMarkerApplicationResult
+    {
+        TMixedBlobMeta BlobMeta;
+        bool Affected = false;
+    };
+
+    // returns metas for all blobs belonging to this range
+    TVector<TDeletionMarkerApplicationResult> ApplyDeletionMarkersAndGetMetas(
+        ui32 rangeId) const;
 
     TVector<TMixedBlobMeta> GetBlobsForCompaction(ui32 rangeId) const;
 

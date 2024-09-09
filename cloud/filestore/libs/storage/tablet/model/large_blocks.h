@@ -25,7 +25,8 @@ public:
     void AddDeletionMarker(TDeletionMarker deletionMarker);
 
     // applies the deletion markers to the provided blocks
-    void ApplyDeletionMarkers(TVector<TBlock>& blocks) const;
+    // returns true if at least one of the blocks was affected
+    bool ApplyDeletionMarkers(TVector<TBlock>& blocks) const;
     // marks the corresponding parts of the stored deletion markers as processed
     void MarkProcessed(
         ui64 nodeId,

@@ -37,7 +37,10 @@ void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired);
 
 inline auto GetDefaultMaxFileBlocks()
 {
-    static const auto VALUE = TStorageConfig().GetMaxFileBlocks();
+    // casting to ui64 is convenient here since some tests use the result of
+    // this function to do some arithmetic which may yield values outside of the
+    // ui32 domain
+    static const ui64 VALUE = TStorageConfig().GetMaxFileBlocks();
     return VALUE;
 }
 

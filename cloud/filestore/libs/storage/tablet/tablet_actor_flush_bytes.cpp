@@ -73,11 +73,11 @@ public:
         }
     }
 
-    void Accept(const TBlockDeletion& block) override
+    void Accept(const TBlockDeletion& deletion) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        if (BlockMinCommitId < block.CommitId) {
+        if (BlockMinCommitId < deletion.CommitId) {
             Block = {};
         }
     }

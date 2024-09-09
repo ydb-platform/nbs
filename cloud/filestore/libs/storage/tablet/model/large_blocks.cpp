@@ -52,14 +52,21 @@ using TRangeMap = TSet<TMarkerInfo, TMarkerInfoLess, TStlAllocator>;
 struct TBlockVisitor final: public ILargeBlockVisitor
 {
     TBlock& Block;
+    bool& Affected;
 
-    explicit TBlockVisitor(TBlock& block)
+    explicit TBlockVisitor(TBlock& block, bool& affected)
         : Block(block)
+        , Affected(affected)
     {}
 
-    void Accept(const TBlockDeletion& block) override
+    void Accept(const TBlockDeletion& deletion) override
     {
-        Block.MaxCommitId = Min(Block.MaxCommitId, block.CommitId);
+        if (deletion.CommitId < Block.MaxCommitId
+                && deletion.CommitId > Block.MinCommitId)
+        {
+            Block.MaxCommitId = deletion.CommitId;
+            Affected = true;
+        }
     }
 };
 
@@ -67,9 +74,9 @@ struct TBlockVisitor final: public ILargeBlockVisitor
 
 struct TNoOpVisitor final: public ILargeBlockVisitor
 {
-    void Accept(const TBlockDeletion& block) override
+    void Accept(const TBlockDeletion& deletion) override
     {
-        Y_UNUSED(block);
+        Y_UNUSED(deletion);
     }
 };
 
@@ -118,6 +125,7 @@ struct TLargeBlocks::TImpl
             }
 
             if (commitId < rangeIt->Marker.CommitId) {
+                ++rangeIt;
                 continue;
             }
 
@@ -154,10 +162,11 @@ struct TLargeBlocks::TImpl
         }
     }
 
-    void Apply(TVector<TBlock>& blocks, bool update)
+    bool Apply(TVector<TBlock>& blocks, bool update)
     {
+        bool affected = false;
         for (auto& block: blocks) {
-            TBlockVisitor visitor(block);
+            TBlockVisitor visitor(block, affected);
             Apply(
                 visitor,
                 block.NodeId,
@@ -166,6 +175,7 @@ struct TLargeBlocks::TImpl
                 Max<ui64>(),
                 update);
         }
+        return affected;
     }
 
     void MarkProcessed(
@@ -208,9 +218,9 @@ void TLargeBlocks::AddDeletionMarker(TDeletionMarker deletionMarker)
         Max<ui64>(Impl->MaxMarkerBlocks, deletionMarker.BlockCount);
 }
 
-void TLargeBlocks::ApplyDeletionMarkers(TVector<TBlock>& blocks) const
+bool TLargeBlocks::ApplyDeletionMarkers(TVector<TBlock>& blocks) const
 {
-    Impl->Apply(blocks, false);
+    return Impl->Apply(blocks, false);
 }
 
 void TLargeBlocks::MarkProcessed(
