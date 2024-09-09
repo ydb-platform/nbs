@@ -78,10 +78,6 @@ func newSession(
 				"mount_seq_number",
 				int64(mountOpts.MountSeqNumber),
 			),
-			tracing.AttributeString(
-				"encryption_mode",
-				protos.EEncryptionMode_name[int32(mountOpts.EncryptionSpec.Mode)],
-			),
 			tracing.AttributeInt64(
 				"fill_generation",
 				int64(mountOpts.FillGeneration),
@@ -94,6 +90,15 @@ func newSession(
 	)
 	defer span.End()
 	defer tracing.SetError(span, &err)
+
+	if mountOpts.EncryptionSpec != nil {
+		span.SetAttributes(
+			tracing.AttributeString(
+				"encryption_mode",
+				protos.EEncryptionMode_name[int32(mountOpts.EncryptionSpec.Mode)],
+			),
+		)
+	}
 
 	clientID, err := generateClientID()
 	if err != nil {

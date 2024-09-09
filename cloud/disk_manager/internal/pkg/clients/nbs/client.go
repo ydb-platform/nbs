@@ -701,7 +701,9 @@ func (c *client) CreateProxyOverlayDisk(
 	)
 	defer span.End()
 	defer func(created *bool) {
-		span.SetAttributes(tracing.AttributeBool("created", *created))
+		if created != nil {
+			span.SetAttributes(tracing.AttributeBool("created", *created))
+		}
 	}(&created)
 
 	volume, err := c.describeVolume(ctx, baseDiskID)
@@ -1395,7 +1397,9 @@ func (c *client) GetChangedBytes(
 	defer span.End()
 	defer tracing.SetError(span, &err)
 	defer func(diff *uint64) {
-		span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
+		if diff != nil {
+			span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
+		}
 	}(&diff)
 
 	volume, err := c.describeVolume(ctx, diskID)
