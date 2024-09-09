@@ -58,14 +58,51 @@ func newSession(
 	mountOpts nbs_client.MountVolumeOpts,
 	rediscoverPeriodMin time.Duration,
 	rediscoverPeriodMax time.Duration,
-) (*Session, error) {
+) (session *Session, err error) {
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.NewSession",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString(
+				"access_mode",
+				protos.EVolumeAccessMode_name[int32(mountOpts.AccessMode)],
+			),
+			tracing.AttributeString(
+				"mount_mode",
+				protos.EVolumeMountMode_name[int32(mountOpts.MountMode)],
+			),
+			tracing.AttributeInt("mount_flags", int(mountOpts.MountFlags)),
+			tracing.AttributeInt64(
+				"mount_seq_number",
+				int64(mountOpts.MountSeqNumber),
+			),
+			tracing.AttributeString(
+				"encryption_mode",
+				protos.EEncryptionMode_name[int32(mountOpts.EncryptionSpec.Mode)],
+			),
+			tracing.AttributeInt64(
+				"fill_generation",
+				int64(mountOpts.FillGeneration),
+			),
+			tracing.AttributeInt64(
+				"fill_seq_number",
+				int64(mountOpts.FillSeqNumber),
+			),
+		),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
 
 	clientID, err := generateClientID()
 	if err != nil {
 		return nil, err
 	}
 
-	session := &Session{
+	span.SetAttributes(tracing.AttributeString("client_id", clientID))
+
+	session = &Session{
 		nbs:                 nbs,
 		metricsRegistry:     metricsRegistry,
 		diskID:              diskID,
