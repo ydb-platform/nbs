@@ -3,9 +3,10 @@ import os
 import pytest
 import time
 
-from cloud.blockstore.public.sdk.python.client import CreateClient
+from cloud.blockstore.public.sdk.python.client import CreateClient, Session
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.config.disk_pb2 import DISK_AGENT_BACKEND_NULL
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -237,3 +238,39 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     for agent in agents:
         agent.kill()
+
+
+def test_null_backend(nbs, agent_ids, disk_agent_configurators):
+
+    client = CreateClient(f"localhost:{nbs.port}")
+
+    agent_id = agent_ids[0]
+    configurator = disk_agent_configurators[0]
+    configurator.files["disk-agent"].Backend = DISK_AGENT_BACKEND_NULL
+
+    agent = start_disk_agent(configurator, name=agent_id)
+
+    agent.wait_for_registration()
+    r = _add_host(client, agent_id)
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0
+
+    # wait for devices to be cleared
+    while True:
+        bkp = _backup(client)
+        if bkp.get("DirtyDevices", 0) == 0:
+            break
+        time.sleep(1)
+
+    client.create_volume(
+        disk_id="vol1",
+        block_size=4096,
+        blocks_count=DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED)
+
+    session = Session(client, "vol1", "")
+    session.mount_volume()
+    session.write_blocks(0, [b'\1' * 4096])
+    blocks = session.read_blocks(0, 1, checkpoint_id="")
+    assert len(blocks) == 1
+    session.unmount_volume()

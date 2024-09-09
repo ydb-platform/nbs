@@ -30,7 +30,7 @@ public:
         Y_UNUSED(path);
         Y_UNUSED(ses);
 
-        return MakeFuture<NProto::TError>();
+        return MakeFuture(MakeError(S_OK));
     }
 
     TFuture<NProto::TError> Deallocate(
@@ -44,7 +44,7 @@ public:
             DeallocateHistory->emplace_back(offsetBytes, sizeBytes);
         }
 
-        return MakeFuture<NProto::TError>();
+        return MakeFuture(MakeError(S_OK));
     }
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
@@ -70,7 +70,9 @@ INvmeManagerPtr CreateNvmeManagerStub(
     bool isDeviceSsd,
     TNvmeDeallocateHistoryPtr deallocateHistory)
 {
-    return std::make_shared<TNvmeManagerStub>(isDeviceSsd, std::move(deallocateHistory));
+    return std::make_shared<TNvmeManagerStub>(
+        isDeviceSsd,
+        std::move(deallocateHistory));
 }
 
 }   // namespace NCloud::NBlockStore::NNvme
