@@ -526,6 +526,13 @@ func (s *Session) DropTable(
 	return dropTable(ctx, s.session, fullPath)
 }
 
+func (s *Session) DisksStatCall(
+	ctx context.Context,
+	name string,
+) func(*error) {
+	return s.metrics.DisksStatCall(ctx, name)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type YDBClient struct {

@@ -1924,9 +1924,14 @@ func (s *storageYDB) getPoolConfig(
 func (s *storageYDB) getPoolConfigs(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]poolConfig, error) {
+) (configs []poolConfig, err error) {
 
 	logging.Info(ctx, "getting pool configs")
+
+	defer session.DisksStatCall(
+		ctx,
+		"storageYDB/getPoolConfigs",
+	)(&err)
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1968,7 +1973,6 @@ func (s *storageYDB) getPoolConfigs(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	var configs []poolConfig
 	for _, config := range m {
 		configs = append(configs, *config)
 	}
@@ -1979,9 +1983,14 @@ func (s *storageYDB) getPoolConfigs(
 func (s *storageYDB) getBaseDisksScheduling(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]BaseDisk, error) {
+) (baseDisks []BaseDisk, err error) {
 
 	logging.Info(ctx, "getting base disks for scheduling")
+
+	defer session.DisksStatCall(
+		ctx,
+		"storageYDB/getBaseDisksScheduling",
+	)(&err)
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -2018,7 +2027,6 @@ func (s *storageYDB) getBaseDisksScheduling(
 		return nil, err
 	}
 
-	var baseDisks []BaseDisk
 	for _, baseDisk := range found {
 		baseDisks = append(baseDisks, baseDisk.toBaseDisk())
 	}
@@ -2030,9 +2038,14 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	ctx context.Context,
 	session *persistence.Session,
 	config poolConfig,
-) ([]BaseDisk, error) {
+) (res []BaseDisk, err error) {
 
 	logging.Info(ctx, "started taking base disks to schedule for pool %v", config)
+
+	defer session.DisksStatCall(
+		ctx,
+		"storageYDB/getPoolConfigs",
+	)(&err)
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
@@ -2166,7 +2179,6 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		return nil, err
 	}
 
-	var res []BaseDisk
 	for _, baseDisk := range newBaseDisks {
 		res = append(res, baseDisk.toBaseDisk())
 	}

@@ -15,6 +15,16 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func disksCallDurationBuckets() metrics.DurationBuckets {
+	return metrics.NewExponentialDurationBuckets(
+		time.Millisecond,
+		1.25,
+		50,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type ydbMetrics struct {
 	registry    metrics.Registry
 	callTimeout time.Duration
@@ -77,6 +87,46 @@ func (m *ydbMetrics) StatCall(
 			}
 			return
 		}
+
+		successCounter.Inc()
+	}
+}
+
+func (m *ydbMetrics) DisksStatCall(
+	ctx context.Context,
+	name string,
+) func(err *error) {
+
+	start := time.Now()
+
+	return func(err *error) {
+		subRegistry := m.registry.WithTags(map[string]string{
+			"call": name,
+		})
+
+		// Should initialize all counters before using them, to avoid 'no data'.
+		timeoutCounter := subRegistry.Counter("timeout")
+		successCounter := subRegistry.Counter("success")
+		errorCounter := subRegistry.Counter("errors")
+		timeHistogram := subRegistry.DurationHistogram("time", disksCallDurationBuckets())
+
+		if *err != nil {
+			errorCounter.Inc()
+
+			logging.Error(
+				ctx,
+				"Disks scheduler call with name %v ended with error %v",
+				name,
+				*err,
+			)
+
+			if errors.Is(*err, context.DeadlineExceeded) {
+				logging.Error(ctx, "Disk scheduling timed out, name %v, query %v", name)
+				timeoutCounter.Inc()
+			}
+			return
+		}
+		timeHistogram.RecordDuration(time.Since(start))
 
 		successCounter.Inc()
 	}
