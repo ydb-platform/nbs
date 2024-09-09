@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,9 +338,9 @@ func (s *Session) closeImpl(ctx context.Context) {
 
 // Not thread-safe.
 func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error) {
-	client, host, err := s.nbs.DiscoverInstance(ctx)
+	client, host, err := s.discoverInstance(ctx)
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, err
 	}
 
 	s.client = client
@@ -398,4 +399,29 @@ func (s *Session) closeSession(ctx context.Context) {
 
 func (s *Session) withClientID(ctx context.Context) context.Context {
 	return nbs_client.WithClientID(ctx, s.clientID)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *Session) discoverInstance(
+	ctx context.Context,
+) (client *nbs_client.Client, host string, err error) {
+
+	// TODO:_ do we need timeout header for DiscoverInstance call?
+	// TODO:_ do we need span for DiscoverInstance? Will there be
+	// too many spans because of rediscover?
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.DiscoverInstance",
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	client, host, err = s.nbs.DiscoverInstance(ctx)
+	if err != nil {
+		return nil, "", wrapError(err)
+	}
+
+	span.SetAttributes(tracing.AttributeString("host", host))
+	return
 }
