@@ -425,7 +425,15 @@ func (c *client) updateVolume(
 	saveState func() error,
 	diskID string,
 	do func(volume *protos.TVolume) error,
-) error {
+) (err error) {
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.UpdateVolume", // TODO:_ should make some other name to distinguish from sdk calls?
+		tracing.WithAttributes(tracing.AttributeString("disk_id", diskID)),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
 
 	retries := 0
 	for {
@@ -450,6 +458,13 @@ func (c *client) updateVolume(
 			}
 
 			retries++
+			span.AddEvent(
+				"Retry",
+				tracing.WithAttributes(
+					tracing.AttributeInt("failed_attempts", retries),
+					tracing.AttributeString("error", err.Error()),
+				),
+			)
 			continue
 		}
 
@@ -463,7 +478,15 @@ func (c *client) updatePlacementGroup(
 	saveState func() error,
 	groupID string,
 	do func(group *protos.TPlacementGroup) error,
-) error {
+) (err error) {
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"Blockstore.UpdatePlacementGroup", // TODO:_ should make some other name to distinguish from sdk calls?
+		tracing.WithAttributes(tracing.AttributeString("group_id", groupID)),
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
 
 	retries := 0
 	for {
@@ -488,6 +511,13 @@ func (c *client) updatePlacementGroup(
 			}
 
 			retries++
+			span.AddEvent(
+				"Retry",
+				tracing.WithAttributes(
+					tracing.AttributeInt("failed_attempts", retries),
+					tracing.AttributeString("error", err.Error()),
+				),
+			)
 			continue
 		}
 
@@ -2023,3 +2053,9 @@ func (c *client) statVolume(
 	}
 	return volume, stats, nil
 }
+
+// TODO:_ add some results to span attributes in some methods of client?
+// TODO:_ short return in some methods of client?
+
+// TODO:_ are there any other places where something complicated happens
+// on the level above SDK requests?
