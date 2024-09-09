@@ -391,8 +391,10 @@ public:
             default: {
             }
         }
-        Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
-    }
+        Y_ABORT(
+            "unsupported media kind: %u, transport counters can only be "
+            "used with disk registry based volumes",
+            static_cast<ui32>(mediaKind));    }
 
     TTransportCounters& GetInterconnectCounter(
         const NCloud::NProto::EStorageMediaKind mediaKind)
@@ -411,7 +413,10 @@ public:
             default: {
             }
         }
-        Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
+        Y_ABORT(
+            "unsupported media kind: %u, transport counters can only be "
+            "used with disk registry based volumes",
+            static_cast<ui32>(mediaKind));
     }
 
     TVolumeRequestCounters& GetLocalVolumesCounters()
