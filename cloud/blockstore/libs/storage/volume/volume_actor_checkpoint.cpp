@@ -913,8 +913,11 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
         TGetChangedBlocksMethod::Name,
         errorMsg.c_str());
 
-    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
-    *response->Record.MutableError() = MakeError(E_NOT_IMPLEMENTED, errorMsg);
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+    auto error = MakeError(E_NOT_IMPLEMENTED, errorMsg, flags);
+    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>(
+        std::move(error));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
