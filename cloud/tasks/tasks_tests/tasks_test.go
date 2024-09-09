@@ -1249,18 +1249,18 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	metricsCreatedWg := sync.WaitGroup{}
-	gaugeZeroedWg := sync.WaitGroup{}
+	gaugeSetWg := sync.WaitGroup{}
+	gaugeUnsetWg := sync.WaitGroup{}
 
 	gaugeSet1IDCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			metricsCreatedWg.Done()
+			gaugeSetWg.Done()
 		},
 	)
-	metricsCreatedWg.Add(1)
+	gaugeSetWg.Add(1)
 
 	registry.GetGauge(
 		"hangingTasks",
@@ -1272,15 +1272,15 @@ func TestHangingTasksMetrics(t *testing.T) {
 		gaugeSet1IDCall,
 	).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeZeroedWg.Done()
+			gaugeUnsetWg.Done()
 		},
 	)
-	gaugeZeroedWg.Add(1)
+	gaugeUnsetWg.Add(1)
 
-	metricsCreatedWg.Wait()
+	gaugeSetWg.Wait()
 	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
-	gaugeZeroedWg.Wait()
+	gaugeUnsetWg.Wait()
 	registry.AssertAllExpectations(t)
 }
