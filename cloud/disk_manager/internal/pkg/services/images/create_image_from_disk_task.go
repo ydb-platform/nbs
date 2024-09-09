@@ -185,7 +185,7 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
-	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, checkpointID)
 }
 
 func (t *createImageFromDiskTask) Cancel(
