@@ -1094,6 +1094,7 @@ func (c hangingTaskTestContext) ListHangingTasksIDs(
 
 	return hangingTaskIDs
 }
+
 func (c hangingTaskTestContext) close() {
 	if c.db != nil && c.ctx != nil {
 		c.db.Close(c.ctx)
@@ -1108,6 +1109,7 @@ func newHangingTaskTestContext(
 	t *testing.T,
 	hangingTaskTimeout time.Duration,
 ) (hangingTaskTestContext, error) {
+
 	testCtx := hangingTaskTestContext{
 		t:                  t,
 		hangingTaskTimeout: hangingTaskTimeout,
