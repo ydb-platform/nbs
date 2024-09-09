@@ -87,6 +87,7 @@ private:
     TRequestInfoPtr PartiallySuspendAgentRequestInfo;
 
     TVector<NActors::TActorId> IOParserActors;
+    ui32 ParserActorIdx = 0;
 
 public:
     TDiskAgentActor(

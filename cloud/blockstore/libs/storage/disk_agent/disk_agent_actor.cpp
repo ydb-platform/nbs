@@ -10,8 +10,6 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
-#include <util/random/random.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -283,11 +281,9 @@ STFUNC(TDiskAgentActor::StateWork)
     UpdateActorStatsSampled();
 
     if (ShouldOffloadRequest(ev->GetTypeRewrite())) {
-        const size_t index = IOParserActors.size() == 1
-                                 ? 0
-                                 : RandomNumber(IOParserActors.size());
+        ev->Rewrite(ev->Type, IOParserActors[ParserActorIdx]);
+        ParserActorIdx = (ParserActorIdx + 1) % IOParserActors.size();
 
-        ev->Rewrite(ev->Type, IOParserActors[index]);
         ActorContext().Send(ev);
 
         return;
