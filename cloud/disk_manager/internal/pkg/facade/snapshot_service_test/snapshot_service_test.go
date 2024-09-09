@@ -287,6 +287,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	})
 	require.NoError(t, err)
 
+	testcommon.CheckBaseSnapshot(t, ctx, snapshotID2, snapshotID1)
 	testcommon.CheckConsistency(t, ctx)
 }
 

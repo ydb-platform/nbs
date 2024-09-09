@@ -225,6 +225,26 @@ func (s *StorageMock) UnlockSnapshot(
 	return args.Error(0)
 }
 
+func (s *StorageMock) CheckBaseSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	expectedBaseSnapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, expectedBaseSnapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) CheckLockTaskID(
+	ctx context.Context,
+	snapshotID string,
+	expectedLockTaskID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, expectedLockTaskID)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

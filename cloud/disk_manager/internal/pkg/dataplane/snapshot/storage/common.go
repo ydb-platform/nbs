@@ -76,6 +76,7 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 		BaseCheckpointID: s.baseCheckpointID,
 		Size:             s.size,
 		StorageSize:      s.storageSize,
+		LockTaskID:       s.lockTaskID,
 		ChunkCount:       s.chunkCount,
 		Encryption: &types.EncryptionDesc{
 			Mode: types.EncryptionMode(s.encryptionMode),

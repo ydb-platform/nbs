@@ -22,6 +22,7 @@ type SnapshotMeta struct {
 	Size uint64
 	// Snapshot real size, i.e. the amount of disk space occupied in storage.
 	StorageSize uint64
+	LockTaskID  string
 	ChunkCount  uint32
 	Encryption  *types.EncryptionDesc
 	Ready       bool
@@ -132,4 +133,18 @@ type Storage interface {
 	) (locked bool, err error)
 
 	UnlockSnapshot(ctx context.Context, snapshotID string, lockTaskID string) error
+
+	// Used in tests and SRE tools.
+	CheckBaseSnapshot(
+		ctx context.Context,
+		snapshotID string,
+		expectedBaseSnapshotID string,
+	) error
+
+	// Used in tests and SRE tools.
+	CheckLockTaskID(
+		ctx context.Context,
+		snapshotID string,
+		expectedLockTaskID string,
+	) error
 }

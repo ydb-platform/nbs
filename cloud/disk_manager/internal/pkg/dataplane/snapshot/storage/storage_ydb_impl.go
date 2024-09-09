@@ -1357,3 +1357,119 @@ func (s *storageYDB) unlockSnapshot(
 	logging.Info(ctx, "Unlocked snapshot with id %v", snapshotID)
 	return nil
 }
+
+func (s *storageYDB) checkBaseSnapshot(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	expectedBaseSnapshotID string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		return task_errors.NewNonRetriableErrorf(
+			"snapshot with id %v does not exists",
+			snapshotID,
+		)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	state := states[0]
+	if state.baseSnapshotID != expectedBaseSnapshotID {
+		return task_errors.NewNonRetriableErrorf(
+			"baseSnapshotID %v is not equal to expectedBaseSnapshotID %v",
+			state.baseSnapshotID,
+			expectedBaseSnapshotID,
+		)
+	}
+
+	return nil
+}
+
+func (s *storageYDB) checkLockTaskID(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	expectedLockTaskID string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		return task_errors.NewNonRetriableErrorf(
+			"snapshot with id %v does not exists",
+			snapshotID,
+		)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	state := states[0]
+	if state.lockTaskID != expectedLockTaskID {
+		return task_errors.NewNonRetriableErrorf(
+			"lockTaskID %v is not equal to expectedLockTaskID %v",
+			state.lockTaskID,
+			expectedLockTaskID,
+		)
+	}
+
+	return nil
+}
