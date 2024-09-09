@@ -558,8 +558,10 @@ func (c *client) executeAction(
 		return wrapError(err)
 	}
 
+	outputString := string(output)
+	span.SetAttributes(tracing.AttributeString("output", outputString))
 	err = new(jsonpb.Unmarshaler).Unmarshal(
-		strings.NewReader(string(output)),
+		strings.NewReader(outputString),
 		response,
 	)
 	if err != nil {
@@ -1639,7 +1641,7 @@ func (c *client) describeVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return volume, nil
+	return
 }
 
 func (c *client) describePlacementGroup(
@@ -1662,7 +1664,7 @@ func (c *client) describePlacementGroup(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return group, nil
+	return
 }
 
 func (c *client) ping(ctx context.Context) (err error) {
@@ -1752,6 +1754,12 @@ func (c *client) getCheckpointStatus(
 	defer tracing.SetError(span, &err)
 
 	status, err = c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
+	span.SetAttributes(
+		tracing.AttributeString(
+			"status",
+			protos.ECheckpointStatus_name[int32(status)],
+		),
+	)
 	return status, wrapError(err)
 }
 
@@ -1879,7 +1887,7 @@ func (c *client) assignVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return volume, nil
+	return
 }
 
 func (c *client) describeVolumeModel(
@@ -1919,7 +1927,7 @@ func (c *client) describeVolumeModel(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return model, nil
+	return
 }
 
 func (c *client) createPlacementGroup(
@@ -2033,7 +2041,7 @@ func (c *client) listPlacementGroups(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return groups, nil
+	return
 }
 
 func (c *client) getChangedBlocks(
@@ -2076,7 +2084,7 @@ func (c *client) getChangedBlocks(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return blockMask, nil
+	return
 }
 
 func (c *client) statVolume(
@@ -2102,11 +2110,9 @@ func (c *client) statVolume(
 	if err != nil {
 		return nil, nil, wrapError(err)
 	}
-	return volume, stats, nil
+	return
 }
 
-// TODO:_ add some results to span attributes in some methods of client?
-// TODO:_ short return in some methods of client?
 // TODO:_ remove span for rediscover?
 
 // TODO:_ event for retries in nbs go sdk?
