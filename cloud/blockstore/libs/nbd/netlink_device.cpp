@@ -289,7 +289,12 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 
     try {
         DisconnectSocket();
-        deleteDevice ? Disconnect() : StopResult.SetValue(MakeError(S_OK));
+
+        if (deleteDevice) {
+            Disconnect();
+        } else {
+            StopResult.SetValue(MakeError(S_OK));
+        }
 
     } catch (const TServiceError& e) {
         StopResult.SetValue(MakeError(
