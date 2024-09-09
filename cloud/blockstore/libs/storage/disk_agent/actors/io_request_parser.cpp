@@ -17,24 +17,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIORequestParserActor: public TActorBootstrapped<TIORequestParserActor>
+class TIORequestParserActor: public TActor<TIORequestParserActor>
 {
 private:
     const TActorId Owner;
 
 public:
     explicit TIORequestParserActor(const TActorId& owner)
-        : Owner(owner)
-    {
-        ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
-    }
-
-    void Bootstrap(const TActorContext& ctx)
-    {
-        Y_UNUSED(ctx);
-
-        Become(&TThis::StateWork);
-    }
+        : TActor(
+            &TIORequestParserActor::StateWork,
+            TBlockStoreComponents::DISK_AGENT_WORKER)
+        , Owner(owner)
+    {}
 
 private:
     STFUNC(StateWork)
