@@ -1095,7 +1095,7 @@ func (f hangingTaskTestFixture) ListHangingTasksIDs(
 	return hangingTaskIDs
 }
 
-func (f hangingTaskTestFixture) close() {
+func (f hangingTaskTestFixture) teardown() {
 	err := f.db.Close(f.ctx)
 	require.NoError(f.t, err)
 	f.cancel()
@@ -1139,7 +1139,7 @@ func newHangingTaskTestFixture(
 func TestStorageYDBListHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
 	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
-	defer fixture.close()
+	defer fixture.teardown()
 
 	expectedHangingTaskIDs := make([]string, 0, 10)
 	hangingTasksStatuses := []TaskStatus{
@@ -1191,7 +1191,7 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 func TestStorageYDBListHangingTasksExceptsHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
 	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
-	defer fixture.close()
+	defer fixture.teardown()
 
 	exceptTaskType := "excepted"
 	taskID := fixture.createHangingTaskNoEstimate("first", TaskStatusRunning)
