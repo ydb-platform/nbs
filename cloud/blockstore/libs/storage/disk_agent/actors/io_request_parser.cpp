@@ -24,11 +24,11 @@ private:
 
 public:
     explicit TIORequestParserActor(const TActorId& owner)
-        : TActor(
-            &TIORequestParserActor::StateWork,
-            TBlockStoreComponents::DISK_AGENT_WORKER)
+        : TActor(&TIORequestParserActor::StateWork)
         , Owner(owner)
-    {}
+    {
+        ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
+    }
 
 private:
     STFUNC(StateWork)
