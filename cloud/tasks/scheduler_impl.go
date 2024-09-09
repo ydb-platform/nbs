@@ -617,7 +617,7 @@ func NewScheduler(
 
 				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
 				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
-				maxHangingTaskIDsToReport: config.GetMaxReportedHangingTaskIDs(),
+				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
 			}
 		},
 	)
