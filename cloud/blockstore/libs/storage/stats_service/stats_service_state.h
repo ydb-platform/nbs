@@ -75,6 +75,22 @@ struct TTotalCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTransportCounters
+{
+    TTransportDiskCounters PartAcc;
+
+    TTransportCounters(EPublishingPolicy policy)
+        : PartAcc(policy)
+    {};
+
+    void Register(NMonitoring::TDynamicCountersPtr counters);
+    void Reset();
+    void Publish(TInstant now);
+    void UpdatePartCounters(const TPartitionDiskCounters& source);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TVolumeRequestCounters
 {
     TCumulativeCounter ReadCount;
@@ -172,6 +188,14 @@ private:
     TTotalCounters SsdLocal;
     TTotalCounters SsdSystem;
     TTotalCounters HddSystem;
+    TTransportCounters RdmaSsdNonrepl;
+    TTransportCounters RdmaHddNonrepl;
+    TTransportCounters RdmaSsdMirror2;
+    TTransportCounters RdmaSsdMirror3;
+    TTransportCounters InterconnectSsdNonrepl;
+    TTransportCounters InterconnectHddNonrepl;
+    TTransportCounters InterconnectSsdMirror2;
+    TTransportCounters InterconnectSsdMirror3;
 
     TVolumeRequestCounters LocalVolumes;
     TVolumeRequestCounters NonlocalVolumes;
@@ -199,6 +223,14 @@ public:
         , SsdLocal(EPublishingPolicy::DiskRegistryBased)
         , SsdSystem(EPublishingPolicy::Repl)
         , HddSystem(EPublishingPolicy::Repl)
+        , RdmaSsdNonrepl(EPublishingPolicy::DiskRegistryBased)
+        , RdmaHddNonrepl(EPublishingPolicy::DiskRegistryBased)
+        , RdmaSsdMirror2(EPublishingPolicy::DiskRegistryBased)
+        , RdmaSsdMirror3(EPublishingPolicy::DiskRegistryBased)
+        , InterconnectSsdNonrepl(EPublishingPolicy::DiskRegistryBased)
+        , InterconnectHddNonrepl(EPublishingPolicy::DiskRegistryBased)
+        , InterconnectSsdMirror2(EPublishingPolicy::DiskRegistryBased)
+        , InterconnectSsdMirror3(EPublishingPolicy::DiskRegistryBased)
         , SsdBlobLoadCounters(
             config.GetCommonSSDPoolKind(),
             config.GetMaxSSDGroupReadIops(),
@@ -275,6 +307,46 @@ public:
         return HddSystem;
     }
 
+    TTransportCounters& GetRdmaSsdNonreplCounters()
+    {
+        return RdmaSsdNonrepl;
+    }
+
+    TTransportCounters& GetRdmaHddNonreplCounters()
+    {
+        return RdmaHddNonrepl;
+    }
+
+    TTransportCounters& GetRdmaSsdMirror2Counters()
+    {
+        return RdmaSsdMirror2;
+    }
+
+    TTransportCounters& GetRdmaSsdMirror3Counters()
+    {
+        return RdmaSsdMirror3;
+    }
+
+    TTransportCounters& GetInterconnectSsdNonreplCounters()
+    {
+        return InterconnectSsdNonrepl;
+    }
+
+    TTransportCounters& GetInterconnectHddNonreplCounters()
+    {
+        return InterconnectHddNonrepl;
+    }
+
+    TTransportCounters& GetInterconnectSsdMirror2Counters()
+    {
+        return InterconnectSsdMirror2;
+    }
+
+    TTransportCounters& GetInterconnectSsdMirror3Counters()
+    {
+        return InterconnectSsdMirror3;
+    }
+
     TTotalCounters& GetCounters(
         bool isSystem,
         const NProto::EStorageMediaKind mediaKind)
@@ -301,6 +373,32 @@ public:
     TTotalCounters& GetCounters(const NProto::TVolume& volume)
     {
         return GetCounters(volume.GetIsSystem(), volume.GetStorageMediaKind());
+    }
+
+    TTransportCounters& GetRdmaCounter(const NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        switch (mediaKind){
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return RdmaSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD: return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return RdmaHddNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return RdmaSsdMirror2;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return RdmaSsdMirror3;
+            default: {}
+        }
+        Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
+    }
+
+    TTransportCounters& GetInterconnectCounter(const NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        switch (mediaKind){
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD: return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return InterconnectHddNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return InterconnectSsdMirror2;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return InterconnectSsdMirror3;
+            default: {}
+        }
+        Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
     }
 
     TVolumeRequestCounters& GetLocalVolumesCounters()

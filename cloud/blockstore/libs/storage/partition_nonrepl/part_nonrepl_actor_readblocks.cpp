@@ -371,7 +371,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+    PartCounters->Interconnect.ReadBlocks.AddRequest(time, requestBytes);
 
     PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();

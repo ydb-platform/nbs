@@ -57,6 +57,15 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     auto localCounters = totalCounters->GetSubgroup("binding", "local");
     auto nonlocalCounters = totalCounters->GetSubgroup("binding", "remote");
 
+    auto ssdNonreplCountersRdma = ssdNonreplCounters->GetSubgroup("transport", "RDMA");
+    auto ssdNonreplCountersInterconnect = ssdNonreplCounters->GetSubgroup("transport", "Interconnect");
+    auto hddNonreplCountersRdma = hddNonreplCounters->GetSubgroup("transport", "RDMA");
+    auto hddNonreplCountersInterconnect = hddNonreplCounters->GetSubgroup("transport", "Interconnect");
+    auto ssdMirror2CountersRdma = ssdMirror2Counters->GetSubgroup("transport", "RDMA");
+    auto ssdMirror2CountersInterconnect = ssdMirror2Counters->GetSubgroup("transport", "Interconnect");
+    auto ssdMirror3CountersRdma = ssdMirror3Counters->GetSubgroup("transport", "RDMA");
+    auto ssdMirror3CountersInterconnect = ssdMirror3Counters->GetSubgroup("transport", "Interconnect");
+
     State.GetTotalCounters().Register(totalCounters);
     State.GetHddCounters().Register(hddCounters);
     State.GetSsdCounters().Register(ssdCounters);
@@ -70,6 +79,15 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     State.GetNonlocalVolumesCounters().Register(nonlocalCounters);
     State.GetSsdBlobCounters().Register(ssdCounters);
     State.GetHddBlobCounters().Register(hddCounters);
+
+    State.GetRdmaSsdNonreplCounters().Register(ssdNonreplCountersRdma);
+    State.GetInterconnectSsdNonreplCounters().Register(ssdNonreplCountersInterconnect);
+    State.GetRdmaHddNonreplCounters().Register(hddNonreplCountersRdma);
+    State.GetInterconnectHddNonreplCounters().Register(hddNonreplCountersInterconnect);
+    State.GetRdmaSsdMirror2Counters().Register(ssdMirror2CountersRdma);
+    State.GetInterconnectSsdMirror2Counters().Register(ssdMirror2CountersInterconnect);
+    State.GetRdmaSsdMirror3Counters().Register(ssdMirror3CountersRdma);
+    State.GetInterconnectSsdMirror3Counters().Register(ssdMirror3CountersInterconnect);
 
     YDbFailedRequests = totalCounters->GetCounter("Ydb/FailedRequests", true);
     FailedPartitionBoots = totalCounters->GetCounter("FailedBoots", true);
