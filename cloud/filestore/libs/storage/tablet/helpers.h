@@ -131,7 +131,7 @@ NProto::ELockType ConvertToImpl(ELockMode source, TTag<NProto::ELockType>);
 NProto::TError ValidateNodeName(const TString& name);
 NProto::TError ValidateXAttrName(const TString& name);
 NProto::TError ValidateXAttrValue(const TString& name, const TString& value);
-NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks);
+NProto::TError ValidateRange(TByteRange byteRange, ui64 maxFileBlocks);
 
 ////////////////////////////////////////////////////////////////////////////////
 

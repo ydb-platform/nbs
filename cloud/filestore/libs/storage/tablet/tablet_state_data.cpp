@@ -1193,9 +1193,9 @@ TCompactionCounter TIndexTabletState::GetRangeToCleanup() const
 TMaybe<TIndexTabletState::TPriorityRange>
 TIndexTabletState::NextPriorityRangeForCleanup() const
 {
-    const auto t = LargeDeletionMarkersCleanupThreshold;
     if (PriorityRangesForCleanup.empty()
-            && GetLargeDeletionMarkersCount() >= t)
+            && GetLargeDeletionMarkersCount()
+                >= LargeDeletionMarkersCleanupThreshold)
     {
         auto one = Impl->LargeBlocks.GetOne();
         SplitRange(

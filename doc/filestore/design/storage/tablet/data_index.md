@@ -1,4 +1,4 @@
-# Data index in Filestore
+# Data index in Filestore Tablet
 
 Data index is represented by the following layers:
 * FreshBytes layer - used for unaligned writes (predominantly smaller than BlockSize)
