@@ -80,8 +80,7 @@ struct TTransportCounters
     TTransportDiskCounters PartAcc;
 
     TTransportCounters(EPublishingPolicy policy)
-        : PartAcc(policy)
-    {};
+        : PartAcc(policy){};
 
     void Register(NMonitoring::TDynamicCountersPtr counters);
     void Reset();
@@ -375,28 +374,42 @@ public:
         return GetCounters(volume.GetIsSystem(), volume.GetStorageMediaKind());
     }
 
-    TTransportCounters& GetRdmaCounter(const NCloud::NProto::EStorageMediaKind mediaKind)
+    TTransportCounters& GetRdmaCounter(
+        const NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        switch (mediaKind){
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return RdmaSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD: return InterconnectSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return RdmaHddNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return RdmaSsdMirror2;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return RdmaSsdMirror3;
-            default: {}
+        switch (mediaKind) {
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                return RdmaSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD:
+                return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                return RdmaHddNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                return RdmaSsdMirror2;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                return RdmaSsdMirror3;
+            default: {
+            }
         }
         Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
     }
 
-    TTransportCounters& GetInterconnectCounter(const NCloud::NProto::EStorageMediaKind mediaKind)
+    TTransportCounters& GetInterconnectCounter(
+        const NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        switch (mediaKind){
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return InterconnectSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD: return InterconnectSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return InterconnectHddNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return InterconnectSsdMirror2;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return InterconnectSsdMirror3;
-            default: {}
+        switch (mediaKind) {
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD:
+                return InterconnectSsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                return InterconnectHddNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                return InterconnectSsdMirror2;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                return InterconnectSsdMirror3;
+            default: {
+            }
         }
         Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));
     }

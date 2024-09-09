@@ -61,7 +61,6 @@ void TTransportCounters::Register(NMonitoring::TDynamicCountersPtr counters)
     PartAcc.Register(counters, true);
 }
 
-
 void TTransportCounters::Reset()
 {
     PartAcc.Reset();
