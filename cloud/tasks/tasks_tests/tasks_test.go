@@ -1252,7 +1252,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	gaugeSetWg := sync.WaitGroup{}
 	gaugeUnsetWg := sync.WaitGroup{}
 
-	gaugeSet1IDCall := registry.GetGauge(
+	gaugeSetCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
@@ -1269,7 +1269,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 		"Set",
 		float64(0),
 	).NotBefore(
-		gaugeSet1IDCall,
+		gaugeSetCall,
 	).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
 			gaugeUnsetWg.Done()
