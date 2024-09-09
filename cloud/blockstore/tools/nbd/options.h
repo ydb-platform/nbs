@@ -70,8 +70,8 @@ struct TOptions
 
     bool UnalignedRequestsDisabled = false;
 
-    TDuration Timeout = TDuration::Days(1);
-    TDuration DeadConnectionTimeout = TDuration::Hours(1);
+    TDuration RequestTimeout = TDuration::Minutes(5);
+    TDuration ConnectionTimeout = TDuration::Hours(1);
 
     void Parse(int argc, char** argv);
 };

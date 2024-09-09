@@ -297,15 +297,19 @@ void TBootstrap::Start()
                 Logging,
                 listenAddress,
                 Options->ConnectDevice,
-                Options->Timeout,
-                Options->DeadConnectionTimeout,
+                Options->RequestTimeout,
+                Options->ConnectionTimeout,
                 Options->Reconfigure);
         } else {
+            // The only case we want kernel to retry requests is when the socket
+            // is dead due to nbd server restart. And since we can't configure
+            // ioctl device to use a new socket, request timeout effectively
+            // becomes connection timeout
             NbdDevice = CreateDevice(
                 Logging,
                 listenAddress,
                 Options->ConnectDevice,
-                Options->Timeout);
+                Options->ConnectionTimeout);
         }
         auto status = NbdDevice->Start().ExtractValue();
         if (HasError(status)) {
