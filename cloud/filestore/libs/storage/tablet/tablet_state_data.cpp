@@ -861,6 +861,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         Impl->MixedBlocks.ApplyDeletionMarkersAndGetMetas(rangeId);
 
     ui64 removedBlobs = 0;
+    TVector<TMixedBlobMeta> updatedBlobs;
     for (auto& blob: affectedBlobs) {
         const bool affected =
             Impl->LargeBlocks.ApplyDeletionMarkers(blob.BlobMeta.Blocks);
@@ -884,6 +885,8 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         if (!written) {
             ++removedBlobs;
         }
+
+        updatedBlobs.emplace_back(std::move(blob.BlobMeta));
     }
 
     if (PriorityRangesForCleanup) {
@@ -900,7 +903,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         }
     }
 
-    AddBlobsInfo(GetBlockSize(), affectedBlobs, profileLogRequest);
+    AddBlobsInfo(GetBlockSize(), updatedBlobs, profileLogRequest);
 
     auto deletionMarkers = Impl->MixedBlocks.ExtractDeletionMarkers(rangeId);
 
