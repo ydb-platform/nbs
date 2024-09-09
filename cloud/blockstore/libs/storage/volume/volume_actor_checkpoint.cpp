@@ -923,7 +923,7 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
 }
 
 template <>
-bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
+void TVolumeActor::HandleCheckpointRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
     const TCreateCheckpointMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
@@ -956,11 +956,10 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
-    return true;
 }
 
 template <>
-bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
+void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
@@ -986,11 +985,10 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
-    return true;
 }
 
 template <>
-bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
+void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointDataMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
@@ -1016,11 +1014,10 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
-    return true;
 }
 
 template <>
-bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
+void TVolumeActor::HandleCheckpointRequest<TGetCheckpointStatusMethod>(
     const TActorContext& ctx,
     const TGetCheckpointStatusMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
@@ -1055,11 +1052,10 @@ bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
         reply(
             MakeError(E_NOT_FOUND, "Checkpoint not found"),
             NProto::ECheckpointStatus::ERROR);
-        return true;
+        return;
     }
 
     reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
-    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

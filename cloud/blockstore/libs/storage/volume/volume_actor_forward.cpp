@@ -27,48 +27,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-constexpr bool IsDescribeBlocksMethod =
-    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
-bool CanForwardToPartition(ui32 partitionCount)
-{
-    return partitionCount <= 1;
-}
-
-template <>
-bool CanForwardToPartition<TEvService::TCreateCheckpointMethod>(ui32 partitionCount)
-{
-    Y_UNUSED(partitionCount);
-    return false;
-}
-
-template <>
-bool CanForwardToPartition<TEvService::TDeleteCheckpointMethod>(ui32 partitionCount)
-{
-    Y_UNUSED(partitionCount);
-    return false;
-}
-
-template <>
-bool CanForwardToPartition<TEvVolume::TDeleteCheckpointDataMethod>(ui32 partitionCount)
-{
-    Y_UNUSED(partitionCount);
-    return false;
-}
-
-template <>
-bool CanForwardToPartition<TEvService::TGetCheckpointStatusMethod>(ui32 partitionCount)
-{
-    Y_UNUSED(partitionCount);
-    return false;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 Y_HAS_MEMBER(SetThrottlerDelay);
 
 template <typename TResponse>
@@ -86,7 +44,7 @@ void StoreThrottlerDelay(TResponse& response, TDuration delay)
 template <typename TMethod>
 void RejectVolumeRequest(
     const TActorContext& ctx,
-    const NActors::TActorId& caller,
+    NActors::TActorId caller,
     ui64 callerCookie,
     TCallContext& callContext,
     NProto::TError error)
@@ -106,14 +64,16 @@ void RejectVolumeRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-bool TVolumeActor::HandleRequest(
+bool TVolumeActor::HandleMultipartitionVolumeRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
+    static_assert(!IsCheckpointMethod<TMethod>);
     Y_ABORT_UNLESS(!State->GetDiskRegistryBasedPartitionActor());
+    Y_ABORT_UNLESS(State->GetPartitions().size() > 1);
 
     const auto blocksPerStripe =
         State->GetMeta().GetVolumeConfig().GetBlocksPerStripe();
@@ -135,19 +95,16 @@ bool TVolumeActor::HandleRequest(
         return false;
     }
 
-    // Should always forward request via TPartitionRequestActor for
-    // DescribeBlocks method and multi-partitioned volume.
-    if (State->GetPartitions().size() == 1 ||
-        (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>))
-    {
+    // For DescribeBlocks should always forward request to
+    // TPartitionRequestActor
+    if (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>) {
         ev->Get()->Record = std::move(partitionRequests.front().Event->Record);
         SendRequestToPartition<TMethod>(
             ctx,
             ev,
             volumeRequestId,
             partitionRequests.front().PartitionId,
-            traceTs
-        );
+            traceTs);
 
         return true;
     }
@@ -185,45 +142,6 @@ bool TVolumeActor::HandleRequest(
 
     return true;
 }
-
-// Do NOT remove this forward declaration of template method
-// TVolumeActor::HandleRequest<> specializations!
-// Specialization defined in 'volume_actor_checkpoint.cpp'. Without this forward
-// declaration, a template implementation will be generated, and the linker will
-// not use specialization defined in 'volume_actor_checkpoint.cpp' translation
-// unit.
-
-template<>
-bool TVolumeActor::HandleRequest<TEvService::TCreateCheckpointMethod>(
-    const TActorContext& ctx,
-    const TEvService::TCreateCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
-    bool isTraced,
-    ui64 traceTs);
-
-template<>
-bool TVolumeActor::HandleRequest<TEvService::TDeleteCheckpointMethod>(
-    const TActorContext& ctx,
-    const TEvService::TDeleteCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
-    bool isTraced,
-    ui64 traceTs);
-
-template<>
-bool TVolumeActor::HandleRequest<TEvVolume::TDeleteCheckpointDataMethod>(
-    const TActorContext& ctx,
-    const TEvVolume::TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
-    bool isTraced,
-    ui64 traceTs);
-
-template<>
-bool TVolumeActor::HandleRequest<TEvService::TGetCheckpointStatusMethod>(
-    const TActorContext& ctx,
-    const TEvService::TGetCheckpointStatusMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
-    bool isTraced,
-    ui64 traceTs);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -809,9 +727,18 @@ void TVolumeActor::ForwardRequest(
     /*
      *  Passing the request to the underlying (storage) layer.
      */
-    if (CanForwardToPartition<TMethod>(State->GetPartitions().size())) {
+
+    const bool isSinglePartitionVolume = State->GetPartitions().size() <= 1;
+    if constexpr (IsCheckpointMethod<TMethod>) {
+        HandleCheckpointRequest<TMethod>(ctx, ev, volumeRequestId, isTraced, now);
+    } else if (isSinglePartitionVolume) {
         SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, 0, now);
-    } else if (!HandleRequest<TMethod>(ctx, ev, volumeRequestId, isTraced, now))
+    } else if (!HandleMultipartitionVolumeRequest<TMethod>(
+                   ctx,
+                   ev,
+                   volumeRequestId,
+                   isTraced,
+                   now))
     {
         WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
 
