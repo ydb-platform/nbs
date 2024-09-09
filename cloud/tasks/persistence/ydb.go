@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
@@ -553,21 +552,10 @@ func (c *YDBClient) CreateOrAlterTable(
 	dropUnusedColumns bool,
 ) error {
 
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"YDB.CreateOrAlterTable",
-		tracing.WithAttributes(
-			tracing.AttributeString("folder", folder),
-			tracing.AttributeString("name", name),
-			tracing.AttributeBool("dropUnusedColumns", dropUnusedColumns),
-		),
-	)
-	defer span.End()
-
 	folderFullPath := c.AbsolutePath(folder)
 	fullPath := path.Join(folderFullPath, name)
 
-	err := c.Execute(
+	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) (err error) {
 			err = c.makeDirs(ctx, folderFullPath)
@@ -582,10 +570,6 @@ func (c *YDBClient) CreateOrAlterTable(
 			)
 		},
 	)
-	if err != nil {
-		tracing.SetError(span, err)
-	}
-	return err
 }
 
 func (c *YDBClient) DropTable(
@@ -594,38 +578,21 @@ func (c *YDBClient) DropTable(
 	name string,
 ) error {
 
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"YDB.DropTable",
-		tracing.WithAttributes(
-			tracing.AttributeString("folder", folder),
-			tracing.AttributeString("name", name),
-		),
-	)
-	defer span.End()
-
 	folderFullPath := c.AbsolutePath(folder)
 	fullPath := path.Join(folderFullPath, name)
 
-	err := c.Execute(
+	return c.Execute(
 		ctx,
 		func(ctx context.Context, s *Session) error {
 			return s.DropTable(ctx, fullPath)
 		},
 	)
-	if err != nil {
-		tracing.SetError(span, err)
-	}
-	return err
 }
 
 func (c *YDBClient) Execute(
 	ctx context.Context,
 	op func(context.Context, *Session) error,
 ) error {
-
-	ctx, span := tracing.StartSpan(ctx, "YDB.Execute")
-	defer span.End()
 
 	adapter := func(ctx context.Context, session ydb_table.Session) error {
 		return op(ctx, &Session{
@@ -637,7 +604,6 @@ func (c *YDBClient) Execute(
 
 	err := c.db.Table().Do(ctx, adapter, ydb_table.WithIdempotent())
 	if err != nil {
-		tracing.SetError(span, err)
 		// TODO: some errors should not be retriable.
 		return errors.NewRetriableError(err)
 	}
@@ -651,15 +617,6 @@ func (c *YDBClient) ExecuteRO(
 	params ...ydb_table.ParameterOption,
 ) (Result, error) {
 
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"YDB.ExecuteRO",
-		tracing.WithAttributes(
-			tracing.AttributeString("query", query),
-		),
-	)
-	defer span.End()
-
 	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
@@ -667,9 +624,6 @@ func (c *YDBClient) ExecuteRO(
 		res, err = session.ExecuteRO(ctx, query, params...)
 		return err
 	})
-	if err != nil {
-		tracing.SetError(span, err)
-	}
 
 	return res, err
 }
@@ -680,15 +634,6 @@ func (c *YDBClient) ExecuteRW(
 	params ...ydb_table.ParameterOption,
 ) (Result, error) {
 
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"YDB.ExecuteRW",
-		tracing.WithAttributes(
-			tracing.AttributeString("query", query),
-		),
-	)
-	defer span.End()
-
 	var res Result
 
 	err := c.Execute(ctx, func(ctx context.Context, session *Session) error {
@@ -696,9 +641,6 @@ func (c *YDBClient) ExecuteRW(
 		res, err = session.ExecuteRW(ctx, query, params...)
 		return err
 	})
-	if err != nil {
-		tracing.SetError(span, err)
-	}
 
 	return res, err
 }
