@@ -187,7 +187,6 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	reportedTaskIDCount := int64(len(c.hangingTaskGaugesByID))
-	sensorName := "hangingTasks"
 	for _, taskInfo := range taskInfos {
 		_, ok := c.hangingTaskGaugesByID[taskInfo.ID]
 		if ok {
@@ -206,7 +205,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 					"type": taskInfo.TaskType, "id": taskInfo.ID,
 				},
 			)
-			gauge := subRegistry.Gauge(sensorName)
+			gauge := subRegistry.Gauge("hangingTasks")
 			gauge.Set(float64(1))
 			c.hangingTaskGaugesByID[taskInfo.ID] = gauge
 			reportedTaskIDCount++
