@@ -91,7 +91,6 @@ func (c *multiZoneClient) deleteOutdatedDstDisk(
 ) error {
 
 	if fillGeneration > 1 {
-		// TODO:_ here was no timeout header. Is it ok?
 		volume, err := c.dstZoneClient.describeVolume(ctx, diskID)
 		if IsNotFoundError(err) {
 			return nil
@@ -127,13 +126,11 @@ func (c *multiZoneClient) clone(
 	baseDiskID string,
 ) (err error) {
 
-	// TODO:_ here was no timeout header. Is it ok?
 	volume, err := c.srcZoneClient.describeVolume(ctx, diskID)
 	if err != nil {
 		return err
 	}
 
-	// TODO:_ here was no timeout header. Is it ok?
 	err = c.dstZoneClient.createVolume(
 		ctx,
 		volume.DiskId,

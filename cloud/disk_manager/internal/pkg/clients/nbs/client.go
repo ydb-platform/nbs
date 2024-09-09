@@ -429,7 +429,7 @@ func (c *client) updateVolume(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.UpdateVolume", // TODO:_ should make some other name to distinguish from sdk calls?
+		"Blockstore.UpdateVolume",
 		tracing.WithAttributes(tracing.AttributeString("disk_id", diskID)),
 	)
 	defer span.End()
@@ -482,7 +482,7 @@ func (c *client) updatePlacementGroup(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.UpdatePlacementGroup", // TODO:_ should make some other name to distinguish from sdk calls?
+		"Blockstore.UpdatePlacementGroup",
 		tracing.WithAttributes(tracing.AttributeString("group_id", groupID)),
 	)
 	defer span.End()
@@ -816,7 +816,6 @@ func (c *client) GetCheckpointStatus(
 	checkpointID string,
 ) (CheckpointStatus, error) {
 
-	// TODO:_ do we need timeout header for GetCheckpointStatus call?
 	status, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
 	return parseCheckpointStatus(status), err
 }
@@ -827,8 +826,6 @@ func (c *client) DeleteCheckpoint(
 	checkpointID string,
 ) (err error) {
 
-	// TODO:_ should we make wrapping method for sdk call
-	// in case when the main method becomes trivial?
 	defer c.metrics.StatRequest("DeleteCheckpoint")(&err)
 
 	err = c.deleteCheckpoint(ctx, diskID, checkpointID)
@@ -1314,6 +1311,7 @@ func (c *client) GetCheckpointSize(
 		),
 	)
 	defer span.End()
+	defer tracing.SetError(span, &err)
 
 	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
@@ -1395,9 +1393,10 @@ func (c *client) GetChangedBytes(
 		),
 	)
 	defer span.End()
+	defer tracing.SetError(span, &err)
 	defer func(diff *uint64) {
 		span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
-	}(&diff) // TODO:_ should set error here? And do we need return value in attributes?
+	}(&diff)
 
 	volume, err := c.describeVolume(ctx, diskID)
 	if err != nil {
@@ -1669,11 +1668,6 @@ func (c *client) describePlacementGroup(
 
 func (c *client) ping(ctx context.Context) (err error) {
 	ctx = c.withTimeoutHeader(ctx)
-	// TODO:_ do we really need span for ping? When and how often do we ping nbs?
-	ctx, span := tracing.StartSpan(ctx, "Blockstore.Ping")
-	defer span.End()
-	defer tracing.SetError(span, &err)
-
 	err = c.nbs.Ping(ctx)
 	return wrapError(err)
 }
@@ -1686,7 +1680,6 @@ func (c *client) createCheckpoint(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.CreateCheckpoint",
@@ -1714,7 +1707,6 @@ func (c *client) destroyVolume(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.DestroyVolume",
@@ -1728,7 +1720,6 @@ func (c *client) destroyVolume(
 	defer tracing.SetError(span, &err)
 
 	err = c.nbs.DestroyVolume(ctx, diskID, sync, fillGeneration)
-	// TODO:_ does wrapError work correct for nil error?
 	return wrapError(err)
 }
 
@@ -1738,10 +1729,7 @@ func (c *client) getCheckpointStatus(
 	checkpointID string,
 ) (status protos.ECheckpointStatus, err error) {
 
-	// TODO:_ do we need timeout header?
 	ctx = c.withTimeoutHeader(ctx)
-
-	// TODO:_ do we need span?
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.GetCheckpointStatus",
@@ -1770,7 +1758,6 @@ func (c *client) deleteCheckpoint(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.DeleteCheckpoint",
@@ -1783,8 +1770,6 @@ func (c *client) deleteCheckpoint(
 	defer tracing.SetError(span, &err)
 
 	err = c.nbs.DeleteCheckpoint(ctx, diskID, checkpointID)
-	// TODO:_ can/should we check IsNotFoundError in caller method?
-	// TODO:_ Does it commute with wrapping? (Seems yes, but test this)
 	return wrapError(err)
 }
 
@@ -1797,7 +1782,6 @@ func (c *client) resizeVolume(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.ResizeVolume",
@@ -1831,8 +1815,6 @@ func (c *client) alterVolume(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
-	// TODO:_ project, folder and cloud are sensitive, aren't they?
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.AlterVolume",
@@ -1864,7 +1846,6 @@ func (c *client) assignVolume(
 ) (volume *protos.TVolume, err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.AssignVolume",
@@ -1899,8 +1880,6 @@ func (c *client) describeVolumeModel(
 ) (model *protos.TVolumeModel, err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-	// TODO:_ no blank line here?
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.DescribeVolumeModel",
@@ -1938,7 +1917,6 @@ func (c *client) createPlacementGroup(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.CreatePlacementGroup",
@@ -1972,7 +1950,6 @@ func (c *client) destroyPlacementGroup(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.DestroyPlacementGroup",
@@ -1997,7 +1974,6 @@ func (c *client) alterPlacementGroupMembership(
 ) (err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.AlterPlacementGroupMembership",
@@ -2029,7 +2005,6 @@ func (c *client) listPlacementGroups(
 ) (groups []string, err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
 	ctx, span := tracing.StartSpan(
 		ctx,
 		"Blockstore.ListPlacementGroups",
@@ -2055,23 +2030,6 @@ func (c *client) getChangedBlocks(
 ) (blockMask []byte, err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-
-	// TODO:_ maybe should not start span here (too many requests?)
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"Blockstore.GetChangedBlocks",
-		tracing.WithAttributes(
-			tracing.AttributeString("disk_id", diskID),
-			tracing.AttributeInt64("start_index", int64(startIndex)),
-			tracing.AttributeInt("blocks_count", int(blocksCount)),
-			tracing.AttributeString("low_checkpoint_id", lowCheckpointID),
-			tracing.AttributeString("high_checkpoint_id", highCheckpointID),
-			tracing.AttributeBool("ignore_base_disk", ignoreBaseDisk),
-		),
-	)
-	defer span.End()
-	defer tracing.SetError(span, &err)
-
 	blockMask, err = c.nbs.GetChangedBlocks(
 		ctx,
 		diskID,
@@ -2094,28 +2052,9 @@ func (c *client) statVolume(
 ) (volume *protos.TVolume, stats *protos.TVolumeStats, err error) {
 
 	ctx = c.withTimeoutHeader(ctx)
-	// TODO:_ do we need span for StatVolume?
-	ctx, span := tracing.StartSpan(
-		ctx,
-		"Blockstore.StatVolume",
-		tracing.WithAttributes(
-			tracing.AttributeString("disk_id", diskID),
-			tracing.AttributeInt("flags", int(flags)),
-		),
-	)
-	defer span.End()
-	defer tracing.SetError(span, &err)
-
 	volume, stats, err = c.nbs.StatVolume(ctx, diskID, flags)
 	if err != nil {
 		return nil, nil, wrapError(err)
 	}
 	return
 }
-
-// TODO:_ remove span for rediscover?
-
-// TODO:_ event for retries in nbs go sdk?
-// TODO:_ add host to attributes of spans for mount/rediscover?
-// TODO:_ store error in high-level spans?
-// TODO:_ should add zone_id to attributes anywhere?
