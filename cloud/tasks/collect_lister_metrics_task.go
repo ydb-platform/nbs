@@ -168,10 +168,32 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		return err
 	}
 
-	reportedTaskIDCount := int64(0)
-	newHangingsTaskGaugesByID := make(map[string]metrics.Gauge)
+	taskInfoByID := make(map[string]storage.TaskInfo)
+	for _, taskInfo := range taskInfos {
+		taskInfoByID[taskInfo.ID] = taskInfo
+	}
+
+	for id, gauge := range c.hangingTaskGaugesByID {
+		_, ok := taskInfoByID[id]
+		if !ok {
+			logging.Info(
+				ctx,
+				"Task with id %s is not hanging anymore",
+				id,
+			)
+			gauge.Set(0)
+			delete(c.hangingTaskGaugesByID, id)
+		}
+	}
+
+	reportedTaskIDCount := int64(len(c.hangingTaskGaugesByID))
 	sensorName := "hangingTasks"
 	for _, taskInfo := range taskInfos {
+		_, ok := c.hangingTaskGaugesByID[taskInfo.ID]
+		if ok {
+			continue
+		}
+
 		if reportedTaskIDCount < c.maxHangingTaskIDsToReport {
 			logging.Info(
 				ctx,
@@ -186,23 +208,10 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 			)
 			gauge := subRegistry.Gauge(sensorName)
 			gauge.Set(float64(1))
-			newHangingsTaskGaugesByID[taskInfo.ID] = gauge
+			c.hangingTaskGaugesByID[taskInfo.ID] = gauge
 			reportedTaskIDCount++
 		}
 	}
 
-	for id, gauge := range c.hangingTaskGaugesByID {
-		_, ok := newHangingsTaskGaugesByID[id]
-		if !ok {
-			logging.Info(
-				ctx,
-				"Task with id %s is not hanging anymore",
-				id,
-			)
-			gauge.Set(float64(0))
-		}
-	}
-
-	c.hangingTaskGaugesByID = newHangingsTaskGaugesByID
 	return nil
 }

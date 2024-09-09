@@ -129,7 +129,8 @@ func (c *executionContext) GetDeadline() time.Time {
 	}
 
 	deadline := c.taskState.CreatedAt.Add(
-		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging))
+		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging),
+	)
 	if deadline.Before(defaultDeadline) {
 		return defaultDeadline
 	}
