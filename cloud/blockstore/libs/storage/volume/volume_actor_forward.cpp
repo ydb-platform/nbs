@@ -44,7 +44,7 @@ void StoreThrottlerDelay(TResponse& response, TDuration delay)
 template <typename TMethod>
 void RejectVolumeRequest(
     const TActorContext& ctx,
-    const NActors::TActorId& caller,
+    NActors::TActorId caller,
     ui64 callerCookie,
     TCallContext& callContext,
     NProto::TError error)

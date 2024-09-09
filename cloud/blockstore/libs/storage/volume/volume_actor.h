@@ -132,19 +132,19 @@ class TVolumeActor final
 
     struct TVolumeRequest
     {
-        using TCancelRoutine = std::function<void(
+        using TCancelRoutine = void(
             const NActors::TActorContext& ctx,
             NActors::TActorId caller,
             ui64 callerCookie,
             TCallContext& callContext,
-            NProto::TError error)>;
+            NProto::TError error);
 
         NActors::TActorId Caller;
         ui64 CallerCookie;
         TCallContextPtr CallContext;
         TCallContextPtr ForkedContext;
         ui64 ReceiveTime;
-        TCancelRoutine CancelRoutine;
+        TCancelRoutine* CancelRoutine;
 
         TVolumeRequest(
                 const NActors::TActorId& caller,
@@ -158,7 +158,7 @@ class TVolumeActor final
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
-            , CancelRoutine(std::move(cancelRoutine))
+            , CancelRoutine(cancelRoutine)
         {}
 
         void CancelRequest(
