@@ -1226,32 +1226,6 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
-func setupExpectationsForHangingTasksMetricsTest(
-	registry *mocks.RegistryMock,
-	wg *sync.WaitGroup,
-	taskID string,
-) {
-	gaugeSet1IDCall := registry.GetGauge(
-		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On("Set", float64(1)).Return(mock.Anything)
-
-	registry.GetGauge(
-		"hangingTasks",
-		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		gaugeSet1IDCall,
-	).Return(mock.Anything).Run(
-		func(args mock.Arguments) {
-			wg.Done()
-		},
-	)
-	wg.Add(1)
-}
-
 func TestHangingTasksMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -1263,10 +1237,6 @@ func TestHangingTasksMetrics(t *testing.T) {
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 
 	config := newHangingTaskTestConfig()
-	hangingTaskTimeout, err := time.ParseDuration(
-		config.GetHangingTaskTimeout(),
-	)
-	require.NoError(t, err)
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 	err = registerHangingTask(s.registry)
@@ -1279,17 +1249,38 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	wg := sync.WaitGroup{}
-	setupExpectationsForHangingTasksMetricsTest(
-		registry,
-		&wg,
-		taskID,
-	)
+	metricsCreatedWg := sync.WaitGroup{}
+	gaugeZeroedWg := sync.WaitGroup{}
 
-	time.Sleep(hangingTaskTimeout * 2)
+	gaugeSet1IDCall := registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			metricsCreatedWg.Done()
+		},
+	)
+	metricsCreatedWg.Add(1)
+
+	registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		gaugeSet1IDCall,
+	).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeZeroedWg.Done()
+		},
+	)
+	gaugeZeroedWg.Add(1)
+
+	metricsCreatedWg.Wait()
 	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
-	wg.Wait()
+	gaugeZeroedWg.Wait()
 	registry.AssertAllExpectations(t)
 }
