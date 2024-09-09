@@ -1158,15 +1158,14 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 
 		fixture.createTask("a", taskStatus, time.Now(), -1)
 		fixture.createTask("a", taskStatus, time.Now(), time.Hour)
-		// estimate is missed,
-		// but task duration does not exceed x2 estimate duration
+		// Estimate is missed, but task duration does not exceed x2 estimate duration
 		fixture.createTask(
 			"b",
 			taskStatus,
 			time.Now().Add(-719*time.Minute),
 			hangingTaskTimeout+time.Hour,
 		)
-		// estimate is missed but default estimate is not
+		// Estimate is missed but default estimate is not
 		oneHourAgo := time.Now().Add(-time.Hour)
 		fixture.createTask("c", taskStatus, oneHourAgo, time.Minute*15)
 	}
