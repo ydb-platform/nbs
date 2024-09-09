@@ -720,7 +720,7 @@ struct TTransportDiskCounters
     void AggregateWith(const TTransportDiskCounters& source);
     void AggregateWith(const TPartitionDiskCounters& source);
     void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
-    void Publish(TInstant now);
+    void Publish();
     void Reset();
 };
 

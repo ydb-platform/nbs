@@ -457,7 +457,7 @@ void TTransportDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
     }
 }
 
-void TTransportDiskCounters::Publish(TInstant now)
+void TTransportDiskCounters::Publish()
 {
     for (auto meta: TTransportRequestCounters::AllCounters) {
         auto& counter = meta.GetValue(Rdma);
@@ -478,9 +478,7 @@ void TTransportDiskCounters::Publish(TInstant now)
             counter.Publish();
         }
     }
-
     Reset();
-    Y_UNUSED(now);
 }
 
 void TTransportDiskCounters::Register(

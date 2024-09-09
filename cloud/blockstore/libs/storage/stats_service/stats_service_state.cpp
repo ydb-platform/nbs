@@ -66,9 +66,9 @@ void TTransportCounters::Reset()
     PartAcc.Reset();
 }
 
-void TTransportCounters::Publish(TInstant now)
+void TTransportCounters::Publish()
 {
-    PartAcc.Publish(now);
+    PartAcc.Publish();
 }
 
 void TTransportCounters::UpdatePartCounters(const TPartitionDiskCounters& source)

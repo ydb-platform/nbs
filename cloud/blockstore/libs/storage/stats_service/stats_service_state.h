@@ -84,7 +84,7 @@ struct TTransportCounters
 
     void Register(NMonitoring::TDynamicCountersPtr counters);
     void Reset();
-    void Publish(TInstant now);
+    void Publish();
     void UpdatePartCounters(const TPartitionDiskCounters& source);
 };
 

@@ -342,7 +342,7 @@ void TStatsServiceActor::HandleVolumePartCounters(
     }
 
     for (auto* tc: transportCounters) {
-        tc->Publish(ctx.Now());
+        tc->Publish();
     }
 }
 
