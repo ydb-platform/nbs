@@ -192,23 +192,23 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("NUM")
         .StoreResult(&MaxInFlightBytes);
 
-    opts.AddLongOption("timeout", "request timeout")
+    opts.AddLongOption("request-timeout", "request timeout")
         .OptionalArgument("NUM")
         .Handler1T<TString>([this] (const auto& s) {
-            Timeout = TDuration::Parse(s);
+            RequestTimeout = TDuration::Parse(s);
             Y_ENSURE(
-                Timeout.MicroSeconds() % 1000000 == 0,
+                RequestTimeout.MicroSeconds() % 1000000 == 0,
                 "timeout should be a multiple of a second"
             );
         });
 
-    opts.AddLongOption("dead-connection-timeout", "dead connection timeout")
+    opts.AddLongOption("connection-timeout", "connection timeout")
         .OptionalArgument("NUM")
         .Handler1T<TString>([this] (const auto& s) {
-            DeadConnectionTimeout = TDuration::Parse(s);
+            ConnectionTimeout = TDuration::Parse(s);
             Y_ENSURE(
-                DeadConnectionTimeout.MicroSeconds() % 1000000 == 0,
-                "dead connection timeout should be a multiple of a second"
+                ConnectionTimeout.MicroSeconds() % 1000000 == 0,
+                "connection timeout should be a multiple of a second"
             );
         });
 

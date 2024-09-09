@@ -64,11 +64,6 @@ public:
         nl_socket_free(Socket);
     }
 
-    operator nl_sock*() const
-    {
-        return Socket;
-    }
-
     int GetFamily() const
     {
         return Family;
@@ -78,6 +73,7 @@ public:
     void SetCallback(nl_cb_type type, F func)
     {
         auto arg = std::make_unique<TResponseHandler>(std::move(func));
+
         if (int err = nl_socket_modify_cb(
                 Socket,
                 type,
@@ -97,6 +93,20 @@ public:
             static_cast<TResponseHandler*>(arg));
 
         return (*func)(static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(msg))));
+    }
+
+    void Send(nl_msg* message)
+    {
+        if (int err = nl_send_auto(Socket, message); err < 0) {
+            throw TServiceError(E_FAIL)
+                << "send error: " << nl_geterror(err);
+        }
+        if (int err = nl_wait_for_ack(Socket)) {
+            // this is either recv error, or an actual error message received
+            // from the kernel
+            throw TServiceError(E_FAIL)
+                << "recv error: " << nl_geterror(err);
+        }
     }
 };
 
@@ -120,9 +130,7 @@ public:
 
     ~TNestedAttribute()
     {
-        if (Attribute) {
-            nla_nest_end(Message, Attribute);
-        }
+        nla_nest_end(Message, Attribute);
     }
 };
 
@@ -156,6 +164,11 @@ public:
         nlmsg_free(Message);
     }
 
+    operator nl_msg*() const
+    {
+        return Message;
+    }
+
     template <typename T>
     void Put(int attribute, T data)
     {
@@ -169,20 +182,6 @@ public:
     {
         return TNestedAttribute(Message, attribute);
     }
-
-    void Send(nl_sock* socket)
-    {
-        if (int err = nl_send_auto(socket, Message); err < 0) {
-            throw TServiceError(E_FAIL)
-                << "send error: " << nl_geterror(err);
-        }
-        if (int err = nl_wait_for_ack(socket)) {
-            // this is either recv error, or an actual error message received
-            // from the kernel
-            throw TServiceError(E_FAIL)
-                << "recv error: " << nl_geterror(err);
-        }
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,26 +194,25 @@ private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
     const TString DeviceName;
-    const TDuration Timeout;
-    const TDuration DeadConnectionTimeout;
+    const TDuration RequestTimeout;
+    const TDuration ConnectionTimeout;
     const bool Reconfigure;
 
     TLog Log;
     IClientHandlerPtr Handler;
     TSocket Socket;
     ui32 DeviceIndex;
-    TAtomic ShouldStop = 0;
 
-    TPromise<NProto::TError> StartResult = NewPromise<NProto::TError>();
-    TPromise<NProto::TError> StopResult = NewPromise<NProto::TError>();
+    TPromise<NProto::TError> StartResult;
+    TPromise<NProto::TError> StopResult;
 
 public:
     TNetlinkDevice(
         ILoggingServicePtr logging,
         TNetworkAddress connectAddress,
         TString deviceName,
-        TDuration timeout,
-        TDuration deadConnectionTimeout,
+        TDuration requestTimeout,
+        TDuration connectionTimeout,
         bool reconfigure);
 
     ~TNetlinkDevice();
@@ -242,14 +240,14 @@ TNetlinkDevice::TNetlinkDevice(
         ILoggingServicePtr logging,
         TNetworkAddress connectAddress,
         TString deviceName,
-        TDuration timeout,
-        TDuration deadConnectionTimeout,
+        TDuration requestTimeout,
+        TDuration connectionTimeout,
         bool reconfigure)
     : Logging(std::move(logging))
     , ConnectAddress(std::move(connectAddress))
     , DeviceName(std::move(deviceName))
-    , Timeout(timeout)
-    , DeadConnectionTimeout(deadConnectionTimeout)
+    , RequestTimeout(requestTimeout)
+    , ConnectionTimeout(connectionTimeout)
     , Reconfigure(reconfigure)
 {
     Log = Logging->CreateLog("BLOCKSTORE_NBD");
@@ -262,6 +260,11 @@ TNetlinkDevice::~TNetlinkDevice()
 
 TFuture<NProto::TError> TNetlinkDevice::Start()
 {
+    if (StartResult.Initialized()) {
+        return StartResult.GetFuture();
+    }
+    StartResult = NewPromise<NProto::TError>();
+
     try {
         ParseIndex();
         ConnectSocket();
@@ -274,25 +277,24 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
                 << "unable to configure " << DeviceName << ": " << e.what()));
     }
 
-    // will be set asynchronously in Connect > HandleStatus > DoConnect
     return StartResult.GetFuture();
 }
 
 TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 {
-    if (AtomicSwap(&ShouldStop, 1) == 1) {
+    if (StopResult.Initialized()) {
         return StopResult.GetFuture();
     }
-
-    if (!deleteDevice) {
-        StopResult.SetValue(MakeError(S_OK));
-        return StopResult.GetFuture();
-    }
+    StopResult = NewPromise<NProto::TError>();
 
     try {
-        Disconnect();
         DisconnectSocket();
-        StopResult.SetValue(MakeError(S_OK));
+
+        if (deleteDevice) {
+            Disconnect();
+        } else {
+            StopResult.SetValue(MakeError(S_OK));
+        }
 
     } catch (const TServiceError& e) {
         StopResult.SetValue(MakeError(
@@ -319,7 +321,7 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
             message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
         }
 
-        message.Send(socket);
+        socket.Send(message);
 
     } catch (const TServiceError& e) {
         return MakeFuture(MakeError(
@@ -336,6 +338,7 @@ void TNetlinkDevice::ParseIndex()
     // accept dev/nbd* devices with prefix other than /
     TStringBuf l, r;
     TStringBuf(DeviceName).RSplit(NBD_DEVICE_SUFFIX, l, r);
+
     if (!TryFromString(r, DeviceIndex)) {
         throw TServiceError(E_ARGUMENT) << "unable to parse device index";
     }
@@ -379,7 +382,7 @@ void TNetlinkDevice::Connect()
 
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    message.Send(socket);
+    socket.Send(message);
 }
 
 void TNetlinkDevice::Disconnect()
@@ -389,7 +392,8 @@ void TNetlinkDevice::Disconnect()
     TNetlinkSocket socket;
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    message.Send(socket);
+    socket.Send(message);
+    StopResult.SetValue(MakeError(S_OK));
 }
 
 void TNetlinkDevice::DoConnect(bool connected)
@@ -417,14 +421,14 @@ void TNetlinkDevice::DoConnect(bool connected)
             static_cast<ui64>(info.MinBlockSize));
         message.Put(NBD_ATTR_SERVER_FLAGS, static_cast<ui64>(info.Flags));
 
-        if (Timeout) {
-            message.Put(NBD_ATTR_TIMEOUT, Timeout.Seconds());
+        if (RequestTimeout) {
+            message.Put(NBD_ATTR_TIMEOUT, RequestTimeout.Seconds());
         }
 
-        if (DeadConnectionTimeout) {
+        if (ConnectionTimeout) {
             message.Put(
                 NBD_ATTR_DEAD_CONN_TIMEOUT,
-                DeadConnectionTimeout.Seconds());
+                ConnectionTimeout.Seconds());
         }
 
         {
@@ -433,7 +437,7 @@ void TNetlinkDevice::DoConnect(bool connected)
             message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
         }
 
-        message.Send(socket);
+        socket.Send(message);
         StartResult.SetValue(MakeError(S_OK));
 
     } catch (const TServiceError& e) {
@@ -529,19 +533,19 @@ class TNetlinkDeviceFactory final
 {
 private:
     const ILoggingServicePtr Logging;
-    const TDuration Timeout;
-    const TDuration DeadConnectionTimeout;
+    const TDuration RequestTimeout;
+    const TDuration ConnectionTimeout;
     const bool Reconfigure;
 
 public:
     TNetlinkDeviceFactory(
             ILoggingServicePtr logging,
-            TDuration timeout,
-            TDuration deadConnectionTimeout,
+            TDuration requestTimeout,
+            TDuration connectionTimeout,
             bool reconfigure)
         : Logging(std::move(logging))
-        , Timeout(std::move(timeout))
-        , DeadConnectionTimeout(std::move(deadConnectionTimeout))
+        , RequestTimeout(requestTimeout)
+        , ConnectionTimeout(connectionTimeout)
         , Reconfigure(reconfigure)
     {}
 
@@ -558,8 +562,8 @@ public:
             Logging,
             connectAddress,
             std::move(deviceName),
-            Timeout,
-            DeadConnectionTimeout,
+            RequestTimeout,
+            ConnectionTimeout,
             Reconfigure);
     }
 };
@@ -572,29 +576,29 @@ IDevicePtr CreateNetlinkDevice(
     ILoggingServicePtr logging,
     TNetworkAddress connectAddress,
     TString deviceName,
-    TDuration timeout,
-    TDuration deadConnectionTimeout,
+    TDuration requestTimeout,
+    TDuration connectionTimeout,
     bool reconfigure)
 {
     return std::make_shared<TNetlinkDevice>(
         std::move(logging),
         std::move(connectAddress),
         std::move(deviceName),
-        timeout,
-        deadConnectionTimeout,
+        requestTimeout,
+        connectionTimeout,
         reconfigure);
 }
 
 IDeviceFactoryPtr CreateNetlinkDeviceFactory(
     ILoggingServicePtr logging,
-    TDuration timeout,
-    TDuration deadConnectionTimeout,
+    TDuration requestTimeout,
+    TDuration connectionTimeout,
     bool reconfigure)
 {
     return std::make_shared<TNetlinkDeviceFactory>(
         std::move(logging),
-        std::move(timeout),
-        std::move(deadConnectionTimeout),
+        requestTimeout,
+        connectionTimeout,
         reconfigure);
 }
 
