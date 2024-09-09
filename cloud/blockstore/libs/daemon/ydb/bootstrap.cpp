@@ -444,6 +444,8 @@ void TBootstrapYdb::InitKikimrService()
         Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
         !AioStorageProvider)
     {
+        NvmeManager = CreateNvmeManager(
+            Configs->DiskAgentConfig->GetSecureEraseTimeout());
         AioStorageProvider = CreateNullStorageProvider();
 
         STORAGE_INFO("AioStorageProvider (null) initialized");
