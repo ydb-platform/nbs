@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(protos)
 add_subdirectory(ut)
 add_subdirectory(vhost)
 
@@ -23,6 +24,7 @@ target_link_libraries(filestore-libs-vfs_fuse PUBLIC
   filestore-libs-service
   filestore-libs-vfs
   libs-vfs-protos
+  libs-vfs_fuse-protos
   core-libs-common
   core-libs-diagnostics
   library-cpp-lwtrace
@@ -39,6 +41,7 @@ target_sources(filestore-libs-vfs_fuse PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/fs_impl_lock.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/fs_impl_node.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/fs_impl_stat.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/handle_ops_queue.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/log.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/loop.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/fuse.cpp
