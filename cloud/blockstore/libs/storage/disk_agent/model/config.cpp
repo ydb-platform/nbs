@@ -39,6 +39,8 @@ namespace {
     xxx(CachedConfigPath,                   TString,    ""                    )\
     xxx(CachedSessionsPath,                 TString,    ""                    )\
     xxx(TemporaryAgent,                     bool,       false                 )\
+    xxx(IOParserActorCount,                 ui32,       0                     )\
+    xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
