@@ -1,5 +1,5 @@
 from cloud.storage.core.tools.common.python.daemon import Daemon
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 
 class EndpointProxy(Daemon):

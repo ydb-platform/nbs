@@ -125,7 +125,7 @@ def get_load_data(kikimr_port):
 
 
 def check_ydb_volume_metrics(kikimr_port):
-    ydb_binary_path = common.binary_path("contrib/ydb/apps/ydb/ydb")
+    ydb_binary_path = common.binary_path("ydb/apps/ydb/ydb")
 
     dailyTable = "{}-{}".format(HistoryTablePrefix, date.today())
 

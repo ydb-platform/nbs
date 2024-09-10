@@ -10,7 +10,7 @@ PEERDIR(
 
     library/python/testing/yatest_common
 
-    contrib/ydb/tests/library
+    ydb/tests/library
 
     contrib/python/requests/py3
 )
@@ -18,7 +18,7 @@ PEERDIR(
 DEPENDS(
     cloud/filestore/apps/client
     cloud/filestore/apps/server
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(

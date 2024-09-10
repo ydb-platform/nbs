@@ -6,8 +6,8 @@ from cloud.blockstore.tests.python.lib.config import NbsConfigurator, generate_d
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, start_disk_agent
 
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 from google.protobuf.text_format import MessageToString
 
