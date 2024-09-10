@@ -575,8 +575,6 @@ struct TServer: IEndpointProxyServer
             Scheduler,
             ep.RequestStats,
             volumeStats);
-
-        ep.Client->Start();
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
