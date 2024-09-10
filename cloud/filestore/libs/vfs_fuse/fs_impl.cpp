@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
@@ -53,10 +55,30 @@ TFileSystem::~TFileSystem()
     Reset();
 }
 
+void TFileSystem::Init()
+{
+    // TODO(#1541): initialize queue from file
+    STORAGE_INFO("scheduling destroy handle queue processing");
+    ScheduleProcessHandleOpsQueue();
+}
+
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
     ClearDirectoryCache();
+}
+
+void TFileSystem::ScheduleProcessHandleOpsQueue()
+{
+    if (Config->GetAsyncDestroyHandleEnabled()) {
+        Scheduler->Schedule(
+        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+        [=, ptr = weak_from_this()] () {
+            if (auto self = ptr.lock()) {
+                self->ProcessHandleOpsQueue();
+            }
+        });
+    }
 }
 
 bool TFileSystem::CheckError(
@@ -230,6 +252,62 @@ void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
     // notifying CompletionQueue about request completion to decrement inflight
     // request counter and unblock the stopping procedure
     CompletionQueue->Complete(req, [&] (fuse_req_t) { return 0; });
+}
+
+void TFileSystem::ProcessHandleOpsQueue()
+{
+    TGuard g{HandleOpsQueueLock};
+    if (HandleOpsQueue.Empty()) {
+        ScheduleProcessHandleOpsQueue();
+        return;
+    }
+
+    const auto& entry = HandleOpsQueue.Front();
+    if (entry.HasDestroyHandleRequest()) {
+        const auto& requestInfo = entry.GetDestroyHandleRequest();
+        auto request = std::make_shared<NProto::TDestroyHandleRequest>(
+            requestInfo);
+        STORAGE_DEBUG(
+            "Process destroy handle request: "
+            << "filesystem " << Config->GetFileSystemId() << " #"
+            << requestInfo.GetNodeId() << " @" << requestInfo.GetHandle());
+
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
+        callContext->RequestType = EFileStoreRequest::DestroyHandle;
+        RequestStats->RequestStarted(Log, *callContext);
+
+        Session->DestroyHandle(callContext, std::move(request))
+            .Subscribe([this, ptr = weak_from_this()] (const auto& future) {
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                if (auto self = ptr.lock()) {
+                    // If destroy request failed, we need to retry it.
+                    // Otherwise, remove it from queue.
+                    if (HasError(error)) {
+                        STORAGE_ERROR(
+                            "DestroyHandle request failed: "
+                            << "filesystem " << Config->GetFileSystemId()
+                            << " error: " << FormatError(error));
+                        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+                            ReportAsyncDestroyHandleFailed();
+                            with_lock(HandleOpsQueueLock) {
+                                HandleOpsQueue.Pop();
+                            }
+                        }
+                    } else {
+                        with_lock(HandleOpsQueueLock) {
+                            HandleOpsQueue.Pop();
+                        }
+                    }
+                    ScheduleProcessHandleOpsQueue();
+                }
+            });
+    } else {
+        // TODO(#1541): process create handle
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NFuse

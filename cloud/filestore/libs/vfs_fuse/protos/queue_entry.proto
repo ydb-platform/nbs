@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/data.proto";
+
+package NCloud.NFileStore.NProto;
+
+message TQueueEntry
+{
+     oneof Request {
+          TCreateHandleRequest CreateHandleRequest = 1;
+          TDestroyHandleRequest DestroyHandleRequest = 2;
+    }
+}

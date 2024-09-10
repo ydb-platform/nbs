@@ -36,4 +36,10 @@ message TFileSystemConfig
     // The blocksize reported to the client via stat request. Note: this value
     // can differ from the BlockSize in terms of the actual filestore
     optional uint32 PreferredBlockSize = 10;
+
+    // Async processing of destroy handle requests.
+    optional bool AsyncDestroyHandleEnabled = 11;
+
+    // Period of processing create/destroy handle requests.
+    optional uint32 AsyncHandleOperationPeriod = 12;
 }

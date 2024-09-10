@@ -84,9 +84,12 @@ struct TBootstrap
 
     TString SocketPath;
 
+    TPromise<void> StopTriggered = NewPromise<void>();
+
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler())
+            ISchedulerPtr scheduler = CreateScheduler(),
+            const NProto::TFileStoreFeatures& featuresConfig = {})
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -109,12 +112,17 @@ struct TBootstrap
         Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
 
         Service = std::make_shared<TFileStoreTest>();
-        Service->CreateSessionHandler = [] (auto callContext, auto request) {
+        Service->CreateSessionHandler =
+            [featuresConfig](auto callContext, auto request)
+        {
             Y_UNUSED(callContext);
 
             UNIT_ASSERT(request->GetRestoreClientSession());
             NProto::TCreateSessionResponse result;
             result.MutableSession()->SetSessionId(CreateGuidAsString());
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                featuresConfig);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
             return MakeFuture(result);
         };
 
@@ -185,7 +193,9 @@ struct TBootstrap
 
     void Stop()
     {
-        StopAsync().Wait();
+        auto stop = StopAsync();
+        StopTriggered.TrySetValue();
+        stop.Wait();
         Fuse->DeInit();
         Loop = nullptr;
         std::remove(SocketPath.c_str());
@@ -1282,29 +1292,218 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         TBootstrap bootstrap;
         auto promise = NewPromise<NProto::TAcquireLockResponse>();
+        auto handlerCalled = NewPromise<void>();
 
         bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
+            handlerCalled.TrySetValue();
             return promise.GetFuture();
         };
+
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            promise.SetValue(
+                TErrorResponse(E_FS_WOULDBLOCK, "waiting"));
+        });
 
         bootstrap.Start();
 
         auto future =
             bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
 
-        bootstrap.Stop(); // wait till all requests are done writing their stats
+        handlerCalled.GetFuture().Wait();
 
-        UNIT_ASSERT_C(
-            !future.HasValue(),
-            "TAcquireLockRequest future should not be set after stop");
+        bootstrap.Stop(); // wait till all requests are done writing their stats
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "AcquireLock");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
+    {
+        TBootstrap bootstrap;
+        auto promise = NewPromise<NProto::TAcquireLockResponse>();
+        auto handlerCalled = NewPromise<void>();
+
+        bootstrap.Service->AcquireLockHandler = [&] (auto, auto) {
+            handlerCalled.TrySetValue();
+            return promise.GetFuture();
+        };
+
+        bootstrap.Service->CreateHandleHandler = [&] (auto , auto) {
+            UNIT_ASSERT_C(false, "Handler should not be called");
+            return MakeFuture(NProto::TCreateHandleResponse{});
+        };
+
+        bootstrap.StopTriggered.GetFuture().Subscribe([&] (const auto&) {
+            // Make synchronous call. Since Stop is triggered we expect
+            // that request will be cancelled and future will contain exception
+            auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+                    "/file1",
+                    RootNodeId);
+            UNIT_ASSERT_EXCEPTION(future.GetValueSync(), yexception);
+
+            // Let completion queue complete all pending requests.
+            promise.SetValue(NProto::TAcquireLockResponse{});
+        });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
+
+        // Wait for lock request to reach lock handler in service.
+        // Now StopAsync in bootstrap cannot complete immediately.
+        // All new requests (CreateHandle) should be rejected immediately.
+        handlerCalled.GetFuture().Wait();
+
+        bootstrap.Stop();
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "CreateHandle");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldProcessDestroyHandleRequestsAsynchronously)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 handle1 = 2;
+        const ui64 nodeId1 = 10;
+        const ui64 handle2 = 5;
+        const ui64 nodeId2 = 11;
+        std::atomic_bool releaseFinished = false;
+        std::atomic_uint handlerCalled = 0;
+        auto destroyFinished = NewPromise<void>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, destroyFinished](auto callContext, auto request) mutable
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                if (++handlerCalled == 1) {
+                    UNIT_ASSERT(releaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
+                } else if (handlerCalled == 2) {
+                    UNIT_ASSERT(releaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
+                    destroyFinished.TrySetValue();
+                } else {
+                    UNIT_ASSERT_C(
+                        false,
+                        "Handler should not be called more than two times");
+                }
+
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        releaseFinished = true;
+
+        destroyFinished.GetFuture().Wait(WaitTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 handle = 2;
+        const ui64 nodeId = 10;
+        std::atomic_uint handlerCalled = 0;
+        auto destroyFinished = NewPromise<void>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, destroyFinished](auto callContext, auto request) mutable
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                if (++handlerCalled > 3) {
+                    destroyFinished.TrySetValue();
+                    return MakeFuture(NProto::TDestroyHandleResponse{});
+                }
+
+                NProto::TDestroyHandleResponse response = TErrorResponse(
+                    E_REJECTED, "xxx");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        destroyFinished.GetFuture().Wait(WaitTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(4U, handlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEvent)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 handle = 2;
+        const ui64 nodeId = 10;
+        auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, responsePromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+
+                return responsePromise;
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        NProto::TDestroyHandleResponse response =
+            TErrorResponse(E_FS_NOENT, "xxx");
+        responsePromise.SetValue(std::move(response));
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/AsyncDestroyHandleFailed",
+                    true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
     }
 }
 

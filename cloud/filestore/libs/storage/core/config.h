@@ -225,16 +225,30 @@ public:
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
     ui64 GetTrimBytesItemCount() const;
 
+    bool GetInMemoryIndexCacheEnabled() const;
+    ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
+
+    bool GetAsyncDestroyHandleEnabled() const;
+    TDuration GetAsyncHandleOperationPeriod() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
 
-    ui32 GetBlobCompressionRate() const;
-    TString GetBlobCompressionCodec() const;
     TString GetNodeRegistrationToken() const;
     TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
+
+    ui32 GetBlobCompressionRate() const;
+    TString GetBlobCompressionCodec() const;
+
+    ui32 GetNonNetworkMetricsBalancingFactor() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 

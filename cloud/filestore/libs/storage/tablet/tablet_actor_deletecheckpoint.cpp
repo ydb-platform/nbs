@@ -68,7 +68,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
     args.CommitId = checkpoint->GetCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     switch (args.Mode) {
@@ -164,7 +164,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
     auto* checkpoint = FindCheckpoint(args.CheckpointId);
     TABLET_VERIFY(checkpoint);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     switch (args.Mode) {
         case EDeleteCheckpointMode::MarkCheckpointDeleted:

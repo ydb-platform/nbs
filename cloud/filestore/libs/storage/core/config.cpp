@@ -183,6 +183,18 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
     xxx(ChannelFreeSpaceThreshold,                      ui32,      25         )\
     xxx(ChannelMinFreeSpace,                            ui32,      10         )\
+                                                                               \
+    xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
+    xxx(InMemoryIndexCacheNodesCapacity,                ui64,       0         )\
+    xxx(InMemoryIndexCacheNodesVerCapacity,             ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeAttrsCapacity,            ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeAttrsVerCapacity,         ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeRefsVerCapacity,          ui64,       0         )\
+    xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
+                                                                               \
+    xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
+    xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

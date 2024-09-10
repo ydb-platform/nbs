@@ -355,7 +355,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const auto sanitizerType = GetEnv("SANITIZER_TYPE");
         // temporary logging
         Cerr << "sanitizer: " << sanitizerType << Endl;
-        THashSet<TString> slowSanitizers({"thread", "undefined"});
+        THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
         const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
 
         PERFORM_TEST(5'000 / d);
