@@ -197,9 +197,7 @@ _DISK_CONFIGS = {
         DiskCreateConfig(
             size=93 * 80,
             bs=4096,
-            # XXX replace with network-hdd-nonreplicated after it becomes
-            # supported @ Compute
-            type='network-hdd',
+            type='network-hdd-nonreplicated',
             partition_index=1,
             placement_group_name='eternal-3partition-pg',
             placement_group_partition_count=3),
@@ -208,9 +206,7 @@ _DISK_CONFIGS = {
         DiskCreateConfig(
             size=93 * 80,
             bs=4096,
-            # XXX replace with network-hdd-nonreplicated after it becomes
-            # supported @ Compute
-            type='network-hdd',
+            type='network-hdd-nonreplicated',
             partition_index=2,
             placement_group_name='eternal-3partition-pg',
             placement_group_partition_count=3),
