@@ -188,6 +188,7 @@ void FillDescribeDataResponse(
 class TReadDataVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
+    , public ILargeBlockVisitor
     , public IFreshBytesVisitor
 {
 private:
@@ -229,6 +230,20 @@ public:
 
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, blobId, blobOffset)) {
+            Args.Buffer->ClearBlock(blockOffset);
+        }
+    }
+
+    void Accept(const TBlockDeletion& deletion) override
+    {
+        TABLET_VERIFY(!ApplyingByteLayer);
+
+        ui32 blockOffset = deletion.BlockIndex - Args.ActualRange().FirstBlock();
+        TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
+
+        auto& prev = Args.Blocks[blockOffset];
+        if (prev.MinCommitId < deletion.CommitId) {
+            prev = {};
             Args.Buffer->ClearBlock(blockOffset);
         }
     }
@@ -502,7 +517,10 @@ STFUNC(TReadDataActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TReadRequest>
-NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
+NProto::TError ValidateRequest(
+    const TReadRequest& request,
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     const TByteRange range(
         request.GetOffset(),
@@ -510,7 +528,7 @@ NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
         blockSize
     );
 
-    if (auto error = ValidateRange(range); HasError(error)) {
+    if (auto error = ValidateRange(range, maxFileBlocks); HasError(error)) {
         return error;
     }
 
@@ -526,7 +544,10 @@ void TIndexTabletActor::HandleReadData(
     const TActorContext& ctx)
 {
     auto validator = [&] (const NProto::TReadDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TReadDataMethod>(ev, ctx, validator)) {
@@ -586,7 +607,10 @@ void TIndexTabletActor::HandleDescribeData(
     const TActorContext& ctx)
 {
     auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {
@@ -780,6 +804,13 @@ void TIndexTabletActor::ExecuteTx_ReadData(
                 IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount);
         });
+
+    FindLargeBlocks(
+        visitor,
+        args.NodeId,
+        args.CommitId,
+        args.ActualRange().FirstBlock(),
+        args.ActualRange().BlockCount());
 
     // calling FindFreshBytes after FindFreshBlocks and FindMixedBlocks is
     // important since we compare bytes.MinCommitId with the corresponding

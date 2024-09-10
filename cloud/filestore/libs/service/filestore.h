@@ -34,7 +34,6 @@ constexpr ui32 MaxLink = NProto::E_FS_LIMITS_LINK;
 constexpr ui32 MaxName = NProto::E_FS_LIMITS_NAME;
 constexpr ui32 MaxPath = NProto::E_FS_LIMITS_PATH;
 constexpr ui32 MaxSymlink = NProto::E_FS_LIMITS_SYMLINK;
-constexpr ui64 MaxFileBlocks = static_cast<ui32>(NProto::E_FS_LIMITS_FILEBLOCKS);
 constexpr ui64 MaxNodes = static_cast<ui32>(NProto::E_FS_LIMITS_INODES);
 constexpr ui64 MaxXAttrName = NProto::E_FS_LIMITS_XATTR_NAME;
 constexpr ui64 MaxXAttrValue = NProto::E_FS_LIMITS_XATTR_VALUE;

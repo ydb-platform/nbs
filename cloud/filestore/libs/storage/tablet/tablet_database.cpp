@@ -1350,6 +1350,61 @@ bool TIndexTabletDatabase::ReadDeletionMarkers(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// LargeDeletionMarkers
+
+void TIndexTabletDatabase::WriteLargeDeletionMarkers(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Update(NIceDb::TUpdate<TTable::BlocksCount>(blocksCount));
+}
+
+void TIndexTabletDatabase::DeleteLargeDeletionMarker(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
+    TVector<TDeletionMarker>& deletionMarkers)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        deletionMarkers.emplace_back(
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::CommitId>(),
+            it.GetValue<TTable::BlockIndex>(),
+            it.GetValue<TTable::BlocksCount>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)

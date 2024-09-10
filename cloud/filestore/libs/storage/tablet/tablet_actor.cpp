@@ -329,7 +329,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TRequest& request,
     const TByteRange& range)
 {
-    if (auto error = ValidateRange(range); HasError(error)) {
+    auto error = ValidateRange(range, Config->GetMaxFileBlocks());
+    if (HasError(error)) {
         return error;
     }
 
@@ -470,6 +471,13 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         : 0;
     const bool shouldCleanup =
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
+    bool isPriority = false;
+
+    if (auto priorityRange = NextPriorityRangeForCleanup()) {
+        cleanupRangeId = priorityRange->RangeId;
+        cleanupScore = Max<ui32>();
+        isPriority = true;
+    }
 
     return {
         Config->GetCleanupThreshold(),
@@ -477,11 +485,15 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         cleanupScore,
         cleanupRangeId,
         avgCleanupScore,
+        Config->GetLargeDeletionMarkersThreshold(),
+        GetLargeDeletionMarkersCount(),
+        GetPriorityRangeCount(),
+        isPriority,
         Config->GetNewCleanupEnabled(),
         cleanupScore >= Config->GetCleanupThreshold()
             || Config->GetNewCleanupEnabled()
-            && cleanupScore && shouldCleanup,
-    };
+            && cleanupScore && shouldCleanup
+            || isPriority};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -15,17 +15,19 @@ namespace {
 
 NProto::TError ValidateRequest(
     const NProto::TSetNodeAttrRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     if (request.GetNodeId() == InvalidNodeId || request.GetFlags() == 0) {
         return ErrorInvalidArgument();
     }
 
-    if (HasFlag(request.GetFlags(), NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE) &&
+    const auto setSize = NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE;
+    if (HasFlag(request.GetFlags(), setSize) &&
         request.GetUpdate().GetSize() > 0)
     {
         TByteRange range(0, request.GetUpdate().GetSize(), blockSize);
-        if (range.BlockCount() > MaxFileBlocks) {
+        if (range.BlockCount() > maxFileBlocks) {
             return ErrorFileTooBig();
         }
     }
@@ -57,7 +59,10 @@ void TIndexTabletActor::HandleSetNodeAttr(
     }
 
     auto validator = [&] (const NProto::TSetNodeAttrRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TSetNodeAttrMethod>(ev, ctx, validator)) {
