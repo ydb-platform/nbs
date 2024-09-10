@@ -1097,9 +1097,9 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
         return;
     }
 
-    // there is no FIFO guarantee for requests sent via TPartitionRequestActor
+    // there is no FIFO guarantee for requests sent via TMultiPartitionRequestActor
     // and requests forwarded via TVolumeActor => we can start checkpoint
-    // creation only if there are no TPartitionRequestActor-based requests
+    // creation only if there are no TMultiPartitionRequestActor-based requests
     // in flight currently
     if (MultipartitionWriteAndZeroRequestsInProgress) {
         return;
