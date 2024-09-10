@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -374,9 +375,11 @@ ui32 TTestEnv::CreateBlockStoreNode(
         NDiscovery::CreateDiscoveryServiceStub(),
         TraceSerializer,
         NServer::CreateEndpointEventProxy(),
-        nullptr, // rdmaClient
+        nullptr,   // rdmaClient
         CreateVolumeStatsStub(),
-        std::move(manuallyPreemptedVolumes));
+        std::move(manuallyPreemptedVolumes),
+        CreateDefaultEncryptionKeyProvider(CreateRootKmsKeyProviderStub()));
+
     auto storageServiceId = Runtime.Register(
         storageService.release(),
         nodeIdx,

@@ -27,7 +27,8 @@ TServiceActor::TServiceActor(
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
-        TManuallyPreemptedVolumesPtr preemptedVolumes)
+        TManuallyPreemptedVolumesPtr preemptedVolumes,
+        IDefaultEncryptionKeyProviderPtr defaultEncryptionKeyProvider)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -37,6 +38,7 @@ TServiceActor::TServiceActor(
     , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
     , VolumeStats(std::move(volumeStats))
+    , DefaultEncryptionKeyProvider(std::move(defaultEncryptionKeyProvider))
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))
     , State(std::move(preemptedVolumes))
 {}

@@ -129,7 +129,7 @@ IEncryptorPtr CreateEncryptor(
 
     STORAGE_INFO("Encryption. Get key " << encryptionSpec.AsJSON());
 
-    auto keyProvider = CreateDefaultEncryptionKeyProvider();
+    auto keyProvider = CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
     auto keyFuture =
         keyProvider->GetKey(options.GetEncryptionSpec(), options.DiskId);
     auto keyOrError = std::move(keyFuture).ExtractValue();

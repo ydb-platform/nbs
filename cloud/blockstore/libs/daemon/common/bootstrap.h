@@ -64,7 +64,7 @@ protected:
     IFileIOServicePtr FileIOService;
     IStorageProviderPtr StorageProvider;
     IKmsKeyProviderPtr KmsKeyProvider;
-    IKmsKeyProviderPtr RootKmsKeyProvider;
+    IRootKmsKeyProviderPtr RootKmsKeyProvider;
     TExecutorPtr Executor;
     IServerPtr Server;
     NSpdk::ISpdkEnvPtr Spdk;

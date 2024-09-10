@@ -47,7 +47,7 @@ struct TBootstrap
     {
         EncryptionClientFactory = CreateEncryptionClientFactory(
             Logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
     }
 
     IBlockStorePtr CreateClient()

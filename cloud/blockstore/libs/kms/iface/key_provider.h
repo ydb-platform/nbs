@@ -19,6 +19,4 @@ IKmsKeyProviderPtr CreateKmsKeyProvider(
     IComputeClientPtr computeClient,
     IKmsClientPtr kmsClient);
 
-IKmsKeyProviderPtr CreateRootKmsKeyProvider(TExecutorPtr executor);
-
 }   // namespace NCloud::NBlockStore

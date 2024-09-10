@@ -145,7 +145,7 @@ def setup_env(nbs, disk_agent, data_path):
 
 
 def __read_raw_blocks(device, start_index, blocks_count):
-    offset = start_index * DEFAULT_BLOCK_SIZE
+    offset = device.PhysicalOffset + start_index * DEFAULT_BLOCK_SIZE
 
     blocks = []
 

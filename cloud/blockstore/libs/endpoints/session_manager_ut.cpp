@@ -120,7 +120,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto executor = TExecutor::Create("TestService");
         auto logging = CreateLoggingService("console");
 
-        auto encryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
+        auto encryptionKeyProvider =
+            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
             encryptionKeyProvider,
@@ -240,7 +241,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         options.DisableDurableClient = true;
 
         auto defaultEncryptionKeyProvider =
-            CreateDefaultEncryptionKeyProvider();
+            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
             defaultEncryptionKeyProvider,

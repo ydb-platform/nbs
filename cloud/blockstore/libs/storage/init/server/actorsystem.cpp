@@ -108,8 +108,8 @@ private:
     const TServerActorSystemArgs Args;
 
 public:
-    TStorageServicesInitializer(const TServerActorSystemArgs& args)
-        : Args(args)
+    explicit TStorageServicesInitializer(TServerActorSystemArgs args)
+        : Args(std::move(args))
     {}
 
     void InitializeServices(
@@ -213,7 +213,8 @@ public:
             Args.EndpointEventHandler,
             Args.RdmaClient,
             Args.VolumeStats,
-            Args.PreemptedVolumes);
+            Args.PreemptedVolumes,
+            Args.DefaultEncryptionKeyProvider);
 
         setup->LocalServices.emplace_back(
             MakeStorageServiceId(),

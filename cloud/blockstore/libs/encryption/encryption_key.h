@@ -35,13 +35,21 @@ public:
 
 struct IEncryptionKeyProvider
 {
-    using TResponse = TResultOrError<TEncryptionKey>;
-
     virtual ~IEncryptionKeyProvider() = default;
 
-    virtual NThreading::TFuture<TResponse> GetKey(
+    virtual auto GetKey(
         const NProto::TEncryptionSpec& encryptionSpec,
-        const TString& diskId) = 0;
+        const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<TEncryptionKey>> = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IDefaultEncryptionKeyProvider
+    : IEncryptionKeyProvider
+{
+    virtual auto GenerateDataEncryptionKey(const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<NProto::TKmsKey>> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,11 +67,26 @@ struct IKmsKeyProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IRootKmsKeyProvider
+{
+    virtual ~IRootKmsKeyProvider() = default;
+
+    virtual auto GetKey(const NProto::TKmsKey& kmsKey, const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<TEncryptionKey>> = 0;
+
+    virtual auto GenerateDataEncryptionKey(const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<NProto::TKmsKey>> = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IKmsKeyProviderPtr CreateKmsKeyProviderStub();
+IRootKmsKeyProviderPtr CreateRootKmsKeyProviderStub();
 
 IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
     IKmsKeyProviderPtr kmsKeyProvider);
 
-IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider();
+IDefaultEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider(
+    IRootKmsKeyProviderPtr rootKmsKeyProvider);
 
 }   // namespace NCloud::NBlockStore

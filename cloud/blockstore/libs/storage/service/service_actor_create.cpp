@@ -31,75 +31,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateEncryptionKeyActor final
-    : public TActorBootstrapped<TCreateEncryptionKeyActor>
-{
-private:
-    const TActorId Owner;
-
-public:
-    explicit TCreateEncryptionKeyActor(const TActorId& owner);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error,
-        TString key);
-
-private:
-    STFUNC(StateWork);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TCreateEncryptionKeyActor::TCreateEncryptionKeyActor(const TActorId& owner)
-    : Owner{owner}
-{}
-
-void TCreateEncryptionKeyActor::Bootstrap(const TActorContext& ctx)
-{
-    Become(&TThis::StateWork);
-
-    try {
-        TString key;
-        key.resize(32);
-        EntropyPool().Read(key.Detach(), key.size());
-
-        ReplyAndDie(ctx, {}, Base64Encode(key));
-    } catch(...) {
-        // TODO: crit event
-
-        ReplyAndDie(ctx, MakeError(E_FAIL, CurrentExceptionMessage()), {});
-    }
-}
-
-void TCreateEncryptionKeyActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error,
-    TString ciphertext)
-{
-    NCloud::Send(
-        ctx,
-        Owner,
-        std::make_unique<TEvServicePrivate::TEvCreateEncryptionKeyResponse>(
-            error,
-            TString{},  // kekId
-            std::move(ciphertext)));
-}
-
-STFUNC(TCreateEncryptionKeyActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
-            break;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TCreateVolumeActor final
     : public TActorBootstrapped<TCreateVolumeActor>
 {
@@ -108,6 +39,7 @@ private:
 
     const TStorageConfigPtr Config;
     const NProto::TCreateVolumeRequest Request;
+    const IDefaultEncryptionKeyProviderPtr KeyProvider;
 
     ui64 BaseDiskTabletId = 0;
 
@@ -115,7 +47,8 @@ public:
     TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        NProto::TCreateVolumeRequest request);
+        NProto::TCreateVolumeRequest request,
+        IDefaultEncryptionKeyProviderPtr keyProvider);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -160,10 +93,12 @@ private:
 TCreateVolumeActor::TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        NProto::TCreateVolumeRequest request)
+        NProto::TCreateVolumeRequest request,
+        IDefaultEncryptionKeyProviderPtr keyProvider)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
+    , KeyProvider(std::move(keyProvider))
 {}
 
 void TCreateVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -220,7 +155,6 @@ bool TCreateVolumeActor::ShouldCreateVolumeWithDefaultEncryption() const
              Request.GetCloudId(),
              Request.GetFolderId(),
              Request.GetDiskId()));
-
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
@@ -229,15 +163,23 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Create DEK for " << Request.GetDiskId().Quote());
+            "Generate DEK for " << Request.GetDiskId().Quote());
 
-        auto actor = std::make_unique<TCreateEncryptionKeyActor>(ctx.SelfID);
+        auto* actorSystem = TActivationContext::ActorSystem();
+        auto selfId = ctx.SelfID;
 
-        ctx.Register(
-            actor.release(),
-            TMailboxType::HTSwap,
-            NKikimr::AppData()->BatchPoolId);
+        KeyProvider->GenerateDataEncryptionKey(Request.GetDiskId())
+            .Subscribe(
+                [=](const auto& future) {
+                    auto [key, error] = future.GetValue();
 
+                    auto response = std::make_unique<
+                        TEvServicePrivate::TEvCreateEncryptionKeyResponse>(
+                        std::move(error),
+                        std::move(key));
+
+                    actorSystem->Send(selfId, response.release());
+                });
         return;
     }
 
@@ -257,12 +199,11 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
     const TEvServicePrivate::TEvCreateEncryptionKeyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& msg = ev->Get();
-    const auto& error = msg->GetError();
+    const auto& msg = *ev->Get();
 
     std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc;
 
-    if (HasError(error)) {
+    if (const auto& error = msg.GetError(); HasError(error)) {
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -277,8 +218,8 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
         auto& desc = encryptionDesc.emplace();
         desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-        desc.MutableEncryptedDEK()->SetKekId(msg->KekId);
-        desc.MutableEncryptedDEK()->SetCiphertext(msg->EncryptedDEK);
+        desc.MutableEncryptedDEK()->SetKekId(msg.KmsKey.GetKekId());
+        desc.MutableEncryptedDEK()->SetCiphertext(msg.KmsKey.GetEncryptedDEK());
     }
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
@@ -379,10 +320,11 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
     if (encryptionDesc) {
-        LOG_INFO_S(
+        LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "========== EncryptionDesc: " << *encryptionDesc);
+            "Creating volume with an encryption: "
+                << NProto::EEncryptionMode_Name(encryptionDesc->GetMode()));
 
         *config.MutableEncryptionDesc() = std::move(*encryptionDesc);
     }
@@ -708,7 +650,8 @@ void TServiceActor::HandleCreateVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        std::move(request));
+        std::move(request),
+        DefaultEncryptionKeyProvider);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

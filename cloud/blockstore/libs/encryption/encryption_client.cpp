@@ -1048,16 +1048,16 @@ class TVolumeEncryptionClientFactory final
     : public IVolumeEncryptionClientFactory
 {
     const ILoggingServicePtr Logging;
-    const IEncryptionKeyProviderPtr EncryptionKeyProvider;
+    const IDefaultEncryptionKeyProviderPtr KeyProvider;
 
     TLog Log;
 
 public:
     TVolumeEncryptionClientFactory(
             ILoggingServicePtr logging,
-            IEncryptionKeyProviderPtr encryptionKeyProvider)
+            IDefaultEncryptionKeyProviderPtr keyProvider)
         : Logging(std::move(logging))
-        , EncryptionKeyProvider(std::move(encryptionKeyProvider))
+        , KeyProvider(std::move(keyProvider))
         , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
     {}
 
@@ -1075,9 +1075,6 @@ public:
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }
 
-        STORAGE_INFO("====== volume: " << volume);
-        STORAGE_INFO("====== desc: " << desc);
-
         if (!desc.HasDataKey()) {
             return MakeFuture<TResponse>(
                 MakeError(E_ARGUMENT, "Empty DataKey"));
@@ -1091,7 +1088,7 @@ public:
         spec.SetMode(desc.GetMode());
         spec.MutableKeyPath()->MutableKmsKey()->CopyFrom(desc.GetDataKey());
 
-        return EncryptionKeyProvider->GetKey(spec, volume.GetDiskId())
+        return KeyProvider->GetKey(spec, volume.GetDiskId())
             .Apply(
                 [client = std::move(client),
                  volume = volume,
@@ -1166,11 +1163,11 @@ IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
 
 IVolumeEncryptionClientFactoryPtr CreateVolumeEncryptionClientFactory(
     ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider)
+    IDefaultEncryptionKeyProviderPtr keyProvider)
 {
     return std::make_shared<TVolumeEncryptionClientFactory>(
         std::move(logging),
-        std::move(encryptionKeyProvider));
+        std::move(keyProvider));
 }
 
 }   // namespace NCloud::NBlockStore

@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -23,6 +24,7 @@ NActors::IActorPtr CreateStorageService(
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     IVolumeStatsPtr volumeStats,
-    TManuallyPreemptedVolumesPtr preemptedVolumes);
+    TManuallyPreemptedVolumesPtr preemptedVolumes,
+    IDefaultEncryptionKeyProviderPtr defaultEncryptionKeyProvider);
 
 }   // namespace NCloud::NBlockStore::NStorage

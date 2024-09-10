@@ -66,6 +66,6 @@ IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
 
 IVolumeEncryptionClientFactoryPtr CreateVolumeEncryptionClientFactory(
     ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider);
+    IDefaultEncryptionKeyProviderPtr keyProvider);
 
 }   // namespace NCloud::NBlockStore

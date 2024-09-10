@@ -25,6 +25,7 @@ RECURSE(
     nvme
     rdma
     rdma_test
+    root_kms
     server
     service
     service_kikimr

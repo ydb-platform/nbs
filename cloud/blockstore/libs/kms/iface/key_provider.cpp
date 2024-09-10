@@ -110,48 +110,6 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TRootKmsKeyProvider
-    : public IKmsKeyProvider
-{
-private:
-    const TExecutorPtr Executor;
-
-public:
-    explicit TRootKmsKeyProvider(TExecutorPtr executor)
-        : Executor(std::move(executor))
-    {}
-
-    TFuture<TResponse> GetKey(
-        const NProto::TKmsKey& kmsKey,
-        const TString& diskId) override
-    {
-        return Executor->Execute([=, this] () mutable {
-            return DoReadKeyFromRootKMS(diskId, kmsKey);
-        });
-    }
-
-private:
-    TResponse DoReadKeyFromRootKMS(
-        const TString& diskId,
-        const NProto::TKmsKey& kmsKey)
-    {
-        if (kmsKey.GetKekId()) {
-            return MakeError(E_NOT_IMPLEMENTED, "TODO: get DEK from Root KMS");
-        }
-
-        auto [key, error] = SafeBase64Decode(kmsKey.GetEncryptedDEK());
-        if (HasError(error)) {
-            return MakeError(error.GetCode(), TStringBuilder()
-                << "failed to decode dek for disk " << diskId
-                << ", error: " << error);
-        }
-
-        return TEncryptionKey(key);
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,11 +125,6 @@ IKmsKeyProviderPtr CreateKmsKeyProvider(
         std::move(iamTokenClient),
         std::move(computeClient),
         std::move(kmsClient));
-}
-
-IKmsKeyProviderPtr CreateRootKmsKeyProvider(TExecutorPtr executor)
-{
-    return std::make_shared<TRootKmsKeyProvider>(std::move(executor));
 }
 
 }   // namespace NCloud::NBlockStore

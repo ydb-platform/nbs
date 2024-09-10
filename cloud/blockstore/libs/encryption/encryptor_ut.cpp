@@ -40,7 +40,8 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto eDataRef = TBlockDataRef{ eData.data(), eData.size() };
         auto dDataRef = TBlockDataRef{ dData.data(), dData.size() };
 
-        auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
+        auto encryptor =
+            CreateAesXtsEncryptor(TEncryptionKey{DefaultEncryptionKey});
 
         auto err1 = encryptor->Encrypt(dataRef, eDataRef, blockIndex);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
@@ -60,7 +61,8 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         TString tmpData = TString::Uninitialized(DefaultBlockSize);
         auto dDataRef = TBlockDataRef{ tmpData.data(), tmpData.size() };
 
-        auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
+        auto encryptor =
+            CreateAesXtsEncryptor(TEncryptionKey{DefaultEncryptionKey});
 
         auto err = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err.GetCode(), err);
@@ -85,7 +87,8 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto eDataRef1 = TBlockDataRef{ eData1.data(), eData1.size() };
         auto eDataRef2 = TBlockDataRef{ eData2.data(), eData2.size() };
 
-        auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
+        auto encryptor =
+            CreateAesXtsEncryptor(TEncryptionKey{DefaultEncryptionKey});
 
         {
             auto err1 = encryptor->Encrypt(dataRef, eDataRef1, blockIndex1);

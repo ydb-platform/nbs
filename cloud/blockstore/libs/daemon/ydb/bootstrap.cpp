@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
@@ -24,6 +25,7 @@
 #include <cloud/blockstore/libs/notify/config.h>
 #include <cloud/blockstore/libs/notify/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/root_kms/key_provider.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
@@ -347,7 +349,7 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("KmsKeyProvider initialized");
 
-    RootKmsKeyProvider = CreateRootKmsKeyProvider(Executor);
+    RootKmsKeyProvider = CreateRootKmsKeyProvider();
 
     STORAGE_INFO("RootKmsKeyProvider initialized");
 
@@ -549,6 +551,8 @@ void TBootstrapYdb::InitKikimrService()
         }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
+    args.DefaultEncryptionKeyProvider =
+        CreateDefaultEncryptionKeyProvider(RootKmsKeyProvider);
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

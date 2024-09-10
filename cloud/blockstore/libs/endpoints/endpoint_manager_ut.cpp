@@ -430,7 +430,8 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
             TestRequestTimeout.MilliSeconds());
 
-        auto encryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
+        auto encryptionKeyProvider =
+            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             bootstrap.Logging,
             encryptionKeyProvider,

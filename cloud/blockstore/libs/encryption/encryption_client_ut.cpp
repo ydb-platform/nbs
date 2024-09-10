@@ -3,6 +3,7 @@
 #include "encryptor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/root_kms/key_provider.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -84,6 +85,31 @@ struct TTestEncryptor final
         }
 
         return {};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestRootKmsKeyProvider final
+    : IRootKmsKeyProvider
+{
+    TFuture<TResultOrError<TEncryptionKey>> GetKey(
+        const NProto::TKmsKey& kmsKey,
+        const TString& diskId) override
+    {
+        Y_UNUSED(diskId);
+
+        return MakeFuture<TResultOrError<TEncryptionKey>>(
+            TEncryptionKey{Base64Decode(kmsKey.GetEncryptedDEK())});
+    }
+
+    TFuture<TResultOrError<NProto::TKmsKey>> GenerateDataEncryptionKey(
+        const TString& diskId) override
+    {
+        Y_UNUSED(diskId);
+
+        return MakeFuture<TResultOrError<NProto::TKmsKey>>(
+            MakeError(E_NOT_IMPLEMENTED));
     }
 };
 
@@ -597,7 +623,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         const auto& buffers = response.GetBlocks().GetBuffers();
         for (int i = 0; i < blocksCount; ++i) {
             TBlockDataRef block(buffers[i].data(), buffers[i].size());
-            UNIT_ASSERT(BlockFilledByValue(block, 0u)); /// ?
+            UNIT_ASSERT(BlockFilledByValue(block, 0u));
         }
     }
 
@@ -1208,7 +1234,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         const TString key = "01234567891011121314151617181920";
         constexpr ui32 blockSize = 4_KB;
 
-        auto encryptor = CreateAesXtsEncryptor(key);
+        auto encryptor = CreateAesXtsEncryptor(TEncryptionKey{key});
 
         auto fillWithEncryption = [&] (auto& sglist, ui32 blocksCount) mutable {
             for (ui32 i = 0; i != blocksCount; ++i) {
@@ -1228,7 +1254,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         auto logging = CreateLoggingService("console");
         auto factory = CreateVolumeEncryptionClientFactory(
-            logging, CreateDefaultEncryptionKeyProvider());
+            logging,
+            CreateDefaultEncryptionKeyProvider(
+                std::make_shared<TTestRootKmsKeyProvider>()));
 
         auto testClient = std::make_shared<TTestService>();
 
@@ -1322,7 +1350,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 const auto& buffers = response.GetBlocks().GetBuffers();
                 for (ui32 i = 0; i != blockCount; ++i) {
                     TBlockDataRef block(buffers[i].data(), buffers[i].size());
-                    UNIT_ASSERT(BlockFilledByValue(block, 'a' + i));
+                    UNIT_ASSERT(BlockFilledByValue(block, 'a' + i)); // ??
                 }
             }
 

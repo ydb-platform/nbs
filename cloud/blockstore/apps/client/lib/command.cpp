@@ -478,11 +478,18 @@ void TCommand::Init()
         EVolumeStatsType::EClientStats,
         Timer);
 
-    auto encryptionKeyProvider = CreateDefaultEncryptionKeyProvider();
+    auto encryptionKeyProvider =
+        CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
+
+    auto defaultEncryptionKeyProvider =
+        CreateDefaultEncryptionKeyProvider(CreateRootKmsKeyProviderStub());
+
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
         encryptionKeyProvider,
-        CreateVolumeEncryptionClientFactory(Logging, encryptionKeyProvider));
+        CreateVolumeEncryptionClientFactory(
+            Logging,
+            defaultEncryptionKeyProvider));
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(
