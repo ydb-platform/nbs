@@ -105,6 +105,10 @@ func TimestampValue(t time.Time) Value {
 	return ydb_types.TimestampValueFromTime(t)
 }
 
+func IntervalValue(t time.Duration) Value {
+	return ydb_types.IntervalValueFromDuration(t)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Result struct {

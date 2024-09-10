@@ -30,6 +30,8 @@ type ExecutionContext interface {
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
+	GetDeadline() time.Time
+
 	SetEstimate(estimatedDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
@@ -43,11 +45,13 @@ type ExecutionContext interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type executionContext struct {
-	task           Task
-	storage        storage.Storage
-	taskState      storage.TaskState
-	taskStateMutex sync.Mutex
-	finished       bool
+	task                        Task
+	storage                     storage.Storage
+	taskState                   storage.TaskState
+	taskStateMutex              sync.Mutex
+	finished                    bool
+	hangingTaskTimeout          time.Duration
+	missedEstimatesUntilHanging uint64
 }
 
 // HACK from https://github.com/stretchr/testify/pull/694/files to avoid fake race detection
@@ -110,6 +114,28 @@ func (c *executionContext) AddTaskDependency(
 		taskState.Dependencies.Add(taskID)
 		return taskState
 	})
+}
+
+func (c *executionContext) GetDeadline() time.Time {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	var estimatedDuration time.Duration
+	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
+		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
+	} else {
+		return defaultDeadline
+	}
+
+	deadline := c.taskState.CreatedAt.Add(
+		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging),
+	)
+	if deadline.Before(defaultDeadline) {
+		return defaultDeadline
+	}
+
+	return deadline
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
@@ -332,12 +358,16 @@ func newExecutionContext(
 	task Task,
 	storage storage.Storage,
 	taskState storage.TaskState,
+	hangingTaskTimeout time.Duration,
+	missedEstimatesUntilHanging uint64,
 ) *executionContext {
 
 	return &executionContext{
-		task:      task,
-		storage:   storage,
-		taskState: taskState,
+		task:                        task,
+		storage:                     storage,
+		taskState:                   taskState,
+		hangingTaskTimeout:          hangingTaskTimeout,
+		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
 	}
 }
 

@@ -617,6 +617,10 @@ func NewScheduler(
 				registry:                  metricsRegistry,
 				storage:                   storage,
 				metricsCollectionInterval: listerMetricsCollectionInterval,
+
+				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
+				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
+				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
 			}
 		},
 	)
