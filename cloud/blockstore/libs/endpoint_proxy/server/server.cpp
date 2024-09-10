@@ -647,7 +647,7 @@ struct TServer: IEndpointProxyServer
         }
 
         auto future = ep.NbdDevice->Start();
-        auto status = future.GetValue();
+        const auto& status = future.GetValue();
         if (HasError(status)) {
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "
