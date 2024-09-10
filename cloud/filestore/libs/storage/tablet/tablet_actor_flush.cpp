@@ -116,6 +116,7 @@ void TFlushActor::WriteBlob(const TActorContext& ctx)
 
     for (auto& blob: Blobs) {
         request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));

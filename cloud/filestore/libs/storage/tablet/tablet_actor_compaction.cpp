@@ -163,6 +163,7 @@ void TCompactionActor::ReadBlob(const TActorContext& ctx)
                 BlockSize
             ));
             request->Blobs.emplace_back(blob.BlobId, std::move(blocks));
+            request->Blobs.back().Async = true;
 
             Buffers[blob.BlobId] = request->Buffer;
 
@@ -204,6 +205,7 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));
