@@ -1,8 +1,8 @@
 LIBRARY()
 
 SRCS(
+    multi_partition_requests.cpp
     partition_info.cpp
-    partition_requests.cpp
     tracing.cpp
 
     volume.cpp

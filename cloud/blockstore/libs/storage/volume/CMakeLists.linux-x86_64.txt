@@ -45,7 +45,7 @@ target_link_libraries(libs-storage-volume PUBLIC
 )
 target_sources(libs-storage-volume PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/partition_info.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/partition_requests.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/multi_partition_requests.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/tracing.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_addclient.cpp
