@@ -82,6 +82,7 @@ void TIndexTabletState::LoadState(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& fileSystemStats,
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
+    const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
@@ -95,6 +96,12 @@ void TIndexTabletState::LoadState(
 
     ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
     ChannelFreeSpaceThreshold = config.GetChannelFreeSpaceThreshold() / 100.;
+
+    LargeDeletionMarkersEnabled = config.GetLargeDeletionMarkersEnabled();
+    LargeDeletionMarkerBlocks = config.GetLargeDeletionMarkerBlocks();
+    LargeDeletionMarkersThreshold = config.GetLargeDeletionMarkersThreshold();
+    LargeDeletionMarkersCleanupThreshold =
+        config.GetLargeDeletionMarkersCleanupThreshold();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

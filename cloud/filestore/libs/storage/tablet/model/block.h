@@ -71,6 +71,21 @@ struct TBlockDataRef: TBlock
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlockDeletion
+{
+    ui64 NodeId = 0;
+    ui32 BlockIndex = 0;
+    ui64 CommitId = 0;
+
+    TBlockDeletion(ui64 nodeId, ui32 blockIndex, ui64 commitId)
+        : NodeId(nodeId)
+        , BlockIndex(blockIndex)
+        , CommitId(commitId)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBytes
 {
     ui64 NodeId = 0;
@@ -245,6 +260,16 @@ struct IMixedBlockVisitor
         const TBlock& block,
         const TPartialBlobId& blobId,
         ui32 blobOffset) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct ILargeBlockVisitor
+{
+    virtual ~ILargeBlockVisitor() = default;
+
+    virtual void Accept(
+        const TBlockDeletion& marker) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

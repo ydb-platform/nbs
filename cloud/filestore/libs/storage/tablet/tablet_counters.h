@@ -21,18 +21,19 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UsedLocksCount,         __VA_ARGS__)                                   \
     xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
                                                                                \
-    xxx(FreshBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlobsCount,        __VA_ARGS__)                                   \
-    xxx(DeletionMarkersCount,   __VA_ARGS__)                                   \
-    xxx(GarbageQueueSize,       __VA_ARGS__)                                   \
-    xxx(GarbageBlocksCount,     __VA_ARGS__)                                   \
-    xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
-    xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
-    xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
-    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
-    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
-    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
+    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
+    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
+    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
+    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
+    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
+    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
+    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
+    xxx(FreshBytesCount,            __VA_ARGS__)                               \
+    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
+    xxx(LastCollectCommitId,        __VA_ARGS__)                               \
+    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
 // FILESTORE_TABLET_STATS
 
 #define FILESTORE_TABLET_SIMPLE_COUNTERS(xxx)                                  \

@@ -82,14 +82,14 @@ public:
     ui32 GetGarbageCompactionThresholdAverage() const;
     bool GetNewCompactionEnabled() const;
     ui32 GetCollectGarbageThreshold() const;
-    ui32 GetFlushBytesThreshold() const;
+    ui64 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
     ui32 GetFlushThresholdForBackpressure() const;
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
-    ui32 GetFlushBytesThresholdForBackpressure() const;
+    ui64 GetFlushBytesThresholdForBackpressure() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;
@@ -257,6 +257,12 @@ public:
 
     ui32 GetChannelFreeSpaceThreshold() const;
     ui32 GetChannelMinFreeSpace() const;
+
+    ui32 GetMaxFileBlocks() const;
+    bool GetLargeDeletionMarkersEnabled() const;
+    ui64 GetLargeDeletionMarkerBlocks() const;
+    ui64 GetLargeDeletionMarkersThreshold() const;
+    ui64 GetLargeDeletionMarkersCleanupThreshold() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

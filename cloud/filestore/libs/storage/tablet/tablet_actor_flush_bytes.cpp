@@ -25,6 +25,7 @@ namespace {
 class TReadBlockVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
+    , public ILargeBlockVisitor
     , public IFreshBytesVisitor
 {
 private:
@@ -69,6 +70,15 @@ public:
             ref.BlobId = blobId;
             ref.BlobOffset = blobOffset;
             Block.Block = std::move(ref);
+        }
+    }
+
+    void Accept(const TBlockDeletion& deletion) override
+    {
+        TABLET_VERIFY(!ApplyingByteLayer);
+
+        if (BlockMinCommitId < deletion.CommitId) {
+            Block = {};
         }
     }
 
@@ -712,6 +722,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             1);
 
         FindMixedBlocks(
+            visitor,
+            bytes.NodeId,
+            args.ReadCommitId,
+            blockIndex,
+            1);
+
+        FindLargeBlocks(
             visitor,
             bytes.NodeId,
             args.ReadCommitId,

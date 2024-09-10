@@ -76,9 +76,6 @@ enum EFilestoreLimits
     // Maximum length of extended attribute value.
     E_FS_LIMITS_XATTR_VALUE = 65536;
 
-    // Until NBS-2979 it's limited to 300GB
-    E_FS_LIMITS_FILEBLOCKS = 78643200;
-
     // Maximum number of inodes.
     E_FS_LIMITS_INODES = -2; // 0xFFFFFFFE
 };
