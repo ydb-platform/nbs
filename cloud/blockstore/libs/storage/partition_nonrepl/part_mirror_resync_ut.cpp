@@ -570,10 +570,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         // Check counters
         auto counters = env.GetMirrorCounters();
 
-        UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.RequestCounters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.Interconnect.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * 2 * DefaultBlockSize * range.Size(),
-            counters.RequestCounters.WriteBlocks.RequestBytes);
+            counters.Interconnect.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(3 * 1, counters.RequestCounters.ZeroBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(

@@ -340,8 +340,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(0);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -353,8 +353,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -379,8 +379,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(0);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -392,8 +392,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -405,8 +405,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(2);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
             for (const auto& block: blocks) {
@@ -431,8 +431,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(0);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -444,8 +444,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -457,8 +457,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(2);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.Interconnect.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(2, counters.Interconnect.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
             for (const auto& block: blocks) {

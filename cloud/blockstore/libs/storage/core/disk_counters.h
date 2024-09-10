@@ -640,7 +640,6 @@ struct TTransportRequestCounters
 {
     using TCounter =
         TMemberWithMeta<TRequestCounters<THistogram<TRequestUsTimeBuckets>>>;
-    ;
     using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
 
     TCounter ReadBlocks{EPublishingPolicy::All};

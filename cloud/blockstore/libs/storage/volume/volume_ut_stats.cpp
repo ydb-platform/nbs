@@ -526,9 +526,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 auto* msg =
                     event->Get<TEvStatsService::TEvVolumePartCounters>();
                 statsForDisks[msg->DiskId].ReadByteCount +=
-                    msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
+                    msg->DiskCounters->Interconnect.ReadBlocks.RequestBytes;
                 statsForDisks[msg->DiskId].WriteByteCount +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
+                    msg->DiskCounters->Interconnect.WriteBlocks.RequestBytes;
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
         };

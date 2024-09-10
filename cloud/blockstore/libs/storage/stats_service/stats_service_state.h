@@ -394,7 +394,8 @@ public:
         Y_ABORT(
             "unsupported media kind: %u, transport counters can only be "
             "used with disk registry based volumes",
-            static_cast<ui32>(mediaKind));    }
+            static_cast<ui32>(mediaKind));
+    }
 
     TTransportCounters& GetInterconnectCounter(
         const NCloud::NProto::EStorageMediaKind mediaKind)

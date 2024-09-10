@@ -2775,7 +2775,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 writeRequests +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.Count;
+                    msg->DiskCounters->Interconnect.WriteBlocks.Count;
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -7116,7 +7116,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 writeRequests +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.Count;
+                    rdmaClient
+                        ? msg->DiskCounters->Rdma.WriteBlocks.Count
+                        : msg->DiskCounters->Interconnect.WriteBlocks.Count;
             }
 
             return false;

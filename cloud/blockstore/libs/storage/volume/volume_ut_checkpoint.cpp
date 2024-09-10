@@ -1454,7 +1454,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 writeRequests +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.Count;
+                    msg->DiskCounters->Interconnect.WriteBlocks.Count;
             }
 
             return false;

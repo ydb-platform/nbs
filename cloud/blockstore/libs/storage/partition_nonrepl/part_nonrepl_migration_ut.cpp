@@ -249,7 +249,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
-        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& counters = env.StorageStatsServiceState->Counters.Interconnect;
         UNIT_ASSERT_VALUES_EQUAL(5, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             (2 + 3072) * DefaultBlockSize,

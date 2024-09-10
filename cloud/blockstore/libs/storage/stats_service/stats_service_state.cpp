@@ -71,7 +71,8 @@ void TTransportCounters::Publish()
     PartAcc.Publish();
 }
 
-void TTransportCounters::UpdatePartCounters(const TPartitionDiskCounters& source)
+void TTransportCounters::UpdatePartCounters(
+    const TPartitionDiskCounters& source)
 {
     PartAcc.AggregateWith(source);
 }

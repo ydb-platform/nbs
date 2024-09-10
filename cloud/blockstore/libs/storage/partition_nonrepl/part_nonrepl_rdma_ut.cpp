@@ -308,7 +308,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
-        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& counters = env.StorageStatsServiceState->Counters.Rdma;
         UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
@@ -385,7 +385,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
-        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& counters = env.StorageStatsServiceState->Counters.Rdma;
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
@@ -576,9 +576,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         auto& requestCounters =
             env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& rdmaRequestCounters = env.StorageStatsServiceState->Counters.Rdma;
         UNIT_ASSERT_VALUES_EQUAL(
             512 * 4096,
-            requestCounters.ReadBlocks.GetRequestBytes());
+            rdmaRequestCounters.ReadBlocks.GetRequestBytes());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             requestCounters.ReadBlocks.GetRequestVoidBytes());
@@ -945,6 +946,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         env.Rdma().InitAllEndpoints();
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& rdmaCounters = env.StorageStatsServiceState->Counters.Rdma;
 
         // Write 3 blocks from 10 to 12.
         auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
@@ -984,7 +986,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
-                counters.ReadBlocks.GetRequestBytes());
+                rdmaCounters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
@@ -1018,7 +1020,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
-                counters.ReadBlocks.GetRequestBytes());
+                rdmaCounters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
@@ -1056,7 +1058,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(
                 onlyVoidBlocks.Size() * DefaultBlockSize,
-                counters.ReadBlocks.GetRequestBytes());
+                rdmaCounters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
@@ -1087,7 +1089,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(
                 onlyVoidBlocks.Size() * DefaultBlockSize,
-                counters.ReadBlocks.GetRequestBytes());
+                rdmaCounters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
