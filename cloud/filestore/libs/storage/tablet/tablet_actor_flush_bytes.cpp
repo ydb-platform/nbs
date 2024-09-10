@@ -258,6 +258,7 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
                 BlockSize
             ));
             request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
+            request->Blobs.back().Async = true;
 
             Buffers[blobToRead.BlobId] = request->Buffer;
 
@@ -324,6 +325,7 @@ void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));
