@@ -311,7 +311,8 @@ void TBootstrap::Start()
                 Options->ConnectDevice,
                 Options->ConnectionTimeout);
         }
-        auto status = NbdDevice->Start().ExtractValue();
+        auto future = NbdDevice->Start();
+        const auto& status = future.GetValue();
         if (HasError(status)) {
             ythrow yexception() << status.GetMessage();
         }
