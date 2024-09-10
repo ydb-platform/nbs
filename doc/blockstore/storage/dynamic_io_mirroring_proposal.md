@@ -35,7 +35,7 @@ In this state, no matter the block index, a write operation will be performed on
 
 There wiil be 3 new entities:
 1) `IncompleteMirrorRWModeController`
-2) `AgentAvailabilityWaiter`
+2) `AgentAvailabilityMonitor`
 3) `SmartMigrationActor`
 
 In the example above, architecture schema will look like this:
@@ -46,15 +46,15 @@ flowchart TD
     B --> C[IncompleteMirrorRWModeController]
     B --> D[IncompleteMirrorRWModeController]
     B --> E[IncompleteMirrorRWModeController]
-    C --> F[AgentAvailabilityWaiter agent-1]
+    C --> F[AgentAvailabilityMonitor agent-1]
     C --> G[NonreplicatedPartition]
     F --> G
-    D --> H[AgentAvailabilityWaiter agent-5]
+    D --> H[AgentAvailabilityMonitor agent-5]
     D --> I[SmartMigrationActor agent-4]
     D --> J[NonreplicatedPartition]
     H --> J
     I --> J
-    E --> K[AgentAvailabilityWaiter agent-7]
+    E --> K[AgentAvailabilityMonitor agent-7]
     K --> L[NonreplicatedPartition]
     E --> L
 ```
@@ -65,23 +65,26 @@ This actor proxies all IO messages between MirrorPartition and `NonreplicatedPar
 A lagging agent can be either unresponsive or resyncing.
 
 - In the unresponsive state:
-    - `AgentAvailabilityWaiter` is created.
+    - `AgentAvailabilityMonitor` is created.
     - Doesn't accept reads.
     - Writes that hit unavailable agent instantly replied with `S_OK` and their range is stored in the dirty block map.
     - Writes that hit 2 agents and one of them is available are split into two parts. The range of the unavailable one is stored in the map. The second one is proxied to `NonreplicatedPartition`.
     - Writes that hit available agents are just proxied to the `NonreplicatedPartition`.
-    - Ultimately, waiting for one of the two events: the volume reallocates and creates a migration partition, or `AgentAvailabilityWaiter` notifies that the agent has become available. The second event switches state to the resyncing.
+    - Ultimately, waiting for one of the two events: the volume reallocates and creates a migration partition, or `AgentAvailabilityMonitor` notifies that the agent has become available. The second event switches state to the resyncing.
 
 - In the resyncing state:
     - `SmartMigrationActor` is created.
     - Doesn't accept reads.
     - Writes are proxied to `SmartMigrationActor`.
 
-There can be 0-1 instances of `IncompleteMirrorRWModeController` per `NonreplicatedPartition`. The presence of the `IncompleteMirrorRWModeController` indicates that the replica has agents that lag behind. `IncompleteMirrorRWModeController` manages the lifetimes of `AgentAvailabilityWaiter` and `SmartMigrationActor` entities.
+There can be 0-1 instances of `IncompleteMirrorRWModeController` per `NonreplicatedPartition`. The presence of the `IncompleteMirrorRWModeController` indicates that the replica has agents that lag behind. `IncompleteMirrorRWModeController` manages the lifetimes of `AgentAvailabilityMonitor` and `SmartMigrationActor` entities.
 
-### AgentAvailabilityWaiter
+Since the dirty block map will not be stored persistently, we must handle lagging replica on restart of a partition, volume, or a whole service. In this case, the basic resync is started, but with a small difference that only devices of lagging agents will be processed.
+There is one caveat, though: mirror-3 disks can now store different data in the same block across all three replicas. The lagging replica - the oldest data and the other two can differ because a write blocks request was sent to only one replica before the restart. That is not a problem because write confirmation was not sent to a client, but it is something that the current resync algorithm is not ready for.
 
-This is simple actor that periodically reads a block with a small timeout. Once it is succeded, it notifies the `IncompleteMirrorRWModeController` which in response will destroy the `AgentAvailabilityWaiter` and create a `SmartMigrationActor`.
+### AgentAvailabilityMonitor
+
+This is simple actor that periodically reads a block with a small timeout. Once it is succeded, it notifies the `IncompleteMirrorRWModeController` which in response will destroy the `AgentAvailabilityMonitor` and create a `SmartMigrationActor`.
 
 ### SmartMigrationActor
 
@@ -99,7 +102,7 @@ sequenceDiagram
     participant Volume
     participant MirrorPartition
     participant IncompleteMirrorRWModeController
-    participant AgentAvailabilityWaiter
+    participant AgentAvailabilityMonitor
     participant SmartMigrationActor
     participant NonreplicatedPartition
 
@@ -108,12 +111,12 @@ sequenceDiagram
     Volume ->> Volume: If ok, save unresponsive agent info persistently
     Volume ->> MirrorPartition: Disable reads and writes to the unresponsive agent
     MirrorPartition ->> IncompleteMirrorRWModeController: Ensure created
-    IncompleteMirrorRWModeController ->> AgentAvailabilityWaiter: Create
+    IncompleteMirrorRWModeController ->> AgentAvailabilityMonitor: Create
     IncompleteMirrorRWModeController ->> NonreplicatedPartition: Reject pending requests
-    AgentAvailabilityWaiter ->> NonreplicatedPartition: Wait until the agent becomes available
-    NonreplicatedPartition ->> AgentAvailabilityWaiter: Agent has responded on read request
-    AgentAvailabilityWaiter ->> IncompleteMirrorRWModeController: Report the agent is available
-    IncompleteMirrorRWModeController -x AgentAvailabilityWaiter: Destroy
+    AgentAvailabilityMonitor ->> NonreplicatedPartition: Wait until the agent becomes available
+    NonreplicatedPartition ->> AgentAvailabilityMonitor: Agent has responded on read request
+    AgentAvailabilityMonitor ->> IncompleteMirrorRWModeController: Report the agent is available
+    IncompleteMirrorRWModeController -x AgentAvailabilityMonitor: Destroy
     IncompleteMirrorRWModeController ->> MirrorPartition: Enable writes to the lagging agent
     IncompleteMirrorRWModeController ->> SmartMigrationActor: Create
     SmartMigrationActor ->> SmartMigrationActor: Migrate lagging blocks
