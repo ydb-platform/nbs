@@ -394,11 +394,11 @@ NProto::TDiskAgentConfig DiskAgentConfig(
     TVector<TString> devices,
     bool acquireRequired)
 {
-    NProto::TDiskAgentConfig agentConfig;
+    auto agentConfig = CreateDefaultAgentConfig();
     agentConfig.SetEnabled(true);
     agentConfig.SetAcquireRequired(acquireRequired);
 
-    for (auto& name: devices) {
+    for (const auto& name: devices) {
         auto* device = agentConfig.MutableMemoryDevices()->Add();
         device->SetName(name);
         device->SetBlocksCount(DefaultBlocksCount);
@@ -411,7 +411,8 @@ NProto::TDiskAgentConfig DiskAgentConfig(
 
 NProto::TDiskAgentConfig DiskAgentConfig()
 {
-    NProto::TDiskAgentConfig config;
+    auto config = CreateDefaultAgentConfig();
+
     config.SetEnabled(true);
     config.SetAgentId("agent");
 
@@ -659,6 +660,16 @@ IStorageProviderPtr CreateTestStorageProvider(
             false,  // directIO
             NServer::EAioSubmitQueueOpt::DontUse
         ));
+}
+
+NProto::TDiskAgentConfig CreateDefaultAgentConfig()
+{
+    NProto::TDiskAgentConfig config;
+
+    config.SetIOParserActorCount(4);
+    config.SetOffloadAllIORequestsParsingEnabled(true);
+
+    return config;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgentTest

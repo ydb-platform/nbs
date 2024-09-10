@@ -108,6 +108,9 @@ public:
 
     bool GetTemporaryAgent() const;
 
+    ui32 GetIOParserActorCount() const;
+    bool GetOffloadAllIORequestsParsingEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
