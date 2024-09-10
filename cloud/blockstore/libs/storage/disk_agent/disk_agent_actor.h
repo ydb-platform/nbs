@@ -86,6 +86,9 @@ private:
 
     TRequestInfoPtr PartiallySuspendAgentRequestInfo;
 
+    TVector<NActors::TActorId> IOParserActors;
+    ui32 ParserActorIdx = 0;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -150,6 +153,8 @@ private:
 
     void UpdateSessionCache(const NActors::TActorContext& ctx);
     void RunSessionCacheActor(const NActors::TActorContext& ctx);
+
+    bool ShouldOffloadRequest(ui32 eventType) const;
 
 private:
     STFUNC(StateInit);
