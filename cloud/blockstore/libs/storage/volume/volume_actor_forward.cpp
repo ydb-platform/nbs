@@ -82,16 +82,14 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
     TVector<TPartitionRequest<TMethod>> partitionRequests;
     TBlockRange64 blockRange;
 
-    bool ok = ToPartitionRequests<TMethod>(
-        State->GetPartitions(),
-        State->GetBlockSize(),
-        blocksPerStripe,
-        ev,
-        &partitionRequests,
-        &blockRange
-    );
-
-    if (!ok) {
+    if (!ToPartitionRequests<TMethod>(
+            State->GetPartitions(),
+            State->GetBlockSize(),
+            blocksPerStripe,
+            ev,
+            &partitionRequests,
+            &blockRange))
+    {
         return false;
     }
 
@@ -119,15 +117,20 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         );
     }
 
-    if constexpr (RequiresReadWriteAccess<TMethod>) {
-        ++MultipartitionWriteAndZeroRequestsInProgress;
-    }
+    auto wrappedRequest = WrapRequest<TMethod>(
+        ev,
+        TActorId{},
+        volumeRequestId,
+        traceTs,
+        false,
+        IsWriteMethod<TMethod>);
 
     NCloud::Register<TMultiPartitionRequestActor<TMethod>>(
         ctx,
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
-        SelfId(),
-        volumeRequestId,
+        CreateRequestInfo(
+            wrappedRequest->Sender,
+            wrappedRequest->Cookie,
+            wrappedRequest->Get()->CallContext),
         blockRange,
         blocksPerStripe,
         State->GetBlockSize(),
@@ -139,6 +142,64 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
+    const typename TMethod::TRequest::TPtr& ev,
+    NActors::TActorId newRecipient,
+    ui64 volumeRequestId,
+    ui64 traceTime,
+    bool forkTraces,
+    bool isMultipartitionWriteOrZero)
+{
+    auto* msg = ev->Get();
+
+    auto originalContext = msg->CallContext;
+    if (forkTraces) {
+        msg->CallContext =
+            MakeIntrusive<TCallContext>(originalContext->RequestId);
+
+        if (!originalContext->LWOrbit.Fork(msg->CallContext->LWOrbit)) {
+            LWTRACK(
+                ForkFailed,
+                originalContext->LWOrbit,
+                TMethod::Name,
+                originalContext->RequestId);
+        }
+    }
+
+    // We wrap the original message so that the response goes through this
+    // actor.
+    auto selfId = SelfId();
+    auto newEvent = typename TMethod::TRequest::TPtr(
+        static_cast<typename TMethod::TRequest::THandle*>(new IEventHandle(
+            newRecipient,
+            selfId,
+            ev->ReleaseBase().Release(),
+            IEventHandle::FlagForwardOnNondelivery,   // flags
+            volumeRequestId,                          // cookie
+            &selfId                                   // forwardOnNondelivery
+            )));
+
+    // We save the original sender to reply to him when we receive a response
+    // from the partition.
+    VolumeRequests.emplace(
+        volumeRequestId,
+        TVolumeRequest(
+            ev->Sender,
+            ev->Cookie,
+            std::move(originalContext),
+            forkTraces ? msg->CallContext : nullptr,
+            traceTime,
+            &RejectVolumeRequest<TMethod>,
+            isMultipartitionWriteOrZero));
+
+    if (isMultipartitionWriteOrZero) {
+        ++MultipartitionWriteAndZeroRequestsInProgress;
+    }
+
+    return newEvent;
+}
 
 template <typename TMethod>
 void TVolumeActor::SendRequestToPartition(
@@ -167,46 +228,26 @@ void TVolumeActor::SendRequestToPartition(
             ToString(partActorId).data());
     }
 
-    const bool processed = SendRequestToPartitionWithUsedBlockTracking<TMethod>(
-        ctx,
+    auto wrappedRequest = WrapRequest<TMethod>(
         ev,
         partActorId,
-        volumeRequestId);
+        volumeRequestId,
+        traceTime,
+        false,
+        false);
 
-    if (processed) {
+    if (SendRequestToPartitionWithUsedBlockTracking<TMethod>(
+            ctx,
+            wrappedRequest,
+            partActorId,
+            TabletID()))
+    {
+        // The request was sent to the partition with tracking of used blocks.
         return;
     }
 
-    auto* msg = ev->Get();
-
-    auto callContext = msg->CallContext;
-    msg->CallContext = MakeIntrusive<TCallContext>(callContext->RequestId);
-
-    if (!callContext->LWOrbit.Fork(msg->CallContext->LWOrbit)) {
-        LWTRACK(ForkFailed, callContext->LWOrbit, TMethod::Name, callContext->RequestId);
-    }
-
-    auto selfId = SelfId();
-    auto event = std::make_unique<IEventHandle>(
-        partActorId,
-        selfId,
-        ev->ReleaseBase().Release(),
-        IEventHandle::FlagForwardOnNondelivery, // flags
-        volumeRequestId,                        // cookie
-        &selfId                                 // forwardOnNondelivery
-    );
-
-    VolumeRequests.emplace(
-        volumeRequestId,
-        TVolumeRequest(
-            ev->Sender,
-            ev->Cookie,
-            std::move(callContext),
-            msg->CallContext,
-            traceTime,
-            &RejectVolumeRequest<TMethod>));
-
-    ctx.Send(std::move(event));
+    // Send request to the partition.
+    ctx.Send(wrappedRequest.Release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,67 +338,80 @@ NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TVolumeActor::HandleResponse(
+void TVolumeActor::ForwardResponse(
     const NActors::TActorContext& ctx,
     const typename TMethod::TResponse::TPtr& ev)
 {
-    Y_UNUSED(ctx);
-
-    auto* msg = ev->Get();
     const ui64 volumeRequestId = ev->Cookie;
-    WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
-    ReplyToDuplicateRequests(
+
+    auto response = std::unique_ptr<typename TMethod::TResponse>(
+        static_cast<typename TMethod::TResponse*>(ev->ReleaseBase().Release()));
+
+    ReplyToOriginalRequest<TMethod>(
         ctx,
+        ev->Sender,
+        ev->Flags,
         volumeRequestId,
-        msg->Record.GetError().GetCode());
-
-    if (auto it = VolumeRequests.find(volumeRequestId);
-        it != VolumeRequests.end())
-    {
-        const TVolumeRequest& volumeRequest = it->second;
-        auto& cc = *volumeRequest.CallContext;
-        cc.LWOrbit.Join(it->second.ForkedContext->LWOrbit);
-
-        FillResponse<TMethod>(*msg, cc, volumeRequest.ReceiveTime);
-
-        // forward response to the caller
-        auto event = std::make_unique<IEventHandle>(
-            volumeRequest.Caller,
-            ev->Sender,
-            ev->ReleaseBase().Release(),
-            ev->Flags,
-            volumeRequest.CallerCookie);
-
-        ctx.Send(event.release());
-
-        VolumeRequests.erase(it);
-    }
-}
-
-void TVolumeActor::HandleMultipartitionWriteOrZeroCompleted(
-    const TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    WriteAndZeroRequestsInFlight.RemoveRequest(msg->VolumeRequestId);
-    ReplyToDuplicateRequests(ctx, msg->VolumeRequestId, msg->ResultCode);
-
-    Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
-    --MultipartitionWriteAndZeroRequestsInProgress;
-    ProcessCheckpointRequests(ctx);
+        std::move(response));
 }
 
 void TVolumeActor::HandleWriteOrZeroCompleted(
     const TEvVolumePrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_UNUSED(ev);
     Y_UNUSED(ctx);
+}
 
-    auto* msg = ev->Get();
+template <typename TMethod>
+bool TVolumeActor::ReplyToOriginalRequest(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    IEventHandle::TEventFlags flags,
+    ui64 volumeRequestId,
+    std::unique_ptr<typename TMethod::TResponse> response)
+{
+    if constexpr (IsWriteMethod<TMethod>) {
+        auto responseCode = response->Record.GetError().GetCode();
+        WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+        ReplyToDuplicateRequests(ctx, volumeRequestId, responseCode);
+    }
 
-    WriteAndZeroRequestsInFlight.RemoveRequest(msg->VolumeRequestId);
-    ReplyToDuplicateRequests(ctx, msg->VolumeRequestId, msg->ResultCode);
+    auto it = VolumeRequests.find(volumeRequestId);
+    if (it == VolumeRequests.end()) {
+        return false;
+    }
+
+    const TVolumeRequest& volumeRequest = it->second;
+
+    if (volumeRequest.ForkedContext) {
+        volumeRequest.CallContext->LWOrbit.Join(
+            volumeRequest.ForkedContext->LWOrbit);
+    }
+
+    FillResponse<TMethod>(
+        *response,
+        *volumeRequest.CallContext,
+        volumeRequest.ReceiveTime);
+
+    // forward response to the caller
+    auto event = std::make_unique<IEventHandle>(
+        volumeRequest.Caller,
+        sender,
+        response.release(),
+        flags,
+        volumeRequest.CallerCookie);
+    ctx.Send(std::move(event));
+
+    if (volumeRequest.IsMultipartitionWriteOrZero) {
+        Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
+        --MultipartitionWriteAndZeroRequestsInProgress;
+        ProcessCheckpointRequests(ctx);
+    }
+
+    VolumeRequests.erase(it);
+
+    return true;
 }
 
 void TVolumeActor::ReplyToDuplicateRequests(
@@ -437,30 +491,18 @@ void TVolumeActor::ForwardRequest(
     // PartitionRequests undelivery handing
     if (ev->Sender == SelfId()) {
         const ui64 volumeRequestId = ev->Cookie;
-        if (auto it = VolumeRequests.find(volumeRequestId);
-            it != VolumeRequests.end())
-        {
-            const TVolumeRequest& volumeRequest = it->second;
-            auto response =
-                std::make_unique<typename TMethod::TResponse>(MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "Volume not ready: " << State->GetDiskId().Quote()));
+        auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Volume not ready: " << State->GetDiskId().Quote()));
 
-            FillResponse<TMethod>(
-                *response,
-                *volumeRequest.CallContext,
-                volumeRequest.ReceiveTime);
-
-            NCloud::Send(
+        if (ReplyToOriginalRequest<TMethod>(
                 ctx,
-                volumeRequest.Caller,
-                std::move(response),
-                volumeRequest.CallerCookie);
-
-            WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
-            ReplyToDuplicateRequests(ctx, volumeRequestId, E_REJECTED);
-            VolumeRequests.erase(it);
+                SelfId(),
+                0,   // flags
+                volumeRequestId,
+                std::move(response)))
+        {
             return;
         }
     }
@@ -672,7 +714,7 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if constexpr (RequiresReadWriteAccess<TMethod>) {
+    if constexpr (IsWriteMethod<TMethod>) {
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());
@@ -719,26 +761,33 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
-
-    /*
-     *  Passing the request to the underlying (storage) layer.
-     */
+    // Now we are ready to send the request to the underlying layer for
+    // processing. We need to save information about all sent requests in
+    // VolumeRequests to respond with E_REJECTED if the partition is stopped.
+    // When the underlying layer responds, we should remove the request from
+    // VolumeRequests.
+    // To do this, all requests before sending to the underlying actor are
+    // prepared by the WrapRequest<TMethod>() method, which replaces the sender
+    // and receiver.
 
     const bool isSinglePartitionVolume = State->GetPartitions().size() <= 1;
     if constexpr (IsCheckpointMethod<TMethod>) {
-        HandleCheckpointRequest<TMethod>(ctx, ev, volumeRequestId, isTraced, now);
+        HandleCheckpointRequest<TMethod>(ctx, ev, isTraced, now);
     } else if (isSinglePartitionVolume) {
         SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, 0, now);
-    } else if (!HandleMultipartitionVolumeRequest<TMethod>(
-                   ctx,
-                   ev,
-                   volumeRequestId,
-                   isTraced,
-                   now))
-    {
-        WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
-
-        replyError(MakeError(E_REJECTED, "Sglist destroyed"));
+    } else {
+        if (!HandleMultipartitionVolumeRequest<TMethod>(
+                ctx,
+                ev,
+                volumeRequestId,
+                isTraced,
+                now))
+        {
+            if constexpr (IsWriteMethod<TMethod>) {
+                WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+            }
+            replyError(MakeError(E_REJECTED, "Sglist destroyed"));
+        }
     }
 }
 
@@ -755,7 +804,7 @@ void TVolumeActor::ForwardRequest(
         const ns::TEv##name##Response::TPtr& ev,                               \
         const NActors::TActorContext& ctx)                                     \
     {                                                                          \
-        HandleResponse<ns::T##name##Method>(ctx, ev);                          \
+        ForwardResponse<ns::T##name##Method>(ctx, ev);                         \
     }                                                                          \
 // BLOCKSTORE_FORWARD_REQUEST
 
