@@ -1101,6 +1101,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             DUMP_INFO_FIELD(cleanupInfo, Score);
             DUMP_INFO_FIELD(cleanupInfo, RangeId);
             DUMP_INFO_FIELD(cleanupInfo, AverageScore);
+            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkersThreshold);
+            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkerCount);
+            DUMP_INFO_FIELD(cleanupInfo, PriorityRangeIdCount);
+            DUMP_INFO_FIELD(cleanupInfo, IsPriority);
             DUMP_INFO_FIELD(cleanupInfo, NewCleanupEnabled);
             DUMP_INFO_FIELD(cleanupInfo, ShouldCleanup);
         }
