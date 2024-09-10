@@ -646,7 +646,8 @@ struct TServer: IEndpointProxyServer
                 TDuration::Days(1));        // timeout
         }
 
-        auto status = ep.NbdDevice->Start().ExtractValue();
+        auto future = ep.NbdDevice->Start();
+        auto status = future.GetValue();
         if (HasError(status)) {
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "
