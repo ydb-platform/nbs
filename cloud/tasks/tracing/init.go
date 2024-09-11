@@ -34,6 +34,17 @@ func StartSpan(
 	return otel.Tracer(tracerName).Start(ctx, spanName, opts...)
 }
 
+func StartSpanWithSampling(
+	ctx context.Context,
+	spanName string,
+	sampled bool,
+	opts ...trace.SpanStartOption,
+) (context.Context, trace.Span) {
+
+	opts = append(opts, WithAttributes(makeShouldSampleAttribute(sampled)))
+	return StartSpan(ctx, spanName, opts...)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func SetError(span trace.Span, err *error) {
@@ -58,6 +69,15 @@ func newTraceExporter(
 	)
 }
 
+func newParentBasedSampler() sdktrace.Sampler {
+	sampler := newSampler() // TODO:_ naming: sampler?
+	return sdktrace.ParentBased(
+		sampler,
+		sdktrace.WithLocalParentSampled(sampler),
+		sdktrace.WithRemoteParentSampled(sampler),
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func InitTracing(
@@ -74,10 +94,9 @@ func InitTracing(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(*config.ServiceName),
 	)
-	sampler := sdktrace.ParentBased(sdktrace.AlwaysSample())
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExporter),
-		sdktrace.WithSampler(sampler),
+		sdktrace.WithSampler(newParentBasedSampler()),
 		sdktrace.WithResource(resource),
 	)
 	otel.SetTracerProvider(tracerProvider)

@@ -83,6 +83,7 @@ type runnerForRun struct {
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
+	maxSampledGeneration              uint64
 }
 
 func (r *runnerForRun) receiveTask(
@@ -321,6 +322,7 @@ func (r *runnerForRun) lockAndExecuteTask(
 		taskInfo,
 		r.hangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
+		taskInfo.GenerationID <= r.maxSampledGeneration, // sampleForTracing
 	)
 }
 
@@ -338,6 +340,7 @@ type runnerForCancel struct {
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
+	maxSampledGeneration              uint64 // TODO:_ maybe not use this limit for cancel?
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -448,6 +451,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		taskInfo,
 		r.hangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
+		taskInfo.GenerationID <= r.maxSampledGeneration, // sampleForTracing
 	)
 }
 
@@ -515,6 +519,7 @@ func lockAndExecuteTask(
 	taskInfo storage.TaskInfo,
 	hangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
+	sampleForTracing bool,
 ) error {
 
 	taskState, err := runner.lockTask(ctx, taskInfo)
@@ -564,9 +569,10 @@ func lockAndExecuteTask(
 	runCtx = logging.WithCommonFields(runCtx)
 	runCtx = tracing.GetTracingContext(runCtx)
 
-	runCtx, span := tracing.StartSpan(
+	runCtx, span := tracing.StartSpanWithSampling(
 		runCtx,
 		fmt.Sprintf(taskInfo.TaskType),
+		sampleForTracing,
 		tracing.WithAttributes(
 			tracing.AttributeString("task_id", taskInfo.ID),
 			tracing.AttributeInt64(
@@ -646,6 +652,7 @@ func startRunner(
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
 	missedEstimatesUntilTaskIsHanging uint64,
+	maxSampledGeneration uint64,
 ) error {
 
 	// TODO: More granular control on runners and cancellers.
@@ -671,6 +678,7 @@ func startRunner(
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
+		maxSampledGeneration:              maxSampledGeneration,
 	})
 
 	runnerForCancelMetrics := newRunnerMetrics(
@@ -692,6 +700,7 @@ func startRunner(
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
+		maxSampledGeneration:              maxSampledGeneration,
 	})
 
 	return nil
@@ -713,6 +722,7 @@ func startRunners(
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
 	missedEstimatesUntilTaskIsHanging uint64,
+	maxSampledGeneration uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -733,6 +743,7 @@ func startRunners(
 			maxRetriableErrorCount,
 			maxPanicCount,
 			missedEstimatesUntilTaskIsHanging,
+			maxSampledGeneration,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start runner #%d: %w", i, err)
@@ -758,6 +769,7 @@ func startStalkingRunners(
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
 	missedEstimatesUntilTaskIsHanging uint64,
+	maxSampledGeneration uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -778,6 +790,7 @@ func startStalkingRunners(
 			maxRetriableErrorCount,
 			maxPanicCount,
 			missedEstimatesUntilTaskIsHanging,
+			maxSampledGeneration,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start stalking runner #%d: %w", i, err)
@@ -929,6 +942,7 @@ func StartRunners(
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
 		config.GetMissedEstimatesUntilTaskIsHanging(),
+		config.GetMaxSampledGeneration(),
 	)
 	if err != nil {
 		return err
@@ -981,6 +995,7 @@ func StartRunners(
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
 		config.GetMissedEstimatesUntilTaskIsHanging(),
+		config.GetMaxSampledGeneration(),
 	)
 	if err != nil {
 		return err
