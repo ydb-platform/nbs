@@ -247,7 +247,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
 
         auto clientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
 
         auto service = std::make_shared<TTestService>();
         service->CreateVolumeHandler =

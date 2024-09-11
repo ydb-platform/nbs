@@ -246,7 +246,7 @@ TPlugin::TPlugin(
 {
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

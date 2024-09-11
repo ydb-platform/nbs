@@ -21,13 +21,25 @@ namespace {
 
 const TString DefaultEncryptionKey = "01234567890123456789012345678901";
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixture: public NUnitTest::TBaseFixture
+{
+    IEncryptionKeyProviderPtr KeyProvider;
+
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        KeyProvider = CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
 {
-    Y_UNIT_TEST(ShouldGetTheSameEncryptionKeyHashesFromFileAndKeyring)
+    Y_UNIT_TEST_F(ShouldGetTheSameEncryptionKeyHashesFromFileAndKeyring, TFixture)
     {
         TString fileKeyHash;
         {
@@ -38,8 +50,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             auto& keyPath = *spec.MutableKeyPath();
             keyPath.SetFilePath(keyFile.GetPath());
 
-            auto keyProvider = CreateDefaultEncryptionKeyProvider();
-            auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
+            auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
             fileKeyHash = keyOrError.GetResult().GetHash();
             UNIT_ASSERT(!fileKeyHash.empty());
@@ -74,8 +85,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             auto& keyPath = *spec.MutableKeyPath();
             keyPath.SetKeyringId(FromString<ui32>(keyringOrError.GetResult()));
 
-            auto keyProvider = CreateDefaultEncryptionKeyProvider();
-            auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
+            auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
             keyringKeyHash = keyOrError.GetResult().GetHash();
             UNIT_ASSERT(!keyringKeyHash.empty());
@@ -84,7 +94,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
         UNIT_ASSERT_VALUES_EQUAL(fileKeyHash, keyringKeyHash);
     }
 
-    Y_UNIT_TEST(ShouldFailEncryptorCreationIfKeyringKeyLengthIsInvalid)
+    Y_UNIT_TEST_F(ShouldFailEncryptorCreationIfKeyringKeyLengthIsInvalid, TFixture)
     {
         const TString guid = CreateGuidAsString();
         const TString nbsDesc = "nbs_" + guid;
@@ -113,9 +123,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.SetKeyringId(FromString<ui32>(keyringOrError.GetResult()));
 
-        auto keyProvider = CreateDefaultEncryptionKeyProvider();
-
-        auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
+        auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             keyOrError.GetError().GetCode());
