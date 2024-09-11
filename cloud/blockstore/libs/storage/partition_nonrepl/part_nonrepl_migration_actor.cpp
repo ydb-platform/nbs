@@ -41,16 +41,19 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
-    , TimeoutCalculator(
-          Config->GetMaxMigrationBandwidth(),
-          Config->GetExpectedDiskAgentSize(),
-          SrcConfig)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
-    InitWork(ctx, CreateSrcActor(ctx), CreateDstActor(ctx));
+    InitWork(
+        ctx,
+        CreateSrcActor(ctx),
+        CreateDstActor(ctx),
+        std::make_unique<TMigrationTimeoutCalculator>(
+            Config->GetMaxMigrationBandwidth(),
+            Config->GetExpectedDiskAgentSize(),
+            SrcConfig));
 
     PrepareForMigration(ctx);
 }
@@ -72,21 +75,11 @@ bool TNonreplicatedPartitionMigrationActor::OnMessage(
         HFunc(
             TEvDiskRegistry::TEvFinishMigrationResponse,
             HandleFinishMigrationResponse);
-        HFunc(
-            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
-            TimeoutCalculator.HandleUpdateBandwidthLimit);
-        HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         default:
             return false;
             break;
     }
     return true;
-}
-
-TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout(
-    TBlockRange64 range)
-{
-    return TimeoutCalculator.CalculateTimeout(range);
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
@@ -228,16 +221,6 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             RdmaClient));
 }
 
-void TNonreplicatedPartitionMigrationActor::DoRegisterTrafficSource(
-    const NActors::TActorContext& ctx)
-{
-    if (MigrationFinished) {
-        return;
-    }
-    TimeoutCalculator.RegisterTrafficSource(ctx);
-    ctx.Schedule(RegisterBackgroundTrafficDuration, new TEvents::TEvWakeup());
-}
-
 void TNonreplicatedPartitionMigrationActor::HandleMigrationStateUpdated(
     const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
     const TActorContext& ctx)
@@ -310,16 +293,6 @@ void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationRespo
     }
 
     StartWork(ctx);
-    DoRegisterTrafficSource(ctx);
-}
-
-void TNonreplicatedPartitionMigrationActor::HandleWakeup(
-    const NActors::TEvents::TEvWakeup::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    DoRegisterTrafficSource(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
