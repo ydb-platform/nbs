@@ -99,7 +99,8 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
 }
 
 TPermissionList GetRequestPermissions(
-    const NProto::TExecuteActionRequest& request)
+    const NProto::TExecuteActionRequest& request,
+    const TVector<TString>& actionsNoAuth)
 {
     TString action = request.GetAction();
     action.to_lower();
@@ -107,6 +108,10 @@ TPermissionList GetRequestPermissions(
     auto perms = [] (TString name, TPermissionList lst) {
         return std::pair {name, std::move(lst)};
     };
+
+    if (!!FindPtr(actionsNoAuth, action)) {
+        return TPermissionList();
+    }
 
     static const THashMap<TString, TPermissionList> actions = {
         // Get

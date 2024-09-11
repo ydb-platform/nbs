@@ -26,9 +26,9 @@ private:
 
 public:
     TAuthService(
-        IFileStoreServicePtr service,
-        IAuthProviderPtr authProvider,
-        TVector<TString> actionsNoAuth)
+            IFileStoreServicePtr service,
+            IAuthProviderPtr authProvider,
+            TVector<TString> actionsNoAuth)
         : Service(std::move(service))
         , AuthProvider(std::move(authProvider))
         , ActionsNoAuth(std::move(actionsNoAuth))
@@ -73,23 +73,6 @@ public:
             std::move(responseHandler));
     }
 
-    template <typename TRequest>
-    bool ShouldIgnorePermissions(const TRequest& request) const
-    {
-        Y_UNUSED(request);
-        return false;
-    }
-
-    template <>
-    bool ShouldIgnorePermissions<NProto::TExecuteActionRequest>(
-        const NProto::TExecuteActionRequest& request) const
-    {
-        return std::find(
-                   ActionsNoAuth.begin(),
-                   ActionsNoAuth.end(),
-                   request.GetAction()) != ActionsNoAuth.end();
-    }
-
 private:
     template <typename TRequest, typename TResponse>
     TFuture<TResponse> ExecuteRequest(
@@ -98,10 +81,7 @@ private:
     {
         const auto& headers = request->GetHeaders();
         const auto& internal = headers.GetInternal();
-        auto permissions = GetRequestPermissions(*request);
-        if (ShouldIgnorePermissions(*request)) {
-            permissions = {};
-        }
+        auto permissions = GetRequestPermissions(*request, ActionsNoAuth);
 
         bool needAuth = AuthProvider->NeedAuth(
             internal.GetRequestSource(),

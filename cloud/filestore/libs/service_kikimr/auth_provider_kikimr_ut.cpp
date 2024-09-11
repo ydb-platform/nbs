@@ -101,7 +101,8 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
 
         auto service = CreateAuthService(
             testService,
-            CreateKikimrAuthProvider(actorSystem));
+            CreateKikimrAuthProvider(actorSystem),
+            {});
 
         // When requiring authorization and failing it, we fail the request.
         {
@@ -185,7 +186,8 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
 
         auto service = CreateAuthService(
             std::make_shared<TFileStoreTest>(),
-            CreateKikimrAuthProvider(actorSystem));
+            CreateKikimrAuthProvider(actorSystem),
+            {});
 
         auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
         auto& headers = *request->MutableHeaders();
