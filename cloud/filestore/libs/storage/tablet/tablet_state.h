@@ -731,8 +731,11 @@ public:
         }
     };
 
+    using TBackpressureValues = TBackpressureThresholds;
+
     bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
+        const TBackpressureValues& values,
         TString* message) const;
 
     //

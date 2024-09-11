@@ -377,6 +377,7 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
 
