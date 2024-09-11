@@ -218,7 +218,6 @@ def __run_test(test_case):
         server_app_config.ServerConfig.CopyFrom(TServerConfig())
         server_app_config.ServerConfig.ThreadsCount = thread_count()
         server_app_config.ServerConfig.StrictContractValidation = False
-        server_app_config.ServerConfig.NodeType = 'main'
         server_app_config.ServerConfig.NbdEnabled = True
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
@@ -242,6 +241,7 @@ def __run_test(test_case):
         storage.AgentRequestTimeout = 5000      # 5 sec
         storage.RejectLateRequestsAtDiskAgentEnabled = test_case.reject_late_requests_at_disk_agent
         storage.AssignIdToWriteAndZeroRequestsEnabled = test_case.reject_late_requests_at_disk_agent
+        storage.NodeType = 'main'
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
@@ -292,7 +292,7 @@ def __run_test(test_case):
                 disk_agent.start()
                 wait_for_disk_agent(disk_agent.mon_port)
             else:
-                server_app_config.ServerConfig.NodeType = "disk-agent"
+                storage.NodeType = "disk-agent"
                 disk_agent = LocalNbs(
                     kikimr_port,
                     configurator.domains_txt,

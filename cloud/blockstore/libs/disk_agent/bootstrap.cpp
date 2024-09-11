@@ -289,17 +289,18 @@ void TBootstrap::InitKikimrService()
     Configs->InitDiagnosticsConfig();
     Configs->InitSpdkEnvConfig();
 
+    const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
+
     NCloud::NStorage::TNodeRegistrationSettings settings {
         .MaxAttempts =
-            Configs->ServerConfig->GetNodeRegistrationMaxAttempts(),
-        .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
-        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout(),
-        .PathToGrpcCaFile = Configs->ServerConfig->GetRootCertsFile(),
-        .PathToGrpcCertFile = GetCertFileFromConfig(*Configs->ServerConfig),
-        .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
-            *Configs->ServerConfig),
-        .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
-        .NodeType = Configs->Options->NodeType,
+            Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
+        .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
+        .PathToGrpcCertFile = cert.CertFile,
+        .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
+        .NodeRegistrationToken = Configs->StorageConfig->GetNodeRegistrationToken(),
+        .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {

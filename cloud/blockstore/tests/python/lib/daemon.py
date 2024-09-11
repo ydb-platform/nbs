@@ -245,12 +245,13 @@ def __enable_custom_cms_configs(ydb):
     assert response.Status.Code == StatusIds.SUCCESS
 
 
-def start_ydb():
+def start_ydb(grpc_ssl_enable=False):
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
         has_cluster_uuid=False,
         use_in_memory_pdisks=True,
+        grpc_ssl_enable=grpc_ssl_enable,
         dynamic_storage_pools=[
             {"name": "dynamic_storage_pool:1", "kind": "hdd", "pdisk_user_kind": 0},
             {"name": "dynamic_storage_pool:2", "kind": "ssd", "pdisk_user_kind": 0}
