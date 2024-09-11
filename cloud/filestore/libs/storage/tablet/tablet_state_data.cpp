@@ -177,18 +177,42 @@ void TIndexTabletState::DeleteRange(
             range.FirstAlignedBlock(),
             deletedBlockCount);
 
-        SplitRange(
-            range.FirstAlignedBlock(),
-            deletedBlockCount,
-            BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
-                MarkMixedBlocksDeleted(
-                    db,
-                    nodeId,
-                    commitId,
-                    range.FirstAlignedBlock() + blockOffset,
-                    blocksCount);
-            });
+        const bool useLargeDeletionMarkers = LargeDeletionMarkersEnabled
+            && deletedBlockCount >= LargeDeletionMarkersThreshold;
+        if (useLargeDeletionMarkers) {
+            SplitRange(
+                range.FirstAlignedBlock(),
+                deletedBlockCount,
+                LargeDeletionMarkerBlocks,
+                [&] (ui32 blockOffset, ui32 blocksCount) {
+                    Impl->LargeBlocks.AddDeletionMarker({
+                        nodeId,
+                        commitId,
+                        static_cast<ui32>(
+                            range.FirstAlignedBlock() + blockOffset),
+                        blocksCount});
+                    db.WriteLargeDeletionMarkers(
+                        nodeId,
+                        commitId,
+                        range.FirstAlignedBlock() + blockOffset,
+                        blocksCount);
+                });
+
+            IncrementLargeDeletionMarkersCount(db, deletedBlockCount);
+        } else {
+            SplitRange(
+                range.FirstAlignedBlock(),
+                deletedBlockCount,
+                BlockGroupSize,
+                [&] (ui32 blockOffset, ui32 blocksCount) {
+                    MarkMixedBlocksDeleted(
+                        db,
+                        nodeId,
+                        commitId,
+                        range.FirstAlignedBlock() + blockOffset,
+                        blocksCount);
+                });
+        }
     }
 
     WriteFreshBytesDeletionMarker(
@@ -238,31 +262,27 @@ bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
 
 bool TIndexTabletState::IsWriteAllowed(
     const TIndexTabletState::TBackpressureThresholds& thresholds,
+    const TIndexTabletState::TBackpressureValues& values,
     TString* message) const
 {
-    const auto freshBlocksDataSize = GetFreshBlocksCount() * GetBlockSize();
-
-    if (freshBlocksDataSize >= thresholds.Flush) {
-        *message = TStringBuilder() << "freshBlocksDataSize: "
-            << freshBlocksDataSize;
+    if (values.Flush >= thresholds.Flush) {
+        *message = TStringBuilder() << "freshBlocksDataSize: " << values.Flush;
         return false;
     }
 
-    const auto freshBytesCount = GetFreshBytesCount();
-    if (freshBytesCount >= thresholds.FlushBytes) {
-        *message = TStringBuilder() << "freshBytesCount: " << freshBytesCount;
+    if (values.FlushBytes >= thresholds.FlushBytes) {
+        *message = TStringBuilder() << "freshBytesCount: " << values.FlushBytes;
         return false;
     }
 
-    const auto compactionScore = GetRangeToCompact().Score;
-    if (compactionScore >= thresholds.CompactionScore) {
-        *message = TStringBuilder() << "compactionScore: " << compactionScore;
+    if (values.CompactionScore >= thresholds.CompactionScore) {
+        *message = TStringBuilder()
+                   << "compactionScore: " << values.CompactionScore;
         return false;
     }
 
-    const auto cleanupScore = GetRangeToCleanup().Score;
-    if (cleanupScore >= thresholds.CleanupScore) {
-        *message = TStringBuilder() << "cleanupScore: " << cleanupScore;
+    if (values.CleanupScore >= thresholds.CleanupScore) {
+        *message = TStringBuilder() << "cleanupScore: " << values.CleanupScore;
         return false;
     }
 
@@ -657,6 +677,7 @@ bool TIndexTabletState::WriteMixedBlocks(
     if (isMixedRangeLoaded) {
         Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blocks);
     }
+    Impl->LargeBlocks.ApplyDeletionMarkers(blocks);
 
     auto rebaseResult = RebaseMixedBlocks(blocks);
 
@@ -768,6 +789,7 @@ TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) c
     auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
     for (auto& blob: blobs) {
         RebaseMixedBlocks(blob.Blocks);
+        Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
     }
     return blobs;
 }
@@ -826,24 +848,58 @@ void TIndexTabletState::UpdateBlockLists(
     WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 }
 
-ui32 TIndexTabletState::CleanupMixedBlockDeletions(
+ui32 TIndexTabletState::CleanupBlockDeletions(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    auto affectedBlobs = Impl->MixedBlocks.ApplyDeletionMarkers(rangeId);
+    auto affectedBlobs =
+        Impl->MixedBlocks.ApplyDeletionMarkersAndGetMetas(rangeId);
 
     ui64 removedBlobs = 0;
+    TVector<TMixedBlobMeta> updatedBlobs;
     for (auto& blob: affectedBlobs) {
-        DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+        const bool affected =
+            Impl->LargeBlocks.ApplyDeletionMarkers(blob.BlobMeta.Blocks);
+        if (!blob.Affected && !affected) {
+            // small optimization - not rewriting blob metas for the blobs that
+            // were not affected by deletion markers
+            continue;
+        }
 
-        bool written = WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+        DeleteMixedBlocks(
+            db,
+            rangeId,
+            blob.BlobMeta.BlobId,
+            blob.BlobMeta.Blocks);
+
+        bool written = WriteMixedBlocks(
+            db,
+            rangeId,
+            blob.BlobMeta.BlobId,
+            blob.BlobMeta.Blocks);
         if (!written) {
             ++removedBlobs;
         }
+
+        updatedBlobs.emplace_back(std::move(blob.BlobMeta));
     }
 
-    AddBlobsInfo(GetBlockSize(), affectedBlobs, profileLogRequest);
+    if (PriorityRangesForCleanup) {
+        const auto& pr = PriorityRangesForCleanup.front();
+        if (pr.RangeId == rangeId) {
+            // TODO(#1923): think about checkpoints once more
+            Impl->LargeBlocks.MarkProcessed(
+                pr.NodeId,
+                GetCurrentCommitId(),
+                pr.BlockIndex,
+                pr.BlockCount);
+
+            PriorityRangesForCleanup.pop_front();
+        }
+    }
+
+    AddBlobsInfo(GetBlockSize(), updatedBlobs, profileLogRequest);
 
     auto deletionMarkers = Impl->MixedBlocks.ExtractDeletionMarkers(rangeId);
 
@@ -859,6 +915,20 @@ ui32 TIndexTabletState::CleanupMixedBlockDeletions(
     }
 
     DecrementDeletionMarkersCount(db, deletionMarkerCount);
+
+    auto largeDeletionMarkers =
+        Impl->LargeBlocks.ExtractProcessedDeletionMarkers();
+    ui32 largeDeletionMarkerCount = 0;
+    for (const auto& deletionMarker: largeDeletionMarkers) {
+        db.DeleteLargeDeletionMarker(
+            deletionMarker.NodeId,
+            deletionMarker.CommitId,
+            deletionMarker.BlockIndex);
+
+        largeDeletionMarkerCount += deletionMarker.BlockCount;
+    }
+
+    DecrementLargeDeletionMarkersCount(db, largeDeletionMarkerCount);
 
     auto stats = GetCompactionStats(rangeId);
     // FIXME: return SafeDecrement after NBS-4475
@@ -902,6 +972,7 @@ void TIndexTabletState::RewriteMixedBlocks(
     db.DeleteMixedBlocks(rangeId, blob.BlobId);
 
     Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blob.Blocks);
+    Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
 
     auto rebaseResult = RebaseMixedBlocks(blob.Blocks);
 
@@ -983,6 +1054,24 @@ const IBlockLocation2RangeIndex& TIndexTabletState::GetRangeIdHasher() const
     TABLET_VERIFY(Impl->RangeIdHasher);
 
     return *Impl->RangeIdHasher;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// LargeBlocks
+
+void TIndexTabletState::FindLargeBlocks(
+    ILargeBlockVisitor& visitor,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount) const
+{
+    Impl->LargeBlocks.FindBlocks(
+        visitor,
+        nodeId,
+        commitId,
+        blockIndex,
+        blocksCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1114,6 +1203,41 @@ TCompactionCounter TIndexTabletState::GetRangeToCompact() const
 TCompactionCounter TIndexTabletState::GetRangeToCleanup() const
 {
     return Impl->CompactionMap.GetTopCleanupScore();
+}
+
+TMaybe<TIndexTabletState::TPriorityRange>
+TIndexTabletState::NextPriorityRangeForCleanup() const
+{
+    if (PriorityRangesForCleanup.empty()
+            && GetLargeDeletionMarkersCount()
+                >= LargeDeletionMarkersCleanupThreshold)
+    {
+        auto one = Impl->LargeBlocks.GetOne();
+        SplitRange(
+            one.BlockIndex,
+            one.BlockCount,
+            BlockGroupSize,
+            [&] (ui32 blockOffset, ui32 blocksCount) {
+                PriorityRangesForCleanup.push_back({
+                    one.NodeId,
+                    one.BlockIndex + blockOffset,
+                    blocksCount,
+                    GetMixedRangeIndex(
+                        one.NodeId,
+                        one.BlockIndex + blockOffset)});
+            });
+    }
+
+    if (PriorityRangesForCleanup) {
+        return PriorityRangesForCleanup.front();
+    }
+
+    return {};
+}
+
+ui32 TIndexTabletState::GetPriorityRangeCount() const
+{
+    return PriorityRangesForCleanup.size();
 }
 
 TCompactionMapStats TIndexTabletState::GetCompactionMapStats(ui32 topSize) const

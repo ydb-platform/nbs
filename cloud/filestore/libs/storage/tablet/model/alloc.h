@@ -18,6 +18,7 @@ enum class EAllocatorTag
     ReadAheadCache,
     NodeIndexCache,
     InMemoryNodeIndexCache,
+    LargeBlocks,
 
     Max
 };

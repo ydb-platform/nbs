@@ -737,6 +737,14 @@ func (client *discoveryClient) RefreshEndpoint(
 	panic("not implemented")
 }
 
+func (client *discoveryClient) ResizeDevice(
+	ctx context.Context,
+	req *protos.TResizeDeviceRequest,
+) (*protos.TResizeDeviceResponse, error) {
+
+	panic("not implemented")
+}
+
 func (client *discoveryClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

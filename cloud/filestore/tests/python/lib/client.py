@@ -77,6 +77,19 @@ class NfsCliClient:
 
         return pid
 
+    def resize(self, fs, blk_count, force=False):
+        cmd = [
+            self.__binary_path, "resize",
+            "--filesystem", fs,
+            "--blocks-count", str(blk_count),
+        ] + self.__cmd_opts()
+
+        if force:
+            cmd.append("--force")
+
+        logger.info("resizing nfs: " + " ".join(cmd))
+        return common.execute(cmd).stdout
+
     def list_filestores(self):
         cmd = [
             self.__binary_path, "listfilestores",

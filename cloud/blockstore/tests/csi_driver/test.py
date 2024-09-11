@@ -1,5 +1,6 @@
 import logging
 import os
+import pytest
 import subprocess
 import tempfile
 import time
@@ -75,7 +76,9 @@ def init():
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
-        use_in_memory_pdisks=True)
+        use_in_memory_pdisks=True,
+        with_endpoint_proxy=True,
+        with_netlink=True)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -213,6 +216,17 @@ class NbsCsiDriverRunner:
         )
         return json.loads(ret)
 
+    def expand_volume(self, pod_id: str, volume_id: str, size: int):
+        return self._node_run(
+            "expandvolume",
+            "--pod-id",
+            pod_id,
+            "--volume-id",
+            volume_id,
+            "--size",
+            str(size),
+        )
+
 
 def cleanup_after_test(env: CsiLoadTest):
     if env is None:
@@ -332,16 +346,17 @@ def test_nbs_csi_driver_volume_stat():
         cleanup_after_test(env)
 
 
-def test_csi_sanity_nbs_backend():
+@pytest.mark.parametrize('mount_path,volume_access_type',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount"),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block")])
+def test_csi_sanity_nbs_backend(mount_path, volume_access_type):
     env, run = init()
-    podId = "123"
-    nodeId = "456"
     backend = "nbs"
 
     try:
         CSI_SANITY_BINARY_PATH = common.binary_path("cloud/blockstore/tools/testing/csi-sanity/bin/csi-sanity")
-        mount_dir = Path("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish") / podId
-        mount_dir.mkdir(parents=True, exist_ok=True)
+        mount_dir = Path(mount_path)
+        mount_dir.parent.mkdir(parents=True, exist_ok=True)
 
         params_file = Path(os.getcwd()) / "params.yaml"
         params_file.write_text(f"backend: {backend}")
@@ -352,11 +367,11 @@ def test_csi_sanity_nbs_backend():
                 "-csi.endpoint",
                 env.csi._endpoint,
                 "--csi.mountdir",
-                mount_dir / nodeId,
+                mount_dir,
                 "-csi.testvolumeparameters",
                 params_file,
                 "-csi.testvolumeaccesstype",
-                "block",
+                volume_access_type,
                 "--ginkgo.skip",
                 '|'.join(skipTests)]
         subprocess.run(
@@ -369,4 +384,40 @@ def test_csi_sanity_nbs_backend():
         log_called_process_error(e)
         raise
     finally:
+        cleanup_after_test(env)
+
+
+def test_node_volume_expand():
+    env, run = init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name = "example-pod"
+        pod_id = "deadbeef"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.publish_volume(pod_id, volume_name, pod_name)
+
+        new_volume_size = 2 * volume_size
+        env.csi.expand_volume(pod_id, volume_name, new_volume_size)
+
+        stats = env.csi.volumestats(pod_id, volume_name)
+        assert "usage" in stats
+        usage_array = stats["usage"]
+        assert 2 == len(usage_array)
+        bytes_usage = usage_array[0]
+        assert "total" in bytes_usage
+        # approximate check that total space is around 2GB
+        assert bytes_usage["total"] // 1000 ** 3 == 2
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        try:
+            env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.delete_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
         cleanup_after_test(env)

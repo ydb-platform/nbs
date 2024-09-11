@@ -366,10 +366,42 @@ TBlockRange64 BuildRequestBlockRange(
     const TEvService::TEvZeroBlocksRequest& request,
     const ui32 blockSize)
 {
-    Y_UNUSED(blockSize);
     return TBlockRange64::WithLength(
         request.Record.GetStartIndex(),
         CalculateWriteRequestBlockCount(request.Record, blockSize));
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvVolume::TEvDescribeBlocksRequest& request,
+    const ui32 blockSize)
+{
+    Y_UNUSED(blockSize);
+
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvService::TEvGetChangedBlocksRequest& request,
+    const ui32 blockSize)
+{
+    Y_UNUSED(blockSize);
+
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvVolume::TEvCompactRangeRequest& request,
+    const ui32 blockSize)
+{
+    Y_UNUSED(blockSize);
+
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.Record.GetBlocksCount());
 }
 
 TBlockRange64 BuildRequestBlockRange(

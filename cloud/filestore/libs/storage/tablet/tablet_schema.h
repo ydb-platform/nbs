@@ -59,6 +59,8 @@ struct TIndexTabletSchema
 
         struct DeletedFreshBytesCount
             : Column<24, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct LargeDeletionMarkersCount
+            : Column<25, NKikimr::NScheme::NTypeIds::Uint64> {};
 
         using TKey = TableKey<Id>;
 
@@ -86,7 +88,8 @@ struct TIndexTabletSchema
             UsedBlocksCount,
             AttrsUsedBytesCount,
             StorageConfig,
-            DeletedFreshBytesCount
+            DeletedFreshBytesCount,
+            LargeDeletionMarkersCount
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
@@ -510,6 +513,26 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct LargeDeletionMarkers: TTableSchema<26>
+    {
+        struct NodeId       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct CommitId     : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct BlockIndex   : Column<3, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct BlocksCount  : Column<4, NKikimr::NScheme::NTypeIds::Uint32> {};
+
+        using TKey = TableKey<NodeId, CommitId, BlockIndex>;
+
+        using TColumns = TableColumns<
+            NodeId,
+            CommitId,
+            BlockIndex,
+            BlocksCount
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -535,7 +558,8 @@ struct TIndexTabletSchema
         TabletStorageInfo,
         TruncateQueue,
         SessionHistory,
-        OpLog
+        OpLog,
+        LargeDeletionMarkers
     >;
 
     using TSettings = SchemaSettings<

@@ -383,7 +383,6 @@ def __run_test(test_case, cleanup_dr_state):
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
-    server_app_config.ServerConfig.NodeType = 'main'
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
     certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
@@ -403,6 +402,7 @@ def __run_test(test_case, cleanup_dr_state):
     storage.NonReplicatedDiskRecyclingPeriod = 5000
     storage.DisableLocalService = False
     storage.CleanupDRConfigOnCMSActions = cleanup_dr_state
+    storage.NodeType = 'main'
 
     nbs = Nbs(
         kikimr_port,
@@ -427,7 +427,7 @@ def __run_test(test_case, cleanup_dr_state):
 
     # node with DiskAgent
 
-    server_app_config.ServerConfig.NodeType = 'disk-agent'
+    storage.NodeType = 'disk-agent'
     storage.DisableLocalService = True
 
     disk_agent = LocalNbs(

@@ -42,10 +42,11 @@ func (s *StorageMock) SnapshotCreated(
 func (s *StorageMock) DeletingSnapshot(
 	ctx context.Context,
 	snapshotID string,
-) error {
+	taskID string,
+) (*storage.SnapshotMeta, error) {
 
-	args := s.Called(ctx, snapshotID)
-	return args.Error(0)
+	args := s.Called(ctx, snapshotID, taskID)
+	return args.Get(0).(*storage.SnapshotMeta), args.Error(1)
 }
 
 func (s *StorageMock) GetSnapshotsToDelete(
@@ -201,6 +202,26 @@ func (s *StorageMock) DeleteDiskFromIncremental(
 ) error {
 
 	args := s.Called(ctx, zoneID, diskID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) LockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
+) (locked bool, err error) {
+
+	args := s.Called(ctx, snapshotID, lockTaskID)
+	return args.Get(0).(bool), args.Error(1)
+}
+
+func (s *StorageMock) UnlockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, lockTaskID)
 	return args.Error(0)
 }
 
