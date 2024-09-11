@@ -63,12 +63,9 @@ type snapshotState struct {
 	deleteTaskID      string
 	deletingAt        time.Time
 	deletedAt         time.Time
-	baseSnapshotID    string
-	baseCheckpointID  string
 	useDataplaneTasks bool
 	size              uint64
 	storageSize       uint64
-	lockTaskID        string
 	encryptionMode    uint32
 	encryptionKeyHash []byte
 
@@ -91,12 +88,9 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 		CreatingAt:        s.creatingAt,
 		CreatedBy:         s.createdBy,
 		DeleteTaskID:      s.deleteTaskID,
-		BaseSnapshotID:    s.baseSnapshotID,
-		BaseCheckpointID:  s.baseCheckpointID,
 		UseDataplaneTasks: s.useDataplaneTasks,
 		Size:              s.size,
 		StorageSize:       s.storageSize,
-		LockTaskID:        s.lockTaskID,
 		Encryption: &types.EncryptionDesc{
 			Mode: types.EncryptionMode(s.encryptionMode),
 			Key: &types.EncryptionDesc_KeyHash{
@@ -123,12 +117,9 @@ func (s *snapshotState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 		persistence.StructFieldValue("incremental", persistence.BoolValue(true)), // deprecated
-		persistence.StructFieldValue("base_snapshot_id", persistence.UTF8Value(s.baseSnapshotID)),
-		persistence.StructFieldValue("base_checkpoint_id", persistence.UTF8Value(s.baseCheckpointID)),
 		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(s.useDataplaneTasks)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
-		persistence.StructFieldValue("lock_task_id", persistence.UTF8Value(s.lockTaskID)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
 		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
@@ -150,12 +141,9 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault("delete_task_id", &state.deleteTaskID),
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
-		persistence.OptionalWithDefault("base_snapshot_id", &state.baseSnapshotID),
-		persistence.OptionalWithDefault("base_checkpoint_id", &state.baseCheckpointID),
 		persistence.OptionalWithDefault("use_dataplane_tasks", &state.useDataplaneTasks),
 		persistence.OptionalWithDefault("size", &state.size),
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
-		persistence.OptionalWithDefault("lock_task_id", &state.lockTaskID),
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 		persistence.OptionalWithDefault("status", &state.status),
@@ -199,12 +187,9 @@ func snapshotStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		incremental: Bool, /* deprecated */
-		base_snapshot_id: Utf8,
-		base_checkpoint_id: Utf8,
 		use_dataplane_tasks: Bool,
 		size: Uint64,
 		storage_size: Uint64,
-		lock_task_id: Utf8,
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
 		status: Int64>`
@@ -226,12 +211,9 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("incremental", persistence.Optional(persistence.TypeBool)), // deprecated
-		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("base_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
@@ -274,67 +256,6 @@ func (s *storageYDB) snapshotExists(
 	}
 
 	return count != 0, nil
-}
-
-func (s *storageYDB) getIncremental(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	disk *types.Disk,
-) (snapshotID string, checkpointID string, err error) {
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $zone_id as Utf8;
-		declare $disk_id as Utf8;
-
-		select *
-		from incremental
-		where zone_id = $zone_id and disk_id = $disk_id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(disk.ZoneId)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(disk.DiskId)),
-	)
-	if err != nil {
-		return "", "", err
-	}
-	defer res.Close()
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("snapshot_id", &snapshotID),
-				persistence.OptionalWithDefault("checkpoint_id", &checkpointID),
-			)
-			if err != nil {
-				return "", "", err
-			}
-		}
-	}
-
-	return
-}
-
-func (s *storageYDB) deleteDiskFromIncremental(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	diskID string,
-	zoneID string,
-) error {
-
-	_, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $zone_id as Utf8;
-		declare $disk_id as Utf8;
-
-		delete from incremental
-		where zone_id = $zone_id and disk_id = $disk_id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
-	)
-	return err
 }
 
 func (s *storageYDB) getSnapshotMeta(
@@ -467,15 +388,6 @@ func (s *storageYDB) createSnapshot(
 		return nil, nil
 	}
 
-	baseSnapshotID, baseCheckpointID, err := s.getIncremental(
-		ctx,
-		tx,
-		snapshot.Disk,
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	state := snapshotState{
 		id:                snapshot.ID,
 		folderID:          snapshot.FolderID,
@@ -486,8 +398,6 @@ func (s *storageYDB) createSnapshot(
 		createTaskID:      snapshot.CreateTaskID,
 		creatingAt:        snapshot.CreatingAt,
 		createdBy:         snapshot.CreatedBy,
-		baseSnapshotID:    baseSnapshotID,
-		baseCheckpointID:  baseCheckpointID,
 		useDataplaneTasks: snapshot.UseDataplaneTasks,
 
 		status: snapshotStatusCreating,
@@ -615,54 +525,6 @@ func (s *storageYDB) snapshotCreated(
 		return err
 	}
 
-	if len(state.baseSnapshotID) == 0 {
-		_, err := tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $zone_id as Utf8;
-			declare $disk_id as Utf8;
-			declare $snapshot_id as Utf8;
-			declare $checkpoint_id as Utf8;
-
-			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
-			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
-		`, s.snapshotsPath),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
-			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
-			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
-		)
-		if err != nil {
-			return err
-		}
-	} else {
-		// Remove previous incremental snapshot and insert new one instead.
-		_, err := tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $zone_id as Utf8;
-			declare $disk_id as Utf8;
-			declare $snapshot_id as Utf8;
-			declare $checkpoint_id as Utf8;
-			declare $base_snapshot_id as Utf8;
-
-			delete from incremental
-			where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $base_snapshot_id;
-
-			upsert into incremental (zone_id, disk_id, snapshot_id, checkpoint_id)
-			values ($zone_id, $disk_id, $snapshot_id, $checkpoint_id)
-		`, s.snapshotsPath),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
-			persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
-			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$checkpoint_id", persistence.UTF8Value(state.checkpointID)),
-			persistence.ValueParam("$base_snapshot_id", persistence.UTF8Value(state.baseSnapshotID)),
-		)
-		if err != nil {
-			return err
-		}
-	}
-
 	return tx.Commit(ctx)
 }
 
@@ -737,21 +599,6 @@ func (s *storageYDB) deleteSnapshot(
 
 			return state.toSnapshotMeta(), nil
 		}
-
-		if len(state.lockTaskID) != 0 && state.lockTaskID != taskID {
-			err = tx.Commit(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			logging.Info(
-				ctx,
-				"Snapshot with id %v is locked, can't delete",
-				snapshotID,
-			)
-			// Prevent deletion.
-			return nil, errors.NewInterruptExecutionError()
-		}
 	}
 
 	state.id = snapshotID
@@ -769,24 +616,6 @@ func (s *storageYDB) deleteSnapshot(
 		from AS_TABLE($states)
 	`, s.snapshotsPath, snapshotStateStructTypeString()),
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $zone_id as Utf8;
-		declare $disk_id as Utf8;
-		declare $snapshot_id as Utf8;
-
-		delete from incremental
-		where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $snapshot_id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
-		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 	)
 	if err != nil {
 		return nil, err
@@ -962,170 +791,6 @@ func (s *storageYDB) clearDeletedSnapshots(
 	return nil
 }
 
-func (s *storageYDB) lockSnapshot(
-	ctx context.Context,
-	session *persistence.Session,
-	snapshotID string,
-	lockTaskID string,
-) (locked bool, err error) {
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from snapshots
-		where id = $id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	states, err := scanSnapshotStates(ctx, res)
-	if err != nil {
-		return false, err
-	}
-
-	if len(states) == 0 {
-		return false, tx.Commit(ctx)
-	}
-
-	state := states[0]
-	if state.status >= snapshotStatusDeleting {
-		return false, tx.Commit(ctx)
-	}
-
-	if len(state.lockTaskID) != 0 {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return false, err
-		}
-
-		if state.lockTaskID == lockTaskID {
-			// Should be idempotent.
-			return true, nil
-		}
-
-		// Unlikely situation. Another lock is found.
-		return false, errors.NewInterruptExecutionError()
-	}
-
-	state.lockTaskID = lockTaskID
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $states as List<%v>;
-
-		upsert into snapshots
-		select *
-		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
-	)
-	if err != nil {
-		return false, err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (s *storageYDB) unlockSnapshot(
-	ctx context.Context,
-	session *persistence.Session,
-	snapshotID string,
-	lockTaskID string,
-) error {
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from snapshots
-		where id = $id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	states, err := scanSnapshotStates(ctx, res)
-	if err != nil {
-		return err
-	}
-
-	if len(states) == 0 {
-		// Should be idempotent.
-		return tx.Commit(ctx)
-	}
-
-	state := states[0]
-	if state.status >= snapshotStatusDeleting {
-		// Should be idempotent.
-		return tx.Commit(ctx)
-	}
-
-	if len(state.lockTaskID) == 0 {
-		// Should be idempotent.
-		return tx.Commit(ctx)
-	}
-
-	if state.lockTaskID != lockTaskID {
-		// Our lock is not present, so it's a success.
-		return tx.Commit(ctx)
-	}
-
-	state.lockTaskID = ""
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $states as List<%v>;
-
-		upsert into snapshots
-		select *
-		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
-	)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
-	}
-
-	logging.Info(ctx, "Successfully unlocked snapshot with id %v", snapshotID)
-	return nil
-}
-
 func (s *storageYDB) listSnapshots(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1248,36 +913,6 @@ func (s *storageYDB) ClearDeletedSnapshots(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			return s.clearDeletedSnapshots(ctx, session, deletedBefore, limit)
-		},
-	)
-}
-
-func (s *storageYDB) LockSnapshot(
-	ctx context.Context,
-	snapshotID string,
-	lockTaskID string,
-) (locked bool, err error) {
-
-	err = s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			locked, err = s.lockSnapshot(ctx, session, snapshotID, lockTaskID)
-			return err
-		},
-	)
-	return locked, err
-}
-
-func (s *storageYDB) UnlockSnapshot(
-	ctx context.Context,
-	snapshotID string,
-	lockTaskID string,
-) error {
-
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			return s.unlockSnapshot(ctx, session, snapshotID, lockTaskID)
 		},
 	)
 }

@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/fresh_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/fresh_bytes.h>
 #include <cloud/filestore/libs/storage/tablet/model/garbage_queue.h>
+#include <cloud/filestore/libs/storage/tablet/model/large_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -51,6 +52,7 @@ struct TIndexTabletState::TImpl
     TFreshBytes FreshBytes;
     TFreshBlocks FreshBlocks;
     TMixedBlocks MixedBlocks;
+    TLargeBlocks LargeBlocks;
     TCompactionMap CompactionMap;
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
@@ -69,6 +71,7 @@ struct TIndexTabletState::TImpl
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
         , FreshBlocks(registry.GetAllocator(EAllocatorTag::FreshBlocks))
         , MixedBlocks(registry.GetAllocator(EAllocatorTag::BlobMetaMap))
+        , LargeBlocks(registry.GetAllocator(EAllocatorTag::LargeBlocks))
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))

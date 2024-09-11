@@ -393,6 +393,73 @@ func newNodeGetVolumeStatsCommand(endpoint *string) *cobra.Command {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
+	var volumeId, podId string
+	var size int64
+	cmd := cobra.Command{
+		Use:   "expandvolume",
+		Short: "expand volume",
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
+			defer cancelFunc()
+			client, err := newNodeClient(ctx, *endpoint)
+
+			volumePath := fmt.Sprintf(
+				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
+					"%s/mount",
+				podId,
+				volumeId,
+			)
+			_, err = client.NodeExpandVolume(
+				ctx,
+				&csi.NodeExpandVolumeRequest{
+					VolumeId:   volumeId,
+					VolumePath: volumePath,
+					CapacityRange: &csi.CapacityRange{
+						RequiredBytes: size,
+					},
+				},
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+		},
+	}
+	cmd.Flags().StringVar(
+		&volumeId,
+		"volume-id",
+		"",
+		"volume id",
+	)
+	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
+	cmd.Flags().Int64Var(
+		&size,
+		"size",
+		0,
+		"The new size of the disk in bytes")
+
+	err := cmd.MarkFlagRequired("volume-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = cmd.MarkFlagRequired("pod-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = cmd.MarkFlagRequired("size")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newCsiNodeCommand(endpoint *string) *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "node",
@@ -402,6 +469,7 @@ func newCsiNodeCommand(endpoint *string) *cobra.Command {
 		newPublishVolumeCommand(endpoint),
 		newUnpublishVolumeCommand(endpoint),
 		newNodeGetVolumeStatsCommand(endpoint),
+		newNodeExpandVolumeCommand(endpoint),
 	)
 	return &cmd
 }

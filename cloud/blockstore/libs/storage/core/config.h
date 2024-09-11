@@ -15,6 +15,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCertificate
+{
+    TString CertFile;
+    TString CertPrivateKeyFile;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
@@ -588,6 +596,14 @@ public:
     TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefixes() const;
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
+
+    TString GetNodeRegistrationToken() const;
+    ui32 GetNodeRegistrationMaxAttempts() const;
+    TDuration GetNodeRegistrationTimeout() const;
+    TDuration GetNodeRegistrationErrorTimeout() const;
+    TString GetNodeRegistrationRootCertsFile() const;
+    TCertificate GetNodeRegistrationCert() const;
+    TString GetNodeType() const;
 };
 
 ui64 GetAllocationUnit(

@@ -15,6 +15,7 @@ private:
     const TPerformanceProfileParams PerformanceProfileParams;
 
     ui64 BlocksCount = 0;
+    bool Force = false;
 
 public:
     TResizeCommand()
@@ -24,6 +25,10 @@ public:
             .Required()
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
+
+        Opts.AddLongOption("force")
+            .StoreTrue(&Force)
+            .Help("force flag allows to decrease the size of the file store");
     }
 
     bool Execute() override
@@ -33,6 +38,7 @@ public:
         auto request = std::make_shared<NProto::TResizeFileStoreRequest>();
         request->SetFileSystemId(FileSystemId);
         request->SetBlocksCount(BlocksCount);
+        request->SetForce(Force);
 
         PerformanceProfileParams.FillRequest(*request);
 

@@ -42,6 +42,13 @@ class TDiskAgentActor final
         NActors::IEventHandlePtr Event;
     };
 
+    enum class ERegistrationState
+    {
+        NotStarted,
+        InProgress,
+        Registered,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -63,7 +70,7 @@ private:
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
 
-    bool RegistrationInProgress = false;
+    ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 
     NActors::TActorId StatsActor;
     TOldRequestCounters OldRequestCounters;
@@ -78,6 +85,9 @@ private:
     NActors::TActorId SessionCacheActor;
 
     TRequestInfoPtr PartiallySuspendAgentRequestInfo;
+
+    TVector<NActors::TActorId> IOParserActors;
+    ui32 ParserActorIdx = 0;
 
 public:
     TDiskAgentActor(
@@ -143,6 +153,8 @@ private:
 
     void UpdateSessionCache(const NActors::TActorContext& ctx);
     void RunSessionCacheActor(const NActors::TActorContext& ctx);
+
+    bool ShouldOffloadRequest(ui32 eventType) const;
 
 private:
     STFUNC(StateInit);

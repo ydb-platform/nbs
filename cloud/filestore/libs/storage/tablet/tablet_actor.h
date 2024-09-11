@@ -114,6 +114,7 @@ private:
         std::atomic<i64> MixedBytesCount{0};
         std::atomic<i64> MixedBlobsCount{0};
         std::atomic<i64> DeletionMarkersCount{0};
+        std::atomic<i64> LargeDeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
         std::atomic<i64> GarbageBytesCount{0};
         std::atomic<i64> FreshBlocksCount{0};
@@ -405,6 +406,7 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
 

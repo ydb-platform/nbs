@@ -43,11 +43,18 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
-    xxx(FlushBytesThreshold,                ui32,   4_MB                      )\
+    xxx(FlushBytesThreshold,                ui64,   4_MB                      )\
     xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+                                                                               \
+    xxx(MaxFileBlocks,                          ui32,   300_GB / 4_KB         )\
+    xxx(LargeDeletionMarkersEnabled,            bool,   false                 )\
+    xxx(LargeDeletionMarkerBlocks,              ui64,   1_GB / 4_KB           )\
+    xxx(LargeDeletionMarkersThreshold,          ui64,   128_GB / 4_KB         )\
+    xxx(LargeDeletionMarkersCleanupThreshold,   ui64,   1_TB / 4_KB           )\
+                                                                               \
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
     xxx(BlobIndexOpsPriority,                                                  \
             NProto::EBlobIndexOpsPriority,                                     \
@@ -56,7 +63,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
-    xxx(FlushBytesThresholdForBackpressure, ui32,      128_MB                 )\
+    xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
     xxx(HDDLogChannelPoolKind,         TString,   "rot"                       )\
@@ -192,6 +199,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
+                                                                               \
+    xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
+    xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
+    xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

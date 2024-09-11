@@ -361,6 +361,15 @@ func (c *NbsClientMock) QueryAgentsInfo(
 	return args.Get(0).(*protos.TQueryAgentsInfoResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) ResizeDevice(
+	ctx context.Context,
+	req *protos.TResizeDeviceRequest,
+) (*protos.TResizeDeviceResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TResizeDeviceResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNbsClientMock() *NbsClientMock {

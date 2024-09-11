@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -16,17 +17,21 @@ type collectListerMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
 	metricsCollectionInterval time.Duration
+
+	hangingTaskGaugesByID     map[string]metrics.Gauge
+	exceptHangingTaskTypes    []string
+	maxHangingTaskIDsToReport int64
 }
 
-func (c collectListerMetricsTask) Save() ([]byte, error) {
+func (c *collectListerMetricsTask) Save() ([]byte, error) {
 	return nil, nil
 }
 
-func (c collectListerMetricsTask) Load(request []byte, state []byte) error {
+func (c *collectListerMetricsTask) Load(request []byte, state []byte) error {
 	return nil
 }
 
-func (c collectListerMetricsTask) Run(
+func (c *collectListerMetricsTask) Run(
 	ctx context.Context,
 	execCtx ExecutionContext,
 ) error {
@@ -92,12 +97,17 @@ func (c collectListerMetricsTask) Run(
 		if err != nil {
 			return err
 		}
+
+		err = c.collectHangingTasksMetrics(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (c collectListerMetricsTask) Cancel(
+func (c *collectListerMetricsTask) Cancel(
 	ctx context.Context,
 	execCtx ExecutionContext,
 ) error {
@@ -105,20 +115,20 @@ func (c collectListerMetricsTask) Cancel(
 	return nil
 }
 
-func (c collectListerMetricsTask) GetMetadata(
+func (c *collectListerMetricsTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (c collectListerMetricsTask) GetResponse() proto.Message {
+func (c *collectListerMetricsTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c collectListerMetricsTask) collectTasksMetrics(
+func (c *collectListerMetricsTask) collectTasksMetrics(
 	ctx context.Context,
 	getTaskInfos func(context.Context) ([]storage.TaskInfo, error),
 	sensor string,
@@ -140,6 +150,66 @@ func (c collectListerMetricsTask) collectTasksMetrics(
 			"type": taskType,
 		})
 		subRegistry.Gauge(sensor).Set(float64(count))
+	}
+
+	return nil
+}
+
+func (c *collectListerMetricsTask) collectHangingTasksMetrics(
+	ctx context.Context,
+) error {
+
+	taskInfos, err := c.storage.ListHangingTasks(
+		ctx,
+		^uint64(0),
+		c.exceptHangingTaskTypes,
+	)
+	if err != nil {
+		return err
+	}
+
+	taskInfoByID := make(map[string]storage.TaskInfo)
+	for _, taskInfo := range taskInfos {
+		taskInfoByID[taskInfo.ID] = taskInfo
+	}
+
+	for id, gauge := range c.hangingTaskGaugesByID {
+		_, ok := taskInfoByID[id]
+		if !ok {
+			logging.Info(
+				ctx,
+				"Task with id %s is not hanging anymore",
+				id,
+			)
+			gauge.Set(0)
+			delete(c.hangingTaskGaugesByID, id)
+		}
+	}
+
+	reportedTaskIDCount := int64(len(c.hangingTaskGaugesByID))
+	for _, taskInfo := range taskInfos {
+		_, ok := c.hangingTaskGaugesByID[taskInfo.ID]
+		if ok {
+			continue
+		}
+
+		if reportedTaskIDCount < c.maxHangingTaskIDsToReport {
+			logging.Info(
+				ctx,
+				"Task type %s, id %s is hanging",
+				taskInfo.TaskType,
+				taskInfo.ID,
+			)
+			subRegistry := c.registry.WithTags(
+				map[string]string{
+					"type": taskInfo.TaskType, "id": taskInfo.ID,
+				},
+			)
+			gauge := subRegistry.Gauge("hangingTasks")
+			gauge.Set(float64(1))
+			c.hangingTaskGaugesByID[taskInfo.ID] = gauge
+			reportedTaskIDCount++
+		}
 	}
 
 	return nil
