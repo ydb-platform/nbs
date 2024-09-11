@@ -3,7 +3,7 @@ OWNER(g:cloud-nbs)
 PACKAGE()
 
 PEERDIR(
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server

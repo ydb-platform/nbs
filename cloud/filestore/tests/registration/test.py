@@ -3,14 +3,14 @@ from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.tests.python.lib.server import NfsServer, wait_for_nfs_server
 from cloud.filestore.tests.python.lib.daemon_config import NfsServerConfigGenerator
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
 
 def setup_and_run_test(is_secure_kikimr, is_secure_filestore):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
