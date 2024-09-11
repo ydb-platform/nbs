@@ -354,6 +354,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         for (ui32 i = 0; i < 20; ++i) {
             Tick(TDuration::Seconds(1));
             AssertDescribeDataResponse(S_OK);
+        }
 
         for (ui32 i = 0; i < 3; ++i) {
             Tick(TDuration::Seconds(1));
