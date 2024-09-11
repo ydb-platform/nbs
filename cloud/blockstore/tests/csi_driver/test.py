@@ -408,6 +408,9 @@ def test_node_volume_expand():
         assert "total" in bytes_usage
         # approximate check that total space is around 2GB
         assert bytes_usage["total"] // 1000 ** 3 == 2
+
+        # check that expand_volume is idempotent method
+        env.csi.expand_volume(pod_id, volume_name, new_volume_size)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise

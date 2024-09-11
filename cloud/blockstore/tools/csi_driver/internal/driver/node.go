@@ -837,10 +837,10 @@ func (s *nodeService) NodeExpandVolume(
 	newBlocksCount := uint64(math.Ceil(
 		float64(req.CapacityRange.RequiredBytes) / float64(resp.Volume.BlockSize)),
 	)
-	if newBlocksCount <= resp.Volume.BlocksCount {
+	if newBlocksCount < resp.Volume.BlocksCount {
 		return nil, status.Error(
 			codes.InvalidArgument,
-			"New blocks count is less than or equal to current blocks count value")
+			"New blocks count is less than current blocks count value")
 	}
 
 	podId, err := s.parsePodId(req.VolumePath)
