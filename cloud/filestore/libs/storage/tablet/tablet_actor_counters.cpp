@@ -273,12 +273,13 @@ void TIndexTabletActor::TMetrics::Register(
         ReadAheadCacheNodeCount,
         EMetricType::MT_ABSOLUTE);
 
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheNodeCount,
-        EMetricType::MT_ABSOLUTE);
+    // clang-format off
+    REGISTER_AGGREGATABLE_SUM(NodeIndexCacheHitCount, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(NodeIndexCacheNodeCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(InMemoryIndexStateROCacheHitCount, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(InMemoryIndexStateROCacheMissCount, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(InMemoryIndexStateRWCount, EMetricType::MT_DERIVATIVE);
+    // clang-format on
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);

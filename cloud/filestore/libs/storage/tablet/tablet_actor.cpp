@@ -294,6 +294,16 @@ void TIndexTabletActor::ReleaseTransactions()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::UpdateInMemoryIndexState(
+    TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
+{
+    if (Config->GetInMemoryIndexCacheEnabled()) {
+        TIndexTabletState::UpdateInMemoryIndexState(std::move(nodeUpdates));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TThresholds = TIndexTabletState::TBackpressureThresholds;
 TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
 {

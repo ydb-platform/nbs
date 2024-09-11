@@ -107,6 +107,12 @@ private:
         // Node index cache
         std::atomic<i64> NodeIndexCacheHitCount{0};
         std::atomic<i64> NodeIndexCacheNodeCount{0};
+        // Read-only transactions that used fast path (in-memory index state)
+        std::atomic<i64> InMemoryIndexStateROCacheHitCount{0};
+        // Read-only transactions that used slow path
+        std::atomic<i64> InMemoryIndexStateROCacheMissCount{0};
+        // Read-write transactions
+        std::atomic<i64> InMemoryIndexStateRWCount{0};
 
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
@@ -134,9 +140,11 @@ private:
         std::atomic<i64> IdleTime{0};
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
 
+        // Blob compression stats
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
+        // Opened nodes stats
         std::atomic<i64> NodesOpenForWritingBySingleSession{0};
         std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
         std::atomic<i64> NodesOpenForReadingBySingleSession{0};
@@ -381,8 +389,14 @@ private:
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
         if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
+            Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
             return;
         }
+        Metrics.InMemoryIndexStateROCacheMissCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
     }
 
@@ -391,6 +405,9 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
+        Metrics.InMemoryIndexStateRWCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(
             ctx,
             std::forward<TArgs>(args)...);
@@ -399,6 +416,15 @@ private:
     void RemoveTransaction(TRequestInfo& transaction);
     void TerminateTransactions(const NActors::TActorContext& ctx);
     void ReleaseTransactions();
+
+    // Updates in-memory index state with the given node updates. Is to be
+    // called upon every operation that changes node-related data. As of now, it
+    // is called upon completion of every RW transaction that can change the
+    // node-related data. Failure to perform this operation will read to
+    // inconsistent cache state between the localDB and the in-memory index
+    // state
+    void UpdateInMemoryIndexState(
+        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,

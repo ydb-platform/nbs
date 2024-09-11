@@ -235,6 +235,7 @@ void TIndexTabletActor::CompleteTx_AllocateData(
     const TActorContext& ctx,
     TTxIndexTablet::TAllocateData& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);

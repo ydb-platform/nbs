@@ -118,6 +118,7 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(args.Error);

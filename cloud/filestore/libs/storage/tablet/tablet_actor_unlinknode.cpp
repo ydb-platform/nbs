@@ -410,6 +410,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),

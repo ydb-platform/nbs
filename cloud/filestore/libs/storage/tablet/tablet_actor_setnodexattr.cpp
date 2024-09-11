@@ -137,6 +137,7 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeXAttr& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     if (SUCCEEDED(args.Error.GetCode())) {

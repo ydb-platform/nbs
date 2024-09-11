@@ -458,6 +458,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     const TActorContext& ctx,
     TTxIndexTablet::TAddBlob& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     // log request
     FinalizeProfileLogRequestInfo(
         std::move(args.ProfileLogRequest),

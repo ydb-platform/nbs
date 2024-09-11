@@ -368,6 +368,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     if (args.Error.GetCode() == E_ARGUMENT) {
         // service actor sent something inappropriate, we'd better log it
         LOG_ERROR(
