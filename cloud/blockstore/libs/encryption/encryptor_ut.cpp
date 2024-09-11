@@ -42,11 +42,13 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
 
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
-        auto res1 = encryptor->Encrypt(dataRef, eDataRef, blockIndex);
-        UNIT_ASSERT(res1 && dDataRef.Size() == eDataRef.Size() && eData != data);
+        auto err1 = encryptor->Encrypt(dataRef, eDataRef, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
+        UNIT_ASSERT(dDataRef.Size() == eDataRef.Size() && eData != data);
 
-        auto res2 = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
-        UNIT_ASSERT(res2 && dData == data);
+        auto err2 = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err2.GetCode(), err2);
+        UNIT_ASSERT(dData == data);
     }
 
     Y_UNIT_TEST(AesXtsEncryptorShouldDecryptZeroBlock)
@@ -60,8 +62,9 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
 
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
-        auto res = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
-        UNIT_ASSERT(res && dDataRef.Size() == eDataRef.Size());
+        auto err = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err.GetCode(), err);
+        UNIT_ASSERT(dDataRef.Size() == eDataRef.Size());
         UNIT_ASSERT(BlockFilledByZero(dDataRef));
     }
 
@@ -85,9 +88,11 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
         {
-            auto res1 = encryptor->Encrypt(dataRef, eDataRef1, blockIndex1);
-            auto res2 = encryptor->Encrypt(dataRef, eDataRef2, blockIndex2);
-            UNIT_ASSERT(res1 && res2 && eData1 != eData2);
+            auto err1 = encryptor->Encrypt(dataRef, eDataRef1, blockIndex1);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
+            auto err2 = encryptor->Encrypt(dataRef, eDataRef2, blockIndex2);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err2.GetCode(), err2);
+            UNIT_ASSERT(eData1 != eData2);
         }
 
         TString dData1 = TString::Uninitialized(DefaultBlockSize);
@@ -96,11 +101,13 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto dDataRef1 = TBlockDataRef{ dData1.data(), dData1.size() };
         auto dDataRef2 = TBlockDataRef{ dData2.data(), dData2.size() };
 
-        auto res1 = encryptor->Decrypt(eDataRef1, dDataRef1, blockIndex1);
-        UNIT_ASSERT(res1 && dData1 == data);
+        auto err1 = encryptor->Decrypt(eDataRef1, dDataRef1, blockIndex1);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
+        UNIT_ASSERT(dData1 == data);
 
-        auto res2 = encryptor->Decrypt(eDataRef2, dDataRef2, blockIndex2);
-        UNIT_ASSERT(res2 && dData2 == data);
+        auto err2 = encryptor->Decrypt(eDataRef2, dDataRef2, blockIndex2);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err2.GetCode(), err2);
+        UNIT_ASSERT(dData2 == data);
     }
 
     Y_UNIT_TEST(CaesarEncryptorShouldEncryptDecryptBlock)
@@ -120,11 +127,13 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto blockIndex = 13;
         auto encryptor = CreateTestCaesarEncryptor(42);
 
-        auto res1 = encryptor->Encrypt(dataRef, eDataRef, blockIndex);
-        UNIT_ASSERT(res1 && dDataRef.Size() == eDataRef.Size() && eData != data);
+        auto err1 = encryptor->Encrypt(dataRef, eDataRef, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
+        UNIT_ASSERT(dDataRef.Size() == eDataRef.Size() && eData != data);
 
-        auto res2 = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
-        UNIT_ASSERT(res2 && dData == data);
+        auto err2 = encryptor->Decrypt(eDataRef, dDataRef, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err2.GetCode(), err2);
+        UNIT_ASSERT(dData == data);
     }
 }
 

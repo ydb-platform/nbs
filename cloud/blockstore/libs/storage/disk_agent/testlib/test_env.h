@@ -550,4 +550,6 @@ NProto::TNVMeDeviceArgs NVMeDevice(
     TVector<TString> uuids,
     TString transportId = {});
 
+NProto::TDiskAgentConfig CreateDefaultAgentConfig();
+
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgentTest

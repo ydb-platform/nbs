@@ -33,7 +33,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig config;
+                auto config = CreateDefaultAgentConfig();
                 config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);

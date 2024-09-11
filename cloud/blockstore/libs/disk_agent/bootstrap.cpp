@@ -381,6 +381,7 @@ void TBootstrap::InitKikimrService()
                 STORAGE_INFO("Aio backend initialized");
                 break;
             case NProto::DISK_AGENT_BACKEND_NULL:
+                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
                 AioStorageProvider = CreateNullStorageProvider();
                 STORAGE_INFO("Null backend initialized");
                 break;

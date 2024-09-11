@@ -1733,7 +1733,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);
@@ -1986,7 +1986,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldPerformIoWithoutSpdk)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
@@ -2167,7 +2167,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldSupportOffsetAndFileSizeInFileDevices)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
@@ -2430,7 +2430,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldHandleDeviceInitError)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -2542,7 +2542,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
     {
         TVector<NProto::TDeviceConfig> devices;
 
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetEnabled(true);
         agentConfig.SetAgentId("agent");
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_SPDK);
@@ -2596,7 +2596,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldSecureEraseAioDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE);
         agentConfig.SetAgentId("agent-id");
@@ -2621,7 +2621,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldZeroFillDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_ZERO_FILL);
         agentConfig.SetAgentId("agent-id");
@@ -3118,7 +3118,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         TTestEnv env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetEnabled(true);
                 for (const auto& device: devices) {
                     auto* config = agentConfig.MutableFileDevices()->Add();
@@ -3429,7 +3429,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig config;
+                auto config = CreateDefaultAgentConfig();
                 config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);
@@ -3495,7 +3495,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig config;
+                auto config = CreateDefaultAgentConfig();
                 config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);
@@ -3625,7 +3625,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldReceiveIOErrorFromBrokenDevice)
     {
-        NProto::TDiskAgentConfig agentConfig;
+        auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -3737,7 +3737,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
-                NProto::TDiskAgentConfig agentConfig;
+                auto agentConfig = CreateDefaultAgentConfig();
                 agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
                 agentConfig.SetAcquireRequired(true);
                 agentConfig.SetEnabled(true);
@@ -4426,6 +4426,138 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         auto response = diskAgent.RecvResponse<NMon::TEvHttpInfoRes>();
         UNIT_ASSERT_STRING_CONTAINS(response->Answer, "Unregistered (Idle)");
+    }
+
+    Y_UNIT_TEST(ShouldOffloadProtobufParsing)
+    {
+        const TString deviceId = "MemoryDevice1";
+        const TString sessionId = "client-1";
+
+        const auto config = [&] {
+            auto config = DiskAgentConfig({deviceId});
+            config.SetIOParserActorCount(4);
+            config.SetOffloadAllIORequestsParsingEnabled(true);
+
+            return config;
+        }();
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(config)
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.SendWaitReadyRequest();
+        const TActorId diskAgentActorId = [&] {
+            TAutoPtr<IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvWaitReadyResponse>(
+                handle,
+                3s);
+
+            UNIT_ASSERT(handle);
+
+            return handle->Sender;
+        }();
+
+        runtime.DispatchEvents({}, 1s);
+
+        diskAgent.AcquireDevices(
+            TVector {deviceId},
+            sessionId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        ui32 reads = 0;
+        ui32 writes = 0;
+        ui32 zeroes = 0;
+
+        ui32 parsedReads = 0;
+        ui32 parsedWrites = 0;
+        ui32 parsedZeroes = 0;
+
+        THashSet<TActorId> actors;
+
+        runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& ev) {
+            switch (ev->GetTypeRewrite()) {
+                case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(
+                        diskAgentActorId,
+                        ev->GetRecipientRewrite());
+                    ++parsedReads;
+                    break;
+                case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(
+                        diskAgentActorId,
+                        ev->GetRecipientRewrite());
+                    ++parsedWrites;
+                    break;
+                case TEvDiskAgentPrivate::EvParsedZeroDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(
+                        diskAgentActorId,
+                        ev->GetRecipientRewrite());
+                    ++parsedZeroes;
+                    break;
+                case TEvDiskAgent::EvReadDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    ++reads;
+                    actors.insert(ev->GetRecipientRewrite());
+                    break;
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    ++writes;
+                    actors.insert(ev->GetRecipientRewrite());
+                    break;
+                case TEvDiskAgent::EvZeroDeviceBlocksRequest:
+                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    ++zeroes;
+                    actors.insert(ev->GetRecipientRewrite());
+                    break;
+            }
+            return false;
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, reads);
+        UNIT_ASSERT_VALUES_EQUAL(0, writes);
+        UNIT_ASSERT_VALUES_EQUAL(0, zeroes);
+        UNIT_ASSERT_VALUES_EQUAL(0, parsedReads);
+        UNIT_ASSERT_VALUES_EQUAL(0, parsedWrites);
+        UNIT_ASSERT_VALUES_EQUAL(0, parsedZeroes);
+
+        ReadDeviceBlocks(runtime, diskAgent, deviceId, 0, 1, sessionId);
+        UNIT_ASSERT_VALUES_EQUAL(2, reads);
+        UNIT_ASSERT_VALUES_EQUAL(1, parsedReads);
+        UNIT_ASSERT_VALUES_EQUAL(2, actors.size());
+
+        ReadDeviceBlocks(runtime, diskAgent, deviceId, 0, 1, sessionId);
+        UNIT_ASSERT_VALUES_EQUAL(4, reads);
+        UNIT_ASSERT_VALUES_EQUAL(2, parsedReads);
+        UNIT_ASSERT_VALUES_EQUAL(3, actors.size());
+
+        {
+            TVector<TString> blocks;
+            auto sglist =
+                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'X'));
+
+            WriteDeviceBlocks(
+                runtime,
+                diskAgent,
+                deviceId,
+                0,
+                sglist,
+                sessionId);
+            UNIT_ASSERT_VALUES_EQUAL(2, writes);
+            UNIT_ASSERT_VALUES_EQUAL(1, parsedWrites);
+            UNIT_ASSERT_VALUES_EQUAL(4, actors.size());
+        }
+
+        ZeroDeviceBlocks(runtime, diskAgent, deviceId, 0, 1, sessionId);
+        UNIT_ASSERT_VALUES_EQUAL(2, zeroes);
+        UNIT_ASSERT_VALUES_EQUAL(1, parsedZeroes);
+        UNIT_ASSERT_VALUES_EQUAL(1, parsedZeroes);
+        UNIT_ASSERT_VALUES_EQUAL(5, actors.size());
     }
 }
 
