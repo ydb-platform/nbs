@@ -92,7 +92,7 @@ func (m *ydbMetrics) StatCall(
 	}
 }
 
-func (m *ydbMetrics) DisksStatCall(
+func (m *ydbMetrics) StorageStatCall(
 	ctx context.Context,
 	name string,
 ) func(err *error) {
@@ -105,30 +105,18 @@ func (m *ydbMetrics) DisksStatCall(
 		})
 
 		// Should initialize all counters before using them, to avoid 'no data'.
-		timeoutCounter := subRegistry.Counter("timeout")
-		successCounter := subRegistry.Counter("success")
-		errorCounter := subRegistry.Counter("errors")
 		timeHistogram := subRegistry.DurationHistogram("time", disksCallDurationBuckets())
 
 		if *err != nil {
-			errorCounter.Inc()
-
 			logging.Error(
 				ctx,
-				"Disks scheduler call with name %v ended with error %v",
+				"Storage call with name %v ended with error %v",
 				name,
 				*err,
 			)
-
-			if errors.Is(*err, context.DeadlineExceeded) {
-				logging.Error(ctx, "Disk scheduling timed out, name %v, query %v", name)
-				timeoutCounter.Inc()
-			}
-			return
 		}
-		timeHistogram.RecordDuration(time.Since(start))
 
-		successCounter.Inc()
+		timeHistogram.RecordDuration(time.Since(start))
 	}
 }
 

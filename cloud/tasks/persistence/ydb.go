@@ -526,11 +526,11 @@ func (s *Session) DropTable(
 	return dropTable(ctx, s.session, fullPath)
 }
 
-func (s *Session) DisksStatCall(
+func (s *Session) StorageStatCall(
 	ctx context.Context,
 	name string,
 ) func(*error) {
-	return s.metrics.DisksStatCall(ctx, name)
+	return s.metrics.StorageStatCall(ctx, name)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
