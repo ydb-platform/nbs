@@ -706,9 +706,21 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
-     *  Validation of the request blocks range
+     *  Validation of the request blocks size and range
      */
     if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto requestByteCount =
+            CalculateBytesCount(msg->Record, State->GetBlockSize());
+        if (requestByteCount > Config->GetMaxRequestSize() ||
+            requestByteCount % State->GetBlockSize() != 0)
+        {
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "invalid request size " << requestByteCount
+                                 << " > " << Config->GetMaxRequestSize()));
+            return;
+        }
+
         const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
         if (!CheckReadWriteBlockRange(range)) {
             replyError(MakeError(

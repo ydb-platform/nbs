@@ -604,6 +604,8 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+
+    ui32 GetMaxRequestSize() const;
 };
 
 ui64 GetAllocationUnit(

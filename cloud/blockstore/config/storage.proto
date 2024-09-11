@@ -1027,4 +1027,7 @@ message TStorageServiceConfig
 
     // Node type
     optional string NodeType = 384;
+
+    // Max Read/Write/Zero request size
+    optional uint32 MaxRequestSize = 385;
 }

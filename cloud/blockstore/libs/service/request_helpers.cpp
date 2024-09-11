@@ -86,12 +86,10 @@ ui32 CalculateWriteRequestBlockCount(
     const NProto::TWriteBlocksRequest& request,
     const ui32 blockSize)
 {
-    ui32 bytes = 0;
-    for (const auto& buffer: request.GetBlocks().GetBuffers()) {
-        bytes += buffer.Size();
-    }
+    auto bytes = CalculateBytesCount(request, blockSize);
+
     if (bytes % blockSize) {
-        Y_ABORT("bytes %u not divisible by blockSize %u", bytes, blockSize);
+        Y_ABORT("bytes %lu not divisible by blockSize %u", bytes, blockSize);
     }
 
     return bytes / blockSize;

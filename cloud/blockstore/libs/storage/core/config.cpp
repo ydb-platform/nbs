@@ -508,6 +508,7 @@ TDuration MSeconds(ui32 value)
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
+    xxx(MaxRequestSize,                                 ui32,      32_MB         )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
