@@ -23,12 +23,17 @@ class TAddBlobsExecutor
 private:
     const TString LogTag;
     TIndexTabletActor& Tablet;
+    const ui32 CompactionThreshold;
     THashMap<ui32, TCompactionStats> RangeId2CompactionStats;
 
 public:
-    TAddBlobsExecutor(TString logTag, TIndexTabletActor& tablet)
+    TAddBlobsExecutor(
+            TString logTag,
+            TIndexTabletActor& tablet,
+            ui32 compactionThreshold)
         : LogTag(std::move(logTag))
         , Tablet(tablet)
+        , CompactionThreshold(compactionThreshold)
     {
     }
 
@@ -298,19 +303,35 @@ private:
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionStats(rangeId);
-            // Zeroing compaction counter for the overwritten blobs.
-            stats.BlobsCount = 0;
+            // Decrementing compaction counter for the overwritten blobs.
+            // The counter is not guaranteed to be perfectly in sync with the
+            // actual blob count in range so a check for moving below zero is
+            // needed.
+            stats.BlobsCount = Max(1U, stats.BlobsCount) - 1;
             Tablet.DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
         }
 
+        THashMap<ui32, ui32> rangeId2AddedBlobsCount;
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            auto& stats = AccessCompactionStats(rangeId);
             // Incrementing blobs count as there could be multiple blobs
             // per compacted range see NBS-4424
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
-                ++stats.BlobsCount;
+                ++rangeId2AddedBlobsCount[rangeId];
             }
+        }
+
+        for (const auto& [rangeId, addedBlobsCount]: rangeId2AddedBlobsCount) {
+            auto& stats = AccessCompactionStats(rangeId);
+
+            // If addedBlobsCount >= compactionThreshold, then Compaction will
+            // enter an infinite loop
+            // A simple solution is to limit addedBlobsCount by threshold - 1
+            auto increment = addedBlobsCount;
+            if (increment >= CompactionThreshold && CompactionThreshold > 1) {
+                increment = CompactionThreshold - 1;
+            }
+            stats.BlobsCount += increment;
         }
     }
 
@@ -450,7 +471,9 @@ void TIndexTabletActor::ExecuteTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
-    TAddBlobsExecutor executor(LogTag, *this);
+    const auto compactionThreshold =
+        ScaleCompactionThreshold(Config->GetCompactionThreshold());
+    TAddBlobsExecutor executor(LogTag, *this, compactionThreshold);
     executor.Execute(ctx, tx, args);
 }
 
