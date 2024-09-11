@@ -45,6 +45,7 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
+			nbsFactory:        nbsFactory,
 			poolService:       poolService,
 		}
 	})
@@ -58,6 +59,7 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
+			nbsFactory:        nbsFactory,
 			poolService:       poolService,
 		}
 	})
@@ -71,6 +73,7 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
+			nbsFactory:        nbsFactory,
 			poolService:       poolService,
 		}
 	})
@@ -96,6 +99,7 @@ func RegisterForExecution(
 			config:      config,
 			scheduler:   taskScheduler,
 			storage:     storage,
+			nbsFactory:  nbsFactory,
 			poolService: poolService,
 		}
 	})

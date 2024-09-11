@@ -110,7 +110,7 @@ func checkUnencryptedImage(
 	crc32 uint32,
 ) {
 
-	diskID := imageID + "-good-encrypted-disk-from-image"
+	diskID1 := t.Name() + "-good-encrypted-disk-from-image"
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -121,7 +121,7 @@ func checkUnencryptedImage(
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
-			DiskId: diskID,
+			DiskId: diskID1,
 		},
 		EncryptionDesc: defaultEncryptionDescWithKey,
 	})
@@ -132,7 +132,7 @@ func checkUnencryptedImage(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskParams, err := nbsClient.Describe(ctx, diskID)
+	diskParams, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
 	require.Equal(t, types.EncryptionMode_ENCRYPTION_AES_XTS, diskParams.EncryptionDesc.Mode)
@@ -143,7 +143,7 @@ func checkUnencryptedImage(
 	encryption, err := disks.PrepareEncryptionDesc(defaultEncryptionDescWithKey)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32WithEncryption(ctx, diskID, nbs.DiskContentInfo{
+	err = nbsClient.ValidateCrc32WithEncryption(ctx, diskID1, nbs.DiskContentInfo{
 		ContentSize: uint64(diskSize),
 		Crc32:       crc32,
 	}, encryption)
@@ -994,7 +994,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := t.Name()
+	diskID1 := t.Name() + "1"
 	diskSize := uint64(4194304)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -1006,16 +1006,12 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
-			DiskId: diskID,
+			DiskId: diskID1,
 		},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
 	imageID1 := t.Name()
@@ -1024,7 +1020,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
 				ZoneId: "zone-a",
-				DiskId: diskID,
+				DiskId: diskID1,
 			},
 		},
 		DstImageId: imageID1,
@@ -1042,18 +1038,10 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
 
-	checkUnencryptedImage(
-		t,
-		client,
-		ctx,
-		imageID1,
-		int64(diskSize),
-		diskContentInfo.Crc32,
-	)
-
-	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID)
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
 	require.NoError(t, err)
 	err = waitForWrite()
 	require.NoError(t, err)
@@ -1064,7 +1052,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
 				ZoneId: "zone-a",
-				DiskId: diskID,
+				DiskId: diskID1,
 			},
 		},
 		DstImageId: imageID2,
@@ -1083,21 +1071,37 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
-
-	diskContentInfo, err = nbsClient.CalculateCrc32(diskID, diskSize)
-	require.NoError(t, err)
-
-	checkUnencryptedImage(
-		t,
-		client,
-		ctx,
-		imageID2,
-		int64(diskSize),
-		diskContentInfo.Crc32,
-	)
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
 
 	testcommon.CheckBaseSnapshot(t, ctx, imageID2, imageID1)
+
+	diskContentInfo, err := nbsClient.CalculateCrc32(diskID1, diskSize)
+	require.NoError(t, err)
+
+	diskID2 := t.Name() + "2"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID2,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID2,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	err = nbsClient.ValidateCrc32(
+		ctx,
+		diskID2,
+		diskContentInfo,
+	)
+	require.NoError(t, err)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
@@ -1117,5 +1121,6 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
 	testcommon.CheckConsistency(t, ctx)
 }

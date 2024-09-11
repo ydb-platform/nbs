@@ -134,17 +134,8 @@ type Storage interface {
 
 	UnlockSnapshot(ctx context.Context, snapshotID string, lockTaskID string) error
 
-	// Used in tests and SRE tools.
-	CheckBaseSnapshot(
+	GetSnapshotMeta(
 		ctx context.Context,
 		snapshotID string,
-		expectedBaseSnapshotID string,
-	) error
-
-	// Used in tests and SRE tools.
-	CheckLockTaskID(
-		ctx context.Context,
-		snapshotID string,
-		expectedLockTaskID string,
-	) error
+	) (*SnapshotMeta, error)
 }

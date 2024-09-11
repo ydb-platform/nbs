@@ -417,6 +417,34 @@ func testCases() []differentChunkStorageTestCase {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func checkBaseSnapshot(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	snapshotID string,
+	expectedBaseSnapshotID string,
+) {
+
+	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err)
+	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
+}
+
+func checkLockTaskID(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	snapshotID string,
+	expectedLockTaskID string,
+) {
+
+	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err)
+	require.EqualValues(t, expectedLockTaskID, snapshotMeta.LockTaskID)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCreateSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -515,8 +543,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NotNil(t, created)
 			require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
 			require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
-			err = f.storage.CheckBaseSnapshot(f.ctx, snapshot3.ID, snapshot1.ID)
-			require.NoError(t, err)
+			checkBaseSnapshot(t, f.ctx, f.storage, snapshot3.ID, snapshot1.ID)
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
@@ -536,8 +563,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NotNil(t, created)
 			require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
 			require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
-			err = f.storage.CheckBaseSnapshot(f.ctx, snapshot4.ID, snapshot3.ID)
-			require.NoError(t, err)
+			checkBaseSnapshot(t, f.ctx, f.storage, snapshot4.ID, snapshot3.ID)
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
@@ -594,14 +620,14 @@ func TestSnapshotsLocks(t *testing.T) {
 			locked, err := f.storage.LockSnapshot(f.ctx, snapshot1.ID, created.CreateTaskID)
 			require.NoError(t, err)
 			require.True(t, locked)
-			f.storage.CheckLockTaskID(f.ctx, snapshot1.ID, created.CreateTaskID)
+			checkLockTaskID(t, f.ctx, f.storage, snapshot1.ID, created.CreateTaskID)
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot2.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
 
 			err = f.storage.UnlockSnapshot(f.ctx, snapshot1.ID, created.CreateTaskID)
 			require.NoError(t, err)
-			f.storage.CheckLockTaskID(f.ctx, snapshot1.ID, "")
+			checkLockTaskID(t, f.ctx, f.storage, snapshot1.ID, "")
 
 			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot2.ID, created.CreateTaskID)
 			require.NoError(t, err)
@@ -623,14 +649,14 @@ func TestSnapshotsLocks(t *testing.T) {
 			locked, err = f.storage.LockSnapshot(f.ctx, snapshot2.ID, created.CreateTaskID)
 			require.NoError(t, err)
 			require.False(t, locked)
-			f.storage.CheckLockTaskID(f.ctx, snapshot2.ID, "")
+			checkLockTaskID(t, f.ctx, f.storage, snapshot2.ID, "")
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
 
 			err = f.storage.UnlockSnapshot(f.ctx, snapshot2.ID, created.CreateTaskID)
 			require.NoError(t, err)
-			f.storage.CheckLockTaskID(f.ctx, snapshot2.ID, "")
+			checkLockTaskID(t, f.ctx, f.storage, snapshot2.ID, "")
 
 			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot3.ID, "delete3")
 			require.NoError(t, err)

@@ -217,30 +217,24 @@ func (s *storageYDB) UnlockSnapshot(
 	)
 }
 
-func (s *storageYDB) CheckBaseSnapshot(
+func (s *storageYDB) GetSnapshotMeta(
 	ctx context.Context,
 	snapshotID string,
-	expectedBaseSnapshotID string,
-) error {
+) (*SnapshotMeta, error) {
 
-	return s.db.Execute(
+	var snapshotMeta *SnapshotMeta
+
+	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.checkBaseSnapshot(ctx, session, snapshotID, expectedBaseSnapshotID)
+			var err error
+			snapshotMeta, err = s.getSnapshotMeta(
+				ctx,
+				session,
+				snapshotID,
+			)
+			return err
 		},
 	)
-}
-
-func (s *storageYDB) CheckLockTaskID(
-	ctx context.Context,
-	snapshotID string,
-	expectedLockTaskID string,
-) error {
-
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			return s.checkLockTaskID(ctx, session, snapshotID, expectedLockTaskID)
-		},
-	)
+	return snapshotMeta, err
 }

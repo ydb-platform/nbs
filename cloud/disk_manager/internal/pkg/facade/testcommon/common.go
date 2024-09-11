@@ -513,8 +513,9 @@ func CheckBaseSnapshot(
 	storage, err := newSnapshotStorage(ctx)
 	require.NoError(t, err)
 
-	err = storage.CheckBaseSnapshot(ctx, snapshotID, expectedBaseSnapshotID)
+	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
+	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
 }
 
 func CheckBaseDiskSlotReleased(

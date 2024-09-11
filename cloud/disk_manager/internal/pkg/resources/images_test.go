@@ -42,9 +42,13 @@ func TestImagesCreateImage(t *testing.T) {
 	storage := newStorage(t, ctx, db)
 
 	image := ImageMeta{
-		ID:        "image",
-		FolderID:  "folder",
-		SrcDiskID: "disk",
+		ID:       "image",
+		FolderID: "folder",
+		SrcDisk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		SrcDiskCheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -74,7 +78,9 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
-	require.EqualValues(t, "disk", created.SrcDiskID)
+	require.EqualValues(t, "zone", created.SrcDisk.ZoneId)
+	require.EqualValues(t, "disk", created.SrcDisk.DiskId)
+	require.EqualValues(t, "checkpoint", created.SrcDiskCheckpointID)
 
 	image.CreateTaskID = "other"
 	created, err = storage.CreateImage(ctx, image)

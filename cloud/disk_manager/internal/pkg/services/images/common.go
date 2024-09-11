@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
@@ -23,6 +24,7 @@ func deleteImage(
 	config *config.ImagesConfig,
 	scheduler tasks.Scheduler,
 	storage resources.Storage,
+	nbsFactory nbs.Factory,
 	poolService pools.Service,
 	imageID string,
 ) error {
@@ -59,6 +61,22 @@ func deleteImage(
 			"id %v is not accepted",
 			imageID,
 		)
+	}
+
+	if len(imageMeta.SrcDiskCheckpointID) != 0 {
+		nbsClient, err := nbsFactory.GetClient(ctx, imageMeta.SrcDisk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		err = nbsClient.DeleteCheckpoint(
+			ctx,
+			imageMeta.SrcDisk.DiskId,
+			imageMeta.SrcDiskCheckpointID,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = scheduleRetireBaseDisks(
