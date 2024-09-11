@@ -55,6 +55,8 @@ public:
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
 
+    TVector<TString> GetActionsNoAuth() const;
+
     const NProto::TServerConfig& GetProto() const
     {
         return ProtoConfig;
