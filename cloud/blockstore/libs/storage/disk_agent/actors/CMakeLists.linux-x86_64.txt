@@ -18,5 +18,6 @@ target_link_libraries(storage-disk_agent-actors PUBLIC
   ydb-core-protos
 )
 target_sources(storage-disk_agent-actors PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/actors/session_cache_actor.cpp
 )
