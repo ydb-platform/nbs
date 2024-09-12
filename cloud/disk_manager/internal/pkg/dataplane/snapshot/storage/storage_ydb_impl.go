@@ -423,7 +423,7 @@ func (s *storageYDB) deletingSnapshot(
 
 	if len(states) != 0 {
 		state = states[0]
-		logging.Info(ctx, "deleting snapshot %+v", *state.toSnapshotMeta())
+		logging.Info(ctx, "Deleting snapshot %+v", *state.toSnapshotMeta())
 
 		if state.status >= snapshotStatusDeleting {
 			// Snapshot already marked as deleting.
@@ -1388,7 +1388,7 @@ func (s *storageYDB) getSnapshotMeta(
 
 	if len(states) == 0 {
 		return nil, task_errors.NewNonRetriableErrorf(
-			"snapshot with id %v does not exists",
+			"snapshot with id %v does not exist",
 			snapshotID,
 		)
 	}

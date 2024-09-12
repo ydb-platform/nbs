@@ -6,7 +6,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -27,7 +26,6 @@ type createImageFromSnapshotTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	storage           resources.Storage
-	nbsFactory        nbs.Factory
 	poolService       pools.Service
 	request           *protos.CreateImageFromSnapshotRequest
 	state             *protos.CreateImageFromSnapshotTaskState
@@ -198,7 +196,6 @@ func (t *createImageFromSnapshotTask) Cancel(
 		t.config,
 		t.scheduler,
 		t.storage,
-		t.nbsFactory,
 		t.poolService,
 		t.request.DstImageId,
 	)

@@ -63,16 +63,15 @@ func (t *createImageFromDiskTask) run(
 	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
-		ID:                  t.request.DstImageId,
-		FolderID:            t.request.FolderId,
-		SrcDisk:             t.request.SrcDisk,
-		SrcDiskCheckpointID: t.request.DstImageId, // NOTE: we use image id as checkpoint id.
-		CreateRequest:       t.request,
-		CreateTaskID:        selfTaskID,
-		CreatingAt:          time.Now(),
-		CreatedBy:           "",   // TODO: extract CreatedBy from execCtx.
-		UseDataplaneTasks:   true, // TODO: remove it.
-		Encryption:          diskParams.EncryptionDesc,
+		ID:                t.request.DstImageId,
+		FolderID:          t.request.FolderId,
+		SrcDiskID:         t.request.SrcDisk.DiskId,
+		CreateRequest:     t.request,
+		CreateTaskID:      selfTaskID,
+		CreatingAt:        time.Now(),
+		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
+		UseDataplaneTasks: true, // TODO: remove it.
+		Encryption:        diskParams.EncryptionDesc,
 	})
 	if err != nil {
 		return err
@@ -216,7 +215,6 @@ func (t *createImageFromDiskTask) Cancel(
 		t.config,
 		t.scheduler,
 		t.storage,
-		t.nbsFactory,
 		t.poolService,
 		t.request.DstImageId,
 	)

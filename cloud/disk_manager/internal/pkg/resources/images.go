@@ -50,26 +50,24 @@ func imageStatusToString(status imageStatus) string {
 // This is mapped into a DB row. If you change this struct, make sure to update
 // the mapping code.
 type imageState struct {
-	id                  string
-	folderID            string
-	srcDiskZoneID       string
-	srcDiskID           string
-	srcDiskCheckpointID string
-	srcImageID          string
-	srcSnapshotID       string
-	createRequest       []byte
-	createTaskID        string
-	creatingAt          time.Time
-	createdAt           time.Time
-	createdBy           string
-	deleteTaskID        string
-	deletingAt          time.Time
-	deletedAt           time.Time
-	useDataplaneTasks   bool
-	size                uint64
-	storageSize         uint64
-	encryptionMode      uint32
-	encryptionKeyHash   []byte
+	id                string
+	folderID          string
+	srcDiskID         string
+	srcImageID        string
+	srcSnapshotID     string
+	createRequest     []byte
+	createTaskID      string
+	creatingAt        time.Time
+	createdAt         time.Time
+	createdBy         string
+	deleteTaskID      string
+	deletingAt        time.Time
+	deletedAt         time.Time
+	useDataplaneTasks bool
+	size              uint64
+	storageSize       uint64
+	encryptionMode    uint32
+	encryptionKeyHash []byte
 
 	status imageStatus
 }
@@ -78,22 +76,18 @@ func (s *imageState) toImageMeta() *ImageMeta {
 	// TODO: Image.CreateRequest should be []byte, because we can't unmarshal
 	// it here, without knowing particular protobuf message type.
 	return &ImageMeta{
-		ID:       s.id,
-		FolderID: s.folderID,
-		SrcDisk: &types.Disk{
-			ZoneId: s.srcDiskZoneID,
-			DiskId: s.srcDiskID,
-		},
-		SrcDiskCheckpointID: s.srcDiskCheckpointID,
-		SrcImageID:          s.srcImageID,
-		SrcSnapshotID:       s.srcSnapshotID,
-		CreateTaskID:        s.createTaskID,
-		CreatingAt:          s.creatingAt,
-		CreatedBy:           s.createdBy,
-		DeleteTaskID:        s.deleteTaskID,
-		UseDataplaneTasks:   s.useDataplaneTasks,
-		Size:                s.size,
-		StorageSize:         s.storageSize,
+		ID:                s.id,
+		FolderID:          s.folderID,
+		SrcDiskID:         s.srcDiskID,
+		SrcImageID:        s.srcImageID,
+		SrcSnapshotID:     s.srcSnapshotID,
+		CreateTaskID:      s.createTaskID,
+		CreatingAt:        s.creatingAt,
+		CreatedBy:         s.createdBy,
+		DeleteTaskID:      s.deleteTaskID,
+		UseDataplaneTasks: s.useDataplaneTasks,
+		Size:              s.size,
+		StorageSize:       s.storageSize,
 		Encryption: &types.EncryptionDesc{
 			Mode: types.EncryptionMode(s.encryptionMode),
 			Key: &types.EncryptionDesc_KeyHash{
@@ -108,9 +102,7 @@ func (s *imageState) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
-		persistence.StructFieldValue("src_disk_zone_id", persistence.UTF8Value(s.srcDiskZoneID)),
 		persistence.StructFieldValue("src_disk_id", persistence.UTF8Value(s.srcDiskID)),
-		persistence.StructFieldValue("src_disk_checkpoint_id", persistence.UTF8Value(s.srcDiskCheckpointID)),
 		persistence.StructFieldValue("src_image_id", persistence.UTF8Value(s.srcImageID)),
 		persistence.StructFieldValue("src_snapshot_id", persistence.UTF8Value(s.srcSnapshotID)),
 		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
@@ -134,9 +126,7 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
-		persistence.OptionalWithDefault("src_disk_zone_id", &state.srcDiskZoneID),
 		persistence.OptionalWithDefault("src_disk_id", &state.srcDiskID),
-		persistence.OptionalWithDefault("src_disk_checkpoint_id", &state.srcDiskCheckpointID),
 		persistence.OptionalWithDefault("src_image_id", &state.srcImageID),
 		persistence.OptionalWithDefault("src_snapshot_id", &state.srcSnapshotID),
 		persistence.OptionalWithDefault("create_request", &state.createRequest),
@@ -181,9 +171,7 @@ func imageStateStructTypeString() string {
 	return `Struct<
 		id: Utf8,
 		folder_id: Utf8,
-		src_disk_zone_id: Utf8,
 		src_disk_id: Utf8,
-		src_disk_checkpoint_id: Utf8,
 		src_image_id: Utf8,
 		src_snapshot_id: Utf8,
 		create_request: String,
@@ -206,9 +194,7 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("src_disk_zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_disk_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("src_disk_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_image_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
@@ -415,6 +401,7 @@ func (s *storageYDB) createImage(
 	state := imageState{
 		id:                image.ID,
 		folderID:          image.FolderID,
+		srcDiskID:         image.SrcDiskID,
 		srcImageID:        image.SrcImageID,
 		srcSnapshotID:     image.SrcSnapshotID,
 		createRequest:     createRequest,
@@ -424,12 +411,6 @@ func (s *storageYDB) createImage(
 		useDataplaneTasks: image.UseDataplaneTasks,
 
 		status: imageStatusCreating,
-	}
-
-	if image.SrcDisk != nil {
-		state.srcDiskZoneID = image.SrcDisk.ZoneId
-		state.srcDiskID = image.SrcDisk.DiskId
-		state.srcDiskCheckpointID = image.SrcDiskCheckpointID
 	}
 
 	if image.Encryption != nil {

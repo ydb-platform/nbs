@@ -686,6 +686,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation2.Id)
 	require.NoError(t, err)
 
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 

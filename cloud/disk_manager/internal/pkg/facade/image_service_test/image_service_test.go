@@ -1096,11 +1096,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(
-		ctx,
-		diskID2,
-		diskContentInfo,
-	)
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)

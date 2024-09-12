@@ -6,7 +6,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -21,7 +20,6 @@ type deleteImageTask struct {
 	config      *config.ImagesConfig
 	scheduler   tasks.Scheduler
 	storage     resources.Storage
-	nbsFactory  nbs.Factory
 	poolService pools.Service
 	request     *protos.DeleteImageRequest
 	state       *protos.DeleteImageTaskState
@@ -89,7 +87,6 @@ func (t *deleteImageTask) deleteImage(
 		t.config,
 		t.scheduler,
 		t.storage,
-		t.nbsFactory,
 		t.poolService,
 		t.request.ImageId,
 	)

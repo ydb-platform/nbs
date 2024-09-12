@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	url_package "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
@@ -29,7 +28,6 @@ type createImageFromURLTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	storage           resources.Storage
-	nbsFactory        nbs.Factory
 	poolService       pools.Service
 	request           *protos.CreateImageFromURLRequest
 	state             *protos.CreateImageFromURLTaskState
@@ -161,7 +159,6 @@ func (t *createImageFromURLTask) Cancel(
 		t.config,
 		t.scheduler,
 		t.storage,
-		t.nbsFactory,
 		t.poolService,
 		t.request.DstImageId,
 	)
