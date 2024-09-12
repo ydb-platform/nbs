@@ -30,7 +30,7 @@ type ExecutionContext interface {
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
-	GetDeadline() time.Time
+	IsHanging() bool
 
 	SetEstimate(estimatedDuration time.Duration)
 
@@ -45,13 +45,14 @@ type ExecutionContext interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type executionContext struct {
-	task                        Task
-	storage                     storage.Storage
-	taskState                   storage.TaskState
-	taskStateMutex              sync.Mutex
-	finished                    bool
-	hangingTaskTimeout          time.Duration
-	missedEstimatesUntilHanging uint64
+	task           Task
+	storage        storage.Storage
+	taskState      storage.TaskState
+	taskStateMutex sync.Mutex
+	finished       bool
+
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 // HACK from https://github.com/stretchr/testify/pull/694/files to avoid fake race detection
@@ -116,26 +117,28 @@ func (c *executionContext) AddTaskDependency(
 	})
 }
 
-func (c *executionContext) GetDeadline() time.Time {
+func (c *executionContext) IsHanging() bool {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	var estimatedDuration time.Duration
+	now := time.Now()
 	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+
+	var estimatedDuration time.Duration
 	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
 		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
 	} else {
-		return defaultDeadline
+		return defaultDeadline.After(now)
 	}
 
 	deadline := c.taskState.CreatedAt.Add(
-		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging),
+		estimatedDuration * time.Duration(c.missedEstimatesUntilTaskIsHanging),
 	)
 	if deadline.Before(defaultDeadline) {
-		return defaultDeadline
+		return defaultDeadline.After(now)
 	}
 
-	return deadline
+	return deadline.After(now)
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
@@ -359,15 +362,16 @@ func newExecutionContext(
 	storage storage.Storage,
 	taskState storage.TaskState,
 	hangingTaskTimeout time.Duration,
-	missedEstimatesUntilHanging uint64,
+	missedEstimatesUntilTaskIsHanging uint64,
 ) *executionContext {
 
 	return &executionContext{
-		task:                        task,
-		storage:                     storage,
-		taskState:                   taskState,
-		hangingTaskTimeout:          hangingTaskTimeout,
-		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
+		task:      task,
+		storage:   storage,
+		taskState: taskState,
+
+		hangingTaskTimeout:                hangingTaskTimeout,
+		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	}
 }
 

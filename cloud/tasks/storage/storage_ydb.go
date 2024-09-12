@@ -10,16 +10,17 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db                          *persistence.YDBClient
-	folder                      string
-	tablesPath                  string
-	taskStallingTimeout         time.Duration
-	updateTaskTimeout           time.Duration
-	livenessWindow              time.Duration
-	ZoneIDs                     []string
-	metrics                     storageMetrics
-	hangingTaskTimeout          time.Duration
-	missedEstimatesUntilHanging uint64
+	db                  *persistence.YDBClient
+	folder              string
+	tablesPath          string
+	taskStallingTimeout time.Duration
+	updateTaskTimeout   time.Duration
+	livenessWindow      time.Duration
+	ZoneIDs             []string
+	metrics             storageMetrics
+
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (s *storageYDB) CreateTask(

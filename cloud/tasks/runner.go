@@ -70,18 +70,19 @@ type runner interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForRun struct {
-	storage                     storage.Storage
-	registry                    *Registry
-	metrics                     runnerMetrics
-	channel                     *channel
-	pingPeriod                  time.Duration
-	pingTimeout                 time.Duration
-	host                        string
-	id                          string
-	maxRetriableErrorCount      uint64
-	maxPanicCount               uint64
-	hangingTaskTimeout          time.Duration
-	missedEstimatesUntilHanging uint64
+	storage                storage.Storage
+	registry               *Registry
+	metrics                runnerMetrics
+	channel                *channel
+	pingPeriod             time.Duration
+	pingTimeout            time.Duration
+	host                   string
+	id                     string
+	maxRetriableErrorCount uint64
+	maxPanicCount          uint64
+
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (r *runnerForRun) receiveTask(
@@ -319,23 +320,24 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
-		r.missedEstimatesUntilHanging,
+		r.missedEstimatesUntilTaskIsHanging,
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage                     storage.Storage
-	registry                    *Registry
-	metrics                     runnerMetrics
-	channel                     *channel
-	pingPeriod                  time.Duration
-	pingTimeout                 time.Duration
-	host                        string
-	id                          string
-	hangingTaskTimeout          time.Duration
-	missedEstimatesUntilHanging uint64
+	storage     storage.Storage
+	registry    *Registry
+	metrics     runnerMetrics
+	channel     *channel
+	pingPeriod  time.Duration
+	pingTimeout time.Duration
+	host        string
+	id          string
+
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -445,7 +447,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
-		r.missedEstimatesUntilHanging,
+		r.missedEstimatesUntilTaskIsHanging,
 	)
 }
 
@@ -512,7 +514,7 @@ func lockAndExecuteTask(
 	runner runner,
 	taskInfo storage.TaskInfo,
 	hangingTaskTimeout time.Duration,
-	missedEstimatesUntilHanging uint64,
+	missedEstimatesUntilTaskIsHanging uint64,
 ) error {
 
 	taskState, err := runner.lockTask(ctx, taskInfo)
@@ -581,7 +583,7 @@ func lockAndExecuteTask(
 		taskStorage,
 		taskState,
 		hangingTaskTimeout,
-		missedEstimatesUntilHanging,
+		missedEstimatesUntilTaskIsHanging,
 	)
 
 	pingCtx, cancelPing := context.WithCancel(ctx)
@@ -643,7 +645,7 @@ func startRunner(
 	idForCancel string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilHanging uint64,
+	missedEstimatesUntilTaskIsHanging uint64,
 ) error {
 
 	// TODO: More granular control on runners and cancellers.
@@ -656,18 +658,19 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForRun{
-		storage:                     taskStorage,
-		registry:                    registry,
-		metrics:                     runnerForRunMetrics,
-		channel:                     channelForRun,
-		pingPeriod:                  pingPeriod,
-		pingTimeout:                 pingTimeout,
-		host:                        host,
-		id:                          idForRun,
-		maxRetriableErrorCount:      maxRetriableErrorCount,
-		maxPanicCount:               maxPanicCount,
-		hangingTaskTimeout:          hangingTaskTimeout,
-		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
+		storage:                taskStorage,
+		registry:               registry,
+		metrics:                runnerForRunMetrics,
+		channel:                channelForRun,
+		pingPeriod:             pingPeriod,
+		pingTimeout:            pingTimeout,
+		host:                   host,
+		id:                     idForRun,
+		maxRetriableErrorCount: maxRetriableErrorCount,
+		maxPanicCount:          maxPanicCount,
+
+		hangingTaskTimeout:                hangingTaskTimeout,
+		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	})
 
 	runnerForCancelMetrics := newRunnerMetrics(
@@ -678,16 +681,17 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:                     taskStorage,
-		registry:                    registry,
-		metrics:                     runnerForCancelMetrics,
-		channel:                     channelForCancel,
-		pingPeriod:                  pingPeriod,
-		pingTimeout:                 pingTimeout,
-		host:                        host,
-		id:                          idForCancel,
-		hangingTaskTimeout:          hangingTaskTimeout,
-		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
+		storage:     taskStorage,
+		registry:    registry,
+		metrics:     runnerForCancelMetrics,
+		channel:     channelForCancel,
+		pingPeriod:  pingPeriod,
+		pingTimeout: pingTimeout,
+		host:        host,
+		id:          idForCancel,
+
+		hangingTaskTimeout:                hangingTaskTimeout,
+		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	})
 
 	return nil
@@ -708,7 +712,7 @@ func startRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilHanging uint64,
+	missedEstimatesUntilTaskIsHanging uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -728,7 +732,7 @@ func startRunners(
 			fmt.Sprintf("cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
-			missedEstimatesUntilHanging,
+			missedEstimatesUntilTaskIsHanging,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start runner #%d: %w", i, err)
@@ -753,7 +757,7 @@ func startStalkingRunners(
 	host string,
 	maxRetriableErrorCount uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilHanging uint64,
+	missedEstimatesUntilTaskIsHanging uint64,
 ) error {
 
 	for i := uint64(0); i < runnerCount; i++ {
@@ -773,7 +777,7 @@ func startStalkingRunners(
 			fmt.Sprintf("stalker_cancel_%v", i),
 			maxRetriableErrorCount,
 			maxPanicCount,
-			missedEstimatesUntilHanging,
+			missedEstimatesUntilTaskIsHanging,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to start stalking runner #%d: %w", i, err)
@@ -924,7 +928,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.GetMissedEstimatesUntilHanging(),
+		config.GetMissedEstimatesUntilTaskIsHanging(),
 	)
 	if err != nil {
 		return err
@@ -976,7 +980,7 @@ func StartRunners(
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxPanicCount(),
-		config.GetMissedEstimatesUntilHanging(),
+		config.GetMissedEstimatesUntilTaskIsHanging(),
 	)
 	if err != nil {
 		return err
