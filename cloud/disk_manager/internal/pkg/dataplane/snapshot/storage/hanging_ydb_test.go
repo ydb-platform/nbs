@@ -63,11 +63,11 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 		declare $checksum as Uint32;
 		declare $compression as Utf8;
 
-		upsert into chunk_blobs (shard_id, chunk_id, referer, data, refcnt, checksum, compression)
+		upsert into %v (shard_id, chunk_id, referer, data, refcnt, checksum, compression)
 		values
 			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum, $compression),
 			($shard_id, $chunk_id, $referer, null, null, null, null)
-	`, db.AbsolutePath(folder)),
+	`, db.AbsolutePath(folder), table),
 				persistence.ValueParam("$shard_id", persistence.Uint64Value(uint64(j))),
 				persistence.ValueParam("$chunk_id", persistence.UTF8Value(fmt.Sprintf("chunk_%d", j))),
 				persistence.ValueParam("$referer", persistence.UTF8Value("sdsdsdsd")),
