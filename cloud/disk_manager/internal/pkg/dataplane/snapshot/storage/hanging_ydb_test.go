@@ -105,6 +105,7 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 			wg.Done()
 		}(i)
 	}
+	time.Sleep(time.Millisecond * 100)
 	newCancel()
 	wg.Wait()
 
