@@ -25,7 +25,7 @@ func randomData(size int, t *testing.T) []byte {
 }
 
 func TestYdbHangingRequest(t *testing.T) {
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 300; i++ {
 		oneTestIteration(t)
 	}
 }

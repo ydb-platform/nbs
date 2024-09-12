@@ -6,11 +6,6 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 FORK_SUBTESTS()
 SPLIT_FACTOR(16)
 
-IF (RACE)
-    SIZE(LARGE)
-    TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
-ELSE()
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(LARGE)
 
 END()
