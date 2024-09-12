@@ -876,6 +876,7 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
 void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe)
 {
     NProto::TStorageServiceConfig config;
+    config.SetMaxRequestSize(128_MB);
     config.SetMinChannelCount(4);
     auto runtime = PrepareTestActorRuntime(config);
 

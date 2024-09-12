@@ -655,6 +655,30 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
+     *  Validation of the request blocks size and range
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto requestByteCount =
+            CalculateBytesCount(msg->Record, State->GetBlockSize());
+        if (requestByteCount > Config->GetMaxRequestSize()) {
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "invalid request size " << requestByteCount
+                                 << " > " << Config->GetMaxRequestSize()));
+            return;
+        }
+
+        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
+        if (!CheckReadWriteBlockRange(range)) {
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << DescribeRange(range)));
+            return;
+        }
+    }
+
+    /*
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
@@ -701,32 +725,6 @@ void TVolumeActor::ForwardRequest(
                 TabletID(),
                 DuplicateRequestCount);
 
-            return;
-        }
-    }
-
-    /*
-     *  Validation of the request blocks size and range
-     */
-    if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const auto requestByteCount =
-            CalculateBytesCount(msg->Record, State->GetBlockSize());
-        if (requestByteCount > Config->GetMaxRequestSize() ||
-            requestByteCount % State->GetBlockSize() != 0)
-        {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "invalid request size " << requestByteCount
-                                 << " > " << Config->GetMaxRequestSize()));
-            return;
-        }
-
-        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
-        if (!CheckReadWriteBlockRange(range)) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "invalid block range " << DescribeRange(range)));
             return;
         }
     }

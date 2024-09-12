@@ -6481,6 +6481,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldHandlePartitionRestartsForMetadataRebuild)
     {
         NProto::TStorageServiceConfig config;
+        config.SetMaxRequestSize(128_MB);
         config.SetMinChannelCount(4);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -8299,6 +8300,128 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             auto request = volume.CreateZeroBlocksRequest(
                 TBlockRange64::WithLength(1024 * 10, 1048),
+                clientInfo.GetClientId());
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvZeroBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorOnInvalidBlockSize)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetMaxRequestSize(1024_KB);
+
+        auto runtime = PrepareTestActorRuntime(storageServiceConfig);
+        const auto maxAllowedBlockCount =
+            storageServiceConfig.GetMaxRequestSize() / DefaultBlockSize;
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            16384,      // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2,          // blocksPerStripe
+            "",         // tags
+            "",         // baseDiskId
+            ""          // baseDiskCheckpointId
+        );
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        // Maximum allowed size OK
+        {
+            volume.WriteBlocks(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount),
+                clientInfo.GetClientId(),
+                1);
+            volume.ReadBlocks(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount),
+                clientInfo.GetClientId());
+            volume.WriteBlocksLocal(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount),
+                clientInfo.GetClientId(),
+                GetBlockContent(1));
+            volume.ZeroBlocks(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount),
+                clientInfo.GetClientId());
+
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                maxAllowedBlockCount,
+                TString::TUninitialized(DefaultBlockSize));
+            auto resp = volume.ReadBlocksLocal(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount),
+                TGuardedSgList(std::move(sglist)),
+                clientInfo.GetClientId());
+        }
+
+        // Requests with block count more than the allowed limit should return
+        // an error E_ARGUMENT.
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount + 1),
+                clientInfo.GetClientId(),
+                1);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            TString data(DefaultBlockSize, 2);
+            auto request = volume.CreateWriteBlocksLocalRequest(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount + 1),
+                clientInfo.GetClientId(),
+                data);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount + 1),
+                clientInfo.GetClientId());
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            TGuardedSgList list;
+            auto request = volume.CreateReadBlocksLocalRequest(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount + 1),
+                list,
+                clientInfo.GetClientId());
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            auto request = volume.CreateZeroBlocksRequest(
+                TBlockRange64::WithLength(0, maxAllowedBlockCount + 1),
                 clientInfo.GetClientId());
             volume.SendToPipe(std::move(request));
             auto response = volume.RecvZeroBlocksResponse();
