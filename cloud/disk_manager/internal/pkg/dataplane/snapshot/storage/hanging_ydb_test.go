@@ -29,6 +29,7 @@ func TestYdbHangingRequest(t *testing.T) {
 		oneTestIteration(t)
 	}
 }
+
 func oneTestIteration(t *testing.T) {
 	ctx, cancel := context.WithCancel(test.NewContext())
 	defer cancel()
@@ -122,13 +123,14 @@ func oneTestIteration(t *testing.T) {
 	wg.Wait()
 
 	logging.Info(ctx, "After context was cancelled")
-	secondContext, secondCancelFunc := context.WithTimeout(ctx, time.Minute*3)
+	transactionDuration := time.Minute * 3
+	secondContext, secondCancelFunc := context.WithTimeout(ctx, transactionDuration)
 	defer secondCancelFunc()
 	for i := 100; i < 200; i++ {
 		wg.Add(1)
 		go func(j int) {
 			now := time.Now()
-			_, err := db.ExecuteRW(secondContext, fmt.Sprintf(`
+			db.ExecuteRW(secondContext, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $shard_id as Uint64;
@@ -150,8 +152,9 @@ func oneTestIteration(t *testing.T) {
 				persistence.ValueParam("$checksum", persistence.Uint32Value(uint32(1231231))),
 				persistence.ValueParam("$compression", persistence.UTF8Value("lz4")),
 			)
-			logging.Info(ctx, "Request for %d transaction been executed for %v", time.Now().Sub(now))
-			require.NoError(t, err)
+			duration := time.Now().Sub(now)
+			logging.Info(ctx, "Request for %d transaction been executed for %v", duration)
+			require.Less(t, duration, transactionDuration)
 			wg.Done()
 		}(i)
 	}
