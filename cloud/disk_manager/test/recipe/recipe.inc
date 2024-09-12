@@ -14,14 +14,9 @@ DEPENDS(
     contrib/python/moto/bin
 )
 
-IF (OPENSOURCE)
-    DEPENDS(
-        cloud/storage/core/tools/testing/ydb/bin
-    )
-ELSE()
-    DEPENDS(
-        contrib/ydb/apps/ydbd
-    )
+DEPENDS(
+    contrib/ydb/apps/ydbd
+)
 ENDIF()
 
 DATA(
