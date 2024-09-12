@@ -73,7 +73,7 @@ struct TFileSystemConfig
     TString FolderId = "test";
     ui32 BlockSize = DefaultBlockSize;
     ui64 BlockCount = DefaultBlockCount;
-    ui32 NodeCount = MaxNodes;
+    ui64 NodeCount = MaxNodes;
     ui32 ChannelCount = DefaultChannelCount;
     ui32 StorageMediaKind = 0;
     TPerformanceProfile PerformanceProfile;
