@@ -27,12 +27,14 @@ target_sources(cloud-filestore-libs-storage-tablet-model-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/fresh_blocks_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/fresh_bytes_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/garbage_queue_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/large_blocks_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/mixed_blocks_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/node_session_stat_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/operation_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range_locks_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/read_ahead_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/sparse_segment_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/split_range_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/throttling_policy_ut.cpp
 )
