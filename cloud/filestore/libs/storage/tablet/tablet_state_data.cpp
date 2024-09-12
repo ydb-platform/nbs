@@ -839,13 +839,13 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
     InvalidateReadAheadCache(nodeId);
 }
 
-void TIndexTabletState::UpdateBlockLists(
+bool TIndexTabletState::UpdateBlockLists(
     TIndexTabletDatabase& db,
     TMixedBlobMeta& blob)
 {
     const auto rangeId = GetMixedRangeIndex(blob.Blocks);
     DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
-    WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+    return WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 }
 
 ui32 TIndexTabletState::CleanupBlockDeletions(

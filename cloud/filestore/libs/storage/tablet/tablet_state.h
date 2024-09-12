@@ -870,7 +870,7 @@ public:
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 
-    void UpdateBlockLists(
+    bool UpdateBlockLists(
         TIndexTabletDatabase& db,
         TMixedBlobMeta& blob);
 
