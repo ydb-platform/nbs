@@ -70,16 +70,16 @@ type runner interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForRun struct {
-	storage                     storage.Storage
-	registry                    *Registry
-	metrics                     runnerMetrics
-	channel                     *channel
-	pingPeriod                  time.Duration
-	pingTimeout                 time.Duration
-	host                        string
-	id                          string
-	maxRetriableErrorCount      uint64
-	maxPanicCount               uint64
+	storage                storage.Storage
+	registry               *Registry
+	metrics                runnerMetrics
+	channel                *channel
+	pingPeriod             time.Duration
+	pingTimeout            time.Duration
+	host                   string
+	id                     string
+	maxRetriableErrorCount uint64
+	maxPanicCount          uint64
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
@@ -327,14 +327,14 @@ func (r *runnerForRun) lockAndExecuteTask(
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage                     storage.Storage
-	registry                    *Registry
-	metrics                     runnerMetrics
-	channel                     *channel
-	pingPeriod                  time.Duration
-	pingTimeout                 time.Duration
-	host                        string
-	id                          string
+	storage     storage.Storage
+	registry    *Registry
+	metrics     runnerMetrics
+	channel     *channel
+	pingPeriod  time.Duration
+	pingTimeout time.Duration
+	host        string
+	id          string
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
@@ -658,16 +658,16 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForRun{
-		storage:                     taskStorage,
-		registry:                    registry,
-		metrics:                     runnerForRunMetrics,
-		channel:                     channelForRun,
-		pingPeriod:                  pingPeriod,
-		pingTimeout:                 pingTimeout,
-		host:                        host,
-		id:                          idForRun,
-		maxRetriableErrorCount:      maxRetriableErrorCount,
-		maxPanicCount:               maxPanicCount,
+		storage:                taskStorage,
+		registry:               registry,
+		metrics:                runnerForRunMetrics,
+		channel:                channelForRun,
+		pingPeriod:             pingPeriod,
+		pingTimeout:            pingTimeout,
+		host:                   host,
+		id:                     idForRun,
+		maxRetriableErrorCount: maxRetriableErrorCount,
+		maxPanicCount:          maxPanicCount,
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
@@ -681,14 +681,14 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:                     taskStorage,
-		registry:                    registry,
-		metrics:                     runnerForCancelMetrics,
-		channel:                     channelForCancel,
-		pingPeriod:                  pingPeriod,
-		pingTimeout:                 pingTimeout,
-		host:                        host,
-		id:                          idForCancel,
+		storage:     taskStorage,
+		registry:    registry,
+		metrics:     runnerForCancelMetrics,
+		channel:     channelForCancel,
+		pingPeriod:  pingPeriod,
+		pingTimeout: pingTimeout,
+		host:        host,
+		id:          idForCancel,
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,

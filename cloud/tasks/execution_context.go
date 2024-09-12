@@ -45,11 +45,11 @@ type ExecutionContext interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type executionContext struct {
-	task                        Task
-	storage                     storage.Storage
-	taskState                   storage.TaskState
-	taskStateMutex              sync.Mutex
-	finished                    bool
+	task           Task
+	storage        storage.Storage
+	taskState      storage.TaskState
+	taskStateMutex sync.Mutex
+	finished       bool
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
@@ -366,9 +366,9 @@ func newExecutionContext(
 ) *executionContext {
 
 	return &executionContext{
-		task:                        task,
-		storage:                     storage,
-		taskState:                   taskState,
+		task:      task,
+		storage:   storage,
+		taskState: taskState,
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,

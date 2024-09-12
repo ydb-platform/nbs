@@ -978,7 +978,7 @@ func (s *storageYDB) listHangingTasks(
 			persistence.IntervalValue(s.hangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"$missed_estimates_until_task_hanging",
+			"$missed_estimates_until_task_is_hanging",
 			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
