@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     common.go
     factory.go
+    hanging_ydb_test.go
     storage.go
     storage_legacy.go
     storage_legacy_impl.go
