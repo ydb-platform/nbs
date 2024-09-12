@@ -599,27 +599,25 @@ public:
 
     void Start() override
     {
-        TCondVar var;
+        auto processStarted = NewPromise();
         // To avoid a race, we need to get the shared pointer in the calling
         // thread and pass it to the background thread. This guaranteed that the
         // background thread will deal with a live this.
-        auto workFunc = [&var, self = shared_from_this()]()
+        auto workFunc = [&processStarted, self = shared_from_this()]()
         {
             // It is important to start the vhost-server on the thread that
             // outlives it. vhost-server waits for the parent-death signal via
             // PR_SET_PDEATHSIG which tracks the aliveness of the thread that
             // spawned the process.
             self->Process = self->StartProcess();
-            var.Signal();
+            processStarted.SetValue();
             self->ThreadProc();
         };
 
-        with_lock (Mutex) {
-            std::thread(std::move(workFunc)).detach();
-            // Infinite time wait is safe here, since we are in the coroutine
-            // thread.
-            var.WaitI(Mutex);
-        }
+        std::thread(std::move(workFunc)).detach();
+        // Infinite time wait is safe here, since we are in the coroutine
+        // thread.
+        Executor->WaitFor(processStarted);
     }
 
     TFuture<NProto::TError> Stop() override
