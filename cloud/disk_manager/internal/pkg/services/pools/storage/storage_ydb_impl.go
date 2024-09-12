@@ -2168,7 +2168,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		res = append(res, baseDisk.toBaseDisk())
 	}
 
-	logging.Info(ctx, "Selected %v disks will be scheduled for pool %v", len(res), config)
+	logging.Info(ctx, "%v disks will be scheduled for pool %+v", len(res), pool)
 
 	return res, nil
 }
