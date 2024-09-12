@@ -420,7 +420,7 @@ private:
     // Updates in-memory index state with the given node updates. Is to be
     // called upon every operation that changes node-related data. As of now, it
     // is called upon completion of every RW transaction that can change the
-    // node-related data. Failure to perform this operation will read to
+    // node-related data. Failure to perform this operation will lead to
     // inconsistent cache state between the localDB and the in-memory index
     // state
     void UpdateInMemoryIndexState(

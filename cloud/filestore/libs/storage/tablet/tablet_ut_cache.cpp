@@ -108,7 +108,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         //
         // Creating another node should evict the first one from the cache
         tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
-        tablet.GetNodeAttr(RootNodeId, "test2");
+        UNIT_ASSERT_VALUES_EQUAL(
+            id,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetId());
         // ListNodes can not be performed using in-memory cache
         tablet.ListNodes(RootNodeId);
 
@@ -119,7 +121,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             2,
             statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
     }
