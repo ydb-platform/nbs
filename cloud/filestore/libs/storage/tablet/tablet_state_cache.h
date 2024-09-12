@@ -21,11 +21,8 @@ public:
 
     void Reset(
         ui64 nodesCapacity,
-        ui64 nodesVerCapacity,
         ui64 nodeAttrsCapacity,
-        ui64 nodeAttrsVerCapacity,
-        ui64 nodeRefsCapacity,
-        ui64 nodeRefsVerCapacity);
+        ui64 nodeRefsCapacity);
 
     //
     // Nodes
@@ -36,10 +33,19 @@ public:
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
+private:
+    void WriteNode(
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs);
+
+    void DeleteNode(ui64 nodeId);
+
     //
     // Nodes_Ver
     //
 
+public:
     bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
@@ -60,10 +66,21 @@ public:
         ui64 commitId,
         TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
 
+private:
+    void WriteNodeAttr(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        const TString& value,
+        ui64 version);
+
+    void DeleteNodeAttr(ui64 nodeId, const TString& name);
+
     //
     // NodeAttrs_Ver
     //
 
+public:
     bool ReadNodeAttrVer(
         ui64 nodeId,
         ui64 commitId,
@@ -98,10 +115,22 @@ public:
         const TString& cookie,
         ui32 bytesToPrecharge) override;
 
+private:
+    void WriteNodeRef(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        ui64 childNode,
+        const TString& followerId,
+        const TString& followerName);
+
+    void DeleteNodeRef(ui64 nodeId, const TString& name);
+
     //
     // NodeRefs_Ver
     //
 
+public:
     bool ReadNodeRefVer(
         ui64 nodeId,
         ui64 commitId,
@@ -125,11 +154,8 @@ public:
 private:
     // TODO(#1146): use LRU cache / something with better eviction policy
     ui64 NodesCapacity = 0;
-    ui64 NodesVerCapacity = 0;
     ui64 NodeAttrsCapacity = 0;
-    ui64 NodeAttrsVerCapacity = 0;
     ui64 NodeRefsCapacity = 0;
-    ui64 NodeRefsVerCapacity = 0;
 
     //
     // Nodes
@@ -142,35 +168,6 @@ private:
     };
 
     THashMap<ui64, TNodeRow> Nodes;
-
-    //
-    // Nodes_Ver
-    //
-
-    struct TNodesVerKey
-    {
-        TNodesVerKey(ui64 nodeId, ui64 minCommitId)
-            : NodeId(nodeId)
-            , MinCommitId(minCommitId)
-        {}
-
-        ui64 NodeId = 0;
-        ui64 MinCommitId = 0;
-
-        bool operator<(const TNodesVerKey& rhs) const
-        {
-            return std::tie(NodeId, MinCommitId) <
-                   std::tie(rhs.NodeId, rhs.MinCommitId);
-        }
-    };
-
-    struct TNodesVerRow
-    {
-        ui64 MaxCommitId = 0;
-        NProto::TNode Node;
-    };
-
-    TMap<TNodesVerKey, TNodesVerRow> NodesVer;
 
     //
     // NodeAttrs
@@ -210,38 +207,6 @@ private:
     THashMap<TNodeAttrsKey, TNodeAttrsRow, TNodeAttrsKeyHash> NodeAttrs;
 
     //
-    // NodeAttrs_Ver
-    //
-
-    struct TNodeAttrsVerKey
-    {
-        TNodeAttrsVerKey(ui64 nodeId, const TString& name, ui64 minCommitId)
-            : NodeId(nodeId)
-            , Name(name)
-            , MinCommitId(minCommitId)
-        {}
-
-        ui64 NodeId = 0;
-        TString Name;
-        ui64 MinCommitId = 0;
-
-        bool operator<(const TNodeAttrsVerKey& rhs) const
-        {
-            return std::tie(NodeId, Name, MinCommitId) <
-                   std::tie(rhs.NodeId, rhs.Name, rhs.MinCommitId);
-        }
-    };
-
-    struct TNodeAttrsVerRow
-    {
-        ui64 MaxCommitId = 0;
-        TString Value;
-        ui64 Version = 0;
-    };
-
-    TMap<TNodeAttrsVerKey, TNodeAttrsVerRow> NodeAttrsVer;
-
-    //
     // NodeRefs
     //
 
@@ -279,39 +244,6 @@ private:
 
     THashMap<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash> NodeRefs;
 
-    //
-    // NodeRefs_Ver
-    //
-
-    struct TNodeRefsVerKey
-    {
-        TNodeRefsVerKey(ui64 nodeId, const TString& name, ui64 minCommitId)
-            : NodeId(nodeId)
-            , Name(name)
-            , MinCommitId(minCommitId)
-        {}
-
-        ui64 NodeId = 0;
-        TString Name;
-        ui64 MinCommitId = 0;
-
-        bool operator<(const TNodeRefsVerKey& rhs) const
-        {
-            return std::tie(NodeId, Name, MinCommitId) <
-                   std::tie(rhs.NodeId, Name, rhs.MinCommitId);
-        }
-    };
-
-    struct TNodeRefsVerRow
-    {
-        ui64 MaxCommitId = 0;
-        ui64 ChildId = 0;
-        TString FollowerId;
-        TString FollowerName;
-    };
-
-    TMap<TNodeRefsVerKey, TNodeRefsVerRow> NodeRefsVer;
-
 public:
     struct TWriteNodeRequest
     {
@@ -324,38 +256,13 @@ public:
         ui64 NodeId = 0;
     };
 
-    struct TWriteNodeVerRequest
-    {
-        TNodesVerKey NodesVerKey;
-        TNodesVerRow NodesVerRow;
-    };
-
-    struct TDeleteNodeVerRequest
-    {
-        TNodesVerKey NodesVerKey;
-    };
-
     struct TWriteNodeAttrsRequest
     {
         TNodeAttrsKey NodeAttrsKey;
         TNodeAttrsRow NodeAttrsRow;
     };
 
-    struct TDeleteNodeAttrsRequest
-    {
-        TNodeAttrsKey NodeAttrsKey;
-    };
-
-    struct TWriteNodeAttrsVerRequest
-    {
-        TNodeAttrsVerKey NodeAttrsVerKey;
-        TNodeAttrsVerRow NodeAttrsVerRow;
-    };
-
-    struct TDeleteNodeAttrsVerRequest
-    {
-        TNodeAttrsVerKey NodeAttrsVerKey;
-    };
+    using TDeleteNodeAttrsRequest = TNodeAttrsKey;
 
     struct TWriteNodeRefsRequest
     {
@@ -363,34 +270,17 @@ public:
         TNodeRefsRow NodeRefsRow;
     };
 
-    struct TDeleteNodeRefsRequest
-    {
-        TNodeRefsKey NodeRefsKey;
-    };
+    using TDeleteNodeRefsRequest = TNodeRefsKey;
 
-    struct TWriteNodeRefsVerRequest
-    {
-        TNodeRefsVerKey NodeRefsVerKey;
-        TNodeRefsVerRow NodeRefsVerRow;
-    };
-
-    struct TDeleteNodeRefsVerRequest
-    {
-        TNodeRefsVerKey NodeRefsVerKey;
-    };
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,
-        TWriteNodeVerRequest,
-        TDeleteNodeVerRequest,
         TWriteNodeAttrsRequest,
         TDeleteNodeAttrsRequest,
-        TWriteNodeAttrsVerRequest,
-        TDeleteNodeAttrsVerRequest,
         TWriteNodeRefsRequest,
-        TDeleteNodeRefsRequest,
-        TWriteNodeRefsVerRequest,
-        TDeleteNodeRefsVerRequest>;
+        TDeleteNodeRefsRequest>;
+
+    void UpdateState(const TVector<TIndexStateRequest>& nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

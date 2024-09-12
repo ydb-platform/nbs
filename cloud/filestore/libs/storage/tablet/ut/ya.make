@@ -21,6 +21,7 @@ SRCS(
     tablet_ut_sessions.cpp
     tablet_ut_subsessions.cpp
     tablet_ut_throttling.cpp
+    tablet_ut_state_cache.cpp
 )
 
 PEERDIR(
