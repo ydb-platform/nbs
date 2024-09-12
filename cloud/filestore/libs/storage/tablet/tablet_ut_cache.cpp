@@ -114,8 +114,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // ListNodes can not be performed using in-memory cache
         tablet.ListNodes(RootNodeId);
 
-        // Two out of three GetNodeAttr calls should should have been performed
-        // using the cache. ListNodes is a cache miss also.
+        // Two out of three GetNodeAttr calls should have been performed using
+        // the cache. ListNodes is a cache miss also.
         auto statsAfter = GetTxStats(env, tablet);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -169,8 +169,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // cache, this is a RO transaction, cache miss
         tablet.AssertGetNodeAttrFailed(RootNodeId, "test");
 
-        // Two out of three GetNodeAttr calls should should have been performed
-        // using the cache
+        // Two out of three should have been performed using the cache
         auto statsAfter = GetTxStats(env, tablet);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -220,8 +219,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         tablet.AssertGetNodeAttrFailed(RootNodeId, "test1");
         tablet.AssertGetNodeAttrFailed(RootNodeId, "test2");
 
-        // Four out of eight GetNodeAttr calls should should have been performed
-        // using the cache. Other four are cache misses and should have failed
+        // Four out of eight GetNodeAttr calls should have been performed using
+        // the cache. Other four are cache misses and should have failed
         auto statsAfter = GetTxStats(env, tablet);
         UNIT_ASSERT_VALUES_EQUAL(
             4,
@@ -258,7 +257,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         tablet.GetNodeAttr(id, "")->Record.GetNode();
 
         tablet.UnlinkNode(RootNodeId, "test", false);
-        // Should work as ther is an existing handle
+        // Should work as there is an existing handle
         tablet.GetNodeAttr(id, "");
 
         // Upon session destruction the node should be removed from the cache as
