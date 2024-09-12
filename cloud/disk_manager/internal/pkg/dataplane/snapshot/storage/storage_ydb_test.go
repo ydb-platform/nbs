@@ -1533,10 +1533,3 @@ func expectHistogramCalledOnce(registry *mocks.RegistryMock, name string, compre
 		),
 	).Return(nil).Once()
 }
-
-func randomData(size int, t *testing.T) []byte {
-	data := make([]byte, size)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
-	return data
-}

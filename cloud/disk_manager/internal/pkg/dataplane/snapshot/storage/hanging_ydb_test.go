@@ -2,20 +2,47 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"os"
 	"sync"
 	"testing"
 	"time"
 )
 
+func randomData(size int, t *testing.T) []byte {
+	data := make([]byte, size)
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+	return data
+}
+
 func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 	ctx, cancel := context.WithCancel(test.NewContext())
 	defer cancel()
-	db, err := newYDB(ctx)
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	rootPath := "disk_manager"
+	connectionTimeout := "10s"
+	db, err := persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint:          &endpoint,
+			Database:          &database,
+			RootPath:          &rootPath,
+			ConnectionTimeout: &connectionTimeout,
+		},
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	folder := fmt.Sprintf("ydb_test/%v", t.Name())
