@@ -2028,7 +2028,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	ctx context.Context,
 	session *persistence.Session,
 	config poolConfig,
-) (res []BaseDisk, err error) {
+) (baseDisks []BaseDisk, err error) {
 
 	defer session.StorageStatCall(ctx, "storageYDB/takeBaseDisksToScheduleForPool")(&err)
 
@@ -2165,12 +2165,11 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	}
 
 	for _, baseDisk := range newBaseDisks {
-		res = append(res, baseDisk.toBaseDisk())
+		baseDisks = append(baseDisks, baseDisk.toBaseDisk())
 	}
 
-	logging.Info(ctx, "%v disks will be scheduled for pool %+v", len(res), pool)
-
-	return res, nil
+	logging.Info(ctx, "%v disks will be scheduled for pool %+v", len(baseDisks), pool)
+	return baseDisks, nil
 }
 
 func (s *storageYDB) takeBaseDisksToSchedule(
@@ -2185,14 +2184,14 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 		return nil, err
 	}
 
-	logging.Info(ctx, "Got %v pool configs", len(configs))
+	logging.Info(ctx, "Got %v pool configs to schedule base disks for", len(configs))
 
 	scheduling, err := s.getBaseDisksScheduling(ctx, session)
 	if err != nil {
 		return nil, err
 	}
 
-	logging.Info(ctx, "Got %v disks", len(scheduling))
+	logging.Info(ctx, "Got %v base disks to schedule", len(scheduling))
 
 	for _, disk := range scheduling {
 		if disk.SrcDisk != nil {
