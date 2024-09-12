@@ -17,7 +17,6 @@ DEPENDS(
 DEPENDS(
     contrib/ydb/apps/ydbd
 )
-ENDIF()
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
