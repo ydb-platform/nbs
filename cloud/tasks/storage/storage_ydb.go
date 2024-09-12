@@ -18,8 +18,9 @@ type storageYDB struct {
 	livenessWindow              time.Duration
 	ZoneIDs                     []string
 	metrics                     storageMetrics
-	hangingTaskTimeout          time.Duration
-	missedEstimatesUntilHanging uint64
+
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (s *storageYDB) CreateTask(

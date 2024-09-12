@@ -475,8 +475,9 @@ func NewStorage(
 			livenessWindow:              livenessWindow,
 			ZoneIDs:                     config.GetZoneIds(),
 			metrics:                     metrics,
-			hangingTaskTimeout:          hangingTaskTimeout,
-			missedEstimatesUntilHanging: config.GetMissedEstimatesUntilHanging(),
+
+			hangingTaskTimeout:                hangingTaskTimeout,
+			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		}
 	}
 

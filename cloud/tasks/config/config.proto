@@ -38,11 +38,11 @@ message TasksConfig {
     repeated string ZoneIds = 23;
 
     optional string HearbeatInterval = 24 [default = "30s"];
-    // The time window within which the node is considered alive. 
+    // The time window within which the node is considered alive.
     optional string LivenessWindow = 25 [default = "30s"];
 
     // Feature flag for enabling node eviction policy based
-    // on the health of the node and the number of running nodes. 
+    // on the health of the node and the number of running nodes.
     optional bool NodeEvictionEnabled = 26 [default = false];
 
     map<string, int64> InflightTaskPerNodeLimits = 27; // by task type
@@ -50,5 +50,6 @@ message TasksConfig {
     optional string CollectListerMetricsTaskScheduleInterval = 28 [default = "10m"];
     optional string ListerMetricsCollectionInterval = 29 [default = "1m"];
     optional int64 MaxHangingTaskIDsToReport = 30 [default = 1000];
-    optional uint64 MissedEstimatesUntilHanging = 31 [default = 2];
+    // Number of missed estimated durations until task is considered hanging.
+    optional uint64 MissedEstimatesUntilTaskIsHanging = 31 [default = 2];
 }

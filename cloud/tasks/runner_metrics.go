@@ -112,11 +112,11 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execCtx ExecutionContext) {
 					return
 				case <-time.After(checkTaskHangingPeriod):
 				}
-				m.checkTaskHanging(ctx, execCtx.GetDeadline())
+				m.setTaskHanging(ctx, execCtx.IsHanging())
 			}
 
 		}()
-		m.checkTaskHangingImpl(execCtx.GetDeadline())
+		m.setTaskHangingImpl(execCtx.IsHanging())
 	}
 
 	m.taskMetrics.inflightTasksGauge.Add(1)
@@ -131,7 +131,7 @@ func (m *runnerMetricsImpl) OnExecutionStopped() {
 		return
 	}
 
-	m.setTaskHanging(false)
+	m.setTaskHangingImpl(false)
 	m.taskMetrics.inflightTasksGauge.Add(-1)
 
 	m.taskMetrics = nil
@@ -187,7 +187,7 @@ func (m *runnerMetricsImpl) OnError(err error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (m *runnerMetricsImpl) setTaskHanging(value bool) {
+func (m *runnerMetricsImpl) setTaskHangingImpl(value bool) {
 	prevValue := m.taskMetrics.isTaskHanging
 	m.taskMetrics.isTaskHanging = value
 
@@ -204,19 +204,7 @@ func (m *runnerMetricsImpl) setTaskHanging(value bool) {
 	}
 }
 
-func (m *runnerMetricsImpl) checkTaskHangingImpl(deadline time.Time) {
-	if m.taskMetrics == nil {
-		return
-	}
-
-	m.setTaskHanging(time.Now().After(deadline))
-}
-
-func (m *runnerMetricsImpl) checkTaskHanging(
-	ctx context.Context,
-	deadline time.Time,
-) {
-
+func (m *runnerMetricsImpl) setTaskHanging(ctx context.Context, value bool) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
@@ -224,7 +212,7 @@ func (m *runnerMetricsImpl) checkTaskHanging(
 		return
 	}
 
-	m.checkTaskHangingImpl(deadline)
+	m.setTaskHangingImpl(value)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
