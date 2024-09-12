@@ -113,7 +113,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 8_KB), TString());
 
-        args.SetSize(MaxFileBlocks * DefaultBlockSize + 1);
+        args.SetSize(GetDefaultMaxFileBlocks() * DefaultBlockSize + 1);
         tablet.AssertSetNodeAttrFailed(args);
 
         args.SetSize(18_KB);

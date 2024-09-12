@@ -18,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
@@ -460,6 +461,95 @@ func TestCreateSnapshot(t *testing.T) {
 	}
 }
 
+func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			snapshot1 := SnapshotMeta{
+				ID: "snapshot1",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint1",
+				CreateTaskID: "create1",
+			}
+
+			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Empty(t, created.BaseSnapshotID)
+			require.Empty(t, created.BaseCheckpointID)
+
+			created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID: "snapshot2",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint2",
+				CreateTaskID: "create2",
+			})
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Empty(t, created.BaseSnapshotID)
+			require.Empty(t, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			snapshot3 := SnapshotMeta{
+				ID: "snapshot3",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint3",
+				CreateTaskID: "create3",
+			}
+
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
+			require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			snapshot4 := SnapshotMeta{
+				ID: "snapshot4",
+				Disk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				CheckpointID: "checkpoint4",
+				CreateTaskID: "create4",
+			}
+
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot4)
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
+			require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
+
+			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot1.ID, "delete1")
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot3.ID, "delete3")
+			require.NoError(t, err)
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot4.ID, "delete4")
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestDeletingSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -474,7 +564,7 @@ func TestDeletingSnapshot(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
@@ -482,7 +572,7 @@ func TestDeletingSnapshot(t *testing.T) {
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 			// Check idempotency.
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			_, err = f.storage.CreateSnapshot(
@@ -495,7 +585,7 @@ func TestDeletingSnapshot(t *testing.T) {
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 			// Check idempotency.
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			_, err = f.storage.CreateSnapshot(
@@ -520,18 +610,18 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			err := f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err := f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			// Check idempotency.
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			_, err = f.storage.CreateSnapshot(
@@ -561,7 +651,7 @@ func TestClearDeletingSnapshots(t *testing.T) {
 			require.NoError(t, err)
 
 			deletingAt := time.Now() // not exactly precise
-			err = f.storage.DeletingSnapshot(f.ctx, "snapshot")
+			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
 			deletingBefore := deletingAt.Add(-time.Microsecond)

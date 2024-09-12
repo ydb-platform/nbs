@@ -264,6 +264,29 @@ def test_partial_set_node_attr():
     assert stat["Mode"] == new_stat["Mode"]
 
 
+def test_resize():
+    client, results_path = __init_test()
+    out = client.create(
+        "fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT
+    )
+
+    out += client.resize("fs0", 2 * BLOCKS_COUNT)
+
+    try:
+        client.resize("fs0", BLOCKS_COUNT)
+    except Exception:
+        out += b'resize failed as expected'
+
+    out += client.resize("fs0", BLOCKS_COUNT, force=True)
+    out += client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_multitablet_ls():
     client, results_path = __init_test()
 

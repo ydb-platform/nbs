@@ -53,10 +53,10 @@ void TInMemoryIndexState::WriteNode(
     ui64 commitId,
     const NProto::TNode& attrs)
 {
-    Nodes[nodeId] = TNodeRow{.CommitId = commitId, .Node = attrs};
-    if (Nodes.size() > NodesCapacity) {
+    if (Nodes.size() == NodesCapacity && !Nodes.contains(nodeId)) {
         Nodes.clear();
     }
+    Nodes[nodeId] = TNodeRow{.CommitId = commitId, .Node = attrs};
 }
 
 void TInMemoryIndexState::DeleteNode(ui64 nodeId)
@@ -129,12 +129,12 @@ void TInMemoryIndexState::WriteNodeAttr(
     const TString& value,
     ui64 version)
 {
-    NodeAttrs[TNodeAttrsKey(nodeId, name)] =
-        TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version};
-
-    if (NodeAttrs.size() > NodeAttrsCapacity) {
+    const auto key = TNodeAttrsKey(nodeId, name);
+    if (NodeAttrs.size() == NodeAttrsCapacity && !NodeAttrs.contains(key)) {
         NodeAttrs.clear();
     }
+    NodeAttrs[key] =
+        TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version};
 }
 
 void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)
@@ -234,15 +234,15 @@ void TInMemoryIndexState::WriteNodeRef(
     const TString& followerId,
     const TString& followerName)
 {
-    NodeRefs[TNodeRefsKey(nodeId, name)] = TNodeRefsRow{
+    const auto key = TNodeRefsKey(nodeId, name);
+    if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
+        NodeRefs.clear();
+    }
+    NodeRefs[key] = TNodeRefsRow{
         .CommitId = commitId,
         .ChildId = childNode,
         .FollowerId = followerId,
         .FollowerName = followerName};
-
-    if (NodeRefs.size() > NodeRefsCapacity) {
-        NodeRefs.clear();
-    }
 }
 
 void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)

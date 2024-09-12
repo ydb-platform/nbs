@@ -81,8 +81,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyTagsActionActor::TModifyTagsActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
+        TRequestInfoPtr requestInfo,
+        TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}

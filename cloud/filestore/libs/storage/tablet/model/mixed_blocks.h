@@ -26,7 +26,7 @@ public:
 
     bool IsLoaded(ui32 rangeId) const;
 
-    void RefRange(ui32 ragneId);
+    void RefRange(ui32 rangeId);
     void UnRefRange(ui32 rangeId);
 
     bool AddBlocks(
@@ -57,6 +57,16 @@ public:
         TVector<TBlock>& blocks) const;
 
     TVector<TMixedBlobMeta> ApplyDeletionMarkers(ui32 rangeId) const;
+
+    struct TDeletionMarkerApplicationResult
+    {
+        TMixedBlobMeta BlobMeta;
+        bool Affected = false;
+    };
+
+    // returns metas for all blobs belonging to this range
+    TVector<TDeletionMarkerApplicationResult> ApplyDeletionMarkersAndGetMetas(
+        ui32 rangeId) const;
 
     TVector<TMixedBlobMeta> GetBlobsForCompaction(ui32 rangeId) const;
 

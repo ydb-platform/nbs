@@ -233,6 +233,12 @@ message TDiskAgentConfig
     // Flag which indicates that the agent was launched as a temporary one
     // during blue-green deployment.
     optional bool TemporaryAgent = 29;
+
+    // Offload protobuf parsing of IO requests to a special actor.
+    optional uint32 IOParserActorCount = 30;
+
+    // Offload the parsing of all IO requests (by default offloads only write requests).
+    optional bool OffloadAllIORequestsParsingEnabled = 31;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

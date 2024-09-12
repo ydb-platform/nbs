@@ -27,9 +27,9 @@ struct TOptionsCommon
     TString StorageConfig;
     TString FeaturesConfig;
 
-    ui32 NodeRegistrationMaxAttempts = 10;
-    TDuration NodeRegistrationTimeout = TDuration::Seconds(10);
-    TDuration NodeRegistrationErrorTimeout = TDuration::Seconds(1);
+    ui32 NodeRegistrationMaxAttempts = 0;
+    TDuration NodeRegistrationTimeout;
+    TDuration NodeRegistrationErrorTimeout;
 
     EServiceKind Service = EServiceKind::Null;
 

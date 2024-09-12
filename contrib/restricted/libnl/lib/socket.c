@@ -111,7 +111,7 @@ static uint32_t generate_local_port(void)
 			nl_write_unlock(&port_map_lock);
 
 			/* ensure we don't return zero. */
-			pid = pid + (n << 22);
+			pid = pid + ((uint32_t)n << 22);
 			return pid ? pid : 1024;
 		}
 	}

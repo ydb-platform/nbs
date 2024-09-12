@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
@@ -20,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -147,6 +149,7 @@ func createServicesWithConfig(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	config *tasks_config.TasksConfig,
+	schedulerRegistry metrics.Registry,
 ) services {
 
 	registry := tasks.NewRegistry()
@@ -164,7 +167,7 @@ func createServicesWithConfig(
 		registry,
 		storage,
 		config,
-		metrics_empty.NewRegistry(),
+		schedulerRegistry,
 	)
 	require.NoError(t, err)
 
@@ -186,7 +189,13 @@ func createServices(
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
 	config.RunnersCount = &runnersCount
 	config.StalkingRunnersCount = &runnersCount
-	return createServicesWithConfig(t, ctx, db, config)
+	return createServicesWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics_empty.NewRegistry(),
+	)
 }
 
 func (s *services) startRunners(ctx context.Context) error {
@@ -309,6 +318,63 @@ func scheduleLongTask(
 ) (string, error) {
 
 	return scheduler.ScheduleTask(ctx, "long", "Long task", &empty.Empty{})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type hangingTask struct{}
+
+func (t *hangingTask) Save() ([]byte, error) {
+	return nil, nil
+}
+
+func (t *hangingTask) Load(request []byte, state []byte) error {
+	return nil
+}
+
+func (t *hangingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			time.Sleep(time.Millisecond * 100)
+		}
+	}
+}
+
+func (t *hangingTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	return nil
+}
+
+func (t *hangingTask) GetMetadata(ctx context.Context) (proto.Message, error) {
+	return &empty.Empty{}, nil
+}
+
+func (t *hangingTask) GetResponse() proto.Message {
+	return &empty.Empty{}
+}
+
+func registerHangingTask(registry *tasks.Registry) error {
+	return registry.RegisterForExecution(
+		"tasks.hanging",
+		func() tasks.Task {
+			return &hangingTask{}
+		},
+	)
+}
+
+func scheduleHangingTask(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+) (string, error) {
+
+	return scheduler.ScheduleTask(
+		ctx,
+		"tasks.hanging",
+		"Hanging task",
+		&empty.Empty{},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1137,4 +1203,84 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 
 		regularTaskMutex.Unlock()
 	}
+}
+
+func newHangingTaskTestConfig() *tasks_config.TasksConfig {
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+	runnersCount := uint64(10)
+	config.RunnersCount = &runnersCount
+	config.StalkingRunnersCount = &runnersCount
+
+	taskWaitingTimeout := "10s"
+	config.TaskWaitingTimeout = &taskWaitingTimeout
+	timeoutString := "5s"
+	config.HangingTaskTimeout = &timeoutString
+
+	metricsCollectionInterval := "10ms"
+	config.ListerMetricsCollectionInterval = &metricsCollectionInterval
+	config.ExceptHangingTaskTypes = []string{
+		"tasks.CollectListerMetrics",
+		"tasks.ClearEndedTasks",
+	}
+
+	return config
+}
+
+func TestHangingTasksMetrics(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := newHangingTaskTestConfig()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerHangingTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	gaugeSetWg := sync.WaitGroup{}
+	gaugeUnsetWg := sync.WaitGroup{}
+
+	gaugeSetCall := registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeSetWg.Done()
+		},
+	)
+	gaugeSetWg.Add(1)
+
+	registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		gaugeSetCall,
+	).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeUnsetWg.Done()
+		},
+	)
+	gaugeUnsetWg.Add(1)
+
+	gaugeSetWg.Wait()
+	_, err = s.scheduler.CancelTask(ctx, taskID)
+	require.NoError(t, err)
+	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
+	gaugeUnsetWg.Wait()
+	registry.AssertAllExpectations(t)
 }
