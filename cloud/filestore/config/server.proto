@@ -52,6 +52,9 @@ message TServerConfig
     // Unix-socket details.
     optional string UnixSocketPath = 17;
     optional uint32 UnixSocketBacklog = 18;
+
+    // List of actions served by the server without authorization.
+    repeated string ActionsNoAuth = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
