@@ -7,7 +7,6 @@ ENDIF()
 
 RECURSE(
     client
-    cms
     csi_driver
     disk_agent_config
     external_endpoint
@@ -26,8 +25,8 @@ RECURSE(
     python_client
     rdma
     recipes
+    registration
     resize-disk
-    secure-registration
     session_cache
     spare_node
     stats_aggregator_perf

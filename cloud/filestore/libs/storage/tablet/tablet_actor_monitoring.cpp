@@ -1059,6 +1059,44 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         TAG(TH3) { out << "CompactionMap"; }
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
 
+        const auto backpressureThresholds = BuildBackpressureThresholds();
+        const auto backpressureValues = GetBackpressureValues();
+        TString message;
+        bool isWriteAllowed = IsWriteAllowed(
+            backpressureThresholds,
+            backpressureValues,
+            &message);
+        TAG(TH3) { out << "Backpressure"; }
+        if (!isWriteAllowed) {
+            out << "<div class='alert alert-danger'>" << "Write not allowed: " << message << "</div>";
+        } else {
+            out << "<div class='alert'>Write allowed</div>";
+        }
+
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Name"; }
+                    TABLEH() { out << "Value"; }
+                    TABLEH() { out << "Threshold"; }
+                }
+            }
+#define DUMP_BACKPRESSURE_FIELD(name)                                          \
+            TABLER() {                                                         \
+                TABLED() { out << #name; }                                     \
+                TABLED() { out << backpressureValues.name; }                   \
+                TABLED() { out << backpressureThresholds.name; }               \
+            }                                                                  \
+// DUMP_BACKPRESSURE_FIELD
+
+            DUMP_BACKPRESSURE_FIELD(Flush);
+            DUMP_BACKPRESSURE_FIELD(FlushBytes);
+            DUMP_BACKPRESSURE_FIELD(CompactionScore);
+            DUMP_BACKPRESSURE_FIELD(CleanupScore);
+
+#undef DUMP_BACKPRESSURE_FIELD
+        }
+
 #define DUMP_INFO_FIELD(info, name)                                            \
         TABLER() {                                                             \
             TABLED() { out << #name; }                                         \
@@ -1103,6 +1141,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             DUMP_INFO_FIELD(cleanupInfo, Score);
             DUMP_INFO_FIELD(cleanupInfo, RangeId);
             DUMP_INFO_FIELD(cleanupInfo, AverageScore);
+            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkersThreshold);
+            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkerCount);
+            DUMP_INFO_FIELD(cleanupInfo, PriorityRangeIdCount);
+            DUMP_INFO_FIELD(cleanupInfo, IsPriority);
             DUMP_INFO_FIELD(cleanupInfo, NewCleanupEnabled);
             DUMP_INFO_FIELD(cleanupInfo, ShouldCleanup);
         }

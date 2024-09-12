@@ -214,9 +214,8 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
         )
 
         run(
-            "destroyvolume",
-            "--disk-id",
-            volume_name,
+            *("destroyvolume", "--disk-id", volume_name),
+            **{"input": volume_name},
         )
 
         result = common.execute(

@@ -110,7 +110,8 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadTruncateQueue(args.TruncateQueue),
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadSessionHistoryEntries(args.SessionHistory),
-        db.ReadOpLog(args.OpLog)
+        db.ReadOpLog(args.OpLog),
+        db.ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
     };
 
     bool ready = std::accumulate(
@@ -230,6 +231,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Initializing tablet state");
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Read " << args.LargeDeletionMarkers.size()
+        << " large deletion markers");
 
     LoadState(
         Executor()->Generation(),
@@ -237,6 +241,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.FileSystem,
         args.FileSystemStats,
         args.TabletStorageInfo,
+        args.LargeDeletionMarkers,
         config);
     UpdateLogTag();
 

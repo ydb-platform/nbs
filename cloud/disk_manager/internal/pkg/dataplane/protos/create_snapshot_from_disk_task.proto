@@ -10,11 +10,11 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message CreateSnapshotFromDiskRequest {
     reserved 3;
+    reserved 5;
+    reserved 6;
 
     types.Disk SrcDisk = 1;
-    string SrcDiskBaseCheckpointId = 5;
     string SrcDiskCheckpointId = 2;
-    string BaseSnapshotId = 6;
     string DstSnapshotId = 4;
     bool UseS3 = 7;
     bool UseProxyOverlayDisk = 8;
@@ -38,6 +38,8 @@ message CreateSnapshotFromDiskTaskState {
     uint32 ChunkCount = 5;
     uint64 TransferredDataSize = 8;
     optional bool ProxyOverlayDiskCreated = 10;
+    string BaseSnapshotId = 12;
+    string BaseCheckpointId = 13;
 }
 
 message CreateSnapshotFromDiskMetadata {

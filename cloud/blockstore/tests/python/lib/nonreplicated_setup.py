@@ -220,6 +220,9 @@ def setup_disk_agent_config(
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = get_shutdown_agent_interval()
+    config.IOParserActorCount = 4
+    config.OffloadAllIORequestsParsingEnabled = True
+
     if cached_sessions_path is not None:
         config.CachedSessionsPath = cached_sessions_path
     if device_erase_method is not None:

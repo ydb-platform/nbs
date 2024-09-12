@@ -105,7 +105,15 @@ jobs:
     if: needs.check-running-allowed.outputs.result == 'true'
     outputs:
       build_target: ${{ steps.set-build-and-test-targets.outputs.build_target }}
+      build_target_asan: ${{ steps.set-build-and-test-targets.outputs.build_target_asan }}
+      build_target_tsan: ${{ steps.set-build-and-test-targets.outputs.build_target_tsan }}
+      build_target_msan: ${{ steps.set-build-and-test-targets.outputs.build_target_msan }}
+      build_target_ubsan: ${{ steps.set-build-and-test-targets.outputs.build_target_ubsan }}
       test_target: ${{ steps.set-build-and-test-targets.outputs.test_target }}
+      test_target_asan: ${{ steps.set-build-and-test-targets.outputs.test_target_asan }}
+      test_target_tsan: ${{ steps.set-build-and-test-targets.outputs.test_target_tsan }}
+      test_target_msan: ${{ steps.set-build-and-test-targets.outputs.test_target_msan }}
+      test_target_ubsan: ${{ steps.set-build-and-test-targets.outputs.test_target_ubsan }}
     runs-on: ubuntu-latest
     steps:
       - name: Set build and test targets
@@ -121,9 +129,45 @@ jobs:
 
           # Function to add components
           add_components() {
-              if [ "$1" = "true" ]; then
-                  build_target_components="${build_target_components}$2,"
-                  test_target_components="${test_target_components}$3,"
+              local component=$1
+              local contains=$2
+              local build_component=$3
+              local test_component=$4
+
+              case "$component" in
+                  "blockstore"|"filestore")
+                    should_asan="true"
+                    should_tsan="true"
+                    should_msan="true"
+                    should_ubsan="true"
+                    ;;
+                  *)
+                    should_asan="false"
+                    should_tsan="false"
+                    should_msan="false"
+                    should_ubsan="false"
+                    ;;
+              esac
+
+              if [ "$contains" = "true" ]; then
+                  build_target_components="${build_target_components}${build_component},"
+                  test_target_components="${test_target_components}${test_component},"
+                  if [ "$should_asan" = "true" ] && [ "$has_asan_label" = "true" ]; then
+                      build_target_asan="${build_target_asan}${build_component},"
+                      test_target_asan="${test_target_asan}${test_component},"
+                  fi
+                  if [ "$should_tsan" = "true" ] && [ "$has_tsan_label" = "true" ]; then
+                      build_target_tsan="${build_target_tsan}${build_component},"
+                      test_target_tsan="${test_target_tsan}${test_component},"
+                  fi
+                  if [ "$should_msan" = "true" ] && [ "$has_msan_label" = "true" ]; then
+                      build_target_msan="${build_target_msan}${build_component},"
+                      test_target_msan="${test_target_msan}${test_component},"
+                  fi
+                  if [ "$should_ubsan" = "true" ] && [ "$has_ubsan_label" = "true" ]; then
+                      build_target_ubsan="${build_target_ubsan}${build_component},"
+                      test_target_ubsan="${test_target_ubsan}${test_component},"
+                  fi
                   true_count=$((true_count + 1))
               else
                   false_count=$((false_count + 1))
@@ -131,10 +175,10 @@ jobs:
           }
 
           # Add components based on conditions
-          add_components "$contains_blockstore" "cloud/blockstore/apps/" "cloud/blockstore/"
-          add_components "$contains_filestore" "cloud/filestore/apps/" "cloud/filestore/"
-          add_components "$contains_disk_manager" "cloud/disk_manager/" "cloud/disk_manager/"
-          add_components "$contains_tasks" "cloud/tasks/" "cloud/tasks/"
+          add_components "blockstore" "$contains_blockstore" "cloud/blockstore/apps/" "cloud/blockstore/"
+          add_components "filestore" "$contains_filestore" "cloud/filestore/apps/" "cloud/filestore/"
+          add_components "disk_manager" "$contains_disk_manager" "cloud/disk_manager/" "cloud/disk_manager/"
+          add_components "tasks" "$contains_tasks" "cloud/tasks/" "cloud/tasks/"
 
           # Remove trailing commas
           build_target_components=${build_target_components%,}
@@ -143,7 +187,16 @@ jobs:
           # Determine build_target and test_target based on conditions
           if [ "$true_count" -eq 4 ] || [ "$false_count" -eq 4 ]; then
               build_target="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/"
+              build_target_asan="cloud/blockstore/apps/,cloud/filestore/apps/"
+              build_target_tsan="cloud/blockstore/apps/,cloud/filestore/apps/"
+              build_target_msan="cloud/blockstore/apps/,cloud/filestore/apps/"
+              build_target_ubsan="cloud/blockstore/apps/,cloud/filestore/apps/"
+
               test_target="cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/"
+              test_target_asan="cloud/blockstore/,cloud/filestore/"
+              test_target_tsan="cloud/blockstore/,cloud/filestore/"
+              test_target_msan="cloud/blockstore/,cloud/filestore/"
+              test_target_ubsan="cloud/blockstore/,cloud/filestore/"
           else
               build_target=$build_target_components
               test_target=$test_target_components
@@ -151,12 +204,26 @@ jobs:
 
           # Output to GitHub environment file
           echo "build_target=\"$build_target\"" >> $GITHUB_OUTPUT
+          echo "build_target_asan=\"$build_target_asan\"" >> $GITHUB_OUTPUT
+          echo "build_target_tsan=\"$build_target_tsan\"" >> $GITHUB_OUTPUT
+          echo "build_target_msan=\"$build_target_msan\"" >> $GITHUB_OUTPUT
+          echo "build_target_ubsan=\"$build_target_ubsan\"" >> $GITHUB_OUTPUT
+
           echo "test_target=\"$test_target\"" >> $GITHUB_OUTPUT
+          echo "test_target_asan=\"$test_target_asan\"" >> $GITHUB_OUTPUT
+          echo "test_target_tsan=\"$test_target_tsan\"" >> $GITHUB_OUTPUT
+          echo "test_target_msan=\"$test_target_msan\"" >> $GITHUB_OUTPUT
+          echo "test_target_ubsan=\"$test_target_ubsan\"" >> $GITHUB_OUTPUT
+
         env:
           contains_blockstore: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
           contains_filestore: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
           contains_disk_manager: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
           contains_tasks: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
+          has_asan_label: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
+          has_tsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
+          has_msan_label: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
+          has_ubsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
   build_and_test:
     needs:
       - check-running-allowed
@@ -183,8 +250,8 @@ jobs:
     name: Build and test (asan)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     with:
-      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
-      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_asan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_asan }}
       build_preset: release-asan
       vm_name_suffix: "-asan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
@@ -202,8 +269,8 @@ jobs:
     name: Build and test (tsan)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     with:
-      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
-      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_tsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_tsan }}
       build_preset: release-tsan
       vm_name_suffix: "-tsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
@@ -221,8 +288,8 @@ jobs:
     name: Build and test (msan)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     with:
-      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
-      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_msan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_msan }}
       build_preset: release-msan
       vm_name_suffix: "-msan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
@@ -240,8 +307,8 @@ jobs:
     name: Build and test (ubsan)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     with:
-      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
-      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_ubsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_ubsan }}
       build_preset: release-ubsan
       vm_name_suffix: "-ubsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}

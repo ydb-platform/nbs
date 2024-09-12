@@ -10,14 +10,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db                  *persistence.YDBClient
-	folder              string
-	tablesPath          string
-	taskStallingTimeout time.Duration
-	updateTaskTimeout   time.Duration
-	livenessWindow      time.Duration
-	ZoneIDs             []string
-	metrics             storageMetrics
+	db                          *persistence.YDBClient
+	folder                      string
+	tablesPath                  string
+	taskStallingTimeout         time.Duration
+	updateTaskTimeout           time.Duration
+	livenessWindow              time.Duration
+	ZoneIDs                     []string
+	metrics                     storageMetrics
+	hangingTaskTimeout          time.Duration
+	missedEstimatesUntilHanging uint64
 }
 
 func (s *storageYDB) CreateTask(
@@ -239,6 +241,29 @@ func (s *storageYDB) ListTasksCancelling(
 				"cancelling",
 				limit,
 				nil, // taskTypeWhitelist
+			)
+			return err
+		},
+	)
+	return tasks, err
+}
+
+func (s *storageYDB) ListHangingTasks(
+	ctx context.Context,
+	limit uint64,
+	exceptTaskTypes []string,
+) ([]TaskInfo, error) {
+
+	var tasks []TaskInfo
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			tasks, err = s.listHangingTasks(
+				ctx,
+				session,
+				limit,
+				exceptTaskTypes,
 			)
 			return err
 		},

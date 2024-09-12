@@ -1,6 +1,7 @@
 #include "encryptor.h"
 
 #include <util/generic/utility.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 #include <openssl/err.h>
@@ -12,144 +13,193 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAesXtsEncryptor
+NProto::TError MakeOpenSSLError(TStringBuf func)
+{
+    const ui32 err = ERR_get_error();
+    char message[256] {};
+    ERR_error_string_n(err, message, sizeof(message));
+
+    return MakeError(
+        MAKE_SYSTEM_ERROR(err),
+        TStringBuilder() << func << " failed: " << message);
+}
+
+NProto::TError MakeSourceBufferTooLargeError(TBlockDataRef buf)
+{
+    return MakeError(
+        E_ARGUMENT,
+        TStringBuilder() << "the source buffer is too large: " << buf.Size());
+}
+
+NProto::TError MakeDifferentSizesError(TBlockDataRef src, TBlockDataRef dst)
+{
+    return MakeError(
+        E_ARGUMENT,
+        TStringBuilder()
+            << "the source and target buffers have different sizes: "
+            << src.Size() << " != " << dst.Size());
+}
+
+NProto::TError MakeWrongTotalLengthError(int totalLen, int srcLen)
+{
+    return MakeError(
+        E_INVALID_STATE,
+        TStringBuilder()
+            << "the total length is not equal to the size of the source "
+               "buffer: "
+            << totalLen << " != " << srcLen);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAesXtsEncryptor final
     : public IEncryptor
 {
     using TEvpCipherCtxPtr =
         std::unique_ptr<EVP_CIPHER_CTX, decltype(&::EVP_CIPHER_CTX_free)>;
 
 private:
-    unsigned char Key[EVP_MAX_KEY_LENGTH] = {0};
+    unsigned char Key[EVP_MAX_KEY_LENGTH] = {};
 
 public:
-    TAesXtsEncryptor(const TString& key)
+    explicit TAesXtsEncryptor(TStringBuf key)
     {
         memcpy(Key, key.Data(), Min<ui32>(key.size(), EVP_MAX_KEY_LENGTH));
     }
 
-    ~TAesXtsEncryptor()
+    ~TAesXtsEncryptor() override
     {
         SecureZero(Key, EVP_MAX_KEY_LENGTH);
     }
 
-    bool Encrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Encrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         if (srcRef.Size() != dstRef.Size()) {
-            return false;
+            return MakeDifferentSizesError(srcRef, dstRef);
+        }
+
+        if (srcRef.Size() > INT_MAX) {
+            return MakeSourceBufferTooLargeError(srcRef);
         }
 
         if (srcRef.Data() == nullptr) {
-            return false;
+            return MakeError(E_ARGUMENT, "the source buffer is null");
         }
 
-        auto src = reinterpret_cast<const unsigned char*>(srcRef.Data());
-        auto dst = reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
-        unsigned char iv[EVP_MAX_IV_LENGTH] = {0};
+        const int srcLen = static_cast<int>(srcRef.Size());
+        const auto* src = reinterpret_cast<const unsigned char*>(srcRef.Data());
+        auto* dst =
+            reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
+        unsigned char iv[EVP_MAX_IV_LENGTH] {};
+
         memcpy(iv, &blockIndex, sizeof(blockIndex));
 
-        auto ctx = TEvpCipherCtxPtr(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
+        TEvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
 
-        auto res = EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_xts(), NULL, Key, iv);
-        if (res != 1) {
-            return false;
+        if (!EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv)) {
+            return MakeOpenSSLError("EVP_EncryptInit_ex");
         }
 
         int len = 0;
-        res = EVP_EncryptUpdate(ctx.get(), dst, &len, src, srcRef.Size());
-        if (res != 1) {
-            return false;
+        if (!EVP_EncryptUpdate(ctx.get(), dst, &len, src, srcLen)) {
+            return MakeOpenSSLError("EVP_EncryptUpdate");
         }
 
-        size_t totalLen = len;
-        res = EVP_EncryptFinal_ex(ctx.get(), dst + len, &len);
-        if (res != 1) {
-            return false;
+        int totalLen = len;
+        if (!EVP_EncryptFinal_ex(ctx.get(), dst + len, &len)) {
+            return MakeOpenSSLError("EVP_EncryptFinal_ex");
         }
 
         totalLen += len;
-        if (totalLen != srcRef.Size()) {
-            return false;
+        if (totalLen != srcLen) {
+            return MakeWrongTotalLengthError(totalLen, srcLen);
         }
 
         NSan::Unpoison(dstRef.Data(), dstRef.Size());
-        return true;
+
+        return {};
     }
 
-    bool Decrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Decrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         if (srcRef.Size() != dstRef.Size()) {
-            return false;
+            return MakeDifferentSizesError(srcRef, dstRef);
+        }
+
+        if (srcRef.Size() > INT_MAX) {
+            return MakeSourceBufferTooLargeError(srcRef);
         }
 
         if (srcRef.Data() == nullptr) {
             memset(const_cast<char*>(dstRef.Data()), 0, srcRef.Size());
-            return true;
+            return {};
         }
 
+        const int srcLen = static_cast<int>(srcRef.Size());
         auto src = reinterpret_cast<const unsigned char*>(srcRef.Data());
-        auto dst = reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
-        unsigned char iv[EVP_MAX_IV_LENGTH] = {0};
+        auto dst =
+            reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
+        unsigned char iv[EVP_MAX_IV_LENGTH] {};
+
         memcpy(iv, &blockIndex, sizeof(blockIndex));
 
-        auto ctx = TEvpCipherCtxPtr(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
+        TEvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
 
-        auto res = EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_xts(), NULL, Key, iv);
-        if (res != 1) {
-            return false;
+        if (!EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv)) {
+            return MakeOpenSSLError("EVP_DecryptInit_ex");
         }
 
         int len = 0;
-        res = EVP_DecryptUpdate(ctx.get(), dst, &len, src, srcRef.Size());
-        if (res != 1) {
-            return false;
+        if (!EVP_DecryptUpdate(ctx.get(), dst, &len, src, srcLen)) {
+            return MakeOpenSSLError("EVP_DecryptUpdate");
         }
 
-        size_t totalLen = len;
-        res = EVP_DecryptFinal_ex(ctx.get(), dst + len, &len);
-        if (res != 1) {
-            return false;
+        int totalLen = len;
+        if (!EVP_DecryptFinal_ex(ctx.get(), dst + len, &len)) {
+            return MakeOpenSSLError("EVP_DecryptFinal_ex");
         }
 
         totalLen += len;
-        if (totalLen != srcRef.Size()) {
-            return false;
+        if (totalLen != srcLen) {
+            return MakeWrongTotalLengthError(totalLen, srcLen);
         }
 
         NSan::Unpoison(dstRef.Data(), dstRef.Size());
-        return true;
+
+        return {};
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCaesarEncryptor
+class TCaesarEncryptor final
     : public IEncryptor
 {
 private:
     const size_t Shift;
 
 public:
-    TCaesarEncryptor(size_t shift)
+    explicit TCaesarEncryptor(size_t shift)
         : Shift(shift)
     {}
 
-    bool Encrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Encrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         if (srcRef.Size() != dstRef.Size()) {
-            return false;
+            return MakeDifferentSizesError(srcRef, dstRef);
         }
 
         if (srcRef.Data() == nullptr) {
-            return false;
+            return MakeError(E_ARGUMENT, "the source buffer is null");
         }
 
         const char* src = srcRef.Data();
@@ -158,21 +208,25 @@ public:
             dst[i] = src[i] + Shift + blockIndex;
         }
 
-        return true;
+        return {};
     }
 
-    bool Decrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Decrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         if (srcRef.Size() != dstRef.Size()) {
-            return false;
+            return MakeDifferentSizesError(srcRef, dstRef);
+        }
+
+        if (srcRef.Size() > INT_MAX) {
+            return MakeSourceBufferTooLargeError(srcRef);
         }
 
         if (srcRef.Data() == nullptr) {
             memset(const_cast<char*>(dstRef.Data()), 0, srcRef.Size());
-            return true;
+            return {};
         }
 
         const char* src = srcRef.Data();
@@ -181,7 +235,7 @@ public:
             dst[i] = src[i] - Shift - blockIndex;
         }
 
-        return true;
+        return {};
     }
 };
 

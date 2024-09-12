@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +156,8 @@ func (t *createSnapshotFromLegacySnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.storage.DeletingSnapshot(ctx, t.request.DstSnapshotId)
+	_, err := t.storage.DeletingSnapshot(ctx, t.request.DstSnapshotId, execCtx.GetTaskID())
+	return err
 }
 
 func (t *createSnapshotFromLegacySnapshotTask) GetMetadata(
@@ -182,14 +184,11 @@ func (t *createSnapshotFromLegacySnapshotTask) saveProgress(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	if t.state.Progress == 1 {
-		return nil
-	}
-
 	if t.state.ChunkCount != 0 {
 		t.state.Progress =
 			float64(t.state.MilestoneChunkIndex) / float64(t.state.ChunkCount)
 	}
 
+	logging.Debug(ctx, "saving state %+v", t.state)
 	return execCtx.SaveState(ctx)
 }

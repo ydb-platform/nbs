@@ -15,14 +15,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateRequest(const NProto::TAcquireLockRequest& request, ui32 blockSize)
+NProto::TError ValidateRequest(
+    const NProto::TAcquireLockRequest& request,
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     if (request.GetHandle() == InvalidHandle) {
         return ErrorInvalidHandle();
     }
 
     TByteRange range(request.GetOffset(), request.GetLength(), blockSize);
-    if (range.BlockCount() > MaxFileBlocks) {
+    if (range.BlockCount() > maxFileBlocks) {
         return ErrorFileTooBig();
     }
 
@@ -38,7 +41,10 @@ void TIndexTabletActor::HandleAcquireLock(
     const TActorContext& ctx)
 {
     auto validator = [&] (const NProto::TAcquireLockRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TAcquireLockMethod>(ev, ctx, validator)) {

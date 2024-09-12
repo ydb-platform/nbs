@@ -138,9 +138,10 @@ func (s *legacyStorage) SnapshotCreated(
 func (s *legacyStorage) DeletingSnapshot(
 	ctx context.Context,
 	snapshotID string,
-) error {
+	taskID string,
+) (*SnapshotMeta, error) {
 
-	return task_errors.NewNonRetriableErrorf("not implemented")
+	return nil, task_errors.NewNonRetriableErrorf("not implemented")
 }
 
 func (s *legacyStorage) GetSnapshotsToDelete(
@@ -246,6 +247,24 @@ func (s *legacyStorage) DeleteDiskFromIncremental(
 	ctx context.Context,
 	zoneID string,
 	diskID string,
+) error {
+
+	return task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) LockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
+) (locked bool, err error) {
+
+	return false, task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) UnlockSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	lockTaskID string,
 ) error {
 
 	return task_errors.NewNonRetriableErrorf("not implemented")

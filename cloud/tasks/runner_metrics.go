@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +47,7 @@ func printStackTraces() string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerMetrics interface {
-	OnExecutionStarted(state tasks_storage.TaskState)
+	OnExecutionStarted(execCtx ExecutionContext)
 	OnExecutionStopped()
 	OnExecutionError(err error)
 	OnError(err error)
@@ -63,7 +62,6 @@ type taskMetrics struct {
 	nonRetriableErrorsCounter    metrics.Counter
 	nonCancellableErrorsCounter  metrics.Counter
 	panicCounter                 metrics.Counter
-	hangingTasksGauge            metrics.Gauge
 	isTaskHanging                bool
 	inflightTasksGauge           metrics.Gauge
 	taskID                       string
@@ -82,12 +80,12 @@ type runnerMetricsImpl struct {
 	logger                 logging.Logger
 }
 
-func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
+func (m *runnerMetricsImpl) OnExecutionStarted(execCtx ExecutionContext) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
 	subRegistry := m.registry.WithTags(map[string]string{
-		"type": state.TaskType,
+		"type": execCtx.GetTaskType(),
 	})
 
 	m.taskMetrics = &taskMetrics{
@@ -97,19 +95,16 @@ func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
 		retriableErrorsCounter:       subRegistry.Counter("errors/retriable"),
 		nonRetriableErrorsCounter:    subRegistry.Counter("errors/nonRetriable"),
 		nonCancellableErrorsCounter:  subRegistry.Counter("errors/nonCancellable"),
-		hangingTasksGauge:            subRegistry.Gauge("hangingTasks"),
 		inflightTasksGauge:           subRegistry.Gauge("inflightTasks"),
-		taskID:                       state.ID,
-		taskType:                     state.TaskType,
+		taskID:                       execCtx.GetTaskID(),
+		taskType:                     execCtx.GetTaskType(),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.onExecutionStopped = cancel
 
 	// Should not report some tasks as hanging (NBS-4341).
-	if !common.Find(m.exceptHangingTaskTypes, state.TaskType) {
-		hangingDeadline := state.CreatedAt.Add(m.hangingTaskTimeout)
-
+	if !common.Find(m.exceptHangingTaskTypes, execCtx.GetTaskType()) {
 		go func() {
 			for {
 				select {
@@ -117,12 +112,11 @@ func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
 					return
 				case <-time.After(checkTaskHangingPeriod):
 				}
-
-				m.checkTaskHanging(ctx, hangingDeadline)
+				m.checkTaskHanging(ctx, execCtx.GetDeadline())
 			}
-		}()
 
-		m.checkTaskHangingImpl(hangingDeadline)
+		}()
+		m.checkTaskHangingImpl(execCtx.GetDeadline())
 	}
 
 	m.taskMetrics.inflightTasksGauge.Add(1)
@@ -197,7 +191,6 @@ func (m *runnerMetricsImpl) setTaskHanging(value bool) {
 	prevValue := m.taskMetrics.isTaskHanging
 	m.taskMetrics.isTaskHanging = value
 
-	gauge := m.taskMetrics.hangingTasksGauge
 	switch {
 	case !prevValue && value:
 		if m.logger != nil {
@@ -208,10 +201,6 @@ func (m *runnerMetricsImpl) setTaskHanging(value bool) {
 				printStackTraces(),
 			)
 		}
-
-		gauge.Add(1)
-	case prevValue && !value:
-		gauge.Add(-1)
 	}
 }
 

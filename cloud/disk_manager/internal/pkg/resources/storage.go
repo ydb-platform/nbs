@@ -65,12 +65,9 @@ type SnapshotMeta struct {
 	CreatingAt        time.Time             `json:"creating_at"`
 	CreatedBy         string                `json:"created_by"`
 	DeleteTaskID      string                `json:"delete_task_id"`
-	BaseSnapshotID    string                `json:"base_snapshot_id"`
-	BaseCheckpointID  string                `json:"base_checkpoint_id"`
 	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
 	Size              uint64                `json:"size"`
 	StorageSize       uint64                `json:"storage_size"`
-	LockTaskID        string                `json:"lock_task_id"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
 }
@@ -189,14 +186,6 @@ type Storage interface {
 	SnapshotDeleted(ctx context.Context, snapshotID string, deletedAt time.Time) error
 
 	ClearDeletedSnapshots(ctx context.Context, deletedBefore time.Time, limit int) error
-
-	LockSnapshot(
-		ctx context.Context,
-		snapshotID string,
-		lockTaskID string,
-	) (locked bool, err error)
-
-	UnlockSnapshot(ctx context.Context, snapshotID string, lockTaskID string) error
 
 	// Lists all existing snapshot ids in specified |folderID|.
 	// Lists all existing snapshot ids if |folderID| is not set.

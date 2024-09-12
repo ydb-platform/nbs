@@ -23,7 +23,7 @@ from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
 
 class NbsConfigurator:
 
-    def __init__(self, ydb, node_type=None, pm=None):
+    def __init__(self, ydb, node_type=None, pm=None, ssl_registration=False):
         assert ydb.config
 
         self.__pm = PortManager() if pm is None else pm
@@ -40,11 +40,17 @@ class NbsConfigurator:
         self.files = dict()
         self.cms = dict()
 
+        self.ssl_registration = ssl_registration
+
         self.__params = []
 
     @property
     def ydb_port(self):
         return list(self.__ydb.nodes.values())[0].port
+
+    @property
+    def ydb_ssl_port(self):
+        return list(self.__ydb.nodes.values())[0].grpc_ssl_port
 
     @property
     def node_type(self):
@@ -86,10 +92,15 @@ class NbsConfigurator:
             "--domain", self.domain,
             "--ic-port", str(self.ic_port),
             "--mon-port", str(self.mon_port),
-            "--node-broker", f"localhost:{self.ydb_port}",
             "--load-configs-from-cms",
             "--mon-address", "localhost",
             ]
+
+        if self.ssl_registration:
+            self.__params += ["--use-secure-registration"]
+            self.__params += ["--node-broker", f"localhost:{self.ydb_ssl_port}"]
+        else:
+            self.__params += ["--node-broker", f"localhost:{self.ydb_port}"]
 
         if self.node_type:
             self.__params += ["--node-type", self.node_type]
@@ -287,6 +298,8 @@ def generate_disk_agent_txt(
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = 0
+    config.IOParserActorCount = 4
+    config.OffloadAllIORequestsParsingEnabled = True
 
     if device_erase_method is not None:
         config.DeviceEraseMethod = EDeviceEraseMethod.Value(device_erase_method)
