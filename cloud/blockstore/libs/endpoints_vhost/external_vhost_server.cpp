@@ -30,6 +30,7 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
+#include <util/system/condvar.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
@@ -180,14 +181,14 @@ public:
     {}
 
     TChild(const TChild&) = delete;
-    TChild& operator = (const TChild&) = delete;
+    TChild& operator=(const TChild&) = delete;
 
     TChild(TChild&& rhs) noexcept
     {
         Swap(rhs);
     }
 
-    TChild& operator = (TChild&& rhs) noexcept
+    TChild& operator=(TChild&& rhs) noexcept
     {
         Swap(rhs);
 
@@ -508,8 +509,10 @@ private:
         long long logPriority = TLOG_INFO;
         logRec["priority"].GetInteger(&logPriority);
 
-        STORAGE_LOG(logPriority, "[" << ClientId << "] "
-            << logRec["message"].GetString());
+        STORAGE_LOG(
+            logPriority,
+            "vhost-server[" << Process.Pid << "] [" << ClientId << "] "
+                            << logRec["message"].GetString());
     }
 };
 
@@ -596,16 +599,27 @@ public:
 
     void Start() override
     {
-        Process = StartProcess();
-
+        TCondVar var;
         // To avoid a race, we need to get the shared pointer in the calling
         // thread and pass it to the background thread. This guaranteed that the
         // background thread will deal with a live this.
-        auto workFunc = [self = shared_from_this()]()
+        auto workFunc = [&var, self = shared_from_this()]()
         {
+            // It is important to start the vhost-server on the thread that
+            // outlives it. vhost-server waits for the parent-death signal via
+            // PR_SET_PDEATHSIG which tracks the aliveness of the thread that
+            // spawned the process.
+            self->Process = self->StartProcess();
+            var.Signal();
             self->ThreadProc();
         };
-        std::thread(std::move(workFunc)).detach();
+
+        with_lock (Mutex) {
+            std::thread(std::move(workFunc)).detach();
+            // Infinite time wait is safe here, since we are in the coroutine
+            // thread.
+            var.WaitI(Mutex);
+        }
     }
 
     TFuture<NProto::TError> Stop() override
@@ -682,6 +696,7 @@ private:
             Logging,
             Stats,
             std::move(process));
+        process = TChild{0};
 
         Executor->ExecuteSimple([=] {
             ep->Start(Executor->GetContExecutor());

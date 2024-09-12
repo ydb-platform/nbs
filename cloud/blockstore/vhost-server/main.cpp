@@ -235,7 +235,8 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
     auto delayAfterParentExit = options.WaitAfterParentExit;
-    // wait for signal to stop the server (Ctrl+C) or dump statistics.
+    TInstant deathTimerStartedAt;
+    // Wait for signal to stop the server (Ctrl+C) or dump statistics.
     for (bool running = true, parentExit = false; running;) {
         int sig = 0;
         if (parentExit) {
@@ -247,14 +248,13 @@ int main(int argc, char** argv)
             timespec timeout = ToTimeSpec(delayAfterParentExit);
             siginfo_t info;
             memset(&info, 0, sizeof(info));
-            TInstant startAt = TInstant::Now();
             sig = ::sigtimedwait(&sigset, &info, &timeout);
 
             // Reduce the remaining time.
-            delayAfterParentExit -= TInstant::Now() - startAt;
+            delayAfterParentExit -= TInstant::Now() - deathTimerStartedAt;
         } else {
             // Wait for signal without timeout.
-            sigwait(&sigset, &sig);
+            ::sigwait(&sigset, &sig);
         }
         switch (sig) {
             case SIGUSR1: {
@@ -278,10 +278,12 @@ int main(int argc, char** argv)
             } break;
             case SIGUSR2: {
                 STORAGE_INFO("Parent process exit.");
+                deathTimerStartedAt = TInstant::Now();
                 parentExit = true;
             } break;
             case SIGPIPE: {
                 STORAGE_INFO("Pipe to parent process broken.");
+                deathTimerStartedAt = TInstant::Now();
                 parentExit = true;
             } break;
             case -1: {
