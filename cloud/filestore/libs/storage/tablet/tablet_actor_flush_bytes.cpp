@@ -664,10 +664,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-    args.CollectCommitId = GenerateCommitId();
-    if (args.CollectCommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
-    }
+
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
@@ -792,15 +789,15 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     auto dstBlobs = builder.Finish();
     TABLET_VERIFY(dstBlobs);
 
-    auto commitId = GenerateCommitId();
-    if (commitId == InvalidCommitId) {
+    args.CollectCommitId = GenerateCommitId();
+    if (args.CollectCommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
     }
 
     ui32 blobIndex = 0;
     for (auto& blob: dstBlobs) {
         const auto ok = GenerateBlobId(
-            commitId,
+            args.CollectCommitId,
             blob.Blocks.size() * GetBlockSize(),
             blobIndex++,
             &blob.BlobId);
@@ -823,6 +820,10 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     }
 
     AcquireCollectBarrier(args.CollectCommitId);
+    // TODO(#1923): it may be problematic to acquire the barrier only upon
+    // completion of the transaction, because blobs, that have been read at the
+    // prepare stage, may be tempered with by the time of the transaction
+    // completion
 
     auto actor = std::make_unique<TFlushBytesActor>(
         LogTag,
