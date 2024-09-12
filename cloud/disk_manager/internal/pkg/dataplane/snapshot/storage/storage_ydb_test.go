@@ -1615,6 +1615,7 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 	for i := 100; i < 200; i++ {
 		wg.Add(1)
 		go func(j int) {
+			now := time.Now()
 			_, err := db.ExecuteRW(secondContext, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -1637,7 +1638,8 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 				persistence.ValueParam("$checksum", persistence.Uint32Value(uint32(1231231))),
 				persistence.ValueParam("$compression", persistence.UTF8Value("lz4")),
 			)
-			require.Error(t, err)
+			logging.Info(ctx, "Request for %d transaction been executed for %v", time.Now().Sub(now))
+			require.NoError(t, err)
 			wg.Done()
 		}(i)
 	}
