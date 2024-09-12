@@ -153,7 +153,7 @@ func oneTestIteration(t *testing.T) {
 				persistence.ValueParam("$compression", persistence.UTF8Value("lz4")),
 			)
 			duration := time.Now().Sub(now)
-			logging.Info(ctx, "Request for %d transaction been executed for %v", duration)
+			logging.Info(ctx, "Request for %d transaction been executed for %v", j, duration)
 			require.Less(t, duration, transactionDuration)
 			wg.Done()
 		}(i)
