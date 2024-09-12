@@ -227,11 +227,8 @@ public:
 
     bool GetInMemoryIndexCacheEnabled() const;
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
-    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
     ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
-    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
-    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
