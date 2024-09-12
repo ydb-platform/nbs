@@ -12,7 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -449,7 +448,7 @@ func (s *storageYDB) deletingSnapshot(
 				snapshotID,
 			)
 			// Prevent deletion.
-			return nil, errors.NewInterruptExecutionError()
+			return nil, task_errors.NewInterruptExecutionError()
 		}
 	}
 
@@ -1249,7 +1248,7 @@ func (s *storageYDB) lockSnapshot(
 		}
 
 		logging.Info(ctx, "Another lock %v was found for snapshot %v", lockTaskID, snapshotID)
-		return false, errors.NewInterruptExecutionError()
+		return false, task_errors.NewInterruptExecutionError()
 	}
 
 	state.lockTaskID = lockTaskID
