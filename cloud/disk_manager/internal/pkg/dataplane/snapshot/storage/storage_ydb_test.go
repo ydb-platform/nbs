@@ -1610,6 +1610,7 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 	newCancel()
 	wg.Wait()
 
+	logging.Info(ctx, "After context was cancelled")
 	secondContext, secondCancelFunc := context.WithTimeout(ctx, time.Minute*3)
 	defer secondCancelFunc()
 	for i := 100; i < 200; i++ {
