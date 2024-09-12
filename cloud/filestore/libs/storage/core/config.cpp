@@ -186,11 +186,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(InMemoryIndexCacheEnabled,                      bool,       false     )\
     xxx(InMemoryIndexCacheNodesCapacity,                ui64,       0         )\
-    xxx(InMemoryIndexCacheNodesVerCapacity,             ui64,       0         )\
     xxx(InMemoryIndexCacheNodeAttrsCapacity,            ui64,       0         )\
-    xxx(InMemoryIndexCacheNodeAttrsVerCapacity,         ui64,       0         )\
     xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
-    xxx(InMemoryIndexCacheNodeRefsVerCapacity,          ui64,       0         )\
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \
     xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
