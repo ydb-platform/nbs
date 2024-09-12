@@ -308,30 +308,25 @@ private:
             Tablet.DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
         }
 
-        THashMap<ui32, ui32> rangeId2AddedBlobsCount;
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
+            auto& stats = AccessCompactionStats(rangeId);
             // Incrementing blobs count as there could be multiple blobs
             // per compacted range see NBS-4424
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
-                ++rangeId2AddedBlobsCount[rangeId];
-            }
-        }
+                ++stats.BlobsCount;
 
-        for (const auto& [rangeId, addedBlobsCount]: rangeId2AddedBlobsCount) {
-            auto& stats = AccessCompactionStats(rangeId);
-
-            // If addedBlobsCount >= compactionThreshold, then Compaction will
-            // enter an infinite loop
-            // A simple solution is to limit addedBlobsCount by threshold - 1
-            auto increment = addedBlobsCount;
-            if (increment >= CompactionThreshold && CompactionThreshold > 1) {
-                increment = CompactionThreshold - 1;
+                // If BlobsCount >= CompactionThreshold, then Compaction will
+                // enter an infinite loop
+                // A simple solution is to limit BlobsCount by threshold - 1
+                if (stats.BlobsCount >= CompactionThreshold
+                        && CompactionThreshold > 1)
+                {
+                    stats.BlobsCount = CompactionThreshold - 1;
+                }
             }
-            stats.BlobsCount += increment;
         }
     }
-
 
     void UpdateCompactionMap(
         TIndexTabletDatabase& db,
