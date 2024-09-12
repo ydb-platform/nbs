@@ -410,7 +410,7 @@ struct TEvIndexTabletPrivate
     {
         const TCallContextPtr CallContext;
         const TSet<ui32> MixedBlocksRanges;
-        const ui64 CollectCommitId;
+        const ui64 CommitId;
         const ui64 ChunkId;
 
         TFlushBytesCompleted(
@@ -419,12 +419,12 @@ struct TEvIndexTabletPrivate
                 TDuration d,
                 TCallContextPtr callContext,
                 TSet<ui32> mixedBlocksRanges,
-                ui64 collectCommitId,
+                ui64 commitId,
                 ui64 chunkId)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CallContext(std::move(callContext))
             , MixedBlocksRanges(std::move(mixedBlocksRanges))
-            , CollectCommitId(collectCommitId)
+            , CommitId(commitId)
             , ChunkId(chunkId)
         {
         }

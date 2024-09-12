@@ -98,7 +98,7 @@ private:
     const TString FileSystemId;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
-    const ui64 CollectCommitId;
+    const ui64 CommitId;
     const ui32 BlockSize;
     const ui64 ChunkId;
     const IProfileLogPtr ProfileLog;
@@ -123,7 +123,7 @@ public:
         TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
-        ui64 collectCommitId,
+        ui64 commitId,
         ui32 blockSize,
         ui64 chunkId,
         IProfileLogPtr profileLog,
@@ -170,7 +170,7 @@ TFlushBytesActor::TFlushBytesActor(
         TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
-        ui64 collectCommitId,
+        ui64 commitId,
         ui32 blockSize,
         ui64 chunkId,
         IProfileLogPtr profileLog,
@@ -184,7 +184,7 @@ TFlushBytesActor::TFlushBytesActor(
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
-    , CollectCommitId(collectCommitId)
+    , CommitId(commitId)
     , BlockSize(blockSize)
     , ChunkId(chunkId)
     , ProfileLog(std::move(profileLog))
@@ -429,7 +429,7 @@ void TFlushBytesActor::ReplyAndDie(
             ctx.Now() - RequestInfo->StartedTs,
             RequestInfo->CallContext,
             std::move(MixedBlocksRanges),
-            CollectCommitId,
+            CommitId,
             ChunkId);
 
         NCloud::Send(ctx, Tablet, std::move(response));
@@ -789,15 +789,15 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     auto dstBlobs = builder.Finish();
     TABLET_VERIFY(dstBlobs);
 
-    args.CollectCommitId = GenerateCommitId();
-    if (args.CollectCommitId == InvalidCommitId) {
+    args.CommitId = GenerateCommitId();
+    if (args.CommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
     }
 
     ui32 blobIndex = 0;
     for (auto& blob: dstBlobs) {
         const auto ok = GenerateBlobId(
-            args.CollectCommitId,
+            args.CommitId,
             blob.Blocks.size() * GetBlockSize(),
             blobIndex++,
             &blob.BlobId);
@@ -819,7 +819,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     }
 
-    AcquireCollectBarrier(args.CollectCommitId);
+    AcquireCollectBarrier(args.CommitId);
     // TODO(#1923): it may be problematic to acquire the barrier only upon
     // completion of the transaction, because blobs, that have been read at the
     // prepare stage, may be tempered with by the time of the transaction
@@ -830,7 +830,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         GetFileSystemId(),
         ctx.SelfID,
         args.RequestInfo,
-        args.CollectCommitId,
+        args.CommitId,
         GetBlockSize(),
         args.ChunkId,
         ProfileLog,
@@ -859,7 +859,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
     Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
