@@ -303,11 +303,8 @@ private:
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionStats(rangeId);
-            // Decrementing compaction counter for the overwritten blobs.
-            // The counter is not guaranteed to be perfectly in sync with the
-            // actual blob count in range so a check for moving below zero is
-            // needed.
-            stats.BlobsCount = Max(1U, stats.BlobsCount) - 1;
+            // Zeroing compaction counter for the overwritten blobs.
+            stats.BlobsCount = 0;
             Tablet.DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
         }
 
