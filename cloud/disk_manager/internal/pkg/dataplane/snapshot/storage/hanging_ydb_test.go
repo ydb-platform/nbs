@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	math_rand "math/rand"
 	"os"
 	"sync"
 	"testing"
@@ -23,7 +24,12 @@ func randomData(size int, t *testing.T) []byte {
 	return data
 }
 
-func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
+func TestYdbHangingRequest(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		oneTestIteration(t)
+	}
+}
+func oneTestIteration(t *testing.T) {
 	ctx, cancel := context.WithCancel(test.NewContext())
 	defer cancel()
 	endpoint := fmt.Sprintf(
@@ -105,7 +111,13 @@ func TestYdbHangingExternalBlobsAfterCance(t *testing.T) {
 			wg.Done()
 		}(i)
 	}
-	time.Sleep(time.Millisecond * 100)
+	durations := []time.Duration{
+		10 * time.Millisecond,
+		50 * time.Millisecond,
+		100 * time.Millisecond,
+		500 * time.Millisecond,
+	}
+	time.Sleep(durations[math_rand.Intn(len(durations))])
 	newCancel()
 	wg.Wait()
 
