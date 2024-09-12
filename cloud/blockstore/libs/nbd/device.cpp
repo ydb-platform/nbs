@@ -116,6 +116,23 @@ public:
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        if (!Device.IsOpen()) {
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Device is not open"));
+        }
+
+        STORAGE_DEBUG("NBD_SET_SIZE " << deviceSizeInBytes);
+        auto ret = ioctl(Device, NBD_SET_SIZE, deviceSizeInBytes);
+        if (ret < 0) {
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, "Could not setup device size"));
+        }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+
 private:
     void* ThreadProc() override
     {
@@ -186,32 +203,32 @@ void TDevice::ConnectDevice()
     STORAGE_DEBUG("NBD_SET_BLKSIZE " << sectorSize);
     int ret = ioctl(device, NBD_SET_BLKSIZE, sectorSize);
     if (ret < 0) {
-        ythrow TFileError() << "could not setup device block size";
+        ythrow TFileError() << "could not setup device block size: " << ret;
     }
 
     STORAGE_DEBUG("NBD_SET_SIZE_BLOCKS " << sectors);
     ret = ioctl(device, NBD_SET_SIZE_BLOCKS, sectors);
     if (ret < 0) {
-        ythrow TFileError() << "could not setup device blocks count";
+        ythrow TFileError() << "could not setup device blocks count: " << ret;
     }
 
     STORAGE_DEBUG("NBD_SET_FLAGS " << exportInfo.Flags);
     ret = ioctl(device, NBD_SET_FLAGS, exportInfo.Flags);
     if (ret < 0) {
-        ythrow TFileError() << "could not setup device flags";
+        ythrow TFileError() << "could not setup device flags: " << ret;
     }
 
     STORAGE_DEBUG("NBD_SET_SOCK " << static_cast<SOCKET>(Socket));
     ret = ioctl(device, NBD_SET_SOCK, static_cast<SOCKET>(Socket));
     if (ret < 0) {
-        ythrow TFileError() << "could not bind socket to device";
+        ythrow TFileError() << "could not bind socket to device: " << ret;
     }
 
     if (Timeout) {
         STORAGE_DEBUG("NBD_SET_TIMEOUT " << Timeout);
         ret = ioctl(device, NBD_SET_TIMEOUT, Timeout.Seconds());
         if (ret < 0) {
-            ythrow TFileError() << "could not set timeout to device";
+            ythrow TFileError() << "could not set timeout to device: " << ret;
         }
     }
 
@@ -259,6 +276,12 @@ public:
     {
         Y_UNUSED(deleteDevice);
 
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        Y_UNUSED(deviceSizeInBytes);
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 };

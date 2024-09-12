@@ -170,7 +170,7 @@ func writeBlocksToSession(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreate(t *testing.T) {
+func TestCreateDisk(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)
 

@@ -70,10 +70,11 @@ struct TFixture
     std::optional<NYdb::TDriver> Driver;
     std::optional<NYdb::NTopic::TTopicClient> Client;
 
-    ILoggingServicePtr Logging = CreateLoggingService("console", {
-        .FiltrationLevel = TLOG_DEBUG,
-        .UseLocalTimestamps = true
-    });
+    ILoggingServicePtr Logging = CreateLoggingService(
+        "console",
+        {
+            .FiltrationLevel = TLOG_DEBUG,
+        });
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -222,9 +223,7 @@ Y_UNIT_TEST_SUITE(TLogbrokerTest)
 
     void ShouldHandleErrorImpl(TLogbrokerConfigPtr config)
     {
-        auto logging = CreateLoggingService("console", TLogSettings  {
-            .UseLocalTimestamps = true
-        });
+        auto logging = CreateLoggingService("console", TLogSettings{});
 
         auto service = CreateTopicAPIService(config, logging);
         service->Start();

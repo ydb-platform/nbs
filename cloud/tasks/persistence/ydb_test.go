@@ -516,12 +516,12 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 
 	metricsRegistry.GetCounter(
 		"errors",
-		map[string]string{"call": "client/MakeDirs", "type": "scheme"},
+		map[string]string{"call": "client/makeDirs", "type": "scheme"},
 	).On("Inc").Once()
 
 	// YDB has limited length of object name. Current limit is 255.
 	extraLargeString := strings.Repeat("x", 100500)
-	folder := fmt.Sprintf("ydb_test/%v/%v", extraLargeString, t.Name())
+	folder := fmt.Sprintf("ydb_test/%s/%s", extraLargeString, t.Name())
 	table := "table"
 
 	err = db.CreateOrAlterTable(

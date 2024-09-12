@@ -29,12 +29,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr TDuration CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT = TDuration::Minutes(5);
-
-////////////////////////////////////////////////////////////////////////////////
-
 template<typename T>
 struct TTableCount;
 
@@ -3878,24 +3872,25 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             }
 
             if (agentState == NProto::AGENT_STATE_UNAVAILABLE ||
-                    deviceState == NProto::DEVICE_STATE_ERROR)
+                deviceState == NProto::DEVICE_STATE_ERROR)
             {
                 pool.BrokenBytes += deviceBytes;
                 continue;
             }
 
+            if (allocated) {
+                pool.AllocatedBytes += deviceBytes;
+                continue;
+            }
+
             if (agentState == NProto::AGENT_STATE_WARNING ||
-                    deviceState == NProto::DEVICE_STATE_WARNING)
+                deviceState == NProto::DEVICE_STATE_WARNING)
             {
                 pool.DecommissionedBytes += deviceBytes;
                 continue;
             }
 
-            if (allocated) {
-                pool.AllocatedBytes += deviceBytes;
-            } else {
-                pool.FreeBytes += deviceBytes;
-            }
+            pool.FreeBytes += deviceBytes;
         }
     }
 
@@ -5030,9 +5025,13 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
         newState == NProto::AGENT_STATE_ONLINE)
     {
-        timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
+        timeout =
+            cmsTs + StorageConfig->GetIdleAgentDeployByCmsDelay() - now;
         if (!timeout) {
-            result.SetCode(E_INVALID_STATE);
+            // If the timer is expired and an agent is still unavailable, then
+            // the agent is most likely in the idle state and won't register in
+            // the DR. Return "E_NOT_FOUND" since infra passes through it.
+            result.SetCode(E_NOT_FOUND);
         }
     }
 

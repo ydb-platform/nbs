@@ -156,7 +156,8 @@ void TVolumeClient::RebootSysTablet()
     ReconnectPipe();
 }
 
-std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdateVolumeConfigRequest(
+std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
+TVolumeClient::CreateUpdateVolumeConfigRequest(
     ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
@@ -172,7 +173,8 @@ std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdat
     ui32 blocksPerStripe,
     TString tags,
     TString baseDiskId,
-    TString baseDiskCheckpointId)
+    TString baseDiskCheckpointId,
+    NProto::EEncryptionMode encryption)
 {
     auto request = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfig>();
     request->Record.SetTxId(123);
@@ -218,6 +220,10 @@ std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> TVolumeClient::CreateUpdat
 
     if (!tags.empty()) {
         *volumeConfig.MutableTagsStr() = std::move(tags);
+    }
+
+    if (encryption != NProto::NO_ENCRYPTION) {
+        volumeConfig.MutableEncryptionDesc()->SetMode(encryption);
     }
 
     return request;

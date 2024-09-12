@@ -1,5 +1,6 @@
 SET_APPEND(RECIPE_ARGS --multiple-disk-managers)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/images/recipe/recipe.inc)
 
 FORK_SUBTESTS()
 SPLIT_FACTOR(4)

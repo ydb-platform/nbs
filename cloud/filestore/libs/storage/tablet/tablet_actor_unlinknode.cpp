@@ -275,7 +275,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -351,7 +351,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 {
     FILESTORE_VALIDATE_TX_ERROR(UnlinkNode, args);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -455,6 +455,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     RemoveTransaction(*args.RequestInfo);
+    EnqueueBlobIndexOpIfNeeded(ctx);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);

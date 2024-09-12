@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -94,6 +95,10 @@ struct TCleanupInfo
     const ui32 Score;
     const ui32 RangeId;
     const double AverageScore;
+    const ui64 LargeDeletionMarkersThreshold;
+    const ui64 LargeDeletionMarkerCount;
+    const ui32 PriorityRangeIdCount;
+    const bool IsPriority;
     const bool NewCleanupEnabled;
     const bool ShouldCleanup;
 
@@ -103,6 +108,10 @@ struct TCleanupInfo
             ui32 score,
             ui32 rangeId,
             double averageScore,
+            ui64 largeDeletionMarkersThreshold,
+            ui64 largeDeletionMarkerCount,
+            ui32 priorityRangeIdCount,
+            bool isPriority,
             bool newCleanupEnabled,
             bool shouldCleanup)
         : Threshold(threshold)
@@ -110,6 +119,10 @@ struct TCleanupInfo
         , Score(score)
         , RangeId(rangeId)
         , AverageScore(averageScore)
+        , LargeDeletionMarkersThreshold(largeDeletionMarkersThreshold)
+        , LargeDeletionMarkerCount(largeDeletionMarkerCount)
+        , PriorityRangeIdCount(priorityRangeIdCount)
+        , IsPriority(isPriority)
         , NewCleanupEnabled(newCleanupEnabled)
         , ShouldCleanup(shouldCleanup)
     {
@@ -120,6 +133,14 @@ struct TFlushBytesStats
 {
     ui64 TotalBytesFlushed = 0;
     bool ChunkCompleted = false;
+};
+
+struct TNodeToSessionCounters
+{
+    i64 NodesOpenForWritingBySingleSession{0};
+    i64 NodesOpenForWritingByMultipleSessions{0};
+    i64 NodesOpenForReadingBySingleSession{0};
+    i64 NodesOpenForReadingByMultipleSessions{0};
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,9 +161,16 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
+    TNodeToSessionCounters NodeToSessionCounters;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
+    /*const*/ double ChannelMinFreeSpace = 0;
+    /*const*/ double ChannelFreeSpaceThreshold = 1;
+    /*const*/ bool LargeDeletionMarkersEnabled = false;
+    /*const*/ ui64 LargeDeletionMarkerBlocks = 0;
+    /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
+    /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
 
     bool StateLoaded = false;
 
@@ -161,6 +189,7 @@ public:
         const NProto::TFileSystem& fileSystem,
         const NProto::TFileSystemStats& fileSystemStats,
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
+        const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TThrottlerConfig& throttlerConfig);
 
     bool IsStateLoaded() const
@@ -241,6 +270,11 @@ public:
         return FileSystemStats;
     }
 
+    const TNodeToSessionCounters& GetNodeToSessionCounters() const
+    {
+        return NodeToSessionCounters;
+    }
+
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 
     const TFileStoreAllocRegistry& GetFileStoreProfilingRegistry() const
@@ -292,6 +326,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
+    void ChangeNodeCounters(const TNodeToSessionStat::EKind nodeKind, i64 amount);
+
     //
     // Throttling
     //
@@ -316,8 +352,11 @@ public:
 
     TChannelsStats CalculateChannelsStats() const;
 
-    void RegisterUnwritableChannel(ui32 channel);
-    void RegisterChannelToMove(ui32 channel);
+    void UpdateChannelStats(
+        ui32 channel,
+        bool writable,
+        bool toMove,
+        double freeSpaceShare);
 
 private:
     void LoadChannels();
@@ -692,8 +731,11 @@ public:
         }
     };
 
+    using TBackpressureValues = TBackpressureThresholds;
+
     bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
+        const TBackpressureValues& values,
         TString* message) const;
 
     //
@@ -823,7 +865,7 @@ public:
         ui32 blocksCount);
 
     // returns processed deletion marker count
-    ui32 CleanupMixedBlockDeletions(
+    ui32 CleanupBlockDeletions(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -857,6 +899,18 @@ private:
         const TVector<TBlock>& blocks);
 
     TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
+
+    //
+    // LargeBlocks
+    //
+
+public:
+    void FindLargeBlocks(
+        ILargeBlockVisitor& visitor,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount) const;
 
     //
     // Garbage
@@ -962,6 +1016,17 @@ public:
 
     TBlobIndexOpQueue BlobIndexOps;
 
+    struct TPriorityRange
+    {
+        ui64 NodeId = 0;
+        ui32 BlockIndex = 0;
+        ui32 BlockCount = 0;
+        ui32 RangeId = 0;
+    };
+
+private:
+    mutable TDeque<TPriorityRange> PriorityRangesForCleanup;
+
     //
     // Compaction map
     //
@@ -972,6 +1037,8 @@ public:
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
+    TMaybe<TPriorityRange> NextPriorityRangeForCleanup() const;
+    ui32 GetPriorityRangeCount() const;
 
     TCompactionMapStats GetCompactionMapStats(ui32 topSize) const;
 

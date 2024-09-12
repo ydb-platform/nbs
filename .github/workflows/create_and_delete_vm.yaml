@@ -1,0 +1,122 @@
+name: Create and delete VM
+on:
+  workflow_dispatch:
+    inputs:
+      vm_name_suffix:
+        type: string
+        default: ""
+        description: "Suffix to append to VM name"
+      vm_image:
+        type: string
+        default: ""
+        description: "VM image to use"
+      disk_type:
+        type: string
+        default: "network-ssd-nonreplicated"
+        description: "Disk type for VM"
+  workflow_call:
+    inputs:
+      vm_name_suffix:
+        type: string
+        default: ""
+        description: "Suffix to append to VM name"
+      vm_image:
+        type: string
+        default: ""
+        description: "VM image to use"
+      disk_type:
+        type: string
+        default: "network-ssd-nonreplicated"
+        description: "Disk type for VM"
+
+jobs:
+  provide-runner:
+    name: Start self-hosted runner [image=${{ inputs.vm_image || vars.IMAGE_ID_2204 }}]
+    timeout-minutes: 60
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-runner.outputs.label }}
+      instance-id: ${{ steps.start-runner.outputs.instance-id }}
+      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
+      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: true
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "librarian@nebius.com"
+          git config user.name "Rebase Robotovich"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: true
+      - name: Start runner
+        id: start-runner
+        if: always()
+        uses: ./.github/actions/runner_create
+        timeout-minutes: 60
+        with:
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          vm_folder: bjeuq5o166dq4ukv3eec
+          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+          vm_zone: eu-north1-c
+          vm_cpu: 60
+          vm_memory: 420
+          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
+          vm_disk_size: 1023
+          vm_subnet: f8uh0ml4rhb45nde9p75
+          vm_image: ${{ inputs.vm_image || vars.IMAGE_ID_2204 }}
+          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+
+  release-runner:
+    name: Release self-hosted runner [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }} vm_image=${{ inputs.vm_image || vars.IMAGE_ID_2204 }}]
+    needs:
+      - provide-runner  # required to get output from the start-runner job
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: true
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "librarian@nebius.com"
+          git config user.name "Rebase Robotovich"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: true
+      - name: Stop runner
+        uses: ./.github/actions/runner_remove
+        if: always()
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_id: ${{ needs.provide-runner.outputs.instance-id }}

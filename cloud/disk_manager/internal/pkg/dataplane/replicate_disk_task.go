@@ -144,6 +144,7 @@ func (t *replicateDiskTask) saveProgress(
 	t.state.SecondsRemaining = int64(bytesToReplicate / bytesPerSecond)
 	t.state.UpdatedAt = timestamppb.Now()
 
+	logging.Debug(ctx, "saving state %+v", t.state)
 	return execCtx.SaveState(ctx)
 }
 

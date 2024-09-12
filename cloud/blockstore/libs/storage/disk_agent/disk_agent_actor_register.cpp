@@ -142,9 +142,8 @@ void TDiskAgentActor::HandleRegisterAgentResponse(
     const auto* msg = ev->Get();
 
     if (!HasError(msg->GetError())) {
-        RegistrationInProgress = false;
+        RegistrationState = ERegistrationState::Registered;
         LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Register completed");
-
     } else {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT,
             "Register failed: %s. Try later", FormatError(msg->GetError()).c_str());
@@ -165,20 +164,22 @@ void TDiskAgentActor::HandleSubscribeResponse(
 {
     auto* msg = ev->Get();
 
-    if (FAILED(msg->GetStatus()) || msg->Discovered)
-    {
+    if (FAILED(msg->GetStatus()) || msg->Discovered) {
         SendRegisterRequest(ctx);
     }
 }
 
 void TDiskAgentActor::SendRegisterRequest(const TActorContext& ctx)
 {
-    if (RegistrationInProgress) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Registration in progress");
+    if (RegistrationState == ERegistrationState::InProgress) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Registration in progress");
         return;
     }
 
-    RegistrationInProgress = true;
+    RegistrationState = ERegistrationState::InProgress;
     NCloud::Send(
         ctx,
         ctx.SelfID,

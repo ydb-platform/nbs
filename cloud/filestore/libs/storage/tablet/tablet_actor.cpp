@@ -306,6 +306,17 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     };
 }
 
+TIndexTabletState::TBackpressureValues
+TIndexTabletActor::GetBackpressureValues() const
+{
+    return {
+        GetFreshBlocksCount() * GetBlockSize(),
+        GetFreshBytesCount(),
+        GetRangeToCompact().Score,
+        GetRangeToCleanup().Score,
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::ResetThrottlingPolicy()
@@ -329,7 +340,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TRequest& request,
     const TByteRange& range)
 {
-    if (auto error = ValidateRange(range); HasError(error)) {
+    auto error = ValidateRange(range, Config->GetMaxFileBlocks());
+    if (HasError(error)) {
         return error;
     }
 
@@ -339,7 +351,11 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     }
 
     TString message;
-    if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
+    if (!IsWriteAllowed(
+            BuildBackpressureThresholds(),
+            GetBackpressureValues(),
+            &message))
+    {
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
@@ -470,6 +486,13 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         : 0;
     const bool shouldCleanup =
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
+    bool isPriority = false;
+
+    if (auto priorityRange = NextPriorityRangeForCleanup()) {
+        cleanupRangeId = priorityRange->RangeId;
+        cleanupScore = Max<ui32>();
+        isPriority = true;
+    }
 
     return {
         Config->GetCleanupThreshold(),
@@ -477,11 +500,15 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         cleanupScore,
         cleanupRangeId,
         avgCleanupScore,
+        Config->GetLargeDeletionMarkersThreshold(),
+        GetLargeDeletionMarkersCount(),
+        GetPriorityRangeCount(),
+        isPriority,
         Config->GetNewCleanupEnabled(),
         cleanupScore >= Config->GetCleanupThreshold()
             || Config->GetNewCleanupEnabled()
-            && cleanupScore && shouldCleanup,
-    };
+            && cleanupScore && shouldCleanup
+            || isPriority};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -633,8 +660,9 @@ void TIndexTabletActor::HandleForcedOperation(
     }
 
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    auto code = e.GetCode();
     auto response = std::make_unique<TResponse>(std::move(e));
-    if (e.GetCode() == S_OK) {
+    if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
             const auto& zeroRanges = RangesWithEmptyCompactionScore;
@@ -977,12 +1005,14 @@ void TIndexTabletActor::UpdateLogTag()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
+i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
+    ui32 nonNetworkMetricsBalancingFactor)
 {
-    i64 sumRequestBytes = 0;
-    for (auto* metric: AllRequestMetrics) {
-        sumRequestBytes += metric->RequestBytes;
-    }
+    i64 sumRequestBytes =
+        ReadBlob.RequestBytes + WriteBlob.RequestBytes +
+        WriteData.RequestBytes +
+        (DescribeData.Count + AddData.Count + ReadData.Count) *
+            nonNetworkMetricsBalancingFactor;
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;

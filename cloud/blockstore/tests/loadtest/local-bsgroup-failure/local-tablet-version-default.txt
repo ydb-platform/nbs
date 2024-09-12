@@ -1,0 +1,25 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            StorageMediaKind: STORAGE_MEDIA_SSD
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 999999
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 0
+                MaxRequestSize: 1000
+            }
+        }
+        TestDuration: 120
+        Verify: true
+        Name: "Test for localhost tablet version default"
+    }
+}

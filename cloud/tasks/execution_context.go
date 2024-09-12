@@ -18,9 +18,9 @@ import (
 type ExecutionContext interface {
 	SaveState(ctx context.Context) error
 
-	SaveStateWithCallback(
+	SaveStateWithPreparation(
 		ctx context.Context,
-		callback func(context.Context, *persistence.Transaction) error,
+		preparation func(context.Context, *persistence.Transaction) error,
 	) error
 
 	GetTaskType() string
@@ -30,24 +30,28 @@ type ExecutionContext interface {
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
+	GetDeadline() time.Time
+
 	SetEstimate(estimatedDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
 
-	FinishWithCallback(
+	FinishWithPreparation(
 		ctx context.Context,
-		callback func(context.Context, *persistence.Transaction) error,
+		preparation func(context.Context, *persistence.Transaction) error,
 	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type executionContext struct {
-	task           Task
-	storage        storage.Storage
-	taskState      storage.TaskState
-	taskStateMutex sync.Mutex
-	finished       bool
+	task                        Task
+	storage                     storage.Storage
+	taskState                   storage.TaskState
+	taskStateMutex              sync.Mutex
+	finished                    bool
+	hangingTaskTimeout          time.Duration
+	missedEstimatesUntilHanging uint64
 }
 
 // HACK from https://github.com/stretchr/testify/pull/694/files to avoid fake race detection
@@ -56,12 +60,12 @@ func (c *executionContext) String() string {
 }
 
 func (c *executionContext) SaveState(ctx context.Context) error {
-	return c.SaveStateWithCallback(ctx, nil /* callback */)
+	return c.SaveStateWithPreparation(ctx, nil /* preparation */)
 }
 
-func (c *executionContext) SaveStateWithCallback(
+func (c *executionContext) SaveStateWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
 	state, err := c.task.Save()
@@ -69,7 +73,7 @@ func (c *executionContext) SaveStateWithCallback(
 		return err
 	}
 
-	return c.updateStateWithCallback(
+	return c.updateStateWithPreparation(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			logging.Info(ctx, "saving state for task %v", taskState.ID)
@@ -77,7 +81,7 @@ func (c *executionContext) SaveStateWithCallback(
 			taskState.State = state
 			return taskState
 		},
-		callback,
+		preparation,
 	)
 }
 
@@ -112,6 +116,28 @@ func (c *executionContext) AddTaskDependency(
 	})
 }
 
+func (c *executionContext) GetDeadline() time.Time {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	var estimatedDuration time.Duration
+	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
+		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
+	} else {
+		return defaultDeadline
+	}
+
+	deadline := c.taskState.CreatedAt.Add(
+		estimatedDuration * time.Duration(c.missedEstimatesUntilHanging),
+	)
+	if deadline.Before(defaultDeadline) {
+		return defaultDeadline
+	}
+
+	return deadline
+}
+
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
@@ -134,9 +160,9 @@ func (c *executionContext) HasEvent(ctx context.Context, event int64) bool {
 	return false
 }
 
-func (c *executionContext) FinishWithCallback(
+func (c *executionContext) FinishWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
 	if c.finished {
@@ -148,14 +174,14 @@ func (c *executionContext) FinishWithCallback(
 		return err
 	}
 
-	err = c.updateStateWithCallback(
+	err = c.updateStateWithPreparation(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			taskState.State = state
 			taskState.Status = storage.TaskStatusFinished
 			return taskState
 		},
-		callback,
+		preparation,
 	)
 	if err != nil {
 		return err
@@ -173,10 +199,10 @@ func (c *executionContext) getRetriableErrorCount() uint64 {
 	return c.taskState.RetriableErrorCount
 }
 
-func (c *executionContext) updateStateWithCallback(
+func (c *executionContext) updateStateWithPreparation(
 	ctx context.Context,
 	transition func(storage.TaskState) storage.TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
 	c.taskStateMutex.Lock()
@@ -190,8 +216,8 @@ func (c *executionContext) updateStateWithCallback(
 	var newTaskState storage.TaskState
 	var err error
 
-	if callback != nil {
-		newTaskState, err = c.storage.UpdateTaskWithCallback(ctx, taskState, callback)
+	if preparation != nil {
+		newTaskState, err = c.storage.UpdateTaskWithPreparation(ctx, taskState, preparation)
 	} else {
 		newTaskState, err = c.storage.UpdateTask(ctx, taskState)
 	}
@@ -208,7 +234,7 @@ func (c *executionContext) updateState(
 	transition func(storage.TaskState) storage.TaskState,
 ) error {
 
-	return c.updateStateWithCallback(ctx, transition, nil /* callback */)
+	return c.updateStateWithPreparation(ctx, transition, nil /* preparation */)
 }
 
 func (c *executionContext) clearState(ctx context.Context) error {
@@ -304,7 +330,7 @@ func (c *executionContext) setNonCancellableError(
 }
 
 func (c *executionContext) finish(ctx context.Context) error {
-	return c.FinishWithCallback(ctx, nil /* callback */)
+	return c.FinishWithPreparation(ctx, nil /* preparation */)
 }
 
 func (c *executionContext) setCancelled(ctx context.Context) error {
@@ -332,12 +358,16 @@ func newExecutionContext(
 	task Task,
 	storage storage.Storage,
 	taskState storage.TaskState,
+	hangingTaskTimeout time.Duration,
+	missedEstimatesUntilHanging uint64,
 ) *executionContext {
 
 	return &executionContext{
-		task:      task,
-		storage:   storage,
-		taskState: taskState,
+		task:                        task,
+		storage:                     storage,
+		taskState:                   taskState,
+		hangingTaskTimeout:          hangingTaskTimeout,
+		missedEstimatesUntilHanging: missedEstimatesUntilHanging,
 	}
 }
 

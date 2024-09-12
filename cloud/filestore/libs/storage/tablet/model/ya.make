@@ -23,11 +23,14 @@ SRCS(
     fresh_bytes.cpp
     garbage_queue.cpp
     group_by.cpp
+    large_blocks.cpp
     mixed_blocks.cpp
     node_index_cache.cpp
+    node_session_stat.cpp
     operation.cpp
     range_locks.cpp
     read_ahead.cpp
+    sparse_segment.cpp
     split_range.cpp
     throttler_logger.cpp
     throttling_policy.cpp

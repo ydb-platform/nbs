@@ -20,12 +20,12 @@ func (c *ExecutionContextMock) SaveState(ctx context.Context) error {
 	return args.Error(0)
 }
 
-func (c *ExecutionContextMock) SaveStateWithCallback(
+func (c *ExecutionContextMock) SaveStateWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
-	args := c.Called(ctx, callback)
+	args := c.Called(ctx, preparation)
 	return args.Error(0)
 }
 
@@ -48,6 +48,11 @@ func (c *ExecutionContextMock) AddTaskDependency(
 	return args.Error(0)
 }
 
+func (c *ExecutionContextMock) GetDeadline() time.Time {
+	c.Called()
+	return time.Time{}
+}
+
 func (c *ExecutionContextMock) SetEstimate(estimatedDuration time.Duration) {
 	c.Called(estimatedDuration)
 }
@@ -57,12 +62,12 @@ func (c *ExecutionContextMock) HasEvent(ctx context.Context, event int64) bool {
 	return args.Bool(0)
 }
 
-func (c *ExecutionContextMock) FinishWithCallback(
+func (c *ExecutionContextMock) FinishWithPreparation(
 	ctx context.Context,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
-	args := c.Called(ctx, callback)
+	args := c.Called(ctx, preparation)
 	return args.Error(0)
 }
 

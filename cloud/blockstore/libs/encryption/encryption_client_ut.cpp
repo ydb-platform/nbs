@@ -41,12 +41,12 @@ NProto::TEncryptionDesc GetDefaultEncryption()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEncryptor
+struct TTestEncryptor final
     : public IEncryptor
 {
-    bool Encrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Encrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
@@ -61,19 +61,19 @@ struct TTestEncryptor
             ++dstPtr;
         }
 
-        return true;
+        return {};
     }
 
-    bool Decrypt(
-        const TBlockDataRef& srcRef,
-        const TBlockDataRef& dstRef,
+    NProto::TError Decrypt(
+        TBlockDataRef srcRef,
+        TBlockDataRef dstRef,
         ui64 blockIndex) override
     {
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
 
         if (srcRef.Data() == nullptr) {
             memset(const_cast<char*>(dstRef.Data()), 0, srcRef.Size());
-            return true;
+            return {};
         }
 
         const char* srcPtr = srcRef.Data();
@@ -85,7 +85,7 @@ struct TTestEncryptor
             ++dstPtr;
         }
 
-        return true;
+        return {};
     }
 };
 
@@ -268,8 +268,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             if (i < blocksCount) {
                 TString decrypted(block.Size(), 0);
                 TBlockDataRef decryptedRef(decrypted.data(), decrypted.size());
-                auto res = testEncryptor->Decrypt(block, decryptedRef, i);
-                UNIT_ASSERT(res);
+                auto err = testEncryptor->Decrypt(block, decryptedRef, i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                 UNIT_ASSERT(BlockFilledByValue(decryptedRef, 'a' + i));
             } else {
                 UNIT_ASSERT(BlockFilledByValue(block, '0'));
@@ -351,8 +351,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             if (i < blocksCount) {
                 TString decrypted(block.Size(), 0);
                 TBlockDataRef decryptedRef(decrypted.data(), decrypted.size());
-                auto res = testEncryptor->Decrypt(block, decryptedRef, i);
-                UNIT_ASSERT(res);
+                auto err = testEncryptor->Decrypt(block, decryptedRef, i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                 UNIT_ASSERT(BlockFilledByValue(decryptedRef, 'a' + i));
             } else {
                 UNIT_ASSERT(BlockFilledByValue(block, '0'));
@@ -468,8 +468,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             {
                 TString decrypted(block.Size(), 0);
                 TBlockDataRef decryptedRef(decrypted.data(), decrypted.size());
-                auto res = testEncryptor->Decrypt(block, decryptedRef, i);
-                UNIT_ASSERT(res);
+                auto err = testEncryptor->Decrypt(block, decryptedRef, i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                 UNIT_ASSERT(BlockFilledByValue(decryptedRef, 0));
             } else {
                 UNIT_ASSERT(BlockFilledByValue(block, '0'));
@@ -513,8 +513,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
                     TString buf(blockSize, 'a' + i);
                     TBlockDataRef bufRef(buf.data(), buf.size());
-                    auto res = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                    UNIT_ASSERT(res);
+                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                 }
 
                 return MakeFuture(std::move(response));
@@ -537,6 +537,69 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         for (int i = 0; i < blocksCount; ++i) {
             TBlockDataRef block(buffers[i].data(), buffers[i].size());
             UNIT_ASSERT(BlockFilledByValue(block, 'a' + i));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSkipDecryptionForZeroBlocks)
+    {
+        auto logging = CreateLoggingService("console");
+        const int blockSize = 4;
+        const int blocksCount = 16;
+
+        auto testClient = std::make_shared<TTestService>();
+        auto testEncryptor = std::make_shared<TTestEncryptor>();
+
+        auto encryptionClient = CreateEncryptionClient(
+            testClient,
+            logging,
+            testEncryptor,
+            GetDefaultEncryption());
+
+        testClient->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                Y_UNUSED(request);
+
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetBlockSize(blockSize);
+                return MakeFuture(std::move(response));
+            };
+
+        testClient->ReadBlocksHandler =
+            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
+                NProto::TReadBlocksResponse response;
+
+                auto sglist = ResizeIOVector(
+                    *response.MutableBlocks(),
+                    request->GetBlocksCount(),
+                    blockSize);
+
+                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                    std::memset(
+                        const_cast<char*>(sglist[i].Data()),
+                        0,
+                        sglist[i].Size());
+                }
+
+                return MakeFuture(std::move(response));
+            };
+
+        auto mountResponse = MountVolume(*encryptionClient);
+        UNIT_ASSERT(!HasError(mountResponse));
+
+        auto request = std::make_shared<NProto::TReadBlocksRequest>();
+        request->SetStartIndex(0);
+        request->SetBlocksCount(blocksCount);
+
+        auto future = encryptionClient->ReadBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+
+        const auto& buffers = response.GetBlocks().GetBuffers();
+        for (int i = 0; i < blocksCount; ++i) {
+            TBlockDataRef block(buffers[i].data(), buffers[i].size());
+            UNIT_ASSERT(BlockFilledByValue(block, 0u));
         }
     }
 
@@ -573,8 +636,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
                     TString buf(blockSize, 'a' + i);
                     TBlockDataRef bufRef(buf.data(), buf.size());
-                    auto res = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                    UNIT_ASSERT(res);
+                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                 }
 
                 return MakeFuture(NProto::TReadBlocksLocalResponse());
@@ -651,8 +714,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     if (encryptedBlockMask[i]) {
                         TString buf(blockSize, value);
                         TBlockDataRef bufRef(buf.data(), buf.size());
-                        auto res = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                        UNIT_ASSERT(res);
+                        auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                        UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                     } else {
                         memset(
                             const_cast<char*>(sglist[i].Data()),
@@ -753,8 +816,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     if (encryptedBlockMask[i]) {
                         TString buf(blockSize, value);
                         TBlockDataRef bufRef(buf.data(), buf.size());
-                        auto res = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                        UNIT_ASSERT(res);
+                        auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                        UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
                     } else {
                         memset(
                             const_cast<char*>(sglist[i].Data()),

@@ -13,7 +13,7 @@ type CreateFilesystemParams struct {
 	CloudID     string
 	BlockSize   uint32
 	BlocksCount uint64
-	StorageKind types.FilesystemStorageKind
+	Kind        types.FilesystemKind
 }
 
 type FilesystemPerformanceProfile struct {
@@ -27,7 +27,7 @@ type FilesystemModel struct {
 	BlockSize          uint32
 	BlocksCount        uint64
 	ChannelsCount      uint32
-	Kind               types.FilesystemStorageKind
+	Kind               types.FilesystemKind
 	PerformanceProfile FilesystemPerformanceProfile
 }
 
@@ -42,22 +42,15 @@ type Client interface {
 		params CreateFilesystemParams,
 	) error
 
-	Delete(
-		ctx context.Context,
-		filesystemID string,
-	) error
+	Delete(ctx context.Context, filesystemID string) error
 
-	Resize(
-		ctx context.Context,
-		filesystemID string,
-		size uint64,
-	) error
+	Resize(ctx context.Context, filesystemID string, size uint64) error
 
 	DescribeModel(
 		ctx context.Context,
 		blocksCount uint64,
 		blockSize uint32,
-		kind types.FilesystemStorageKind,
+		kind types.FilesystemKind,
 	) (FilesystemModel, error)
 }
 

@@ -114,6 +114,7 @@ private:
         std::atomic<i64> MixedBytesCount{0};
         std::atomic<i64> MixedBlobsCount{0};
         std::atomic<i64> DeletionMarkersCount{0};
+        std::atomic<i64> LargeDeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
         std::atomic<i64> GarbageBytesCount{0};
         std::atomic<i64> FreshBlocksCount{0};
@@ -137,6 +138,11 @@ private:
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
+        std::atomic<i64> NodesOpenForWritingBySingleSession{0};
+        std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
+        std::atomic<i64> NodesOpenForReadingBySingleSession{0};
+        std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
+
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
@@ -145,12 +151,6 @@ private:
 
         struct TRequestMetrics
         {
-            explicit TRequestMetrics(
-                TVector<TRequestMetrics*>& allRequestMetrics)
-            {
-                allRequestMetrics.push_back(this);
-            }
-
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
@@ -165,33 +165,27 @@ private:
 
         struct TCompactionMetrics: TRequestMetrics
         {
-            explicit TCompactionMetrics(
-                    TVector<TRequestMetrics*>& allRequestMetrics)
-                : TRequestMetrics(allRequestMetrics)
-            {}
-
             std::atomic<i64> DudCount{0};
         };
-        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(14)};
 
-        TRequestMetrics ReadBlob{AllRequestMetrics};
-        TRequestMetrics WriteBlob{AllRequestMetrics};
-        TRequestMetrics PatchBlob{AllRequestMetrics};
-        TRequestMetrics ReadData{AllRequestMetrics};
-        TRequestMetrics DescribeData{AllRequestMetrics};
-        TRequestMetrics WriteData{AllRequestMetrics};
-        TRequestMetrics AddData{AllRequestMetrics};
-        TRequestMetrics GenerateBlobIds{AllRequestMetrics};
-        TCompactionMetrics Compaction{AllRequestMetrics};
-        TRequestMetrics Cleanup{AllRequestMetrics};
-        TRequestMetrics Flush{AllRequestMetrics};
-        TRequestMetrics FlushBytes{AllRequestMetrics};
-        TRequestMetrics TrimBytes{AllRequestMetrics};
-        TRequestMetrics CollectGarbage{AllRequestMetrics};
+        TRequestMetrics ReadBlob;
+        TRequestMetrics WriteBlob;
+        TRequestMetrics PatchBlob;
+        TRequestMetrics ReadData;
+        TRequestMetrics DescribeData;
+        TRequestMetrics WriteData;
+        TRequestMetrics AddData;
+        TRequestMetrics GenerateBlobIds;
+        TCompactionMetrics Compaction;
+        TRequestMetrics Cleanup;
+        TRequestMetrics Flush;
+        TRequestMetrics FlushBytes;
+        TRequestMetrics TrimBytes;
+        TRequestMetrics CollectGarbage;
 
         i64 LastNetworkMetric = 0;
 
-        i64 TakeTotalRequestBytes();
+        i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
@@ -213,7 +207,8 @@ private:
             const TSessionsStats& sessionsStats,
             const TChannelsStats& channelsStats,
             const TReadAheadCacheStats& readAheadStats,
-            const TNodeIndexCacheStats& nodeIndexCacheStats);
+            const TNodeIndexCacheStats& nodeIndexCacheStats,
+            const TNodeToSessionCounters& nodeToSessionCounters);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
@@ -289,7 +284,8 @@ private:
         const NActors::TActorContext& ctx,
         ui32 generation,
         ui32 channel,
-        const NKikimr::TStorageStatusFlags flags);
+        const NKikimr::TStorageStatusFlags flags,
+        double freeSpaceShare);
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
@@ -410,6 +406,7 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
 

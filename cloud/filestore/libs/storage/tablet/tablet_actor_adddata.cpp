@@ -89,7 +89,7 @@ bool TIndexTabletActor::PrepareTx_AddData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
         return false;
@@ -441,11 +441,16 @@ void TIndexTabletActor::HandleAddData(
     const auto evPutResultCount =
         Min<ui32>(blobIds.size(), msg->Record.StorageStatusFlagsSize());
     for (ui32 i = 0; i < evPutResultCount; ++i) {
+        const double approximateFreeSpaceShare =
+            i < msg->Record.ApproximateFreeSpaceSharesSize()
+            ? msg->Record.GetApproximateFreeSpaceShares(i)
+            : 0;
         RegisterEvPutResult(
             ctx,
             blobIds[i].Generation(),
             blobIds[i].Channel(),
-            msg->Record.GetStorageStatusFlags(i));
+            msg->Record.GetStorageStatusFlags(i),
+            approximateFreeSpaceShare);
     }
 
     AddTransaction<TEvIndexTablet::TAddDataMethod>(*requestInfo);

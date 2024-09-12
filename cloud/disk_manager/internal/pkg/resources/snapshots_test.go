@@ -26,8 +26,6 @@ func requireSnapshotsAreEqual(t *testing.T, expected SnapshotMeta, actual Snapsh
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
-	require.Equal(t, expected.BaseSnapshotID, actual.BaseSnapshotID)
-	require.Equal(t, expected.BaseCheckpointID, actual.BaseCheckpointID)
 	require.Equal(t, expected.Size, actual.Size)
 	require.Equal(t, expected.StorageSize, actual.StorageSize)
 	require.Equal(t, expected.Ready, actual.Ready)
@@ -254,125 +252,6 @@ func TestSnapshotsClearDeletedSnapshots(t *testing.T) {
 	created, err = storage.CreateSnapshot(ctx, snapshot)
 	require.NoError(t, err)
 	require.NotNil(t, created)
-}
-
-func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	storage := newStorage(t, ctx, db)
-
-	snapshot1 := SnapshotMeta{
-		ID:       "snapshot1",
-		FolderID: "folder",
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		CheckpointID: "checkpoint1",
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create1",
-		CreatingAt:   time.Now(),
-		CreatedBy:    "user",
-	}
-
-	created, err := storage.CreateSnapshot(ctx, snapshot1)
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	require.Empty(t, created.BaseSnapshotID)
-	require.Empty(t, created.BaseCheckpointID)
-
-	created, err = storage.CreateSnapshot(ctx, SnapshotMeta{
-		ID: "snapshot2",
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		CheckpointID: "checkpoint2",
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create2",
-		CreatingAt:   time.Now(),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	require.Empty(t, created.BaseSnapshotID)
-	require.Empty(t, created.BaseCheckpointID)
-
-	err = storage.SnapshotCreated(ctx, snapshot1.ID, time.Now(), 0, 0)
-	require.NoError(t, err)
-
-	snapshot3 := SnapshotMeta{
-		ID:       "snapshot3",
-		FolderID: "folder",
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		CheckpointID: "checkpoint3",
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create3",
-		CreatingAt:   time.Now(),
-		CreatedBy:    "user",
-	}
-
-	created, err = storage.CreateSnapshot(ctx, snapshot3)
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
-	require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
-
-	err = storage.SnapshotCreated(ctx, snapshot3.ID, time.Now(), 0, 0)
-	require.NoError(t, err)
-
-	snapshot4 := SnapshotMeta{
-		ID:       "snapshot4",
-		FolderID: "folder",
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		CheckpointID: "checkpoint4",
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create4",
-		CreatingAt:   time.Now(),
-		CreatedBy:    "user",
-	}
-
-	created, err = storage.CreateSnapshot(ctx, snapshot4)
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
-	require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
-
-	err = storage.SnapshotCreated(ctx, snapshot4.ID, time.Now(), 0, 0)
-	require.NoError(t, err)
-
-	_, err = storage.DeleteSnapshot(ctx, snapshot1.ID, "delete1", time.Now())
-	require.NoError(t, err)
-	err = storage.SnapshotDeleted(ctx, snapshot1.ID, time.Now())
-	require.NoError(t, err)
-
-	_, err = storage.DeleteSnapshot(ctx, snapshot3.ID, "delete3", time.Now())
-	require.NoError(t, err)
-	err = storage.SnapshotDeleted(ctx, snapshot3.ID, time.Now())
-	require.NoError(t, err)
-
-	_, err = storage.DeleteSnapshot(ctx, snapshot4.ID, "delete4", time.Now())
-	require.NoError(t, err)
-	err = storage.SnapshotDeleted(ctx, snapshot4.ID, time.Now())
-	require.NoError(t, err)
 }
 
 func TestSnapshotsCreateSnapshotShouldFailIfImageAlreadyExists(t *testing.T) {

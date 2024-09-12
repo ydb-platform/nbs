@@ -15,7 +15,7 @@ ServerConfig {
     CertPrivateKeyFile: "certs/server.key"
   }
   EndpointStorageType: ENDPOINT_STORAGE_FILE
-  EndpointStorageDir: "endpoints"
+  EndpointStorageDir: "data/endpoints"
   NodeType: "nbs"
   NbdEnabled: true
   VhostEnabled: true

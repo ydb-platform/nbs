@@ -5,6 +5,8 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 
+#include <contrib/libs/protobuf/src/google/protobuf/stubs/stringpiece.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NKikimr;
@@ -13,6 +15,11 @@ using namespace std::string_literals;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+[[maybe_unused]] TString ToString(const NProtoBuf::StringPiece& piece)
+{
+    return piece.ToString();
+}
 
 NProto::TStorageConfig ExecuteGetStorageConfig(
     const TString& fsId,
@@ -31,7 +38,7 @@ NProto::TStorageConfig ExecuteGetStorageConfig(
     auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
         &response);
-    UNIT_ASSERT_C(status.ok(), status.message().ToString());
+    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
     return response;
 }
 
@@ -57,7 +64,7 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
         &response);
-    UNIT_ASSERT_C(status.ok(), status.message().ToString());
+    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
 
     return response;
 }

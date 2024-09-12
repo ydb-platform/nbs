@@ -290,6 +290,27 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
     return result;
 }
 
+auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(ui32 rangeId) const
+    -> TVector<TDeletionMarkerApplicationResult>
+{
+    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    Y_ABORT_UNLESS(range);
+
+    TVector<TDeletionMarkerApplicationResult> result;
+
+    for (const auto& blob: range->Blobs) {
+        auto blocks = blob.BlockList.DecodeBlocks();
+        const bool affected =
+            range->DeletionMarkers.Apply(MakeArrayRef(blocks)) > 0;
+
+        result.emplace_back(
+            TMixedBlobMeta{blob.BlobId, std::move(blocks)},
+            affected);
+    }
+
+    return result;
+}
+
 TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
 {
     const auto* range = Impl->Ranges.FindPtr(rangeId);

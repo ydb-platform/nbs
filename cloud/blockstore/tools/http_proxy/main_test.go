@@ -521,6 +521,16 @@ func (s *mockBlockstoreServer) QueryAgentsInfo(
 	return res, args.Error(1)
 }
 
+func (s *mockBlockstoreServer) ResizeDevice(
+	ctx context.Context,
+	req *blockstore_protos.TResizeDeviceRequest,
+) (*blockstore_protos.TResizeDeviceResponse, error) {
+
+	args := s.Called(ctx, req)
+	res, _ := args.Get(0).(*blockstore_protos.TResizeDeviceResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func runMockBlockstoreServer(

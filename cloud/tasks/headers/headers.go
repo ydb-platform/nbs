@@ -10,58 +10,130 @@ import (
 
 func appendToIncomingContext(
 	ctx context.Context,
-	md grpc_metadata.MD,
+	metadata grpc_metadata.MD,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromIncomingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromIncomingContext(ctx)
 	if ok {
-		md = grpc_metadata.Join(existingMd, md)
+		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
-
-	return grpc_metadata.NewIncomingContext(ctx, md)
+	return grpc_metadata.NewIncomingContext(ctx, metadata)
 }
 
 func appendToOutgoingContext(
 	ctx context.Context,
-	md grpc_metadata.MD,
+	metadata grpc_metadata.MD,
 ) context.Context {
 
-	existingMd, ok := grpc_metadata.FromOutgoingContext(ctx)
+	existingMetadata, ok := grpc_metadata.FromOutgoingContext(ctx)
 	if ok {
-		md = grpc_metadata.Join(existingMd, md)
+		metadata = grpc_metadata.Join(existingMetadata, metadata)
 	}
-
-	return grpc_metadata.NewOutgoingContext(ctx, md)
+	return grpc_metadata.NewOutgoingContext(ctx, metadata)
 }
 
 func Append(ctx context.Context, headers map[string]string) context.Context {
-	md := grpc_metadata.New(headers)
-	return appendToOutgoingContext(appendToIncomingContext(ctx, md), md)
+	metadata := grpc_metadata.New(headers)
+	return appendToOutgoingContext(
+		appendToIncomingContext(ctx, metadata),
+		metadata,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetTracingHeaders(ctx context.Context) map[string]string {
-	md, ok := grpc_metadata.FromIncomingContext(ctx)
+func deleteFromIncomingContext(
+	ctx context.Context,
+	headers map[string]string,
+) context.Context {
+
+	existingMetadata, ok := grpc_metadata.FromIncomingContext(ctx)
 	if !ok {
-		return map[string]string{}
+		return ctx
 	}
+
+	for key := range headers {
+		existingMetadata.Delete(key)
+	}
+	return grpc_metadata.NewIncomingContext(ctx, existingMetadata)
+}
+
+func deleteFromOutgoingContext(
+	ctx context.Context,
+	headers map[string]string,
+) context.Context {
+
+	existingMetadata, ok := grpc_metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return ctx
+	}
+
+	for key := range headers {
+		existingMetadata.Delete(key)
+	}
+	return grpc_metadata.NewOutgoingContext(ctx, existingMetadata)
+}
+
+func Replace(ctx context.Context, headers map[string]string) context.Context {
+	ctx = deleteFromOutgoingContext(ctx, headers)
+	ctx = deleteFromIncomingContext(ctx, headers)
+	return Append(ctx, headers)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getFromMetadata(
+	metadata grpc_metadata.MD,
+	allowedKeys []string,
+) map[string]string {
 
 	headers := make(map[string]string)
-	allowedKeys := []string{
-		"x-operation-id",
-		"x-request-id",
-		"x-request-uid",
-	}
 
 	for _, key := range allowedKeys {
-		vals := md.Get(key)
+		vals := metadata.Get(key)
 		if len(vals) != 0 {
 			headers[key] = vals[0]
 		}
 	}
 
 	return headers
+}
+
+func GetFromIncomingContext(
+	ctx context.Context,
+	allowedKeys []string,
+) map[string]string {
+
+	metadata, ok := grpc_metadata.FromIncomingContext(ctx)
+	if !ok {
+		return map[string]string{}
+	}
+	return getFromMetadata(metadata, allowedKeys)
+}
+
+func GetFromOutgoingContext(
+	ctx context.Context,
+	allowedKeys []string,
+) map[string]string {
+
+	metadata, ok := grpc_metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return map[string]string{}
+	}
+	return getFromMetadata(metadata, allowedKeys)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetTracingHeaders(ctx context.Context) map[string]string {
+	allowedKeys := []string{
+		"x-operation-id",
+		"x-request-id",
+		"x-request-uid",
+		"traceparent",
+		"tracestate",
+	}
+	return GetFromIncomingContext(ctx, allowedKeys)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

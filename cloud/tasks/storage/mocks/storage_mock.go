@@ -118,6 +118,21 @@ func (s *StorageMock) ListTasksCancelling(
 	return res, args.Error(1)
 }
 
+func (s *StorageMock) ListHangingTasks(
+	ctx context.Context,
+	limit uint64,
+	exceptTaskTypes []string,
+) ([]tasks_storage.TaskInfo, error) {
+
+	args := s.Called(
+		ctx,
+		limit,
+		exceptTaskTypes,
+	)
+	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
+	return res, args.Error(1)
+}
+
 func (s *StorageMock) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
@@ -173,13 +188,13 @@ func (s *StorageMock) MarkForCancellation(
 	return args.Bool(0), args.Error(1)
 }
 
-func (s *StorageMock) UpdateTaskWithCallback(
+func (s *StorageMock) UpdateTaskWithPreparation(
 	ctx context.Context,
 	state tasks_storage.TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) (tasks_storage.TaskState, error) {
 
-	args := s.Called(ctx, state, callback)
+	args := s.Called(ctx, state, preparation)
 	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 

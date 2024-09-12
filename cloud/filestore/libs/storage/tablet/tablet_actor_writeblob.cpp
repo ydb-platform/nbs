@@ -364,11 +364,15 @@ void TIndexTabletActor::RegisterEvPutResult(
     const TActorContext& ctx,
     ui32 generation,
     ui32 channel,
-    const NKikimr::TStorageStatusFlags flags)
+    const NKikimr::TStorageStatusFlags flags,
+    double freeSpaceShare)
 {
     const auto validFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     if (flags.Check(validFlag)) {
         ui32 group = Info()->GroupFor(channel, generation);
+
+        bool writable = true;
+        bool toMove = false;
 
         if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove)) {
             LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -377,7 +381,7 @@ void TIndexTabletActor::RegisterEvPutResult(
                 channel,
                 group);
 
-            RegisterChannelToMove(channel);
+            toMove = true;
         }
         if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop)) {
             LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -386,8 +390,10 @@ void TIndexTabletActor::RegisterEvPutResult(
                 channel,
                 group);
 
-            RegisterUnwritableChannel(channel);
+            writable = false;
         }
+
+        UpdateChannelStats(channel, writable, toMove, freeSpaceShare);
 
         ReassignDataChannelsIfNeeded(ctx);
     }
@@ -413,7 +419,8 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
             ctx,
             result.BlobId.Generation(),
             result.BlobId.Channel(),
-            result.StorageStatusFlags);
+            result.StorageStatusFlags,
+            result.ApproximateFreeSpaceShare);
     }
 
     if (FAILED(msg->GetStatus())) {

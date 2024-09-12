@@ -12,7 +12,9 @@
 #include <util/generic/array_ref.h>
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
+#include <util/stream/file.h>
 #include <util/system/file.h>
+#include <util/thread/factory.h>
 
 namespace NCloud {
 
@@ -80,6 +82,31 @@ Y_UNIT_TEST_SUITE(TAioTest)
         for (char val: buffer) {
             UNIT_ASSERT_VALUES_EQUAL('X', val);
         }
+    }
+
+    Y_UNIT_TEST(ShouldRetryIoSetupErrors)
+    {
+        const auto eventCountLimit =
+            FromString<size_t>(TIFStream("/proc/sys/fs/aio-max-nr").ReadLine());
+        const auto service1EventCount = eventCountLimit / 2;
+        auto service1 = CreateAIOService(service1EventCount);
+        auto promise1 = NThreading::NewPromise<void>();
+        auto promise2 = NThreading::NewPromise<void>();
+        SystemThreadFactory()->Run([=] () mutable {
+            promise1.SetValue();
+
+            const auto service2EventCount =
+                eventCountLimit - service1EventCount + 1;
+            // should cause EAGAIN from io_setup until service1 is destroyed
+            auto service2 = CreateAIOService(service2EventCount);
+            Y_UNUSED(service2);
+            promise2.SetValue();
+        });
+
+        promise1.GetFuture().GetValueSync();
+        Sleep(TDuration::Seconds(1));
+        service1.reset();
+        promise2.GetFuture().GetValue(TDuration::Seconds(5));
     }
 }
 

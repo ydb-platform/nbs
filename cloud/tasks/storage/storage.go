@@ -323,6 +323,11 @@ type Storage interface {
 	// Used for SRE tools.
 	ListTasksRunning(ctx context.Context, limit uint64) ([]TaskInfo, error)
 	ListTasksCancelling(ctx context.Context, limit uint64) ([]TaskInfo, error)
+	ListHangingTasks(
+		ctx context.Context,
+		limit uint64,
+		exceptTaskTypes []string,
+	) ([]TaskInfo, error)
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
 	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
 
@@ -352,10 +357,10 @@ type Storage interface {
 	// This fails with WrongGenerationError, if generationID does not match.
 	// In callback you could perform custom transaction and it will be coupled
 	// with current task's updating.
-	UpdateTaskWithCallback(
+	UpdateTaskWithPreparation(
 		ctx context.Context,
 		state TaskState,
-		callback func(context.Context, *persistence.Transaction) error,
+		preparation func(context.Context, *persistence.Transaction) error,
 	) (TaskState, error)
 
 	// This fails with WrongGenerationError, if generationID does not match.

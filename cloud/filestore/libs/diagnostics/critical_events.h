@@ -19,6 +19,7 @@ namespace NCloud::NFileStore{
     xxx(DescribeFileStoreError)                                                \
     xxx(NodeNotFoundInFollower)                                                \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
+    xxx(AsyncDestroyHandleFailed)                                              \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

@@ -13,7 +13,8 @@ namespace {
 
 NProto::TError ValidateRequest(
     const NProto::TAllocateDataRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    ui32 maxFileBlocks)
 {
     if (!request.GetHandle()) {
         return ErrorInvalidHandle();
@@ -28,7 +29,7 @@ NProto::TError ValidateRequest(
     }
 
     TByteRange range(request.GetOffset(), request.GetLength(), blockSize);
-    if (range.BlockCount() > MaxFileBlocks) {
+    if (range.BlockCount() > maxFileBlocks) {
         return ErrorFileTooBig();
     }
 
@@ -71,7 +72,10 @@ void TIndexTabletActor::HandleAllocateData(
     }
 
     auto validator = [&] (const NProto::TAllocateDataRequest& request) {
-        return ValidateRequest(request, GetBlockSize());
+        return ValidateRequest(
+            request,
+            GetBlockSize(),
+            Config->GetMaxFileBlocks());
     };
 
     if (!AcceptRequest<TEvService::TAllocateDataMethod>(ev, ctx, validator)) {
@@ -124,7 +128,7 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
     args.NodeId = handle->GetNodeId();
     args.CommitId = GetCurrentCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         return false;
@@ -180,7 +184,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
     const bool needExtend = args.Node->Attrs.GetSize() < size &&
         !HasFlag(args.Flags, NProto::TAllocateDataRequest::F_KEEP_SIZE);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     // Here we should not check F_KEEP_SIZE OR'ed with F_PUNCH_HOLE, because
     // we did it in validation stage.
@@ -195,9 +199,6 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         if (args.CommitId == InvalidCommitId) {
             return RebootTabletOnCommitOverflow(ctx, "AllocateData");
         }
-        // TODO: We should not use this range request because tx size
-        // is limited. Need some generic process range mechanism after
-        // NBS-2979
         ZeroRange(
             db,
             args.NodeId,

@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     prometheus.go
+    compound_registry.go
     registry_wrapper.go
 )
 

@@ -197,7 +197,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         return false;
@@ -224,7 +224,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

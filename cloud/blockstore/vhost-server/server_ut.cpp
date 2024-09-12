@@ -56,33 +56,33 @@ public:
         : Behaviour(behaviour)
     {}
 
-    bool Encrypt(
-        const TBlockDataRef& src,
-        const TBlockDataRef& dst,
+    NProto::TError Encrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
         ui64 blockIndex) override
     {
         Y_UNUSED(src);
         Y_UNUSED(blockIndex);
         switch (Behaviour) {
             case EBehaviour::ReturnError: {
-                return false;
+                return MakeError(E_FAIL, "Oh no!");
             }
             case EBehaviour::EncryptToAllZeroes:{
                 memset(const_cast<char*>(dst.Data()), 0, dst.Size());
-                return true;
+                return {};
             }
         }
     }
 
-    bool Decrypt(
-        const TBlockDataRef& src,
-        const TBlockDataRef& dst,
+    NProto::TError Decrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
         ui64 blockIndex) override
     {
         Y_UNUSED(src);
         Y_UNUSED(dst);
         Y_UNUSED(blockIndex);
-        return false;
+        return MakeError(E_NOT_IMPLEMENTED);
     }
 };
 

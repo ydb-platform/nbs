@@ -37,6 +37,17 @@ template <typename TMethod>
 constexpr bool IsReadOrWriteMethod =
     IsReadMethod<TMethod> || IsWriteMethod<TMethod>;
 
+template <typename T>
+constexpr bool IsDescribeBlocksMethod =
+    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
+
+template <typename TMethod>
+constexpr bool IsCheckpointMethod =
+    std::is_same_v<TMethod, TEvService::TCreateCheckpointMethod> ||
+    std::is_same_v<TMethod, TEvService::TDeleteCheckpointMethod> ||
+    std::is_same_v<TMethod, TEvVolume::TDeleteCheckpointDataMethod> ||
+    std::is_same_v<TMethod, TEvService::TGetCheckpointStatusMethod>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -78,27 +89,18 @@ concept WriteRequest = IsWriteMethod<TMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ApplyMask(
-    const NBlobMarkers::TBlockMarks& blockMarks,
-    NProto::TReadBlocksRequest& request);
-void ApplyMask(
-    const NBlobMarkers::TBlockMarks& blockMarks,
+void ClearEmptyBlocks(
+    const NBlobMarkers::TBlockMarks& usedBlocks,
     NProto::TReadBlocksResponse& response);
-void ApplyMask(
-    const NBlobMarkers::TBlockMarks& blockMarks,
-    NProto::TReadBlocksLocalRequest& request);
+void ClearEmptyBlocks(
+    const NBlobMarkers::TBlockMarks& usedBlocks,
+    const TGuardedSgList& sglist);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NBlobMarkers::TBlockMarks MakeBlockMarks(
+NBlobMarkers::TBlockMarks MakeUsedBlockMarks(
     const TCompressedBitmap& usedBlocks,
     TBlockRange64 range);
-
-////////////////////////////////////////////////////////////////////////////////
-
-void FillUnencryptedBlockMask(
-    const NBlobMarkers::TBlockMarks& blockMarks,
-    NProto::TReadBlocksResponse& response);
 
 ////////////////////////////////////////////////////////////////////////////////
 

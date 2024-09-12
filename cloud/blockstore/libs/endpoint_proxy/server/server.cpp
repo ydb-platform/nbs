@@ -138,6 +138,28 @@ struct TListRequestContext: TRequestContextBase
     }
 };
 
+struct TResizeRequestContext: TRequestContextBase
+{
+    NProto::TResizeProxyDeviceRequest Request;
+    NProto::TResizeProxyDeviceResponse Response;
+    grpc::ServerContext ServerContext;
+    grpc::ServerAsyncResponseWriter<NProto::TResizeProxyDeviceResponse> Writer;
+
+    TResizeRequestContext(
+            NProto::TBlockStoreEndpointProxy::AsyncService& service,
+            grpc::ServerCompletionQueue& cq)
+        : Writer(&ServerContext)
+    {
+        service.RequestResizeProxyDevice(
+            &ServerContext,
+            &Request,
+            &Writer,
+            &cq,
+            &cq,
+            this);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TClientStorage: NStorage::NServer::IClientStorage
@@ -154,7 +176,11 @@ struct TClientStorage: NStorage::NServer::IClientStorage
     {
         Y_UNUSED(source);
 
-        grpc::AddInsecureChannelFromFd(&Server, clientSocket);
+        auto fileHandle = TFileHandle(clientSocket);
+        auto dupSocket = fileHandle.Duplicate();
+        fileHandle.Release();
+
+        grpc::AddInsecureChannelFromFd(&Server, dupSocket);
     }
 
     void RemoveClient(const TSocketHolder& clientSocket) override
@@ -391,6 +417,7 @@ struct TServer: IEndpointProxyServer
         new TStartRequestContext(Service, *CQ);
         new TStopRequestContext(Service, *CQ);
         new TListRequestContext(Service, *CQ);
+        new TResizeRequestContext(Service, *CQ);
 
         void* tag;
         bool ok;
@@ -423,6 +450,14 @@ struct TServer: IEndpointProxyServer
             if (listRequestContext) {
                 new TListRequestContext(Service, *CQ);
                 ProcessRequest(listRequestContext);
+                continue;
+            }
+
+            auto* resizeRequestContext =
+                dynamic_cast<TResizeRequestContext*>(requestContext);
+            if (resizeRequestContext) {
+                new TResizeRequestContext(Service, *CQ);
+                ProcessRequest(resizeRequestContext);
                 continue;
             }
         }
@@ -540,8 +575,6 @@ struct TServer: IEndpointProxyServer
             Scheduler,
             ep.RequestStats,
             volumeStats);
-
-        ep.Client->Start();
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
@@ -600,22 +633,24 @@ struct TServer: IEndpointProxyServer
                 TDuration::Days(1),         // connection timeout
                 true);                      // reconfigure device if exists
         } else {
-            // For netlink devices we have to balance request timeout between
-            // time it takes to fail request for good and resend it if socket
-            // is dead due to proxy restart. We can't configure ioctl device
-            // to use a fresh socket, so there is no point configuring it
+            // The only case we want kernel to retry requests is when the socket
+            // is dead due to nbd server restart. And since we can't configure
+            // ioctl device to use a new socket, request timeout effectively
+            // becomes connection timeout
             ep.NbdDevice = NBD::CreateDevice(
                 Logging,
                 *ep.ListenAddress,
                 request.GetNbdDevice(),
-                TDuration::Days(1));    // request timeout
+                TDuration::Days(1));        // timeout
         }
 
-        auto status = ep.NbdDevice->Start().ExtractValue();
+        auto future = ep.NbdDevice->Start();
+        const auto& status = future.GetValue();
         if (HasError(status)) {
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "
                 << status.GetMessage());
+            *response.MutableError() = std::move(status);
             return;
         }
 
@@ -645,7 +680,15 @@ struct TServer: IEndpointProxyServer
             ep->UnixSocketPath = request.GetUnixSocketPath();
             try {
                 DoProcessRequest(request, *ep, response);
-                StoreEndpointIfNeeded(*ep);
+                if (HasError(response)) {
+                    NProto::TStopProxyEndpointRequest stopRequest;
+                    NProto::TStopProxyEndpointResponse stopResponse;
+                    stopRequest.SetUnixSocketPath(request.GetUnixSocketPath());
+                    DoProcessRequest(stopRequest, *ep, stopResponse);
+                    Socket2Endpoint.erase(request.GetUnixSocketPath());
+                } else {
+                    StoreEndpointIfNeeded(*ep);
+                }
             } catch (...) {
                 ShitHappened(response);
             }
@@ -783,6 +826,66 @@ struct TServer: IEndpointProxyServer
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
+    }
+
+    void DoProcessRequest(
+        const NProto::TResizeProxyDeviceRequest& request,
+        TEndpoint& ep,
+        NProto::TResizeProxyDeviceResponse& response) const
+    {
+        if (ep.NbdDevice) {
+            auto err = ep.NbdDevice->Resize(request.GetDeviceSizeInBytes())
+                           .GetValueSync();
+            if (HasError(err)) {
+                *response.MutableError() = err;
+                STORAGE_ERROR(
+                    request.ShortDebugString().Quote()
+                    << " - Failed to resize NBD device: " << err.GetCode());
+                return;
+            }
+
+            if (ep.NbdOptions.BlockSize == 0) {
+                STORAGE_ERROR(
+                    request.ShortDebugString().Quote()
+                    << " - Failed to update NBD device options: invalid "
+                       "block size");
+                return;
+            }
+
+            ep.NbdOptions.BlocksCount =
+                request.GetDeviceSizeInBytes() / ep.NbdOptions.BlockSize;
+            STORAGE_INFO(
+                request.ShortDebugString().Quote()
+                << " - NBD device was resized");
+        }
+    }
+
+    void ProcessRequest(TResizeRequestContext* requestContext)
+    {
+        const auto& request = requestContext->Request;
+        auto& response = requestContext->Response;
+
+        RequestReceived(request);
+
+        auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
+        if (ep) {
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
+        } else {
+            Already(request, "Endpoint not found", response);
+        }
+
+        requestContext->Done = true;
+
+        requestContext->Writer.Finish(
+            response,
+            grpc::Status::OK,
+            requestContext);
 
         ResponseSent(request);
     }

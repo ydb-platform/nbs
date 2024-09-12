@@ -21,6 +21,10 @@ func (c *Cond) Signal() {
 	c.cond.Signal()
 }
 
+func (c *Cond) Broadcast() {
+	c.cond.Broadcast()
+}
+
 // Waits for internal condvar event or for ctx cancellation.
 func (c *Cond) Wait(ctx context.Context) error {
 	waitFinishedCtx, waitFinished := context.WithCancel(context.Background())

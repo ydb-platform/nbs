@@ -10,6 +10,7 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import create_file_de
 from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
 
 from .nbs_runner import LocalNbs
+from .endpoint_proxy import EndpointProxy
 
 import yatest.common as yatest_common
 
@@ -48,6 +49,8 @@ class LocalLoadTest:
             rack='',
             bs_cache_file_path=None,
             kikimr_binary_path=None,
+            with_endpoint_proxy=False,
+            with_netlink=False,
     ):
 
         self.__endpoint = endpoint
@@ -109,6 +112,13 @@ class LocalLoadTest:
             grpc_trace=grpc_trace,
             rack=rack)
 
+        self.endpoint_proxy = None
+        if with_endpoint_proxy:
+            self.endpoint_proxy = EndpointProxy(
+                working_dir=self.nbs.cwd,
+                unix_socket_path=server_app_config.ServerConfig.EndpointProxySocketPath,
+                with_netlink=with_netlink)
+
         if run_kikimr:
             self.nbs.setup_cms(self.kikimr_cluster.client)
 
@@ -126,6 +136,8 @@ class LocalLoadTest:
                 device_erase_method=None,
                 node_type=None)
 
+        if self.endpoint_proxy:
+            self.endpoint_proxy.start()
         self.nbs.start()
         wait_for_nbs_server(self.nbs.nbs_port)
 
@@ -133,6 +145,9 @@ class LocalLoadTest:
         try:
             self.nbs.stop()
             self.kikimr_cluster.stop()
+
+            if self.endpoint_proxy:
+                self.endpoint_proxy.stop()
 
             for d in self.__devices:
                 d.handle.close()

@@ -82,14 +82,14 @@ public:
     ui32 GetGarbageCompactionThresholdAverage() const;
     bool GetNewCompactionEnabled() const;
     ui32 GetCollectGarbageThreshold() const;
-    ui32 GetFlushBytesThreshold() const;
+    ui64 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
     ui32 GetFlushThresholdForBackpressure() const;
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
-    ui32 GetFlushBytesThresholdForBackpressure() const;
+    ui64 GetFlushBytesThresholdForBackpressure() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;
@@ -226,6 +226,14 @@ public:
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
 
+    bool GetInMemoryIndexCacheEnabled() const;
+    ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+
+    bool GetAsyncDestroyHandleEnabled() const;
+    TDuration GetAsyncHandleOperationPeriod() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
@@ -234,14 +242,28 @@ public:
     TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
+    ui32 GetNodeRegistrationMaxAttempts() const;
+    TDuration GetNodeRegistrationTimeout() const;
+    TDuration GetNodeRegistrationErrorTimeout() const;
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+
+    ui32 GetNonNetworkMetricsBalancingFactor() const;
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 
     const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
     const TString* FindFileSystemIdByAlias(const TString& alias) const;
+
+    ui32 GetChannelFreeSpaceThreshold() const;
+    ui32 GetChannelMinFreeSpace() const;
+
+    ui32 GetMaxFileBlocks() const;
+    bool GetLargeDeletionMarkersEnabled() const;
+    ui64 GetLargeDeletionMarkerBlocks() const;
+    ui64 GetLargeDeletionMarkersThreshold() const;
+    ui64 GetLargeDeletionMarkersCleanupThreshold() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

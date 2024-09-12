@@ -27,6 +27,9 @@ struct IEndpointProxyClient: IStartable
 
     virtual TFuture<NProto::TListProxyEndpointsResponse> ListProxyEndpoints(
         std::shared_ptr<NProto::TListProxyEndpointsRequest> request) = 0;
+
+    virtual TFuture<NProto::TResizeProxyDeviceResponse> ResizeProxyDevice(
+        std::shared_ptr<NProto::TResizeProxyDeviceRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

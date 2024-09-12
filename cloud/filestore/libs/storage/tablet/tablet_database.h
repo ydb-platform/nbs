@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "tablet_state_cache.h"
 #include "tablet_state_iface.h"
 
 #include <cloud/filestore/config/storage.pb.h>
@@ -36,18 +37,19 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UsedLocksCount,         __VA_ARGS__)                                   \
     xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
                                                                                \
-    xxx(FreshBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlobsCount,        __VA_ARGS__)                                   \
-    xxx(DeletionMarkersCount,   __VA_ARGS__)                                   \
-    xxx(GarbageQueueSize,       __VA_ARGS__)                                   \
-    xxx(GarbageBlocksCount,     __VA_ARGS__)                                   \
-    xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
-    xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
-    xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
-    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
-    xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
-    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
+    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
+    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
+    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
+    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
+    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
+    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
+    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
+    xxx(FreshBytesCount,            __VA_ARGS__)                               \
+    xxx(AttrsUsedBytesCount,        __VA_ARGS__)                               \
+    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
+    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
 // FILESTORE_FILESYSTEM_STATS
 
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
@@ -98,9 +100,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // Nodes
     //
 
-    void WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
-    void DeleteNode(ui64 nodeId);
-    bool ReadNode(
+    virtual void WriteNode(
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs);
+    virtual void DeleteNode(ui64 nodeId);
+    virtual bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
@@ -109,15 +114,15 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // Nodes_Ver
     //
 
-    void WriteNodeVer(
+    virtual void WriteNodeVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
         const NProto::TNode& attrs);
 
-    void DeleteNodeVer(ui64 nodeId, ui64 commitId);
+    virtual void DeleteNodeVer(ui64 nodeId, ui64 commitId);
 
-    bool ReadNodeVer(
+    virtual bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
@@ -126,22 +131,22 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeAttrs
     //
 
-    void WriteNodeAttr(
+    virtual void WriteNodeAttr(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         const TString& value,
         ui64 version);
 
-    void DeleteNodeAttr(ui64 nodeId, const TString& name);
+    virtual void DeleteNodeAttr(ui64 nodeId, const TString& name);
 
-    bool ReadNodeAttr(
+    virtual bool ReadNodeAttr(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
-    bool ReadNodeAttrs(
+    virtual bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
         TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
@@ -150,7 +155,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeAttrs_Ver
     //
 
-    void WriteNodeAttrVer(
+    virtual void WriteNodeAttrVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -158,15 +163,18 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& value,
         ui64 version);
 
-    void DeleteNodeAttrVer(ui64 nodeId, ui64 commitId, const TString& name);
+    virtual void DeleteNodeAttrVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name);
 
-    bool ReadNodeAttrVer(
+    virtual bool ReadNodeAttrVer(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
-    bool ReadNodeAttrVers(
+    virtual bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
         TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
@@ -175,7 +183,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeRefs
     //
 
-    void WriteNodeRef(
+    virtual void WriteNodeRef(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
@@ -183,15 +191,15 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& followerId,
         const TString& followerName);
 
-    void DeleteNodeRef(ui64 nodeId, const TString& name);
+    virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
 
-    bool ReadNodeRef(
+    virtual bool ReadNodeRef(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
-    bool ReadNodeRefs(
+    virtual bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
@@ -199,7 +207,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui32 maxBytes,
         TString* next = nullptr) override;
 
-    bool PrechargeNodeRefs(
+    virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
         ui32 bytesToPrecharge) override;
@@ -208,7 +216,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeRefs_Ver
     //
 
-    void WriteNodeRefVer(
+    virtual void WriteNodeRefVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -217,15 +225,18 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& followerId,
         const TString& followerName);
 
-    void DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name);
+    virtual void DeleteNodeRefVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name);
 
-    bool ReadNodeRefVer(
+    virtual bool ReadNodeRefVer(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
-    bool ReadNodeRefVers(
+    virtual bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
         TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
@@ -400,6 +411,23 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TDeletionMarker>& deletionMarkers);
 
     //
+    // LargeDeletionMarkers
+    //
+
+    void WriteLargeDeletionMarkers(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount);
+
+    void DeleteLargeDeletionMarker(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex);
+
+    bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers);
+
+    //
     // NewBlobs
     //
 
@@ -479,6 +507,106 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     void WriteOpLogEntry(const NProto::TOpLogEntry& entry);
     void DeleteOpLogEntry(ui64 entryId);
     bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// This is a proxy class that forwards all calls to the underlying
+// TIndexTabletDatabase, but also records all inode-relevant changes
+class TIndexTabletDatabaseProxy: public TIndexTabletDatabase
+{
+public:
+    TIndexTabletDatabaseProxy(
+        NKikimr::NTable::TDatabase& database,
+        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
+
+    //
+    // Nodes
+    //
+
+    void WriteNode(
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs) override;
+
+    void DeleteNode(ui64 nodeId) override;
+
+    //
+    // Nodes_Ver
+    //
+
+    void WriteNodeVer(
+        ui64 nodeId,
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        const NProto::TNode& attrs) override;
+
+    void DeleteNodeVer(ui64 nodeId, ui64 commitId) override;
+
+    //
+    // NodeAttrs
+    //
+
+    void WriteNodeAttr(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        const TString& value,
+        ui64 version) override;
+
+    void DeleteNodeAttr(ui64 nodeId, const TString& name) override;
+
+    //
+    // NodeAttrs_Ver
+    //
+
+    void WriteNodeAttrVer(
+        ui64 nodeId,
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        const TString& name,
+        const TString& value,
+        ui64 version) override;
+
+    void DeleteNodeAttrVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name) override;
+
+    //
+    // NodeRefs
+    //
+
+    void WriteNodeRef(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        ui64 childNode,
+        const TString& followerId,
+        const TString& followerName) override;
+
+    void DeleteNodeRef(ui64 nodeId, const TString& name) override;
+
+    //
+    // NodeRefs_Ver
+    //
+
+    void WriteNodeRefVer(
+        ui64 nodeId,
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        const TString& name,
+        ui64 childNode,
+        const TString& followerId,
+        const TString& followerName) override;
+
+    void DeleteNodeRefVer(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name) override;
+
+private:
+    TVector<TInMemoryIndexState::TIndexStateRequest>& NodeUpdates;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

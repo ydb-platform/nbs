@@ -927,6 +927,70 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+func (s *storageYDB) listHangingTasks(
+	ctx context.Context,
+	session *persistence.Session,
+	limit uint64,
+	exceptTaskTypes []string,
+) ([]TaskInfo, error) {
+
+	now := time.Now()
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		pragma AnsiInForEmptyOrNullableItemsCollections;
+		declare $limit as Uint64;
+		declare $except_task_types as List<Utf8>;
+		declare $hanging_task_timeout as Interval;
+		declare $missed_estimates_until_hanging as Uint64;
+		declare $now as Timestamp;
+		
+		$task_ids = (
+			select id from ready_to_run UNION ALL
+			select id from running UNION ALL
+			select id from ready_to_cancel UNION ALL
+			select id from cancelling
+		);
+		select * from tasks
+		where id in $task_ids and 
+		(
+			(ListLength($except_task_types) == 0) or
+			(task_type not in $except_task_types)
+		)  and 
+		(
+			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or 
+			(
+				estimated_time > created_at and
+				$now >= MAX_OF(
+					created_at + (estimated_time - created_at) * $missed_estimates_until_hanging,
+					created_at + $hanging_task_timeout
+				)
+			)
+		) limit $limit;
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+		persistence.ValueParam(
+			"$except_task_types",
+			strListValue(exceptTaskTypes),
+		),
+		persistence.ValueParam(
+			"$hanging_task_timeout",
+			persistence.IntervalValue(s.hangingTaskTimeout),
+		),
+		persistence.ValueParam(
+			"$missed_estimates_until_hanging",
+			persistence.Uint64Value(s.missedEstimatesUntilHanging),
+		),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanTaskInfosStream(ctx, res)
+}
+
 func (s *storageYDB) listTasksStallingWhileExecuting(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1589,11 +1653,11 @@ func (s *storageYDB) updateTaskTx(
 	return state, nil
 }
 
-func (s *storageYDB) updateTaskWithCallback(
+func (s *storageYDB) updateTaskWithPreparation(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) (TaskState, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1602,12 +1666,12 @@ func (s *storageYDB) updateTaskWithCallback(
 	}
 	defer tx.Rollback(ctx)
 
-	state, err = s.updateTaskTx(ctx, tx, state)
+	err = preparation(ctx, tx)
 	if err != nil {
 		return TaskState{}, err
 	}
 
-	err = callback(ctx, tx)
+	state, err = s.updateTaskTx(ctx, tx, state)
 	if err != nil {
 		return TaskState{}, err
 	}
@@ -1627,7 +1691,7 @@ func (s *storageYDB) updateTask(
 	state TaskState,
 ) (TaskState, error) {
 
-	return s.updateTaskWithCallback(
+	return s.updateTaskWithPreparation(
 		ctx,
 		session,
 		state,

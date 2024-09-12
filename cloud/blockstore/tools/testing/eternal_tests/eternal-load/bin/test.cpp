@@ -49,9 +49,7 @@ private:
 
 void TTest::InitLogger()
 {
-    TLogSettings settings;
-    settings.UseLocalTimestamps = true;
-    Logging = CreateLoggingService("console", settings);
+    Logging = CreateLoggingService("console", TLogSettings{});
     Logging->Start();
     Log = Logging->CreateLog("ETERNAL_MAIN");
 }

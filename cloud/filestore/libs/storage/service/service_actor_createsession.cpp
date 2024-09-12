@@ -215,7 +215,9 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        ReportDescribeFileStoreError();
+        if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
+            ReportDescribeFileStoreError();
+        }
 
         Notify(ctx, msg->GetError(), false);
         Die(ctx);
@@ -384,7 +386,9 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {
-        ReportCreateSessionError();
+        if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
+            ReportCreateSessionError();
+        }
 
         return Notify(ctx, msg->GetError(), false);
     }

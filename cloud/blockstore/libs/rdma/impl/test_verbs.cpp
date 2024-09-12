@@ -355,6 +355,8 @@ struct TTestVerbs
     struct TConnection
         : rdma_cm_id
     {
+        TString Peer;
+
         TConnection(
             rdma_event_channel* channel,
             void* context,
@@ -397,15 +399,15 @@ struct TTestVerbs
 
     void ResolveAddress(
         rdma_cm_id* id,
-        sockaddr* src_addr,
-        sockaddr* dst_addr,
+        sockaddr* srcAddr,
+        sockaddr* dstAddr,
         TDuration timeout) override
     {
-        Y_UNUSED(src_addr);
-        Y_UNUSED(dst_addr);
         Y_UNUSED(timeout);
 
-        id->route.addr.dst_addr.sa_family = AF_INET6;
+        static_assert(sizeof(sockaddr) <= sizeof(sockaddr_storage));
+        memcpy(&id->route.addr.src_storage, srcAddr, sizeof(sockaddr));
+        memcpy(&id->route.addr.dst_storage, dstAddr, sizeof(sockaddr));
 
         EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_ADDR_RESOLVED, id);
     }
@@ -415,6 +417,16 @@ struct TTestVerbs
         Y_UNUSED(timeout);
 
         EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_ROUTE_RESOLVED, id);
+    }
+
+    TString GetPeer(rdma_cm_id *id) override
+    {
+        auto* addr = &id->route.addr.dst_addr;
+
+        if (addr->sa_family) {
+            return PrintAddress(addr);
+        }
+        return "unknown";
     }
 
     void Listen(rdma_cm_id* id, int backlog) override

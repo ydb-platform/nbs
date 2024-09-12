@@ -252,7 +252,7 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
         args.SessionId.c_str(),
         args.SessionSeqNo);
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();
@@ -282,7 +282,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     TTransactionContext& tx,
     TTxIndexTablet::TDestroySession& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     auto* session = FindSession(args.SessionId);
     if (!session) {

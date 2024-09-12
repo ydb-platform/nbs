@@ -5,6 +5,7 @@
 #include "cache.h"
 #include "config.h"
 #include "fs.h"
+#include "handle_ops_queue.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -71,6 +72,9 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrLock;
 
+    THandleOpsQueue HandleOpsQueue;
+    TMutex HandleOpsQueueLock;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,
@@ -83,6 +87,8 @@ public:
         ICompletionQueuePtr queue);
 
     ~TFileSystem();
+
+    void Init() override;
 
     void Reset() override;
 
@@ -393,6 +399,9 @@ private:
         const NProto::TNodeAttr& attrs);
 
     void ClearDirectoryCache();
+
+    void ScheduleProcessHandleOpsQueue();
+    void ProcessHandleOpsQueue();
 
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \

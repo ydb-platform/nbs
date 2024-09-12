@@ -247,6 +247,28 @@ func (s *compoundStorage) ListTasksCancelling(
 	return tasks, err
 }
 
+func (s *compoundStorage) ListHangingTasks(
+	ctx context.Context,
+	limit uint64,
+	exceptTaskTypes []string,
+) ([]TaskInfo, error) {
+
+	tasks := []TaskInfo{}
+	err := s.visit(
+		ctx,
+		func(storage Storage) error {
+			values, err := storage.ListHangingTasks(
+				ctx,
+				limit,
+				exceptTaskTypes,
+			)
+			tasks = append(tasks, values...)
+			return err
+		},
+	)
+	return tasks, err
+}
+
 func (s *compoundStorage) ListFailedTasks(
 	ctx context.Context,
 	since time.Time,
@@ -331,14 +353,14 @@ func (s *compoundStorage) MarkForCancellation(
 	return cancelling, err
 }
 
-func (s *compoundStorage) UpdateTaskWithCallback(
+func (s *compoundStorage) UpdateTaskWithPreparation(
 	ctx context.Context,
 	state TaskState,
-	callback func(context.Context, *persistence.Transaction) error,
+	preparation func(context.Context, *persistence.Transaction) error,
 ) (res TaskState, err error) {
 
 	err = s.invoke(ctx, func(storage Storage) error {
-		res, err = storage.UpdateTaskWithCallback(ctx, state, callback)
+		res, err = storage.UpdateTaskWithPreparation(ctx, state, preparation)
 		return err
 	})
 	return res, err
@@ -436,16 +458,25 @@ func NewStorage(
 		return nil, err
 	}
 
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	newStorage := func(storageFolder string, metrics storageMetrics) *storageYDB {
 		return &storageYDB{
-			db:                  db,
-			folder:              storageFolder,
-			tablesPath:          db.AbsolutePath(storageFolder),
-			taskStallingTimeout: taskStallingTimeout,
-			updateTaskTimeout:   updateTaskTimeout,
-			livenessWindow:      livenessWindow,
-			ZoneIDs:             config.GetZoneIds(),
-			metrics:             metrics,
+			db:                          db,
+			folder:                      storageFolder,
+			tablesPath:                  db.AbsolutePath(storageFolder),
+			taskStallingTimeout:         taskStallingTimeout,
+			updateTaskTimeout:           updateTaskTimeout,
+			livenessWindow:              livenessWindow,
+			ZoneIDs:                     config.GetZoneIds(),
+			metrics:                     metrics,
+			hangingTaskTimeout:          hangingTaskTimeout,
+			missedEstimatesUntilHanging: config.GetMissedEstimatesUntilHanging(),
 		}
 	}
 

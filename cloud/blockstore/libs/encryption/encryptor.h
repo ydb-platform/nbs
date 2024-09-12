@@ -5,6 +5,7 @@
 #include "encryption_key.h"
 
 #include <cloud/storage/core/libs/common/block_data_ref.h>
+#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore {
 
@@ -14,14 +15,14 @@ struct IEncryptor
 {
     virtual ~IEncryptor() = default;
 
-    virtual bool Encrypt(
-        const TBlockDataRef& src,
-        const TBlockDataRef& dst,
+    virtual NProto::TError Encrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
         ui64 blockIndex) = 0;
 
-    virtual bool Decrypt(
-        const TBlockDataRef& src,
-        const TBlockDataRef& dst,
+    virtual NProto::TError Decrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
         ui64 blockIndex) = 0;
 };
 

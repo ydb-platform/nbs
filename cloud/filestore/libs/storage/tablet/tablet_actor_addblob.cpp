@@ -23,12 +23,17 @@ class TAddBlobsExecutor
 private:
     const TString LogTag;
     TIndexTabletActor& Tablet;
+    const ui32 CompactionThreshold;
     THashMap<ui32, TCompactionStats> RangeId2CompactionStats;
 
 public:
-    TAddBlobsExecutor(TString logTag, TIndexTabletActor& tablet)
+    TAddBlobsExecutor(
+            TString logTag,
+            TIndexTabletActor& tablet,
+            ui32 compactionThreshold)
         : LogTag(std::move(logTag))
         , Tablet(tablet)
+        , CompactionThreshold(compactionThreshold)
     {
     }
 
@@ -38,7 +43,7 @@ public:
         TTransactionContext& tx,
         TTxIndexTablet::TAddBlob& args)
     {
-        TIndexTabletDatabase db(tx.DB);
+        TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
         switch (args.Mode) {
             case EAddBlobMode::Write:
@@ -310,10 +315,18 @@ private:
             // per compacted range see NBS-4424
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 ++stats.BlobsCount;
+
+                // If BlobsCount >= CompactionThreshold, then Compaction will
+                // enter an infinite loop
+                // A simple solution is to limit BlobsCount by threshold - 1
+                if (stats.BlobsCount >= CompactionThreshold
+                        && CompactionThreshold > 1)
+                {
+                    stats.BlobsCount = CompactionThreshold - 1;
+                }
             }
         }
     }
-
 
     void UpdateCompactionMap(
         TIndexTabletDatabase& db,
@@ -419,7 +432,7 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
 {
     InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -450,7 +463,9 @@ void TIndexTabletActor::ExecuteTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
-    TAddBlobsExecutor executor(LogTag, *this);
+    const auto compactionThreshold =
+        ScaleCompactionThreshold(Config->GetCompactionThreshold());
+    TAddBlobsExecutor executor(LogTag, *this, compactionThreshold);
     executor.Execute(ctx, tx, args);
 }
 

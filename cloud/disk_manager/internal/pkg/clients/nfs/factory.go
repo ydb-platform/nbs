@@ -93,9 +93,9 @@ func NewNfsClientLog(level nfs_client.LogLevel) nfs_client.Log {
 ////////////////////////////////////////////////////////////////////////////////
 
 type factory struct {
-	config      *nfs_config.ClientConfig
-	credentials auth.Credentials
-	metrics     clientMetrics
+	config            *nfs_config.ClientConfig
+	clientCredentials *nfs_client.ClientCredentials
+	metrics           clientMetrics
 	// map from zone
 	endpointPickers map[string]*endpointPicker
 }
@@ -121,15 +121,6 @@ func (f *factory) NewClient(
 		)
 	}
 
-	clientCreds := &nfs_client.ClientCredentials{
-		RootCertsFile: f.config.GetRootCertsFile(),
-		IAMClient:     f.credentials,
-	}
-
-	if f.config.GetInsecure() {
-		clientCreds = nil
-	}
-
 	durableClientTimeout, err := time.ParseDuration(
 		f.config.GetDurableClientTimeout(),
 	)
@@ -137,12 +128,15 @@ func (f *factory) NewClient(
 		return nil, err
 	}
 
-	endpointPicker := f.endpointPickers[zoneID]
+	endpoint, err := f.endpointPickers[zoneID].pickEndpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	nfs, err := nfs_client.NewClient(
 		&nfs_client.GrpcClientOpts{
-			Endpoint:    endpointPicker.pickEndpoint(),
-			Credentials: clientCreds,
+			Endpoint:    endpoint,
+			Credentials: f.clientCredentials,
 		},
 		&nfs_client.DurableClientOpts{
 			Timeout: &durableClientTimeout,
@@ -182,29 +176,40 @@ func (f *factory) NewClientFromDefaultZone(
 func NewFactoryWithCreds(
 	ctx context.Context,
 	config *nfs_config.ClientConfig,
-	creds auth.Credentials,
+	credentials auth.Credentials,
 	metricsRegistry metrics.Registry,
 ) Factory {
-
-	if config.GetDisableAuthentication() {
-		creds = nil
-	}
 
 	clientMetrics := clientMetrics{
 		registry: metricsRegistry,
 		errors:   metricsRegistry.Counter("errors"),
 	}
 
+	if config.GetDisableAuthentication() {
+		credentials = nil
+	}
+	clientCredentials := &nfs_client.ClientCredentials{
+		RootCertsFile: config.GetRootCertsFile(),
+		IAMClient:     credentials,
+	}
+	if config.GetInsecure() {
+		clientCredentials = nil
+	}
+
 	endpointPickers := make(map[string]*endpointPicker)
 	for zoneID, zone := range config.GetZones() {
-		endpointPickers[zoneID] = newEndpointPicker(ctx, zone.GetEndpoints())
+		endpointPickers[zoneID] = newEndpointPicker(
+			ctx,
+			clientCredentials,
+			zone.GetEndpoints(),
+		)
 	}
 
 	return &factory{
-		config:          config,
-		credentials:     creds,
-		metrics:         clientMetrics,
-		endpointPickers: endpointPickers,
+		config:            config,
+		clientCredentials: clientCredentials,
+		metrics:           clientMetrics,
+		endpointPickers:   endpointPickers,
 	}
 }
 

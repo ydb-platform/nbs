@@ -1350,6 +1350,61 @@ bool TIndexTabletDatabase::ReadDeletionMarkers(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// LargeDeletionMarkers
+
+void TIndexTabletDatabase::WriteLargeDeletionMarkers(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Update(NIceDb::TUpdate<TTable::BlocksCount>(blocksCount));
+}
+
+void TIndexTabletDatabase::DeleteLargeDeletionMarker(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
+    TVector<TDeletionMarker>& deletionMarkers)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        deletionMarkers.emplace_back(
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::CommitId>(),
+            it.GetValue<TTable::BlockIndex>(),
+            it.GetValue<TTable::BlocksCount>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)
@@ -1786,6 +1841,157 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
     }
 
     return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
+        NKikimr::NTable::TDatabase& database,
+        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
+    : TIndexTabletDatabase(database)
+    , NodeUpdates(nodeUpdates)
+{}
+
+void TIndexTabletDatabaseProxy::WriteNode(
+    ui64 nodeId,
+    ui64 commitId,
+    const NProto::TNode& attrs)
+{
+    TIndexTabletDatabase::WriteNode(nodeId, commitId, attrs);
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+        .NodeId = nodeId,
+        .Row = {.CommitId = commitId, .Node = attrs}});
+}
+
+void TIndexTabletDatabaseProxy::DeleteNode(ui64 nodeId)
+{
+    TIndexTabletDatabase::DeleteNode(nodeId);
+    NodeUpdates.emplace_back(
+        TInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId});
+}
+
+void TIndexTabletDatabaseProxy::WriteNodeVer(
+    ui64 nodeId,
+    ui64 minCommitId,
+    ui64 maxCommitId,
+    const NProto::TNode& attrs)
+{
+    TIndexTabletDatabase::WriteNodeVer(nodeId, minCommitId, maxCommitId, attrs);
+    // TODO(#1146): _Ver tables not yet supported
+}
+
+void TIndexTabletDatabaseProxy::DeleteNodeVer(ui64 nodeId, ui64 commitId)
+{
+    TIndexTabletDatabase::DeleteNodeVer(nodeId, commitId);
+    // TODO(#1146): _Ver tables not yet supported
+}
+
+void TIndexTabletDatabaseProxy::WriteNodeAttr(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    const TString& value,
+    ui64 version)
+{
+    TIndexTabletDatabase::WriteNodeAttr(nodeId, commitId, name, value, version);
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
+        .NodeAttrsKey = {nodeId, name},
+        .NodeAttrsRow =
+            {.CommitId = commitId, .Value = value, .Version = version}});
+}
+
+void TIndexTabletDatabaseProxy::DeleteNodeAttr(ui64 nodeId, const TString& name)
+{
+    TIndexTabletDatabase::DeleteNodeAttr(nodeId, name);
+    NodeUpdates.emplace_back(
+        TInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId, name});
+}
+
+void TIndexTabletDatabaseProxy::WriteNodeAttrVer(
+    ui64 nodeId,
+    ui64 minCommitId,
+    ui64 maxCommitId,
+    const TString& name,
+    const TString& value,
+    ui64 version)
+{
+    TIndexTabletDatabase::WriteNodeAttrVer(
+        nodeId,
+        minCommitId,
+        maxCommitId,
+        name,
+        value,
+        version);
+    // TODO(#1146): _Ver tables not yet supported
+}
+
+void TIndexTabletDatabaseProxy::DeleteNodeAttrVer(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name)
+{
+    TIndexTabletDatabase::DeleteNodeAttrVer(nodeId, commitId, name);
+    // TODO(#1146): _Ver tables not yet supported
+}
+
+void TIndexTabletDatabaseProxy::WriteNodeRef(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    ui64 childNode,
+    const TString& followerId,
+    const TString& followerName)
+{
+    TIndexTabletDatabase::WriteNodeRef(
+        nodeId,
+        commitId,
+        name,
+        childNode,
+        followerId,
+        followerName);
+    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
+        .NodeRefsKey = {nodeId, name},
+        .NodeRefsRow = {
+            .CommitId = commitId,
+            .ChildId = childNode,
+            .FollowerId = followerId,
+            .FollowerName = followerName}});
+}
+
+void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)
+{
+    TIndexTabletDatabase::DeleteNodeRef(nodeId, name);
+    NodeUpdates.emplace_back(
+        TInMemoryIndexState::TDeleteNodeRefsRequest{nodeId, name});
+}
+
+void TIndexTabletDatabaseProxy::WriteNodeRefVer(
+    ui64 nodeId,
+    ui64 minCommitId,
+    ui64 maxCommitId,
+    const TString& name,
+    ui64 childNode,
+    const TString& followerId,
+    const TString& followerName)
+{
+    TIndexTabletDatabase::WriteNodeRefVer(
+        nodeId,
+        minCommitId,
+        maxCommitId,
+        name,
+        childNode,
+        followerId,
+        followerName);
+    // TODO(#1146): _Ver tables not yet supported
+}
+
+void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name)
+{
+    TIndexTabletDatabase::DeleteNodeRefVer(nodeId, commitId, name);
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 }   // namespace NCloud::NFileStore::NStorage

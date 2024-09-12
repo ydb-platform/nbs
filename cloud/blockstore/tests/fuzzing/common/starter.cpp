@@ -77,10 +77,7 @@ TStarter* TStarter::GetStarter(
 TStarter::TStarter(NServer::TBootstrapBase& bootstrap)
     : Bootstrap(bootstrap)
 {
-    TLogSettings logSettings;
-    logSettings.UseLocalTimestamps = true;
-
-    FuzzerLogging = CreateLoggingService("console", logSettings);
+    FuzzerLogging = CreateLoggingService("console", TLogSettings{});
     Log = FuzzerLogging->CreateLog("BLOCKSTORE_FUZZER");
 }
 
@@ -223,4 +220,3 @@ int TStarter::Run(const ui8* data, size_t size)
 }
 
 }   // namespace NCloud::NBlockStore::NFuzzing
-
