@@ -154,7 +154,9 @@ func oneTestIteration(t *testing.T) {
 			)
 			duration := time.Now().Sub(now)
 			logging.Info(ctx, "Request for %d transaction been executed for %v", j, duration)
-			require.Less(t, duration, transactionDuration)
+			if duration > transactionDuration {
+				panic("Hanging request to YDB")
+			}
 			wg.Done()
 		}(i)
 	}
