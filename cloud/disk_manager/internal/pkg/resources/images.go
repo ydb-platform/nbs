@@ -413,20 +413,23 @@ func (s *storageYDB) createImage(
 	}
 
 	state := imageState{
-		id:                  image.ID,
-		folderID:            image.FolderID,
-		srcDiskZoneID:       image.SrcDisk.ZoneId,
-		srcDiskID:           image.SrcDisk.DiskId,
-		srcDiskCheckpointID: image.SrcDiskCheckpointID,
-		srcImageID:          image.SrcImageID,
-		srcSnapshotID:       image.SrcSnapshotID,
-		createRequest:       createRequest,
-		createTaskID:        image.CreateTaskID,
-		creatingAt:          image.CreatingAt,
-		createdBy:           image.CreatedBy,
-		useDataplaneTasks:   image.UseDataplaneTasks,
+		id:                image.ID,
+		folderID:          image.FolderID,
+		srcImageID:        image.SrcImageID,
+		srcSnapshotID:     image.SrcSnapshotID,
+		createRequest:     createRequest,
+		createTaskID:      image.CreateTaskID,
+		creatingAt:        image.CreatingAt,
+		createdBy:         image.CreatedBy,
+		useDataplaneTasks: image.UseDataplaneTasks,
 
 		status: imageStatusCreating,
+	}
+
+	if image.SrcDisk != nil {
+		state.srcDiskZoneID = image.SrcDisk.ZoneId
+		state.srcDiskID = image.SrcDisk.DiskId
+		state.srcDiskCheckpointID = image.SrcDiskCheckpointID
 	}
 
 	if image.Encryption != nil {
