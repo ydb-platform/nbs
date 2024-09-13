@@ -61,6 +61,30 @@ TThrottlingRequestInfo BuildRequestInfo(
     };
 }
 
+template <>
+TThrottlingRequestInfo BuildRequestInfo(
+    const TEvIndexTablet::TEvDescribeDataRequest& request,
+    ui32 policyVersion)
+{
+    return {
+        static_cast<ui32>(CalculateByteCount(request.Record)),
+        static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
+        policyVersion
+    };
+}
+
+template <>
+TThrottlingRequestInfo BuildRequestInfo(
+    const TEvIndexTablet::TEvGenerateBlobIdsRequest& request,
+    ui32 policyVersion)
+{
+    return {
+        static_cast<ui32>(CalculateByteCount(request.Record)),
+        static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
+        policyVersion
+    };
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,7 +170,8 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const NActors::TActorContext& ctx)
 {
     if (!Config->GetThrottlingEnabled() ||
-        !GetPerformanceProfile().GetThrottlingEnabled())
+        !GetPerformanceProfile().GetThrottlingEnabled() ||
+        ev->Get()->Record.GetHeaders().GetThrottlingDisabled())
     {
         return false;
     }
@@ -185,6 +210,8 @@ template bool TIndexTabletActor::ThrottleIfNeeded<ns::T##name##Method>(        \
 
 GENERATE_IMPL(ReadData,  TEvService)
 GENERATE_IMPL(WriteData, TEvService)
+GENERATE_IMPL(DescribeData, TEvIndexTablet)
+GENERATE_IMPL(GenerateBlobIds, TEvIndexTablet)
 
 #undef GENERATE_IMPL
 
