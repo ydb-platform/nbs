@@ -419,11 +419,10 @@ func listHangingTasks(
 func newListHangingTasksCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
-	command string,
 ) *cobra.Command {
 
 	return &cobra.Command{
-		Use: command,
+		Use: "hanging",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return listHangingTasks(clientConfig, serverConfig)
 		},
@@ -539,7 +538,7 @@ func newListCmd(
 		newListCancellingCmd(clientConfig, serverConfig),
 		newListFailedCmd(clientConfig, serverConfig),
 		newListSlowCmd(clientConfig, serverConfig),
-		newListHangingTasksCmd(clientConfig, serverConfig, "hanging"),
+		newListHangingTasksCmd(clientConfig, serverConfig),
 	)
 
 	return cmd
