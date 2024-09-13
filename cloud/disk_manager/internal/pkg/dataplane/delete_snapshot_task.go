@@ -47,7 +47,7 @@ func (t *deleteSnapshotTask) deletingSnapshot(
 		return err
 	}
 
-	if snapshotMeta.Disk != nil {
+	if len(snapshotMeta.CheckpointID) != 0 {
 		nbsClient, err := t.nbsFactory.GetClient(ctx, snapshotMeta.Disk.ZoneId)
 		if err != nil {
 			return err
