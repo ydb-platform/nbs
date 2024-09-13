@@ -6241,8 +6241,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // Compaction should've been scheduled since it's close to backpressure
         // thresholds
-        //UNIT_ASSERT(!cleanup);
-        //UNIT_ASSERT(compaction);
+        UNIT_ASSERT(!cleanup);
+        UNIT_ASSERT(compaction);
+
+        env.GetRuntime().Send(compaction.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(45, stats.GetDeletionMarkersCount());
+        }
+
         UNIT_ASSERT(cleanup);
         UNIT_ASSERT(!compaction);
 

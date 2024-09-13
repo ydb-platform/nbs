@@ -325,7 +325,25 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto cleanupInfo = GetCleanupInfo();
 
     if (IsBlobIndexOpsQueueEmpty()) {
-        switch (Config->GetBlobIndexOpsPriority()) {
+        auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
+        auto bpThresholds = BuildBackpressureThresholds();
+        const double scale =
+            Config->GetBackpressurePercentageForFairBlobIndexOpsPriority()
+            / 100.;
+        bpThresholds.CompactionScore *= scale;
+        bpThresholds.CleanupScore *= scale;
+        TString message;
+        if (!IsWriteAllowed(bpThresholds, GetBackpressureValues(), &message)) {
+            // if we are close to our backpressure thresholds, we should fall
+            // back to fair scheduling so that all operations show some progress
+            blobIndexOpsPriority = NProto::BIOP_FAIR;
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s EnqueueBlobIndexOpIfNeeded: Falling back to BIOP_FAIR: %s",
+                LogTag.c_str(),
+                message.Quote().c_str());
+        }
+
+        switch (blobIndexOpsPriority) {
             case NProto::BIOP_CLEANUP_FIRST: {
                 if (cleanupInfo.ShouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
