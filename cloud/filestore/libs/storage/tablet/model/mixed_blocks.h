@@ -62,6 +62,13 @@ public:
     {
         TMixedBlobMeta BlobMeta;
         bool Affected = false;
+
+        TDeletionMarkerApplicationResult(
+                TMixedBlobMeta blobMeta,
+                bool affected)
+            : BlobMeta(std::move(blobMeta))
+            , Affected(affected)
+        {}
     };
 
     // returns metas for all blobs belonging to this range
