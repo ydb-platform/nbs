@@ -848,24 +848,6 @@ func (client *grpcClient) QueryAgentsInfo(
 	return resp.(*protos.TQueryAgentsInfoResponse), err
 }
 
-func (client *grpcClient) ResizeDevice(
-	ctx context.Context,
-	req *protos.TResizeDeviceRequest,
-) (*protos.TResizeDeviceResponse, error) {
-
-	if req.Headers == nil {
-		req.Headers = &protos.THeaders{}
-	}
-	resp, err := client.executeRequest(
-		ctx,
-		req,
-		func(ctx context.Context) (response, error) {
-			return client.impl.ResizeDevice(ctx, req)
-		})
-
-	return resp.(*protos.TResizeDeviceResponse), err
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type GrpcClientOpts struct {
