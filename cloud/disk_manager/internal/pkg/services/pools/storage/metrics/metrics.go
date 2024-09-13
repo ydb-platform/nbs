@@ -15,8 +15,8 @@ type Metrics interface {
 
 func New(registry common_metrics.Registry) Metrics {
 	return &metrics{
-		registry:         registry,
-		operationMetrics: make(map[string]*callStats),
+		registry:    registry,
+		callMetrics: make(map[string]*callStats),
 	}
 }
 
@@ -42,7 +42,7 @@ func (s *callStats) onError() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func operationDurationBuckets() common_metrics.DurationBuckets {
+func callDurationBuckets() common_metrics.DurationBuckets {
 	return common_metrics.NewDurationBuckets(
 		10*time.Millisecond, 20*time.Millisecond, 50*time.Millisecond,
 		100*time.Millisecond, 200*time.Millisecond, 500*time.Millisecond,
@@ -50,10 +50,10 @@ func operationDurationBuckets() common_metrics.DurationBuckets {
 	)
 }
 
-func newOperationStats(registry common_metrics.Registry) *callStats {
+func newCallStats(registry common_metrics.Registry) *callStats {
 	return &callStats{
 		count:     registry.Counter("count"),
-		histogram: registry.DurationHistogram("time", operationDurationBuckets()),
+		histogram: registry.DurationHistogram("time", callDurationBuckets()),
 		errors:    registry.Counter("errors"),
 	}
 }
@@ -61,25 +61,24 @@ func newOperationStats(registry common_metrics.Registry) *callStats {
 ////////////////////////////////////////////////////////////////////////////////
 
 type metrics struct {
-	registry              common_metrics.Registry
-	operationMetrics      map[string]*callStats
-	operationMetricsMutex sync.Mutex
-	storageType           string
+	registry         common_metrics.Registry
+	callMetrics      map[string]*callStats
+	callMetricsMutex sync.Mutex
 }
 
-func (m *metrics) getOrNewOperationStats(
+func (m *metrics) getOrNewCallStats(
 	name string,
 ) *callStats {
 
-	m.operationMetricsMutex.Lock()
-	defer m.operationMetricsMutex.Unlock()
+	m.callMetricsMutex.Lock()
+	defer m.callMetricsMutex.Unlock()
 
-	stats, ok := m.operationMetrics[name]
+	stats, ok := m.callMetrics[name]
 	if !ok {
-		stats = newOperationStats(m.registry.WithTags(map[string]string{
-			"operation": name,
+		stats = newCallStats(m.registry.WithTags(map[string]string{
+			"call": name,
 		}))
-		m.operationMetrics[name] = stats
+		m.callMetrics[name] = stats
 	}
 
 	return stats
@@ -87,7 +86,7 @@ func (m *metrics) getOrNewOperationStats(
 
 func (m *metrics) StatCall(name string) func(err *error) {
 	start := time.Now()
-	stats := m.getOrNewOperationStats(name)
+	stats := m.getOrNewCallStats(name)
 
 	return func(err *error) {
 		if *err != nil {

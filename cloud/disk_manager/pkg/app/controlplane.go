@@ -358,8 +358,8 @@ func initControlplane(
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
-	poolsMetricsRegistry := mon.NewRegistry("pools")
-	poolStorage, err := pools_storage.NewStorage(config.GetPoolsConfig(), db, poolsMetricsRegistry)
+	poolMetricsRegistry := mon.NewRegistry("pools")
+	poolStorage, err := pools_storage.NewStorage(config.GetPoolsConfig(), db, poolMetricsRegistry)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize pool storage: %v", err)
 		return nil, err
