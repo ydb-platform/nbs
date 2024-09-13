@@ -20,7 +20,7 @@ func (s *storageYDB) findBaseDisks(
 	ids []string,
 ) (baseDisks []baseDisk, err error) {
 
-	defer session.StorageStatCall(ctx, "storageYDB/findBaseDisks")(&err)
+	defer s.metrics.StatCall("storageYDB/findBaseDisks")(&err)
 
 	if len(ids) == 0 {
 		return nil, nil
@@ -621,7 +621,9 @@ func (s *storageYDB) getPoolOrDefault(
 	tx *persistence.Transaction,
 	imageID string,
 	zoneID string,
-) (pool, error) {
+) (poolInstance pool, err error) {
+
+	defer s.metrics.StatCall("storageYDB/getPoolOrDefault")(&err)
 
 	res, err := tx.Execute(
 		ctx,
@@ -1928,7 +1930,7 @@ func (s *storageYDB) getPoolConfigs(
 	session *persistence.Session,
 ) (configs []poolConfig, err error) {
 
-	defer session.StorageStatCall(ctx, "storageYDB/getPoolConfigs")(&err)
+	defer s.metrics.StatCall("storageYDB/getPoolConfigs")(&err)
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1982,7 +1984,7 @@ func (s *storageYDB) getBaseDisksScheduling(
 	session *persistence.Session,
 ) (baseDisks []BaseDisk, err error) {
 
-	defer session.StorageStatCall(ctx, "storageYDB/getBaseDisksScheduling")(&err)
+	defer s.metrics.StatCall("storageYDB/getBaseDisksScheduling")(&err)
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -2030,7 +2032,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	config poolConfig,
 ) (baseDisks []BaseDisk, err error) {
 
-	defer session.StorageStatCall(ctx, "storageYDB/takeBaseDisksToScheduleForPool")(&err)
+	defer s.metrics.StatCall("storageYDB/takeBaseDisksToScheduleForPool")(&err)
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
@@ -2177,7 +2179,7 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 	session *persistence.Session,
 ) (baseDisks []BaseDisk, err error) {
 
-	defer session.StorageStatCall(ctx, "storageYDB/takeBaseDisksToSchedule")(&err)
+	defer s.metrics.StatCall("storageYDB/takeBaseDisksToSchedule")(&err)
 
 	configs, err := s.getPoolConfigs(ctx, session)
 	if err != nil {

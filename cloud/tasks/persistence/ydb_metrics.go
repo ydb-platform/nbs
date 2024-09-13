@@ -92,34 +92,6 @@ func (m *ydbMetrics) StatCall(
 	}
 }
 
-func (m *ydbMetrics) StorageStatCall(
-	ctx context.Context,
-	name string,
-) func(err *error) {
-
-	start := time.Now()
-
-	return func(err *error) {
-		subRegistry := m.registry.WithTags(map[string]string{
-			"call": name,
-		})
-
-		// Should initialize all counters before using them, to avoid 'no data'.
-		timeHistogram := subRegistry.DurationHistogram("time", disksCallDurationBuckets())
-
-		if *err != nil {
-			logging.Error(
-				ctx,
-				"Storage call with name %v ended with error %v",
-				name,
-				*err,
-			)
-		}
-
-		timeHistogram.RecordDuration(time.Since(start))
-	}
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func newYDBMetrics(

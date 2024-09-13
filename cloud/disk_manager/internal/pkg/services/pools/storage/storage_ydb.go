@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -15,6 +17,7 @@ import (
 type storageYDB struct {
 	db                                 *persistence.YDBClient
 	tablesPath                         string
+	metrics                            metrics.Metrics
 	maxActiveSlots                     uint64
 	maxBaseDisksInflight               uint64
 	maxBaseDiskUnits                   uint64
@@ -465,6 +468,7 @@ func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 func NewStorage(
 	config *pools_config.PoolsConfig,
 	db *persistence.YDBClient,
+	metricsRegistry common_metrics.Registry,
 ) (Storage, error) {
 
 	common.Assert(
@@ -486,9 +490,12 @@ func NewStorage(
 		takeBaseDisksToScheduleParallelism = int(config.GetTakeBaseDisksToScheduleParallelism())
 	}
 
+	metrics := metrics.New(metricsRegistry, "ydb")
+
 	return &storageYDB{
 		db:                                 db,
 		tablesPath:                         db.AbsolutePath(config.GetStorageFolder()),
+		metrics:                            metrics,
 		maxActiveSlots:                     uint64(config.GetMaxActiveSlots()),
 		maxBaseDisksInflight:               uint64(config.GetMaxBaseDisksInflight()),
 		maxBaseDiskUnits:                   uint64(config.GetMaxBaseDiskUnits()),

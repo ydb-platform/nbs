@@ -465,7 +465,7 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	return pools_storage.NewStorage(&pools_config.PoolsConfig{
 		CloudId:  &cloudID,
 		FolderId: &folderID,
-	}, db)
+	}, db, metrics.NewEmptyRegistry())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
