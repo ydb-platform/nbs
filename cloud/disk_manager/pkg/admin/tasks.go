@@ -397,6 +397,7 @@ func listHangingTasks(
 		return err
 	}
 	defer db.Close(ctx)
+
 	tasksConfig := serverConfig.GetTasksConfig()
 	if tasksConfig == nil {
 		return fmt.Errorf("tasks config is nil")
@@ -404,7 +405,7 @@ func listHangingTasks(
 
 	taskInfos, err := taskStorage.ListHangingTasks(
 		ctx,
-		^0,
+		^uint64(0),
 		tasksConfig.ExceptHangingTaskTypes,
 	)
 	if err != nil {
@@ -420,6 +421,7 @@ func newListHangingTasksCmd(
 	serverConfig *server_config.ServerConfig,
 	command string,
 ) *cobra.Command {
+
 	return &cobra.Command{
 		Use: command,
 		RunE: func(cmd *cobra.Command, args []string) error {
