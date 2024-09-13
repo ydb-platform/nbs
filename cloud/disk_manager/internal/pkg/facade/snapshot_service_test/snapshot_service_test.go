@@ -287,6 +287,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	})
 	require.NoError(t, err)
 
+	testcommon.CheckBaseSnapshot(t, ctx, snapshotID2, snapshotID1)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -449,12 +450,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
-	bytes := make([]byte, diskSize)
-	for i := 0; i < len(bytes); i++ {
-		bytes[i] = 1
-	}
-
-	err = nbsClient.Write(diskID1, 0, bytes)
+	_, err = nbsClient.FillDisk(ctx, diskID1, uint64(diskSize))
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -473,15 +469,12 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
-		SnapshotId: snapshotID1,
-	})
+	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
 	require.NoError(t, err)
-	require.NotEmpty(t, deleteOperation)
+	err = waitForWrite()
+	require.NoError(t, err)
 
 	snapshotID2 := t.Name() + "2"
-
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
@@ -493,6 +486,16 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
+
+	// Need to add some variance for better testing.
+	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
+		SnapshotId: snapshotID1,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, deleteOperation)
+
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
@@ -519,14 +522,10 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	acc := crc32.NewIEEE()
-	_, err = acc.Write(bytes)
+	diskContentInfo, err := nbsClient.CalculateCrc32(diskID1, uint64(diskSize))
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(ctx, diskID2, nbs.DiskContentInfo{
-		ContentSize: uint64(diskSize),
-		Crc32:       acc.Sum32(),
-	})
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -687,6 +686,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation2.Id)
 	require.NoError(t, err)
 
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 

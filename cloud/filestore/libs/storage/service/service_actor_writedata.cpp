@@ -379,6 +379,7 @@ private:
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
+        request->Record.MutableHeaders()->SetThrottlingDisabled(true);
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());

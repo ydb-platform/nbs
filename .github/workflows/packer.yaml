@@ -217,6 +217,7 @@ jobs:
         EOF
         cat $VARIABLES_FILE
       env:
+        PACKER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RUNNER_VERSION: ${{ vars.RUNNER_VERSION || '2.308.0' }}
         FOLDER_ID: bjeuq5o166dq4ukv3eec
         ZONE: eu-north1-c
@@ -244,6 +245,8 @@ jobs:
       id: validate
       run: |
         packer validate -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
+      env:
+        PACKER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run `packer build`
       id: build
@@ -253,6 +256,8 @@ jobs:
         packer build -timestamp-ui -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
 
         echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' manifest.json)" >> $GITHUB_OUTPUT
+      env:
+        PACKER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
     - name: Print IMAGE_ID_2204

@@ -265,6 +265,8 @@ public:
     ui64 GetLargeDeletionMarkerBlocks() const;
     ui64 GetLargeDeletionMarkersThreshold() const;
     ui64 GetLargeDeletionMarkersCleanupThreshold() const;
+
+    bool GetMultipleStageRequestThrottlingEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
