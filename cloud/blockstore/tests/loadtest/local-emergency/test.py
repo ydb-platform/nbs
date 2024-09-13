@@ -12,7 +12,7 @@ from cloud.blockstore.tests.python.lib.test_base import run_test
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
-def default_storage_config(cache_folder):
+def default_storage_config(backups_folder):
     storage = storage_config_with_default_limits()
     storage.SSDSystemChannelPoolKind = "ssd"
     storage.SSDLogChannelPoolKind = "ssd"
@@ -21,17 +21,18 @@ def default_storage_config(cache_folder):
     storage.SSDMergedChannelPoolKind = "ssd"
 
     storage.TabletBootInfoBackupFilePath = \
-        cache_folder + "/tablet_boot_info_backup.txt"
+        backups_folder + "/tablet_boot_info_backup.txt"
     storage.PathDescriptionBackupFilePath = \
-        cache_folder + "/path_description_backup.txt"
+        backups_folder + "/path_description_backup.txt"
 
     return storage
 
 
-def storage_config_with_emergency_mode(cache_folder):
-    storage = default_storage_config(cache_folder)
+def storage_config_with_emergency_mode(backups_folder):
+    storage = default_storage_config(backups_folder)
     storage.HiveProxyFallbackMode = True
     storage.SSProxyFallbackMode = True
+    storage.DisableLocalService = True
     return storage
 
 
@@ -51,26 +52,21 @@ TESTS = [
 
 
 def __run_test(test_case):
-    cache_folder = get_unique_path_for_current_test(
+    backups_folder = get_unique_path_for_current_test(
         output_path=common.output_path(),
-        sub_folder="cache",
+        sub_folder="backups",
     )
-    ensure_path_exists(cache_folder)
-
-    storage_config_patches = [
-        default_storage_config(cache_folder),
-        storage_config_with_emergency_mode(cache_folder),
-    ]
+    ensure_path_exists(backups_folder)
 
     env = LocalLoadTest(
         "",
-        storage_config_patches=storage_config_patches,
+        storage_config_patches=[default_storage_config(backups_folder)],
         dynamic_pdisks=[dict(user_kind=1)],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=1)
         ],
-        bs_cache_file_path=cache_folder + "/bs_cache.txt",
+        bs_cache_file_path=backups_folder + "/bs_cache.txt",
     )
 
     client = CreateClient(env.endpoint)
@@ -78,8 +74,12 @@ def __run_test(test_case):
 
     session = Session(client, "vol0", "")
     session.mount_volume()
-    session.write_blocks(0, [b'\1' * 4096])
+    session.write_blocks(100500, [b'\1' * 4096])
+    # TODO: should not unmount volume to make emergency unexpected
     session.unmount_volume()
+
+    client.execute_action(action="BackupPathDescriptions", input_bytes=str.encode(""))
+    client.execute_action(action="BackupTabletBootInfos", input_bytes=str.encode(""))
 
     static_pdisk_paths = []
     for info in env.pdisks_info:
@@ -90,8 +90,9 @@ def __run_test(test_case):
     # Destroy static group in order to emulate emergency.
     # TODO: survive outage of kikimr static tablets.
     # os.remove(static_pdisk_paths[0])
-
     env.kikimr_cluster.restart_nodes()
+
+    env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder)]
     env.nbs.restart()
 
     try:
