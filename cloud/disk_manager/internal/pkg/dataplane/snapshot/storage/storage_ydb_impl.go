@@ -423,6 +423,7 @@ func (s *storageYDB) deletingSnapshot(
 
 	if len(states) != 0 {
 		state = states[0]
+		logging.Info(ctx, "Deleting snapshot %+v", *state.toSnapshotMeta())
 
 		if state.status >= snapshotStatusDeleting {
 			// Snapshot already marked as deleting.
@@ -1356,4 +1357,41 @@ func (s *storageYDB) unlockSnapshot(
 
 	logging.Info(ctx, "Unlocked snapshot with id %v", snapshotID)
 	return nil
+}
+
+func (s *storageYDB) getSnapshotMeta(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+) (*SnapshotMeta, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(states) == 0 {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"snapshot with id %v does not exist",
+			snapshotID,
+		)
+	}
+
+	return states[0].toSnapshotMeta(), nil
 }
