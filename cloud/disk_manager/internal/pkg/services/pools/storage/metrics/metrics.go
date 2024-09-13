@@ -15,8 +15,8 @@ type Metrics interface {
 
 func New(registry common_metrics.Registry) Metrics {
 	return &metrics{
-		registry:    registry,
-		callMetrics: make(map[string]*callStats),
+		registry:  registry,
+		callStats: make(map[string]*callStats),
 	}
 }
 
@@ -62,7 +62,7 @@ func newCallStats(registry common_metrics.Registry) *callStats {
 
 type metrics struct {
 	registry         common_metrics.Registry
-	callMetrics      map[string]*callStats
+	callStats        map[string]*callStats
 	callMetricsMutex sync.Mutex
 }
 
@@ -73,12 +73,12 @@ func (m *metrics) getOrNewCallStats(
 	m.callMetricsMutex.Lock()
 	defer m.callMetricsMutex.Unlock()
 
-	stats, ok := m.callMetrics[name]
+	stats, ok := m.callStats[name]
 	if !ok {
 		stats = newCallStats(m.registry.WithTags(map[string]string{
 			"call": name,
 		}))
-		m.callMetrics[name] = stats
+		m.callStats[name] = stats
 	}
 
 	return stats
