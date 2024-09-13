@@ -110,9 +110,9 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		volumeContext[deviceNameVolumeContextKey] = *deviceNameOpt
 	}
 
-	acessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 	if backend == "nfs" {
-		acessMode = csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+		accessMode = csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
 	}
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
@@ -124,7 +124,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 				Mount: &csi.VolumeCapability_MountVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
-				Mode: acessMode,
+				Mode: accessMode,
 			},
 		},
 		VolumeContext: volumeContext,
