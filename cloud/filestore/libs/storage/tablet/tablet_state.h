@@ -1014,13 +1014,24 @@ public:
     TOperationState BlobIndexOpState;
     TOperationState CollectGarbageState;
 
-    TBlobIndexOpQueue BlobIndexOps;
-
 private:
+    TBlobIndexOpQueue BlobIndexOps;
     EBlobIndexOp CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
     bool StartedBackgroundBlobIndexOp = false;
 
 public:
+    bool IsBlobIndexOpsQueueEmpty() const
+    {
+        return BlobIndexOps.Empty();
+    }
+
+    void AddBackgroundBlobIndexOp(EBlobIndexOp op)
+    {
+        if (CurrentBackgroundBlobIndexOp != op) {
+            BlobIndexOps.Push(op);
+        }
+    }
+
     EBlobIndexOp GetCurrentBackgroundBlobIndexOp() const
     {
         return CurrentBackgroundBlobIndexOp;

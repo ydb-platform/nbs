@@ -324,41 +324,42 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
 
-    if (BlobIndexOps.Empty()) {
+    if (IsBlobIndexOpsQueueEmpty()) {
         switch (Config->GetBlobIndexOpsPriority()) {
             case NProto::BIOP_CLEANUP_FIRST: {
                 if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 } else if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
                 break;
             }
 
             case NProto::BIOP_COMPACTION_FIRST: {
                 if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 } else if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
             }
 
             case NProto::BIOP_FAIR: {
                 if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
                 if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
             }
         }
 
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold())
+                || GetDeletedFreshBytesCount()
+                >= Config->GetFlushBytesThreshold())
         {
-            BlobIndexOps.Push(EBlobIndexOp::FlushBytes);
+            AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
         }
     }
 
@@ -391,7 +392,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             // blobs
             if (!FlushState.Enqueue()) {
                 CompleteBlobIndexOp();
-                if (!BlobIndexOps.Empty()) {
+                if (!IsBlobIndexOpsQueueEmpty()) {
                     EnqueueBlobIndexOpIfNeeded(ctx);
                 }
 
