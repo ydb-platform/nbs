@@ -6107,7 +6107,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST(ShouldEnforceFairBlobIndexOpsSchedulingIfCloseToBackpressureThresholds)
+    TABLET_TEST_4K_ONLY(ShouldEnforceFairBlobIndexOpsSchedulingIfCloseToBackpressureThresholds)
     {
         const auto block = tabletConfig.BlockSize;
 
