@@ -644,7 +644,7 @@ struct TTransportRequestCounters
 
     TCounter ReadBlocks{EPublishingPolicy::All};
     TCounter WriteBlocks{
-        EPublishingPolicy::All,
+        EPublishingPolicy::All
     };
 
     static constexpr TMeta AllCounters[] = {
