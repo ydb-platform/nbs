@@ -619,6 +619,18 @@ void TIndexTabletActor::HandleDescribeSessions(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
+{
+    TVector<ui32> ranges;
+    const auto& zeroRanges = RangesWithEmptyCompactionScore;
+    ui32 i = 0;
+    while (i < zeroRanges.size()) {
+        ranges.push_back(i);
+        i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
+    }
+    return ranges;
+}
+
 void TIndexTabletActor::HandleForcedOperation(
     const TEvIndexTablet::TEvForcedOperationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -665,12 +677,7 @@ void TIndexTabletActor::HandleForcedOperation(
     if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
-            const auto& zeroRanges = RangesWithEmptyCompactionScore;
-            ui32 i = 0;
-            while (i < zeroRanges.size()) {
-                ranges.push_back(i);
-                i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
-            }
+            ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = request.GetProcessAllRanges()
                 ? GetAllCompactionRanges()

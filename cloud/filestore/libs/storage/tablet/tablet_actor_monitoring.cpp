@@ -1287,7 +1287,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
                 ::DeleteZeroCompactionRanges)
         {
-            ranges = RangesWithEmptyCompactionScore;
+            ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = GetNonEmptyCompactionRanges();
         }
