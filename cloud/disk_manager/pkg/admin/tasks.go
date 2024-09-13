@@ -539,7 +539,7 @@ func newListCmd(
 		newListCancellingCmd(clientConfig, serverConfig),
 		newListFailedCmd(clientConfig, serverConfig),
 		newListSlowCmd(clientConfig, serverConfig),
-		newListHangingTasksCmd(clientConfig, serverConfig, "failed"),
+		newListHangingTasksCmd(clientConfig, serverConfig, "hanging"),
 	)
 
 	return cmd
