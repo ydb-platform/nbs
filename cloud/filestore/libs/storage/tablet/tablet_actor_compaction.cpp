@@ -362,17 +362,11 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         }
     }
 
-    if (BlobIndexOps.Empty()) {
+    if (!EnqueueBackgroundBlobIndexOp()) {
         return;
     }
 
-    if (!BlobIndexOpState.Enqueue()) {
-        return;
-    }
-
-    auto op = BlobIndexOps.Pop();
-
-    switch (op) {
+    switch (GetCurrentBackgroundBlobIndexOp()) {
         case EBlobIndexOp::Compaction: {
             ctx.Send(
                 SelfId(),
@@ -396,7 +390,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             // Flush blocked since FlushBytes op rewrites some fresh blocks as
             // blobs
             if (!FlushState.Enqueue()) {
-                BlobIndexOpState.Complete();
+                CompleteBlobIndexOp();
                 if (!BlobIndexOps.Empty()) {
                     EnqueueBlobIndexOpIfNeeded(ctx);
                 }
@@ -447,17 +441,18 @@ void TIndexTabletActor::HandleCompaction(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+    if (!started) {
+        replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
 
-    if (!BlobIndexOpState.Start()) {
-        replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
         return;
     }
 
@@ -584,7 +579,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
         replyError(ctx, args, MakeError(S_FALSE, "nothing to do"));
 
-        BlobIndexOpState.Complete();
+        CompleteBlobIndexOp();
         EnqueueBlobIndexOpIfNeeded(ctx);
         Metrics.Compaction.Update(
             1,  // count
@@ -642,7 +637,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
                 args,
                 MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
-            BlobIndexOpState.Complete();
+            CompleteBlobIndexOp();
 
             return;
         }
@@ -683,7 +678,7 @@ void TIndexTabletActor::HandleCompactionCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
