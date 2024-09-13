@@ -15,16 +15,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func disksCallDurationBuckets() metrics.DurationBuckets {
-	return metrics.NewExponentialDurationBuckets(
-		time.Millisecond,
-		1.25,
-		50,
-	)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type ydbMetrics struct {
 	registry    metrics.Registry
 	callTimeout time.Duration
