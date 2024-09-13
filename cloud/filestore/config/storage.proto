@@ -59,7 +59,7 @@ message TStorageConfig
 
     // The size of data (in bytes) in the fresh bytes table that triggers
     // flushing.
-    optional uint32 FlushBytesThreshold = 14;
+    optional uint64 FlushBytesThreshold = 14;
 
     // Size of allocation unit for HDD drives (in GiB).
     optional uint32 AllocationUnitHDD = 15;
@@ -143,7 +143,7 @@ message TStorageConfig
     optional uint32 FlushThresholdForBackpressure = 59;
     optional uint32 CleanupThresholdForBackpressure = 60;
     optional uint32 CompactionThresholdForBackpressure = 61;
-    optional uint32 FlushBytesThresholdForBackpressure = 62;
+    optional uint64 FlushBytesThresholdForBackpressure = 62;
 
     // Threshold for blob size in bytes.
     optional uint32 MaxBlobSize = 63;
@@ -351,11 +351,11 @@ message TStorageConfig
     optional bool InMemoryIndexCacheEnabled = 371;
     // Capacity of in-memory index cache, in number of entries per each table
     optional uint64 InMemoryIndexCacheNodesCapacity = 372;
-    optional uint64 InMemoryIndexCacheNodesVerCapacity = 373;
+    reserved 373; // InMemoryIndexCacheNodesVerCapacity
     optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 374;
-    optional uint64 InMemoryIndexCacheNodeAttrsVerCapacity = 375;
+    reserved 375; // InMemoryIndexCacheNodeAttrsVerCapacity
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
-    optional uint64 InMemoryIndexCacheNodeRefsVerCapacity = 377;
+    reserved 377; // InMemoryIndexCacheNodeRefsVerCapacity
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
@@ -371,4 +371,20 @@ message TStorageConfig
     optional uint32 NodeRegistrationMaxAttempts = 381;
     optional uint32 NodeRegistrationTimeout = 382;   // in ms
     optional uint32 NodeRegistrationErrorTimeout = 383;  // in ms
+
+    // Max block count per file.
+    // uint32 is chosen deliberately - using values that exceed 2^32 - 1 or even
+    // 2^31 (which is 8TiB for a 4KiB block) should be thoroughly tested anyway
+    optional uint32 MaxFileBlocks = 384;
+    // Enables the usage of large deletion markers (needed for efficient
+    // truncate ops on large files).
+    optional bool LargeDeletionMarkersEnabled = 385;
+    // Sets max block count per single large deletion marker.
+    optional uint64 LargeDeletionMarkerBlocks = 386;
+    // Truncate and allocate ops that exceed this threshold will lead to large
+    // deletion marker generation.
+    optional uint64 LargeDeletionMarkersThreshold = 387;
+    // If the number of blocks marked for deletion via large deletion markers
+    // exceeds this threshold, Cleanup will be triggered.
+    optional uint64 LargeDeletionMarkersCleanupThreshold = 388;
 }

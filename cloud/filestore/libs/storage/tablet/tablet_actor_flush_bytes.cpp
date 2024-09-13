@@ -25,6 +25,7 @@ namespace {
 class TReadBlockVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
+    , public ILargeBlockVisitor
     , public IFreshBytesVisitor
 {
 private:
@@ -69,6 +70,15 @@ public:
             ref.BlobId = blobId;
             ref.BlobOffset = blobOffset;
             Block.Block = std::move(ref);
+        }
+    }
+
+    void Accept(const TBlockDeletion& deletion) override
+    {
+        TABLET_VERIFY(!ApplyingByteLayer);
+
+        if (BlockMinCommitId < deletion.CommitId) {
+            Block = {};
         }
     }
 
@@ -248,6 +258,7 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
                 BlockSize
             ));
             request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
+            request->Blobs.back().Async = true;
 
             Buffers[blobToRead.BlobId] = request->Buffer;
 
@@ -314,6 +325,7 @@ void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -712,6 +724,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             1);
 
         FindMixedBlocks(
+            visitor,
+            bytes.NodeId,
+            args.ReadCommitId,
+            blockIndex,
+            1);
+
+        FindLargeBlocks(
             visitor,
             bytes.NodeId,
             args.ReadCommitId,

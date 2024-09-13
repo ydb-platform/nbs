@@ -297,6 +297,7 @@ struct TTxIndexTablet
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
         TVector<NProto::TOpLogEntry> OpLog;
+        TVector<TDeletionMarker> LargeDeletionMarkers;
 
         NProto::TError Error;
 
@@ -319,6 +320,7 @@ struct TTxIndexTablet
             StorageConfig.Clear();
             SessionHistory.clear();
             OpLog.clear();
+            LargeDeletionMarkers.clear();
         }
     };
 
