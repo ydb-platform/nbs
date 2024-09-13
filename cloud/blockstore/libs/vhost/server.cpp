@@ -29,7 +29,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxZeroRequestSize = 32*1024*1024;
+// Maximum size of the request data.
+constexpr ui32 MaxRequestSize = 32_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -425,7 +426,7 @@ public:
             std::move(storage),
             options.ClientId,
             options.BlockSize,
-            MaxZeroRequestSize / options.BlockSize,
+            MaxRequestSize / options.BlockSize,
             options.UnalignedRequestsDisabled);
 
         auto endpoint = std::make_shared<TEndpoint>(
