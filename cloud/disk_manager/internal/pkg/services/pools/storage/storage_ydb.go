@@ -490,7 +490,7 @@ func NewStorage(
 		takeBaseDisksToScheduleParallelism = int(config.GetTakeBaseDisksToScheduleParallelism())
 	}
 
-	metrics := metrics.New(metricsRegistry, "ydb")
+	metrics := metrics.New(metricsRegistry)
 
 	return &storageYDB{
 		db:                                 db,
