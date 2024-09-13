@@ -253,6 +253,12 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
+    if (Config->GetMultipleStageRequestThrottlingEnabled() &&
+        ThrottleIfNeeded<TEvIndexTablet::TGenerateBlobIdsMethod>(ev, ctx))
+    {
+        return;
+    }
+
     // We schedule this event for the case if the client does not call AddData.
     // Thus we ensure that the collect barrier will be released eventually.
     ctx.Schedule(

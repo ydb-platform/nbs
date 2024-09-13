@@ -503,6 +503,7 @@ void TReadDataActor::ReadData(
 
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
+    request->Record.MutableHeaders()->SetThrottlingDisabled(true);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
