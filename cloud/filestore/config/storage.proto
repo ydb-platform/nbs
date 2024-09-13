@@ -387,4 +387,12 @@ message TStorageConfig
     // If the number of blocks marked for deletion via large deletion markers
     // exceeds this threshold, Cleanup will be triggered.
     optional uint64 LargeDeletionMarkersCleanupThreshold = 388;
+
+    // If enabled, GarbageCompactionThresholdAverage will be compared to the
+    // difference between MixedBlocks and UsedBlocks instead of the difference
+    // between alive blocks and UsedBlocks. This actually should be the default
+    // behaviour but is implemented via this flag in order not to cause
+    // uncontrollable behaviour change for production systems. TODO: gradually
+    // enable this flag everywhere and make this behaviour the new default.
+    optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 390;
 }
