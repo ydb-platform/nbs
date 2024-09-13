@@ -1203,6 +1203,13 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
+    auto error = it->second.Device->Resize(
+        sessionInfo.Volume.GetBlocksCount() *
+        sessionInfo.Volume.GetBlockSize()).GetValueSync();
+    if (HasError(error)) {
+        return TErrorResponse(error);
+    }
+
     const auto refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
     return TErrorResponse(refreshError);
 }
