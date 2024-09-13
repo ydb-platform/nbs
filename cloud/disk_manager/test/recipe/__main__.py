@@ -75,7 +75,10 @@ def start(argv):
     s3 = S3Launcher()
     s3.start()
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
-    ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+
+    ydb_binary_path = yatest_common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
+    if ydb_binary_path is None:
+        ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
     disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)

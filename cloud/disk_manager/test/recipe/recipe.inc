@@ -14,9 +14,14 @@ DEPENDS(
     contrib/python/moto/bin
 )
 
-DEPENDS(
-    contrib/ydb/apps/ydbd
-)
+IF (OPENSOURCE)
+    DEPENDS(
+        cloud/storage/core/tools/testing/ydb/bin
+    )
+ELSE()
+    DEPENDS(
+        contrib/ydb/apps/ydbd
+    )
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
@@ -24,5 +29,6 @@ DATA(
     arcadia/cloud/filestore/tests/certs/server.crt
     arcadia/cloud/filestore/tests/certs/server.key
 )
+ENDIF()
 
 USE_RECIPE(cloud/disk_manager/test/recipe/recipe ${RECIPE_ARGS})
