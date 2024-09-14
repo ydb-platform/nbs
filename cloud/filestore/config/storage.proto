@@ -394,4 +394,12 @@ message TStorageConfig
     // After reaching this percentage of Compaction/Cleanup backpressure
     // thresholds BlobIndexOps scheduling falls back to BIOP_FAIR.
     optional uint32 BackpressurePercentageForFairBlobIndexOpsPriority = 390;
+
+    // If enabled, GarbageCompactionThresholdAverage will be compared to the
+    // difference between MixedBlocks and UsedBlocks instead of the difference
+    // between alive blocks and UsedBlocks. This actually should be the default
+    // behaviour but is implemented via this flag in order not to cause
+    // uncontrollable behaviour change for production systems. TODO: gradually
+    // enable this flag everywhere and make this behaviour the new default.
+    optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 391;
 }

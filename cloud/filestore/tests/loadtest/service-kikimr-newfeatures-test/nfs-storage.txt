@@ -8,3 +8,4 @@ PreferredBlockSizeMultiplier: 64
 MultiTabletForwardingEnabled: true
 GetNodeAttrBatchEnabled: true
 UnalignedThreeStageWriteEnabled: true
+UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
