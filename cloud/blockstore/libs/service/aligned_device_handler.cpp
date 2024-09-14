@@ -29,12 +29,11 @@ TGuardedSgList TakeHeadBlocks(TGuardedSgList& sgList, ui32 blockCount)
 
 }   // namespace
 
-TResultOrError<bool> TryToNormalize(
+NProto::TError TryToNormalize(
     TGuardedSgList& guardedSgList,
-    const TBlocksInfo& blocksInfo,
-    ui64 length,
-    ui32 blockSize)
+    TBlocksInfo& blocksInfo)
 {
+    const auto length = blocksInfo.BufferSize();
     if (length == 0) {
         return MakeError(E_ARGUMENT, "Local request has zero length");
     }
@@ -51,27 +50,31 @@ TResultOrError<bool> TryToNormalize(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "Invalid local request:" << " buffer size " << bufferSize
+                << "Invalid local request: buffer size " << bufferSize
                 << " not equal to length " << length);
     }
 
-    if (blocksInfo.BeginOffset != 0 || blocksInfo.EndOffset != 0) {
-        return false;
+    if (!blocksInfo.IsAligned()) {
+        return MakeError(S_OK);
     }
 
-    for (const auto& buffer: guard.Get()) {
-        if (buffer.Size() % blockSize != 0) {
-            return false;
-        }
+    bool allBuffersAligned = AllOf(
+        guard.Get(),
+        [blockSize = blocksInfo.BlockSize](const auto& buffer)
+        { return buffer.Size() % blockSize == 0; });
+
+    if (!allBuffersAligned) {
+        blocksInfo.SgListAligned = false;
+        return MakeError(S_OK);
     }
 
-    auto sgListOrError = SgListNormalize(guard.Get(), blockSize);
+    auto sgListOrError = SgListNormalize(guard.Get(), blocksInfo.BlockSize);
     if (HasError(sgListOrError)) {
         return sgListOrError.GetError();
     }
 
     guardedSgList.SetSgList(sgListOrError.ExtractResult());
-    return true;
+    return MakeError(S_OK);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +93,7 @@ TStorageBuffer AllocateStorageBuffer(IStorage& storage, size_t bytesCount)
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
+    : BlockSize(blockSize)
 {
     ui64 startIndex = from / blockSize;
     ui64 beginOffset = from - startIndex * blockSize;
@@ -106,6 +110,25 @@ TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
     Range = TBlockRange64::WithLength(startIndex, blocksCount);
     BeginOffset = beginOffset;
     EndOffset = endOffset;
+}
+
+size_t TBlocksInfo::BufferSize() const
+{
+    return Range.Size() * BlockSize - BeginOffset - EndOffset;
+}
+
+bool TBlocksInfo::IsAligned() const
+{
+    return SgListAligned && BeginOffset == 0 && EndOffset == 0;
+}
+
+TBlocksInfo TBlocksInfo::MakeAligned() const
+{
+    TBlocksInfo result(*this);
+    result.BeginOffset = 0;
+    result.EndOffset = 0;
+    result.SgListAligned = false;
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,14 +154,13 @@ TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
     const TString& checkpointId)
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
-
-    auto aligned = TryToNormalize(sgList, blocksInfo, length, BlockSize);
-    if (HasError(aligned)) {
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(aligned.GetError()));
+            TErrorResponse(normalizeError));
     }
 
-    if (!aligned.GetResult()) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
             TErrorResponse(E_ARGUMENT, "Request is not aligned"));
     }
@@ -158,13 +180,13 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAlignedDeviceHandler::Write(
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
 
-    auto aligned = TryToNormalize(sgList, blocksInfo, length, BlockSize);
-    if (HasError(aligned)) {
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(aligned.GetError()));
+            TErrorResponse(normalizeError));
     }
 
-    if (!aligned.GetResult()) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
             TErrorResponse(E_ARGUMENT, "Request is not aligned"));
     }
@@ -181,7 +203,7 @@ TAlignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
     }
 
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
-    if (blocksInfo.BeginOffset != 0 || blocksInfo.EndOffset != 0) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TZeroBlocksResponse>(
             TErrorResponse(E_ARGUMENT, "Request is not aligned"));
     }

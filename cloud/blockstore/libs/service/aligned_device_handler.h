@@ -14,9 +14,17 @@ struct TBlocksInfo
     TBlocksInfo(ui64 from, ui64 length, ui32 blockSize);
     TBlocksInfo(const TBlocksInfo&) = default;
 
+    [[nodiscard]] size_t BufferSize() const;
+
+    [[nodiscard]] bool IsAligned() const;
+
+    [[nodiscard]] TBlocksInfo MakeAligned() const;
+
     TBlockRange64 Range;
     ui64 BeginOffset = 0;
     ui64 EndOffset = 0;
+    const ui32 BlockSize = 0;
+    bool SgListAligned = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +64,6 @@ public:
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
 
-private:
     NThreading::TFuture<NProto::TReadBlocksResponse> ExecuteReadRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
@@ -78,10 +85,10 @@ private:
 
 TStorageBuffer AllocateStorageBuffer(IStorage& storage, size_t bytesCount);
 
-TResultOrError<bool> TryToNormalize(
+NProto::TError TryToNormalize(
     TGuardedSgList& guardedSgList,
-    const TBlocksInfo& blocksInfo,
-    ui64 length,
-    ui32 blockSize);
+    TBlocksInfo& blocksInfo);
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore

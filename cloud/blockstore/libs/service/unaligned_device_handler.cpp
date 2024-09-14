@@ -1,0 +1,544 @@
+
+#include "unaligned_device_handler.h"
+
+#include <cloud/blockstore/libs/service/context.h>
+
+namespace NCloud::NBlockStore {
+
+using namespace NThreading;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 MaxUnalignedRequestSize = 32_MB;
+
+void CollectReadyToRunRequests(
+    const TList<TModifyRequestPtr>& requests,
+    TVector<TModifyRequest*>* readyToRunRequests)
+{
+    for (const auto& request: requests) {
+        if (request->ReadyToRun()) {
+            readyToRunRequests->push_back(request.get());
+        }
+    }
+}
+
+TErrorResponse CreateErrorAcquireResponse()
+{
+    return {E_CANCELLED, "failed to acquire sglist in DeviceHandler"};
+}
+
+TErrorResponse CreateRequestDestroyedResponse()
+{
+    return {E_CANCELLED, "request destroyed"};
+}
+
+TErrorResponse CreateBackendDestroyedResponse()
+{
+    return {E_CANCELLED, "backend destroyed"};
+}
+
+}   // namespace
+
+TModifyRequest::TModifyRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo)
+    : Backend(std::move(backend))
+    , BlocksInfo(blocksInfo)
+    , CallContext(std::move(callContext))
+{}
+
+void TModifyRequest::AddDependencies(const TList<TModifyRequestPtr>& requests)
+{
+    for (const auto& request: requests) {
+        if (BlocksInfo.Range.Overlaps(request->BlocksInfo.Range)) {
+            Dependencies.push_back(request);
+        }
+    }
+}
+
+void TModifyRequest::SetIt(TModifyRequestIt it)
+{
+    It = it;
+}
+
+TModifyRequestIt TModifyRequest::GetIt() const
+{
+    return It;
+}
+
+bool TModifyRequest::IsAligned() const
+{
+    return BlocksInfo.IsAligned();
+}
+
+bool TModifyRequest::ReadyToRun()
+{
+    if (Status != EStatus::Waiting) {
+        return false;
+    }
+
+    bool allDependenciesCompleted = AllOf(
+        Dependencies,
+        [](const TModifyRequestWeakPtr& dep) { return dep.expired(); });
+    if (!allDependenciesCompleted) {
+        return false;
+    }
+
+    Status = EStatus::InFlight;
+    return true;
+}
+
+void TModifyRequest::Postpone()
+{
+    CallContext->Postpone(GetCycleCount());
+    DoPostpone();
+}
+
+void TModifyRequest::ExecutePostponed()
+{
+    CallContext->Advance(GetCycleCount());
+    DoExecutePostponed();
+}
+
+void TModifyRequest::AllocateRMWBuffer()
+{
+    auto backend = Backend.lock();
+    Y_DEBUG_ABORT_UNLESS(backend);
+
+    auto bufferSize = BlocksInfo.MakeAligned().BufferSize();
+    RMWBuffer = backend->AllocateBuffer(bufferSize);
+
+    auto sgListOrError = SgListNormalize(
+        TBlockDataRef(RMWBuffer.get(), bufferSize),
+        BlocksInfo.BlockSize);
+    Y_DEBUG_ABORT_UNLESS(!HasError(sgListOrError));
+
+    RMWBufferSgList = sgListOrError.ExtractResult();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteRequest::TWriteRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo,
+        TGuardedSgList sgList)
+    : TModifyRequest(
+          std::move(backend),
+          std::move(callContext),
+          blocksInfo)
+    , SgList(std::move(sgList))
+{}
+
+TWriteRequest::TResponseFuture TWriteRequest::ExecuteOrPostpone(bool readyToRun)
+{
+    return readyToRun ? DoExecute() : Promise.GetFuture();
+}
+
+void TWriteRequest::DoPostpone()
+{
+    Y_ABORT_UNLESS(!Promise.Initialized());
+    Promise = NewPromise<NProto::TWriteBlocksLocalResponse>();
+}
+
+void TWriteRequest::DoExecutePostponed()
+{
+    Y_ABORT_UNLESS(Promise.Initialized());
+    auto result = DoExecute();
+    result.Apply([this](const TResponseFuture& f)
+                 { this->Promise.SetValue(f.GetValue()); });
+}
+
+TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
+{
+    if (auto backend = Backend.lock()) {
+        return IsAligned() ? backend->ExecuteWriteRequest(
+                                 std::move(CallContext),
+                                 BlocksInfo,
+                                 std::move(SgList))
+                           : ReadModifyWrite(backend.get());
+    }
+
+    return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+        CreateBackendDestroyedResponse());
+}
+
+TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
+    TAlignedDeviceHandler* backend)
+{
+    AllocateRMWBuffer();
+
+    auto read = backend->ExecuteReadRequest(
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList.Create(RMWBufferSgList),
+        {});
+
+    return read.Apply(
+        [weakPtr = weak_from_this()](
+            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+        {
+            const auto& response = future.GetValue();
+            if (HasError(response)) {
+                return MakeFuture<NProto::TWriteBlocksResponse>(
+                    TErrorResponse(response.GetError()));
+            }
+
+            if (auto p = weakPtr.lock()) {
+                return static_cast<TWriteRequest*>(p.get())->ModifyAndWrite();
+            }
+
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+                CreateRequestDestroyedResponse());
+        });
+}
+
+TWriteRequest::TResponseFuture TWriteRequest::ModifyAndWrite()
+{
+    auto backend = Backend.lock();
+    if (!backend) {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            CreateBackendDestroyedResponse());
+    }
+
+    if (auto guard = SgList.Acquire()) {
+        const auto& srcSgList = guard.Get();
+        auto size = SgListGetSize(srcSgList);
+        TBlockDataRef dstBuf(RMWBuffer.get() + BlocksInfo.BeginOffset, size);
+        auto cpSize = SgListCopy(srcSgList, {dstBuf});
+        Y_ABORT_UNLESS(cpSize == size);
+    } else {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            CreateErrorAcquireResponse());
+    }
+
+    return backend->ExecuteWriteRequest(
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList.Create(RMWBufferSgList));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TZeroRequest::TZeroRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo)
+    : TModifyRequest(
+          std::move(backend),
+          std::move(callContext),
+          blocksInfo)
+{}
+
+TZeroRequest::~TZeroRequest()
+{
+    SgList.Close();
+}
+
+TZeroRequest::TResponseFuture TZeroRequest::ExecuteOrPostpone(bool readyToRun)
+{
+    return readyToRun ? DoExecute() : Promise.GetFuture();
+}
+
+void TZeroRequest::DoPostpone()
+{
+    Y_ABORT_UNLESS(!Promise.Initialized());
+    Promise = NewPromise<NProto::TZeroBlocksResponse>();
+}
+
+void TZeroRequest::DoExecutePostponed()
+{
+    Y_ABORT_UNLESS(Promise.Initialized());
+    auto result = DoExecute();
+    result.Apply([this](const TResponseFuture& f)
+                 { this->Promise.SetValue(f.GetValue()); });
+}
+
+TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
+{
+    if (auto backend = Backend.lock()) {
+        return IsAligned() ? backend->ExecuteZeroRequest(
+                                 std::move(CallContext),
+                                 BlocksInfo.Range.Start,
+                                 BlocksInfo.Range.Size())
+                           : ReadModifyWrite(backend.get());
+    }
+
+    return MakeFuture<NProto::TZeroBlocksResponse>(
+        CreateBackendDestroyedResponse());
+}
+
+TZeroRequest::TResponseFuture TZeroRequest::ReadModifyWrite(
+    TAlignedDeviceHandler* backend)
+{
+    AllocateRMWBuffer();
+    SgList.SetSgList(RMWBufferSgList);
+
+    auto read = backend->ExecuteReadRequest(
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList,
+        {});
+
+    return read.Apply(
+        [weakPtr = weak_from_this()](
+            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+        {
+            const auto& response = future.GetValue();
+            if (HasError(response)) {
+                return MakeFuture<NProto::TZeroBlocksResponse>(
+                    TErrorResponse(response.GetError()));
+            }
+
+            if (auto p = weakPtr.lock()) {
+                return static_cast<TZeroRequest*>(p.get())->ModifyAndWrite();
+            }
+
+            return MakeFuture<NProto::TZeroBlocksResponse>(
+                CreateRequestDestroyedResponse());
+        });
+}
+
+TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
+{
+    auto backend = Backend.lock();
+    if (!backend) {
+        return MakeFuture<NProto::TZeroBlocksResponse>(
+            CreateBackendDestroyedResponse());
+    }
+
+    std::memset(
+        RMWBuffer.get() + BlocksInfo.BeginOffset,
+        0,
+        BlocksInfo.BufferSize());
+
+    auto result =
+        backend->ExecuteWriteRequest(CallContext, BlocksInfo.MakeAligned(), SgList);
+    return result.Apply(
+        [](const TFuture<NProto::TWriteBlocksResponse>& future)
+        {
+            return MakeFuture<NProto::TZeroBlocksResponse>(
+                TErrorResponse(future.GetValue().GetError()));
+        });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TUnalignedDeviceHandler::TUnalignedDeviceHandler(
+    IStoragePtr storage,
+    TString clientId,
+    ui32 blockSize,
+    ui32 maxBlockCount)
+    : Backend(std::make_shared<TAlignedDeviceHandler>(
+          std::move(storage),
+          std::move(clientId),
+          blockSize,
+          maxBlockCount))
+    , BlockSize(blockSize)
+    , MaxUnalignedBlockCount(MaxUnalignedRequestSize / BlockSize)
+{}
+
+TFuture<NProto::TReadBlocksLocalResponse> TUnalignedDeviceHandler::Read(
+    TCallContextPtr ctx,
+    ui64 from,
+    ui64 length,
+    TGuardedSgList sgList,
+    const TString& checkpointId)
+{
+    auto blocksInfo = TBlocksInfo(from, length, BlockSize);
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
+            TErrorResponse(normalizeError));
+    }
+    return blocksInfo.IsAligned() ? Backend->ExecuteReadRequest(
+                                        std::move(ctx),
+                                        blocksInfo,
+                                        std::move(sgList),
+                                        checkpointId)
+                                  : ExecuteUnalignedReadRequest(
+                                        std::move(ctx),
+                                        blocksInfo,
+                                        std::move(sgList),
+                                        checkpointId);
+}
+
+TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
+    TCallContextPtr ctx,
+    ui64 from,
+    ui64 length,
+    TGuardedSgList sgList)
+{
+    auto blocksInfo = TBlocksInfo(from, length, BlockSize);
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            TErrorResponse(normalizeError));
+    }
+
+    if (!blocksInfo.IsAligned() &&
+        blocksInfo.Range.Size() > MaxUnalignedBlockCount)
+    {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Unaligned write request is too big. BlockCount="
+                << blocksInfo.Range.Size()));
+    }
+
+    auto request = std::make_shared<TWriteRequest>(
+        Backend,
+        ctx,
+        blocksInfo,
+        std::move(sgList));
+
+    const bool readyToRun = RegisterRequest(request);
+    auto result = request->ExecuteOrPostpone(readyToRun);
+    return result.Apply(
+        [weakPtr = weak_from_this(), request = request](
+            const TFuture<NProto::TWriteBlocksLocalResponse>& f) mutable
+        {
+            if (auto p = weakPtr.lock()) {
+                p->OnRequestFinished(std::move(request));
+            }
+            return f.GetValue();
+        });
+}
+
+TFuture<NProto::TZeroBlocksResponse>
+TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
+{
+    auto blocksInfo = TBlocksInfo(from, length, BlockSize);
+    auto request = std::make_shared<TZeroRequest>(Backend, ctx, blocksInfo);
+
+    const bool readyToRun = RegisterRequest(request);
+    auto result = request->ExecuteOrPostpone(readyToRun);
+    return result.Apply(
+        [weakPtr = weak_from_this(), request = request](
+            const TFuture<NProto::TZeroBlocksResponse>& f) mutable
+        {
+            if (auto p = weakPtr.lock()) {
+                p->OnRequestFinished(std::move(request));
+            }
+            return f.GetValue();
+        });
+}
+
+TStorageBuffer TUnalignedDeviceHandler::AllocateBuffer(size_t bytesCount)
+{
+    return Backend->AllocateBuffer(bytesCount);
+}
+
+bool TUnalignedDeviceHandler::RegisterRequest(TModifyRequestPtr request)
+{
+    with_lock (RequestsLock) {
+        request->AddDependencies(UnalignedRequests);
+        if (request->IsAligned()) {
+            AlignedRequests.push_front(request);
+            request->SetIt(AlignedRequests.begin());
+        } else {
+            request->AddDependencies(AlignedRequests);
+            UnalignedRequests.push_front(request);
+            request->SetIt(UnalignedRequests.begin());
+        }
+        if (!request->ReadyToRun()) {
+            request->Postpone();
+            return false;
+        }
+    }
+    return true;
+}
+
+TFuture<NProto::TReadBlocksLocalResponse>
+TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
+    TCallContextPtr ctx,
+    TBlocksInfo blocksInfo,
+    TGuardedSgList sgList,
+    TString checkpointId) const
+{
+    if (blocksInfo.Range.Size() > MaxUnalignedBlockCount) {
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder() << "Unaligned read request is too big. BlockCount="
+                             << blocksInfo.Range.Size()));
+    }
+
+    auto bufferSize = blocksInfo.Range.Size() * BlockSize;
+    auto buffer = Backend->AllocateBuffer(bufferSize);
+
+    auto sgListOrError =
+        SgListNormalize(TBlockDataRef(buffer.get(), bufferSize), BlockSize);
+
+    if (HasError(sgListOrError)) {
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
+            TErrorResponse(sgListOrError.GetError()));
+    }
+
+    TBlocksInfo alignedBlockInfo;
+    alignedBlockInfo.Range = blocksInfo.Range;
+
+    auto alignedRequest = Backend->ExecuteReadRequest(
+        std::move(ctx),
+        alignedBlockInfo,
+        sgList.Create(sgListOrError.ExtractResult()),
+        std::move(checkpointId));
+
+    return alignedRequest.Apply(
+        [sgList = std::move(sgList),
+         buffer = std::move(buffer),
+         beginOffset = blocksInfo.BeginOffset](
+            const TFuture<NProto::TReadBlocksResponse>& future)
+        {
+            const auto& response = future.GetValue();
+            if (HasError(response)) {
+                return response;
+            }
+
+            auto guard = sgList.Acquire();
+            if (!guard) {
+                return static_cast<NProto::TReadBlocksLocalResponse>(
+                    CreateErrorAcquireResponse());
+            }
+
+            const auto& dstSgList = guard.Get();
+            auto size = SgListGetSize(dstSgList);
+            TBlockDataRef srcBuf(buffer.get() + beginOffset, size);
+            auto cpSize = SgListCopy({srcBuf}, dstSgList);
+            Y_ABORT_UNLESS(cpSize == size);
+
+            return response;
+        });
+}
+
+void TUnalignedDeviceHandler::OnRequestFinished(TModifyRequestPtr request)
+{
+    TVector<TModifyRequest*> readyToRunPostponedRequests;
+
+    with_lock (RequestsLock) {
+        const bool isAligned = request->IsAligned();
+        if (isAligned) {
+            AlignedRequests.erase(request->GetIt());
+        } else {
+            UnalignedRequests.erase(request->GetIt());
+        }
+        request.reset();
+
+        CollectReadyToRunRequests(
+            UnalignedRequests,
+            &readyToRunPostponedRequests);
+        if (!isAligned) {
+            CollectReadyToRunRequests(
+                AlignedRequests,
+                &readyToRunPostponedRequests);
+        }
+    }
+
+    for (auto* readyToRunRequest: readyToRunPostponedRequests) {
+        readyToRunRequest->ExecutePostponed();
+    }
+}
+
+}   // namespace NCloud::NBlockStore
