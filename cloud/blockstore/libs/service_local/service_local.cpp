@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -62,20 +63,26 @@ struct TMountSession
 {
     const TString SessionId;
     const TString ClientId;
-    const IStoragePtr Storage;
-    const TStorageAdapter StorageAdapter;
+    const NProto::EVolumeAccessMode AccessMode;
+    IStoragePtr Storage;
+    std::unique_ptr<TStorageAdapter> StorageAdapter;
 
-    TMountSession(TString clientId, IStoragePtr storage, ui32 blockSize)
+    TMountSession(
+            TString clientId,
+            NProto::EVolumeAccessMode accessMode,
+            IStoragePtr storage,
+            ui32 blockSize)
         : SessionId(CreateGuidAsString())
         , ClientId(std::move(clientId))
+        , AccessMode(accessMode)
         , Storage(storage)
-        , StorageAdapter(
+        , StorageAdapter(std::make_unique<TStorageAdapter>(
               std::move(storage),
               blockSize,
               true,                // normalize,
               TDuration::Zero(),   // maxRequestDuration
               TDuration::Zero()    // shutdownTimeout
-          )
+              ))
     {}
 };
 
@@ -86,7 +93,7 @@ using TMountSessionMap = THashMap<TString, TMountSessionPtr>;
 
 struct TMountedVolume
 {
-    const NProto::TVolume Volume;
+    NProto::TVolume Volume;
 
     TMountSessionMap Sessions;
     TMutex SessionLock;
@@ -95,11 +102,15 @@ struct TMountedVolume
         : Volume(std::move(volume))
     {}
 
-    TMountSessionPtr CreateSession(TString clientId, IStoragePtr storage)
+    TMountSessionPtr CreateSession(
+        TString clientId,
+        NProto::EVolumeAccessMode accessMode,
+        IStoragePtr storage)
     {
         with_lock (SessionLock) {
             auto session = std::make_shared<TMountSession>(
                 std::move(clientId),
+                accessMode,
                 std::move(storage),
                 Volume.GetBlockSize());
 
@@ -204,6 +215,29 @@ public:
 
         TFile fileData(MakeDataPath(diskId), EOpenModeFlag::OpenExisting);
         fileData.Resize(volume.GetBlockSize() * blocksCount);
+
+        auto mountedVolume = FindMountedVolume(diskId);
+        if (!mountedVolume) {
+            return;
+        }
+        with_lock (mountedVolume->SessionLock) {
+            mountedVolume->Volume = volume;
+            for (auto& session: mountedVolume->Sessions) {
+                auto dataPath = MakeDataPath(volume.GetDiskId());
+                volume.SetDiskId(dataPath);
+                session.second->Storage = StorageProvider
+                                              ->CreateStorage(
+                                                  volume,
+                                                  session.second->ClientId,
+                                                  session.second->AccessMode)
+                                              .GetValueSync();
+                session.second->StorageAdapter =
+                    std::make_unique<TStorageAdapter>(
+                        session.second->Storage,
+                        volume.GetBlockSize(),
+                        true);
+            }
+        }
     }
 
     void DestroyVolume(const TString& diskId)
@@ -269,6 +303,7 @@ public:
 
                 auto session = mountedVolume->CreateSession(
                     clientId,
+                    accessMode,
                     std::move(storage));
 
                 NProto::TMountVolumeResponse response;
@@ -669,7 +704,11 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
                 << "Out of bounds read request";
         }
 
-        return session->StorageAdapter.ReadBlocks(
+        if (!session->StorageAdapter) {
+            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
+        }
+
+        return session->StorageAdapter->ReadBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
@@ -728,7 +767,11 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
                 << "Out of bounds write request";
         }
 
-        return session->StorageAdapter.WriteBlocks(
+        if (!session->StorageAdapter) {
+            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
+        }
+
+        return session->StorageAdapter->WriteBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
@@ -779,7 +822,11 @@ TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
                 << "Out of bounds write request";
         }
 
-        return session->StorageAdapter.ZeroBlocks(
+        if (!session->StorageAdapter) {
+            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
+        }
+
+        return session->StorageAdapter->ZeroBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
