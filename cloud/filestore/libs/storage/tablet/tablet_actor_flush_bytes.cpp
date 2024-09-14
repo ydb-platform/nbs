@@ -512,27 +512,10 @@ void TIndexTabletActor::HandleFlushBytes(
         }
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        // Flush may have been enqueued if FlushBytes was enqueued by the
-        // tablet (via EnqueueBlobIndexOpIfNeeded).
-        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
-            FlushState.Complete();
-        }
-
-        reply(
-            ctx,
-            *ev,
-            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
-        );
-
-        return;
-    }
-
-    if (!BlobIndexOpState.Start()) {
+    if (!started) {
         if (FlushState.Start()) {
             FlushState.Complete();
         }
@@ -547,9 +530,22 @@ void TIndexTabletActor::HandleFlushBytes(
     }
 
     if (!FlushState.Start()) {
-        BlobIndexOpState.Complete();
+        CompleteBlobIndexOp();
 
         reply(ctx, *ev, MakeError(E_TRY_AGAIN, "flush is in progress"));
+
+        return;
+    }
+
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+        FlushState.Complete();
+
+        reply(
+            ctx,
+            *ev,
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
+        );
 
         return;
     }
@@ -572,8 +568,8 @@ void TIndexTabletActor::HandleFlushBytes(
 
     if (bytes.empty()) {
         if (deletionMarkers.empty()) {
+            CompleteBlobIndexOp();
             FlushState.Complete();
-            BlobIndexOpState.Complete();
             EnqueueBlobIndexOpIfNeeded(ctx);
             EnqueueFlushIfNeeded(ctx);
 
@@ -833,7 +829,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
                 args,
                 MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
-            BlobIndexOpState.Complete();
+            CompleteBlobIndexOp();
             FlushState.Complete();
             EnqueueBlobIndexOpIfNeeded(ctx);
             EnqueueFlushIfNeeded(ctx);
@@ -972,7 +968,7 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         args.ChunkId,
         args.TrimmedBytes);
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     FlushState.Complete();
 
     EnqueueBlobIndexOpIfNeeded(ctx);

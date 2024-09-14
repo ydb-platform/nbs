@@ -617,6 +617,12 @@ void TIndexTabletActor::HandleDescribeData(
         return;
     }
 
+    if (Config->GetMultipleStageRequestThrottlingEnabled() &&
+        ThrottleIfNeeded<TEvIndexTablet::TDescribeDataMethod>(ev, ctx))
+    {
+        return;
+    }
+
     auto* msg = ev->Get();
     const TByteRange byteRange(
         msg->Record.GetOffset(),

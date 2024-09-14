@@ -65,6 +65,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
+    xxx(BackpressurePercentageForFairBlobIndexOpsPriority,  ui32,   90        )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
     xxx(HDDLogChannelPoolKind,         TString,   "rot"                       )\
@@ -204,6 +205,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
+                                                                               \
+    xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
