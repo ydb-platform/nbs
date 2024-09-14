@@ -1014,8 +1014,70 @@ public:
     TOperationState BlobIndexOpState;
     TOperationState CollectGarbageState;
 
+private:
     TBlobIndexOpQueue BlobIndexOps;
+    EBlobIndexOp CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+    bool StartedBackgroundBlobIndexOp = false;
 
+public:
+    bool IsBlobIndexOpsQueueEmpty() const
+    {
+        return BlobIndexOps.Empty();
+    }
+
+    void AddBackgroundBlobIndexOp(EBlobIndexOp op)
+    {
+        if (CurrentBackgroundBlobIndexOp != op) {
+            BlobIndexOps.Push(op);
+        }
+    }
+
+    EBlobIndexOp GetCurrentBackgroundBlobIndexOp() const
+    {
+        return CurrentBackgroundBlobIndexOp;
+    }
+
+    bool EnqueueBackgroundBlobIndexOp()
+    {
+        if (BlobIndexOps.Empty()) {
+            return false;
+        }
+
+        if (!BlobIndexOpState.Enqueue()) {
+            return false;
+        }
+
+        Y_DEBUG_ABORT_UNLESS(!StartedBackgroundBlobIndexOp);
+        CurrentBackgroundBlobIndexOp = BlobIndexOps.Pop();
+        return true;
+    }
+
+    bool StartBackgroundBlobIndexOp()
+    {
+        Y_DEBUG_ABORT_UNLESS(CurrentBackgroundBlobIndexOp != EBlobIndexOp::Max);
+        Y_DEBUG_ABORT_UNLESS(!StartedBackgroundBlobIndexOp);
+
+        if (BlobIndexOpState.Start()) {
+            StartedBackgroundBlobIndexOp = true;
+            return true;
+        }
+
+        CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+        return false;
+    }
+
+    void CompleteBlobIndexOp()
+    {
+        BlobIndexOpState.Complete();
+        if (StartedBackgroundBlobIndexOp) {
+            Y_DEBUG_ABORT_UNLESS(
+                CurrentBackgroundBlobIndexOp != EBlobIndexOp::Max);
+            CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+            StartedBackgroundBlobIndexOp = false;
+        }
+    }
+
+public:
     struct TPriorityRange
     {
         ui64 NodeId = 0;

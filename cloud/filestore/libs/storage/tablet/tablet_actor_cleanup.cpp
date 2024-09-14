@@ -40,18 +40,20 @@ void TIndexTabletActor::HandleCleanup(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+    if (!started) {
+        replyError(
+            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
 
-    if (!BlobIndexOpState.Start()) {
-        replyError(
-            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
+
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
         return;
     }
 
@@ -125,7 +127,7 @@ void TIndexTabletActor::CompleteTx_Cleanup(
         "%s Cleanup completed (range: #%u)",
         LogTag.c_str(), args.RangeId);
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     ReleaseMixedBlocks(args.RangeId);
     TABLET_VERIFY(TryReleaseCollectBarrier(args.CollectBarrier));
 
