@@ -39,6 +39,7 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
         case NProto::NO_ENCRYPTION:
             return 0;
         case NProto::ENCRYPTION_AES_XTS:
+        case NProto::ENCRYPTION_DEFAULT_AES_XTS:
             return 32;
         default:
             ythrow TServiceError(E_ARGUMENT)
@@ -49,35 +50,47 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEncryptionKeyProvider
+class TEncryptionKeyProvider final
     : public IEncryptionKeyProvider
 {
 private:
     const IKmsKeyProviderPtr KmsKeyProvider;
+    const IRootKmsKeyProviderPtr RootKmsKeyProvider;
 
 public:
-    TEncryptionKeyProvider(IKmsKeyProviderPtr kmsKeyProvider)
+    TEncryptionKeyProvider(
+            IKmsKeyProviderPtr kmsKeyProvider,
+            IRootKmsKeyProviderPtr rootKmsKeyProvider)
         : KmsKeyProvider(std::move(kmsKeyProvider))
+        , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
     {}
 
     TFuture<TResponse> GetKey(
         const NProto::TEncryptionSpec& spec,
-        const TString& diskId)
+        const TString& diskId) override
     {
         auto len = GetExpectedKeyLength(spec.GetMode());
         const auto& keyPath = spec.GetKeyPath();
 
         if (keyPath.HasKeyringId()) {
             return MakeFuture(ReadKeyFromKeyring(keyPath.GetKeyringId(), len));
-        } else if (keyPath.HasFilePath()) {
-            return MakeFuture(ReadKeyFromFile(keyPath.GetFilePath(), len));
-        } else if (keyPath.HasKmsKey()) {
-            return ReadKeyFromKMS(keyPath.GetKmsKey(), diskId, len);
-        } else {
-            return MakeFuture<TResponse>(TErrorResponse(
-                E_ARGUMENT,
-                "KeyPath should contain path to encryption key"));
         }
+
+        if (keyPath.HasFilePath()) {
+            return MakeFuture(ReadKeyFromFile(keyPath.GetFilePath(), len));
+        }
+
+        if (keyPath.HasKmsKey()) {
+            if (spec.GetMode() == NProto::ENCRYPTION_DEFAULT_AES_XTS) {
+                return ReadKeyFromRootKMS(keyPath.GetKmsKey(), diskId, len);
+            }
+
+            return ReadKeyFromKMS(keyPath.GetKmsKey(), diskId, len);
+        }
+
+        return MakeFuture<TResponse>(TErrorResponse(
+            E_ARGUMENT,
+            "KeyPath should contain path to encryption key"));
     }
 
 private:
@@ -143,6 +156,29 @@ private:
             return std::move(key);
         });
     }
+
+    TFuture<TResponse> ReadKeyFromRootKMS(
+        const NProto::TKmsKey& kmsKey,
+        const TString& diskId,
+        ui32 expectedLen)
+    {
+        auto future = RootKmsKeyProvider->GetKey(kmsKey, diskId);
+        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
+            auto response = f.ExtractValue();
+            if (HasError(response)) {
+                return response.GetError();
+            }
+
+            auto key = response.ExtractResult();
+            if (key.GetKey().size() != expectedLen) {
+                return MakeError(E_INVALID_STATE, TStringBuilder()
+                    << "Key from Root KMS for disk " << diskId
+                    << " should has size " << expectedLen);
+            }
+
+            return std::move(key);
+        });
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,46 +195,6 @@ public:
         Y_UNUSED(diskId);
         return MakeFuture<TResponse>(
             MakeError(E_ARGUMENT, "KmsKeyProviderStub can't get key"));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TDefaultEncryptionKeyProvider final
-    : public IDefaultEncryptionKeyProvider
-{
-private:
-    IRootKmsKeyProviderPtr KeyProvider;
-
-public:
-    explicit TDefaultEncryptionKeyProvider(
-            IRootKmsKeyProviderPtr keyProvider)
-        : KeyProvider(std::move(keyProvider))
-    {}
-
-    auto GetKey(const NProto::TEncryptionSpec& spec, const TString& diskId)
-        -> TFuture<TResultOrError<TEncryptionKey>> override
-    {
-        if (spec.GetMode() != NProto::ENCRYPTION_DEFAULT_AES_XTS) {
-            return MakeFuture<TResultOrError<TEncryptionKey>>(TErrorResponse(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "unexpected encryption mode for " << diskId.Quote()));
-        }
-
-        if (!spec.HasKeyPath() || !spec.GetKeyPath().HasKmsKey()) {
-            return MakeFuture<TResultOrError<TEncryptionKey>>(TErrorResponse(
-                E_ARGUMENT,
-                TStringBuilder() << "empty KMS key for " << diskId.Quote()));
-        }
-
-        return KeyProvider->GetKey(spec.GetKeyPath().GetKmsKey(), diskId);
-    }
-
-    auto GenerateDataEncryptionKey(const TString& diskId)
-        -> TFuture<TResultOrError<NProto::TKmsKey>> override
-    {
-        return KeyProvider->GenerateDataEncryptionKey(diskId);
     }
 };
 
@@ -264,17 +260,19 @@ IRootKmsKeyProviderPtr CreateRootKmsKeyProviderStub()
 }
 
 IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
-    IKmsKeyProviderPtr kmsKeyProvider)
-{
-    return std::make_shared<TEncryptionKeyProvider>(
-        std::move(kmsKeyProvider));
-}
-
-IDefaultEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider(
+    IKmsKeyProviderPtr kmsKeyProvider,
     IRootKmsKeyProviderPtr rootKmsKeyProvider)
 {
-    return std::make_shared<TDefaultEncryptionKeyProvider>(
+    return std::make_shared<TEncryptionKeyProvider>(
+        std::move(kmsKeyProvider),
         std::move(rootKmsKeyProvider));
+}
+
+IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider()
+{
+    return CreateEncryptionKeyProvider(
+        CreateKmsKeyProviderStub(),
+        CreateRootKmsKeyProviderStub());
 }
 
 }   // namespace NCloud::NBlockStore

@@ -29,7 +29,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
-        KeyProvider = CreateEncryptionKeyProvider(CreateKmsKeyProviderStub());
+        KeyProvider = CreateDefaultEncryptionKeyProvider();
     }
 };
 

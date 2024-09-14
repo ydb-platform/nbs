@@ -432,7 +432,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             bootstrap.Logging,
-            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
+            CreateDefaultEncryptionKeyProvider());
 
         bootstrap.SessionManager = CreateSessionManager(
             bootstrap.Timer,

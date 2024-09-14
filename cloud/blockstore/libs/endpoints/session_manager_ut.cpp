@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
+            CreateDefaultEncryptionKeyProvider());
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
@@ -237,7 +237,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
+            CreateDefaultEncryptionKeyProvider());
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),

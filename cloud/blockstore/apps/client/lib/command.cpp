@@ -480,7 +480,7 @@ void TCommand::Init()
 
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateEncryptionKeyProvider(CreateKmsKeyProviderStub()));
+        CreateDefaultEncryptionKeyProvider());
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(
