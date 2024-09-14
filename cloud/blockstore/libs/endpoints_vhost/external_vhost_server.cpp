@@ -599,7 +599,7 @@ public:
 
     void Start() override
     {
-        auto processStarted = NewPromise();
+        TCondVar processStarted;
         // To avoid a race, we need to get the shared pointer in the calling
         // thread and pass it to the background thread. This guaranteed that the
         // background thread will deal with a live this.
@@ -610,14 +610,16 @@ public:
             // PR_SET_PDEATHSIG which tracks the aliveness of the thread that
             // spawned the process.
             self->Process = self->StartProcess();
-            processStarted.SetValue();
+            processStarted.Signal();
             self->ThreadProc();
         };
 
-        std::thread(std::move(workFunc)).detach();
-        // Infinite time wait is safe here, since we are in the coroutine
-        // thread.
-        Executor->WaitFor(processStarted);
+        with_lock (Mutex) {
+            std::thread(std::move(workFunc)).detach();
+            // Infinite time wait is safe here, since we are in the coroutine
+            // thread.
+            processStarted.WaitI(Mutex);
+        }
     }
 
     TFuture<NProto::TError> Stop() override
