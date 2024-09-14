@@ -6107,6 +6107,170 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST_4K_ONLY(ShouldEnforceFairBlobIndexOpsSchedulingIfCloseToBackpressureThresholds)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(5);
+        storageConfig.SetCleanupThreshold(10);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetBlobIndexOpsPriority(NProto::BIOP_CLEANUP_FIRST);
+        storageConfig.SetCompactionThresholdForBackpressure(50);
+        storageConfig.SetCleanupThresholdForBackpressure(100);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TAutoPtr<IEventHandle> compaction;
+        TAutoPtr<IEventHandle> cleanup;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvCompactionRequest: {
+                    compaction = event.Release();
+                    return true;
+                }
+
+                case TEvIndexTabletPrivate::EvCleanupRequest: {
+                    cleanup = event.Release();
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        for (ui32 i = 0; i < 4; ++i) {
+            tablet.WriteData(handle, 0, block, 'a');
+        }
+        UNIT_ASSERT(!compaction);
+        UNIT_ASSERT(!cleanup);
+
+        tablet.WriteData(handle, 0, block, 'a');
+        UNIT_ASSERT(compaction);
+        UNIT_ASSERT(!cleanup);
+
+        tablet.WriteData(handle, 0, block, 'a');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetDeletionMarkersCount());
+        }
+
+        env.GetRuntime().Send(compaction.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetDeletionMarkersCount());
+        }
+
+        for (ui32 i = 0; i < 3; ++i) {
+            tablet.WriteData(handle, 0, block, 'a');
+        }
+
+        UNIT_ASSERT(!compaction);
+        UNIT_ASSERT(!cleanup);
+
+        tablet.WriteData(handle, 0, block, 'a');
+        UNIT_ASSERT(!compaction);
+        // Cleanup has higher priority
+        UNIT_ASSERT(cleanup);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetDeletionMarkersCount());
+        }
+
+        // 10% away from the backpressure threshold
+        for (ui32 i = 0; i < 40; ++i) {
+            tablet.WriteData(handle, 0, block, 'a');
+        }
+
+        // 10% away from the backpressure threshold
+        for (ui32 i = 0; i < 45; ++i) {
+            tablet.WriteData(handle, BlockGroupSize * block, block, 'a');
+        }
+
+        {
+            auto response = tablet.GetStorageStats(2);
+            auto& stats = *response->Record.MutableStats();
+            UNIT_ASSERT_VALUES_EQUAL(90, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(95, stats.GetDeletionMarkersCount());
+            auto& rangeStats = *stats.MutableCompactionRangeStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, rangeStats.size());
+            SortBy(rangeStats.begin(), rangeStats.end(), [] (const auto& s) {
+                return std::make_pair(s.GetBlobCount(), s.GetDeletionCount());
+            });
+            UNIT_ASSERT_VALUES_EQUAL(45, rangeStats[0].GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(45, rangeStats[0].GetDeletionCount());
+            UNIT_ASSERT_VALUES_EQUAL(45, rangeStats[1].GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(50, rangeStats[1].GetDeletionCount());
+        }
+
+        env.GetRuntime().Send(cleanup.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(46, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(45, stats.GetDeletionMarkersCount());
+        }
+
+        // Compaction should've been scheduled since it's close to backpressure
+        // thresholds
+        UNIT_ASSERT(!cleanup);
+        UNIT_ASSERT(compaction);
+
+        env.GetRuntime().Send(compaction.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(45, stats.GetDeletionMarkersCount());
+        }
+
+        UNIT_ASSERT(cleanup);
+        UNIT_ASSERT(!compaction);
+
+        env.GetRuntime().Send(cleanup.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+
+        UNIT_ASSERT(!cleanup);
+        UNIT_ASSERT(!compaction);
+    }
+
 #undef TABLET_TEST
 }
 

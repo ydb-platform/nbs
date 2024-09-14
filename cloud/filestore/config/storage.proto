@@ -390,4 +390,8 @@ message TStorageConfig
 
     // Throttle DescribeData and GenerateBlobIds requests
     optional bool MultipleStageRequestThrottlingEnabled = 389;
+
+    // After reaching this percentage of Compaction/Cleanup backpressure
+    // thresholds BlobIndexOps scheduling falls back to BIOP_FAIR.
+    optional uint32 BackpressurePercentageForFairBlobIndexOpsPriority = 390;
 }
