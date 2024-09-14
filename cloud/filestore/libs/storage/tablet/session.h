@@ -155,7 +155,7 @@ public:
 
     ui64 GenerateDupCacheEntryId()
     {
-        return LastDupCacheEntryId++;
+        return ++LastDupCacheEntryId;
     }
 
     void LoadDupCacheEntry(NProto::TDupCacheEntry entry)
