@@ -58,11 +58,12 @@ using TSessionLockMultiMap = THashMultiMap<ui64, TSessionLock*>;
 
 struct TDupCacheEntry: NProto::TDupCacheEntry
 {
-    bool Commited = false;
+    bool Committed = false;
+    bool Dropped = false;
 
-    TDupCacheEntry(const NProto::TDupCacheEntry& proto, bool commited)
+    TDupCacheEntry(const NProto::TDupCacheEntry& proto, bool committed)
         : NProto::TDupCacheEntry(proto)
-        , Commited(commited)
+        , Committed(committed)
     {}
 };
 
@@ -112,7 +113,7 @@ public:
         return SubSessions.IsValid();
     }
 
-    bool HasSeqNo(ui64 seqNo)
+    bool HasSeqNo(ui64 seqNo) const
     {
         return SubSessions.HasSeqNo(seqNo);
     }
@@ -154,7 +155,7 @@ public:
 
     ui64 GenerateDupCacheEntryId()
     {
-        return LastDupCacheEntryId++;
+        return ++LastDupCacheEntryId;
     }
 
     void LoadDupCacheEntry(NProto::TDupCacheEntry entry)
@@ -177,6 +178,21 @@ public:
         return nullptr;
     }
 
+    void DropDupEntry(ui64 requestId)
+    {
+        if (!requestId) {
+            return;
+        }
+
+        auto it = DupCache.find(requestId);
+        if (it == DupCache.end()) {
+            return;
+        }
+
+        it->second->Dropped = true;
+        DupCache.erase(it);
+    }
+
     TDupCacheEntry* AccessDupEntry(ui64 requestId)
     {
         if (!requestId) {
@@ -191,12 +207,12 @@ public:
         return nullptr;
     }
 
-    void AddDupCacheEntry(NProto::TDupCacheEntry proto, bool commited)
+    void AddDupCacheEntry(NProto::TDupCacheEntry proto, bool committed)
     {
         Y_ABORT_UNLESS(proto.GetRequestId());
         Y_ABORT_UNLESS(proto.GetEntryId());
 
-        DupCacheEntries.emplace_back(std::move(proto), commited);
+        DupCacheEntries.emplace_back(std::move(proto), committed);
 
         auto& entry = DupCacheEntries.back();
         auto [_, inserted] = DupCache.emplace(entry.GetRequestId(), &entry);
@@ -206,7 +222,7 @@ public:
     void CommitDupCacheEntry(ui64 requestId)
     {
         if (auto it = DupCache.find(requestId); it != DupCache.end()) {
-            it->second->Commited = true;
+            it->second->Committed = true;
         }
     }
 
@@ -217,7 +233,8 @@ public:
         }
 
         auto entry = DupCacheEntries.front();
-        DupCache.erase(entry.GetRequestId());
+        const auto erased = DupCache.erase(entry.GetRequestId());
+        Y_DEBUG_ABORT_UNLESS(erased || entry.Dropped);
         DupCacheEntries.pop_front();
 
         return entry.GetEntryId();
