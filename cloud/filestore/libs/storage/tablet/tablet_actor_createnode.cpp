@@ -295,6 +295,7 @@ void TIndexTabletActor::HandleCreateNode(
         GetDupCacheEntry(e, response->Record);
         if (response->Record.GetNode().GetId() == 0) {
             // it's an external node which is not yet created in follower
+            // this check is needed for the case of leader reboot
             *response->Record.MutableError() = MakeError(
                 E_REJECTED,
                 "node not yet created in follower");

@@ -152,7 +152,8 @@ public:
     }
 
 private:
-    ui32 Index(ui32 i) {
+    ui32 Index(ui32 i) const
+    {
         return (Begin + i) % Capacity;
     }
 };

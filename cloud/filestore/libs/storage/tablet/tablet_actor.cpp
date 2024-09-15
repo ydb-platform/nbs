@@ -440,14 +440,16 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
     const auto used = stats.GetUsedBlocksCount();
-    auto alive = stats.GetMixedBlocksCount();
-    if (alive > stats.GetGarbageBlocksCount()) {
-        alive -= stats.GetGarbageBlocksCount();
-    } else {
-        alive = 0;
+    auto stored = stats.GetMixedBlocksCount();
+    if (!Config->GetUseMixedBlocksInsteadOfAliveBlocksInCompaction()) {
+        if (stored > stats.GetGarbageBlocksCount()) {
+            stored -= stats.GetGarbageBlocksCount();
+        } else {
+            stored = 0;
+        }
     }
-    const auto avgGarbagePercentage = used && alive > used
-        ? 100 * static_cast<double>(alive - used) / used
+    const auto avgGarbagePercentage = used && stored > used
+        ? 100 * static_cast<double>(stored - used) / used
         : 0;
     const auto rangeCount = compactionStats.UsedRangesCount;
     const auto avgCompactionScore = rangeCount
