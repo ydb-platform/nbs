@@ -39,6 +39,14 @@ TErrorResponse CreateBackendDestroyedResponse()
     return {E_CANCELLED, "backend destroyed"};
 }
 
+TErrorResponse CreateUnalignedTooBigResponse(ui32 blockCount)
+{
+    return {
+        E_ARGUMENT,
+        TStringBuilder() << "Unaligned request is too big. BlockCount="
+                         << blockCount};
+}
+
 }   // namespace
 
 TModifyRequest::TModifyRequest(
@@ -328,10 +336,10 @@ TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnalignedDeviceHandler::TUnalignedDeviceHandler(
-    IStoragePtr storage,
-    TString clientId,
-    ui32 blockSize,
-    ui32 maxBlockCount)
+        IStoragePtr storage,
+        TString clientId,
+        ui32 blockSize,
+        ui32 maxBlockCount)
     : Backend(std::make_shared<TAlignedDeviceHandler>(
           std::move(storage),
           std::move(clientId),
@@ -382,11 +390,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
     if (!blocksInfo.IsAligned() &&
         blocksInfo.Range.Size() > MaxUnalignedBlockCount)
     {
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "Unaligned write request is too big. BlockCount="
-                << blocksInfo.Range.Size()));
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            CreateUnalignedTooBigResponse(blocksInfo.Range.Size()));
     }
 
     auto request = std::make_shared<TWriteRequest>(
@@ -398,11 +403,12 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
     const bool readyToRun = RegisterRequest(request);
     auto result = request->ExecuteOrPostpone(readyToRun);
     return result.Apply(
-        [weakPtr = weak_from_this(), request = request](
+        [weakDeviceHandler = weak_from_this(),
+         weakRequest = request->weak_from_this()](
             const TFuture<NProto::TWriteBlocksLocalResponse>& f) mutable
         {
-            if (auto p = weakPtr.lock()) {
-                p->OnRequestFinished(std::move(request));
+            if (auto p = weakDeviceHandler.lock()) {
+                p->OnRequestFinished(std::move(weakRequest));
             }
             return f.GetValue();
         });
@@ -417,11 +423,12 @@ TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
     const bool readyToRun = RegisterRequest(request);
     auto result = request->ExecuteOrPostpone(readyToRun);
     return result.Apply(
-        [weakPtr = weak_from_this(), request = request](
+        [weakDeviceHandler = weak_from_this(),
+         weakRequest = request->weak_from_this()](
             const TFuture<NProto::TZeroBlocksResponse>& f) mutable
         {
-            if (auto p = weakPtr.lock()) {
-                p->OnRequestFinished(std::move(request));
+            if (auto p = weakDeviceHandler.lock()) {
+                p->OnRequestFinished(std::move(weakRequest));
             }
             return f.GetValue();
         });
@@ -460,10 +467,8 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
     TString checkpointId) const
 {
     if (blocksInfo.Range.Size() > MaxUnalignedBlockCount) {
-        return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder() << "Unaligned read request is too big. BlockCount="
-                             << blocksInfo.Range.Size()));
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
+            CreateUnalignedTooBigResponse(blocksInfo.Range.Size()));
     }
 
     auto bufferSize = blocksInfo.Range.Size() * BlockSize;
@@ -513,8 +518,14 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
         });
 }
 
-void TUnalignedDeviceHandler::OnRequestFinished(TModifyRequestPtr request)
+void TUnalignedDeviceHandler::OnRequestFinished(
+    TModifyRequestWeakPtr weakRequest)
 {
+    auto request = weakRequest.lock();
+    if (!request) {
+        return;
+    }
+
     TVector<TModifyRequest*> readyToRunPostponedRequests;
 
     with_lock (RequestsLock) {

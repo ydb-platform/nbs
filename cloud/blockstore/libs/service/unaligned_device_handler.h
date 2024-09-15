@@ -169,7 +169,7 @@ private:
         TGuardedSgList sgList,
         TString checkpointId) const;
 
-    void OnRequestFinished(TModifyRequestPtr request);
+    void OnRequestFinished(TModifyRequestWeakPtr weakRequest);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
