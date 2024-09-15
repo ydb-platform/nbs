@@ -11,19 +11,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxUnalignedRequestSize = 32_MB;
-
-void CollectReadyToRunRequests(
-    const TList<TModifyRequestPtr>& requests,
-    TVector<TModifyRequest*>* readyToRunRequests)
-{
-    for (const auto& request: requests) {
-        if (request->ReadyToRun()) {
-            readyToRunRequests->push_back(request.get());
-        }
-    }
-}
-
 TErrorResponse CreateErrorAcquireResponse()
 {
     return {E_CANCELLED, "failed to acquire sglist in DeviceHandler"};
@@ -48,6 +35,137 @@ TErrorResponse CreateUnalignedTooBigResponse(ui32 blockCount)
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The base class for wrapping over a write or zero request.
+class TModifyRequest: public std::enable_shared_from_this<TModifyRequest>
+{
+private:
+    enum class EStatus
+    {
+        Created,
+        Postponed,
+        InFlight,
+    };
+    // The current status of the request execution can be read and written
+    // only under the RequestsLock.
+    EStatus Status = EStatus::Created;
+
+    // A list of requests that prevent the execution.
+    TVector<TModifyRequestWeakPtr> Dependencies;
+
+    // A list iterator that points to an object in the list of running requests.
+    // Makes it easier to delete an object after the request is completed.
+    TModifyRequestIt It;
+
+protected:
+    const std::weak_ptr<TAlignedDeviceHandler> Backend;
+    const TBlocksInfo BlocksInfo;
+    TCallContextPtr CallContext;
+
+    // The buffer that was allocated to execute the unaligned request. Memory is
+    // allocated only if the request is not aligned.
+    TStorageBuffer RMWBuffer;
+    TSgList RMWBufferSgList;
+
+public:
+    TModifyRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo);
+
+    virtual ~TModifyRequest() = default;
+
+    void SetIt(TModifyRequestIt it);
+    TModifyRequestIt GetIt() const;
+
+    bool IsAligned() const;
+
+    // Adds a list of overlapped requests that this request depends on. The
+    // execution of this request will not start until all this requests have
+    // been completed.
+    void AddDependencies(const TList<TModifyRequestPtr>& requests);
+
+    // Returns a flag indicating whether the request can be executed. The method
+    // modifies the internal state and gives permission to execute only once. It
+    // is necessary to call the method under RequestsLock.
+    [[nodiscard]] bool ReadyToRun();
+
+    // Starts the execution of the postponed request. The method can only be
+    // called if the request has been postponed.
+    void ExecutePostponed();
+
+protected:
+    void AllocateRMWBuffer();
+
+    virtual void DoPostpone() = 0;
+    virtual void DoExecutePostponed() = 0;
+};
+
+// Wrapper for a write request.
+class TWriteRequest final: public TModifyRequest
+{
+public:
+    using TResponsePromise =
+        NThreading::TPromise<NProto::TWriteBlocksLocalResponse>;
+    using TResponseFuture =
+        NThreading::TFuture<NProto::TWriteBlocksLocalResponse>;
+
+private:
+    TResponsePromise Promise;
+    TGuardedSgList SgList;
+
+public:
+    TWriteRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo,
+        TGuardedSgList sgList);
+
+    TResponseFuture ExecuteOrPostpone(bool readyToRun);
+
+protected:
+    void DoPostpone() override;
+    void DoExecutePostponed() override;
+
+private:
+    TResponseFuture DoExecute();
+    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
+    TResponseFuture ModifyAndWrite();
+};
+
+// Wrapper for a zero request.
+class TZeroRequest final: public TModifyRequest
+{
+public:
+    using TResponsePromise = NThreading::TPromise<NProto::TZeroBlocksResponse>;
+    using TResponseFuture = NThreading::TFuture<NProto::TZeroBlocksResponse>;
+
+private:
+    TResponsePromise Promise;
+    TGuardedSgList SgList;
+
+public:
+    TZeroRequest(
+        std::weak_ptr<TAlignedDeviceHandler> backend,
+        TCallContextPtr callContext,
+        const TBlocksInfo& blocksInfo);
+    ~TZeroRequest() override;
+
+    TResponseFuture ExecuteOrPostpone(bool readyToRun);
+
+protected:
+    void DoPostpone() override;
+    void DoExecutePostponed() override;
+
+private:
+    TResponseFuture DoExecute();
+    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
+    TResponseFuture ModifyAndWrite();
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 TModifyRequest::TModifyRequest(
         std::weak_ptr<TAlignedDeviceHandler> backend,
@@ -84,7 +202,8 @@ bool TModifyRequest::IsAligned() const
 
 bool TModifyRequest::ReadyToRun()
 {
-    if (Status != EStatus::Waiting) {
+    if (Status == EStatus::InFlight) {
+        // can't run a request that is already running
         return false;
     }
 
@@ -92,17 +211,20 @@ bool TModifyRequest::ReadyToRun()
         Dependencies,
         [](const TModifyRequestWeakPtr& dep) { return dep.expired(); });
     if (!allDependenciesCompleted) {
+        if (Status == EStatus::Created) {
+            // Postponing the execution of the newly created request.
+            Status = EStatus::Postponed;
+            CallContext->Postpone(GetCycleCount());
+            DoPostpone();
+        }
         return false;
     }
 
+    // The request can be executed. We update status and give a sign to caller
+    // that the request needs to be run for execution. We don't run here because
+    // we want to minimize the code executed under RequestsLock.
     Status = EStatus::InFlight;
     return true;
-}
-
-void TModifyRequest::Postpone()
-{
-    CallContext->Postpone(GetCycleCount());
-    DoPostpone();
 }
 
 void TModifyRequest::ExecutePostponed()
@@ -339,14 +461,15 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount)
+        ui32 maxBlockCount,
+        ui32 maxUnalignedRequestSize)
     : Backend(std::make_shared<TAlignedDeviceHandler>(
           std::move(storage),
           std::move(clientId),
           blockSize,
           maxBlockCount))
     , BlockSize(blockSize)
-    , MaxUnalignedBlockCount(MaxUnalignedRequestSize / BlockSize)
+    , MaxUnalignedBlockCount(maxUnalignedRequestSize / BlockSize)
 {}
 
 TFuture<NProto::TReadBlocksLocalResponse> TUnalignedDeviceHandler::Read(
@@ -451,12 +574,8 @@ bool TUnalignedDeviceHandler::RegisterRequest(TModifyRequestPtr request)
             UnalignedRequests.push_front(request);
             request->SetIt(UnalignedRequests.begin());
         }
-        if (!request->ReadyToRun()) {
-            request->Postpone();
-            return false;
-        }
+        return request->ReadyToRun();
     }
-    return true;
 }
 
 TFuture<NProto::TReadBlocksLocalResponse>
@@ -482,12 +601,9 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             TErrorResponse(sgListOrError.GetError()));
     }
 
-    TBlocksInfo alignedBlockInfo;
-    alignedBlockInfo.Range = blocksInfo.Range;
-
     auto alignedRequest = Backend->ExecuteReadRequest(
         std::move(ctx),
-        alignedBlockInfo,
+        blocksInfo.MakeAligned(),
         sgList.Create(sgListOrError.ExtractResult()),
         std::move(checkpointId));
 
@@ -521,12 +637,26 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
 void TUnalignedDeviceHandler::OnRequestFinished(
     TModifyRequestWeakPtr weakRequest)
 {
+    // When the request is complete, it must be unregistered. We
+    // also need to find and run postponed requests that are waiting for
+    // a completetion this one.
+
     auto request = weakRequest.lock();
     if (!request) {
         return;
     }
 
     TVector<TModifyRequest*> readyToRunPostponedRequests;
+
+    auto collectReadyToRunRequests =
+        [&](const TList<TModifyRequestPtr>& requests)
+    {
+        for (const auto& request: requests) {
+            if (request->ReadyToRun()) {
+                readyToRunPostponedRequests.push_back(request.get());
+            }
+        }
+    };
 
     with_lock (RequestsLock) {
         const bool isAligned = request->IsAligned();
@@ -537,13 +667,9 @@ void TUnalignedDeviceHandler::OnRequestFinished(
         }
         request.reset();
 
-        CollectReadyToRunRequests(
-            UnalignedRequests,
-            &readyToRunPostponedRequests);
+        collectReadyToRunRequests(UnalignedRequests);
         if (!isAligned) {
-            CollectReadyToRunRequests(
-                AlignedRequests,
-                &readyToRunPostponedRequests);
+            collectReadyToRunRequests(AlignedRequests);
         }
     }
 

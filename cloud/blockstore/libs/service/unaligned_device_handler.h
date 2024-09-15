@@ -10,117 +10,21 @@
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
+
 class TModifyRequest;
 using TModifyRequestPtr = std::shared_ptr<TModifyRequest>;
 using TModifyRequestWeakPtr = std::weak_ptr<TModifyRequest>;
 using TModifyRequestIt = TList<TModifyRequestPtr>::iterator;
 
-class TModifyRequest: public std::enable_shared_from_this<TModifyRequest>
-{
-private:
-    enum class EStatus
-    {
-        Waiting,
-        InFlight,
-    };
-    TVector<TModifyRequestWeakPtr> Dependencies;
-    TModifyRequestIt It;
-    EStatus Status = EStatus::Waiting;
-
-protected:
-    const std::weak_ptr<TAlignedDeviceHandler> Backend;
-    const TBlocksInfo BlocksInfo;
-    TCallContextPtr CallContext;
-    TStorageBuffer RMWBuffer;
-    TSgList RMWBufferSgList;
-
-public:
-    TModifyRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo);
-
-    virtual ~TModifyRequest() = default;
-
-    void SetIt(TModifyRequestIt it);
-    TModifyRequestIt GetIt() const;
-
-    bool IsAligned() const;
-    void AddDependencies(const TList<TModifyRequestPtr>& requests);
-
-    //
-    [[nodiscard]] bool ReadyToRun();
-
-    void Postpone();
-    void ExecutePostponed();
-
-protected:
-    void AllocateRMWBuffer();
-
-    virtual void DoPostpone() = 0;
-    virtual void DoExecutePostponed() = 0;
-};
-
-class TWriteRequest final: public TModifyRequest
-{
-public:
-    using TResponsePromise =
-        NThreading::TPromise<NProto::TWriteBlocksLocalResponse>;
-    using TResponseFuture =
-        NThreading::TFuture<NProto::TWriteBlocksLocalResponse>;
-
-private:
-    TResponsePromise Promise;
-    TGuardedSgList SgList;
-
-public:
-    TWriteRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo,
-        TGuardedSgList sgList);
-
-    TResponseFuture ExecuteOrPostpone(bool readyToRun);
-
-protected:
-    void DoPostpone() override;
-    void DoExecutePostponed() override;
-
-private:
-    TResponseFuture DoExecute();
-    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
-    TResponseFuture ModifyAndWrite();
-};
-
-class TZeroRequest final: public TModifyRequest
-{
-public:
-    using TResponsePromise = NThreading::TPromise<NProto::TZeroBlocksResponse>;
-    using TResponseFuture = NThreading::TFuture<NProto::TZeroBlocksResponse>;
-
-private:
-    TResponsePromise Promise;
-    TGuardedSgList SgList;
-
-public:
-    TZeroRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo);
-    ~TZeroRequest() override;
-
-    TResponseFuture ExecuteOrPostpone(bool readyToRun);
-
-protected:
-    void DoPostpone() override;
-    void DoExecutePostponed() override;
-
-private:
-    TResponseFuture DoExecute();
-    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
-    TResponseFuture ModifyAndWrite();
-};
-
+// The TUnalignedDeviceHandler can handle both aligned and unaligned requests.
+// If a request is unaligned, the read-modify-write sequence is used.
+// TUnalignedDeviceHandler monitors the execution of all requests. If an
+// unaligned request needs to be executed, it waits for all requests it
+// intersects to be completed before run. While an unaligned request is being
+// processed, it prevents other requests from being processed that overlap with
+// it.
+// The TAlignedDeviceHandler is used to process requests. Only aligned requests
+// are sent to this handler.
 class TUnalignedDeviceHandler
     : public IDeviceHandler
     , public std::enable_shared_from_this<TUnalignedDeviceHandler>
@@ -130,6 +34,8 @@ private:
     const ui32 BlockSize;
     const ui32 MaxUnalignedBlockCount;
 
+    // Requests that are currently in flight. These fields are only accessible
+    // under RequestsLock.
     TList<TModifyRequestPtr> AlignedRequests;
     TList<TModifyRequestPtr> UnalignedRequests;
     TAdaptiveLock RequestsLock;
@@ -139,7 +45,8 @@ public:
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount);
+        ui32 maxBlockCount,
+        ui32 maxUnalignedRequestSize);
 
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
         TCallContextPtr ctx,
@@ -160,6 +67,8 @@ public:
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
 
 private:
+    // Registers the request in the in-flight lists.
+    // If the request can be processed immediately a true is returned.
     [[nodiscard]] bool RegisterRequest(TModifyRequestPtr request);
 
     NThreading::TFuture<NProto::TReadBlocksResponse>

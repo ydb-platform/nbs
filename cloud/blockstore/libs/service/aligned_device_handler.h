@@ -14,14 +14,22 @@ struct TBlocksInfo
     TBlocksInfo(ui64 from, ui64 length, ui32 blockSize);
     TBlocksInfo(const TBlocksInfo&) = default;
 
+    // The size of the buffer required to store data, considering that the data
+    // may not be aligned.
     [[nodiscard]] size_t BufferSize() const;
 
+    // The data may be misaligned for two reasons: if the start or end of the
+    // block do not correspond to the block boundaries, or if the client buffers
+    // are not a multiple of the block size.
     [[nodiscard]] bool IsAligned() const;
 
+    // Creates an aligned TBlocksInfo.
     [[nodiscard]] TBlocksInfo MakeAligned() const;
 
     TBlockRange64 Range;
+    // Offset relative to the beginning of the range.
     ui64 BeginOffset = 0;
+    // Offset relative to the ending of the range.
     ui64 EndOffset = 0;
     const ui32 BlockSize = 0;
     bool SgListAligned = true;
@@ -29,6 +37,10 @@ struct TBlocksInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The TAlignedDeviceHandler can only process requests that are aligned. If the
+// size of a request exceeds the maximum size that the underlying layer can
+// handle, the TAlignedDeviceHandler will break the request into smaller parts
+// and execute them separately.
 class TAlignedDeviceHandler
     : public IDeviceHandler
     , public std::enable_shared_from_this<TAlignedDeviceHandler>
@@ -46,6 +58,7 @@ public:
         ui32 blockSize,
         ui32 maxBlockCount);
 
+    // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
         TCallContextPtr ctx,
         ui64 from,
@@ -83,8 +96,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStorageBuffer AllocateStorageBuffer(IStorage& storage, size_t bytesCount);
-
+// Normalizes the list of blocks such that each block has its own buffer, and
+// the size of each buffer equals the size of the block. If this is not
+// possible, an error message is returned with a description of the problem. If
+// the operation succeeds, S_OK is returned.
 NProto::TError TryToNormalize(
     TGuardedSgList& guardedSgList,
     TBlocksInfo& blocksInfo);

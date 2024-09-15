@@ -79,19 +79,6 @@ NProto::TError TryToNormalize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStorageBuffer AllocateStorageBuffer(IStorage& storage, size_t bytesCount)
-{
-    auto buffer = storage.AllocateBuffer(bytesCount);
-    if (!buffer) {
-        buffer = std::shared_ptr<char>(
-            new char[bytesCount],
-            std::default_delete<char[]>());
-    }
-    return buffer;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
     : BlockSize(blockSize)
 {
@@ -216,7 +203,13 @@ TAlignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
 
 TStorageBuffer TAlignedDeviceHandler::AllocateBuffer(size_t bytesCount)
 {
-    return AllocateStorageBuffer(*Storage, bytesCount);
+    auto buffer = Storage->AllocateBuffer(bytesCount);
+    if (!buffer) {
+        buffer = std::shared_ptr<char>(
+            new char[bytesCount],
+            std::default_delete<char[]>());
+    }
+    return buffer;
 }
 
 TFuture<NProto::TReadBlocksLocalResponse>

@@ -11,6 +11,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 MaxUnalignedRequestSize = 32_MB;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TDefaultDeviceHandlerFactory final
     : public IDeviceHandlerFactory
 {
@@ -33,7 +37,8 @@ struct TDefaultDeviceHandlerFactory final
             std::move(storage),
             std::move(clientId),
             blockSize,
-            maxBlockCount);
+            maxBlockCount,
+            MaxUnalignedRequestSize);
     }
 };
 
