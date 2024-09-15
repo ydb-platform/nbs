@@ -1081,14 +1081,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             auto request = tablet.CreateCreateNodeRequest(TCreateNodeArgs::File(RootNodeId, "xxx"));
             request->Record.MutableHeaders()->SetRequestId(reqId);
 
-            return std::move(request);
+            return request;
         };
 
         auto createOther = [&] (ui64 reqId) {
             auto request = tablet.CreateUnlinkNodeRequest(RootNodeId, "xxx", false);
             request->Record.MutableHeaders()->SetRequestId(reqId);
 
-            return std::move(request);
+            return request;
         };
 
         ui64 nodeId = InvalidNodeId;
@@ -1104,11 +1104,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.SendRequest(createOther(100500));
         {
             auto response = tablet.RecvUnlinkNodeResponse();
-            UNIT_ASSERT(HasError(response->Record.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
         }
     }
 
-    Y_UNIT_TEST(ShouldWaitForDupRequestToBeCommited)
+    Y_UNIT_TEST(ShouldWaitForDupRequestToBeCommitted)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -1599,6 +1602,68 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIdentifyRequestIdCollision)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto createRequest = [&] (ui64 reqId, ui64 nodeId) {
+            auto request = tablet.CreateCreateHandleRequest(
+                nodeId, TCreateHandleArgs::RDWR);
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
+        const TString name1 = "file1";
+        const TString name2 = "file2";
+
+        const auto nodeId1 = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name1))->Record.GetNode().GetId();
+        const auto nodeId2 = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name2))->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, nodeId1);
+        UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, nodeId2);
+        UNIT_ASSERT_VALUES_UNEQUAL(nodeId1, nodeId2);
+
+        const ui64 requestId = 100500;
+
+        tablet.SendRequest(createRequest(requestId, nodeId1));
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId1,
+                response->Record.GetNodeAttr().GetId());
+        }
+
+        tablet.SendRequest(createRequest(requestId, nodeId2));
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId2,
+                response->Record.GetNodeAttr().GetId());
         }
     }
 }

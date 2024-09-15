@@ -844,14 +844,15 @@ void TIndexTabletState::GetDupCacheEntry(                                      \
     const TDupCacheEntry* entry,                                               \
     NProto::T##name##Response& response)                                       \
 {                                                                              \
-    if (entry->Commited && entry->Has##name()) {                               \
+    if (entry->Committed && entry->Has##name()) {                              \
         response = entry->Get##name();                                         \
-    } else if (!entry->Commited) {                                             \
+    } else if (!entry->Committed) {                                            \
         *response.MutableError() = ErrorDuplicate();                           \
     } else if (!entry->Has##name()) {                                          \
         *response.MutableError() = MakeError(                                  \
             E_ARGUMENT, TStringBuilder() << "invalid request dup cache type: " \
                 << entry->ShortUtf8DebugString().Quote());                     \
+        ReportDuplicateRequestId(response.GetError().GetMessage());            \
     }                                                                          \
 }                                                                              \
 // FILESTORE_IMPLEMENT_DUPCACHE

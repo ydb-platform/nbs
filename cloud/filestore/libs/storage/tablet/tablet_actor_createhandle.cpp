@@ -58,10 +58,23 @@ void TIndexTabletActor::HandleCreateHandle(
     }
 
     auto* msg = ev->Get();
-    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    const auto requestId = GetRequestId(msg->Record);
+    if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TResponse>();
         GetDupCacheEntry(e, response->Record);
-        return NCloud::Reply(ctx, *ev, std::move(response));
+        // sometimes bugged clients send us duplicate request ids
+        // see #2033
+        if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
+                != response->Record.GetNodeAttr().GetId())
+        {
+            ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
+                << " for different NodeId found for RequestId=" << requestId
+                << ": " << response->Record.GetNodeAttr().GetId()
+                << " != " << msg->Record.GetNodeId());
+            session->DropDupEntry(requestId);
+        } else {
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
     }
 
     if (msg->Record.GetFollowerFileSystemId()) {
