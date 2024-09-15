@@ -334,6 +334,7 @@ private:
     TLocalFileSystemPtr InitFileSystem(
         const TString& id,
         const TFsPath& root,
+        const TFsPath& statePath,
         const NProto::TFileStore& store);
 
     TLocalFileSystemPtr FindFileSystem(const TString& id);
@@ -359,11 +360,15 @@ void TLocalFileStore::Start()
                 continue;
             }
 
+            TFsPath statePath =
+                Concat(Config->GetStatePath(), ".state_" + child.GetName());
+            statePath.MkDir(Config->GetDefaultPermissions());
+
             STORAGE_INFO("restoring local store " << id.Quote());
 
             NProto::TFileStore store;
             LoadFileStoreProto(path, store);
-            InitFileSystem(id, child, store);
+            InitFileSystem(id, child, statePath, store);
 
             STORAGE_INFO("restored local store " << id.Quote());
         }
@@ -411,7 +416,10 @@ NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     TFsPath root = Concat(Config->GetRootPath(), name);
     root.MkDir(Config->GetDefaultPermissions());
 
-    InitFileSystem(id, root, store);
+    TFsPath statePath = Concat(Config->GetStatePath(), ".state_" + name);
+    statePath.MkDir(Config->GetDefaultPermissions());
+
+    InitFileSystem(id, root, statePath, store);
 
     NProto::TCreateFileStoreResponse response;
     response.MutableFileStore()->Swap(&store);
@@ -437,8 +445,13 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
             << "invalid file system: " << id.Quote());
     }
 
-    TFsPath path = Concat(Config->GetRootPath(), Config->GetPathPrefix() + id);
+    const TString& name = Config->GetPathPrefix() + id;
+
+    TFsPath path = Concat(Config->GetRootPath(), name);
     path.ForceDelete();
+
+    TFsPath statePath = Concat(Config->GetStatePath(), ".state_" + name);
+    statePath.ForceDelete();
 
     FileSystems.erase(it);
 
@@ -492,12 +505,14 @@ NProto::TListFileStoresResponse TLocalFileStore::ListFileStores(
 TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
     const TString& id,
     const TFsPath& root,
+    const TFsPath& statePath,
     const NProto::TFileStore& store)
 {
     auto fs = std::make_shared<TLocalFileSystem>(
         Config,
         store,
         root,
+        statePath,
         Timer,
         Scheduler,
         Logging,

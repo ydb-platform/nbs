@@ -72,6 +72,15 @@ message TLocalServiceConfig
     optional uint32 DefaultPermissions = 3;
     optional uint32 IdleSessionTimeout = 4;
     optional uint32 NumThreads = 5;
+
+    // directory where state for session recovery is saved
+    optional string StatePath = 6;
+
+    // Maximum number of inodes which can be created by all sessions
+    optional uint32 MaxInodeCount = 7;
+
+    // Maximum number of file handles which can be opened by single session
+    optional uint32 MaxHandlePerSessionCount = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
