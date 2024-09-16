@@ -61,7 +61,7 @@ void TConfigInitializerYdb::InitStorageConfig()
 
     if (ServerConfig && ServerConfig->GetServerConfig()) {
         NStorage::AdaptNodeRegistrationParams(
-            {},
+            {}, // overriddenNodeType, node type is not passed in cmd line
             *ServerConfig->GetServerConfig(),
             storageConfig);
     }
@@ -271,7 +271,7 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
 
     if (ServerConfig && ServerConfig->GetServerConfig()) {
         NStorage::AdaptNodeRegistrationParams(
-            {}, // overriddenNodeType is empty, is not passed in command line
+            {}, // overriddenNodeType, node type is not passed in cmd line
             *ServerConfig->GetServerConfig(),
             storageConfig);
     }
