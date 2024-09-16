@@ -613,7 +613,7 @@ ui64 GetAllocationUnit(
 
 void AdaptNodeRegistrationParams(
     const TString& nodeType,
-    const NCloud::NBlockStore::NProto::TServerConfig serverConfig,
+    const NCloud::NBlockStore::NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage
