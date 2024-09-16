@@ -187,14 +187,18 @@ private:
     TTotalCounters SsdLocal;
     TTotalCounters SsdSystem;
     TTotalCounters HddSystem;
-    TTransportCounters RdmaSsdNonrepl;
-    TTransportCounters RdmaHddNonrepl;
-    TTransportCounters RdmaSsdMirror2;
-    TTransportCounters RdmaSsdMirror3;
-    TTransportCounters InterconnectSsdNonrepl;
-    TTransportCounters InterconnectHddNonrepl;
-    TTransportCounters InterconnectSsdMirror2;
-    TTransportCounters InterconnectSsdMirror3;
+    TTransportCounters RdmaSsdNonrepl{EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters RdmaHddNonrepl{EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters RdmaSsdMirror2{EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters RdmaSsdMirror3{EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters InterconnectSsdNonrepl{
+        EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters InterconnectHddNonrepl{
+        EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters InterconnectSsdMirror2{
+        EPublishingPolicy::DiskRegistryBased};
+    TTransportCounters InterconnectSsdMirror3{
+        EPublishingPolicy::DiskRegistryBased};
 
     TVolumeRequestCounters LocalVolumes;
     TVolumeRequestCounters NonlocalVolumes;
@@ -222,14 +226,6 @@ public:
         , SsdLocal(EPublishingPolicy::DiskRegistryBased)
         , SsdSystem(EPublishingPolicy::Repl)
         , HddSystem(EPublishingPolicy::Repl)
-        , RdmaSsdNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , RdmaHddNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , RdmaSsdMirror2(EPublishingPolicy::DiskRegistryBased)
-        , RdmaSsdMirror3(EPublishingPolicy::DiskRegistryBased)
-        , InterconnectSsdNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , InterconnectHddNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , InterconnectSsdMirror2(EPublishingPolicy::DiskRegistryBased)
-        , InterconnectSsdMirror3(EPublishingPolicy::DiskRegistryBased)
         , SsdBlobLoadCounters(
             config.GetCommonSSDPoolKind(),
             config.GetMaxSSDGroupReadIops(),
