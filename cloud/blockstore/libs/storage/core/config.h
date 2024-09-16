@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-
 #include <cloud/blockstore/config/server.pb.h>
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -612,8 +611,8 @@ ui64 GetAllocationUnit(
     NCloud::NProto::EStorageMediaKind mediaKind);
 
 void AdaptNodeRegistrationParams(
-    const TString& nodeType,
-    const NCloud::NBlockStore::NProto::TServerConfig& serverConfig,
+    const TString& overriddenNodeType,
+    const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage

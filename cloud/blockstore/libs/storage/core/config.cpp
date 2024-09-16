@@ -959,11 +959,10 @@ const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() con
 }
 
 void AdaptNodeRegistrationParams(
-    const TString& nodeType,
-    const NCloud::NBlockStore::NProto::TServerConfig& serverConfig,
+    const TString& overriddenNodeType,
+    const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-
     if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
@@ -984,8 +983,8 @@ void AdaptNodeRegistrationParams(
             serverConfig.GetNodeRegistrationToken());
     }
 
-    if (nodeType) {
-        storageConfig.SetNodeType(nodeType);
+    if (overriddenNodeType) {
+        storageConfig.SetNodeType(overriddenNodeType);
     }
 
     if (!storageConfig.GetNodeType()) {

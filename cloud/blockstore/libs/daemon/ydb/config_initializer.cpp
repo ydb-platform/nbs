@@ -271,7 +271,7 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
 
     if (ServerConfig && ServerConfig->GetServerConfig()) {
         NStorage::AdaptNodeRegistrationParams(
-            {},
+            {}, // overriddenNodeType is empty, is not passed in command line
             *ServerConfig->GetServerConfig(),
             storageConfig);
     }
