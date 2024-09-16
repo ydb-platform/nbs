@@ -105,29 +105,14 @@ const TTextTable::TColumns& TTextTable::GetColumns() const
     return Columns;
 }
 
-TTextTable::TRow ToRow(const ::google::protobuf::Message& message)
+TTextTable::TColumns ToColumns(const TVector<TString>& columnNames)
 {
-    auto descriptor = message.GetDescriptor();
-    Y_ENSURE(
-        descriptor != nullptr,
-        "Failed to acquire proto node descriptor"
-    );
-
-    constexpr i32 expectedNonRepeatedFieldIndex = -1;
-
-    TTextTable::TRow row;
-    row.reserve(descriptor->field_count());
-    for (int i = 0; i < descriptor->field_count(); ++i) {
-        TString value;
-        google::protobuf::TextFormat::PrintFieldValueToString(
-            message,
-            descriptor->field(i),
-            expectedNonRepeatedFieldIndex,
-            &value
-        );
-        row.push_back(std::move(value));
+    TTextTable::TColumns columns;
+    columns.reserve(columnNames.size());
+    for (auto field: columnNames) {
+        columns.emplace_back(field, field.size());
     }
-    return row;
+    return columns;
 }
 
 }   // namespace NCloud::NFileStore::NClient::NTextTable
