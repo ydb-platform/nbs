@@ -74,6 +74,8 @@ private:
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
 
+    bool Initialized = false;
+
 public:
     TBootstrap(
         std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
@@ -91,7 +93,7 @@ public:
 private:
     void InitLWTrace();
     void InitProfileLog();
-    void InitKikimrService();
+    bool InitKikimrService();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
 };

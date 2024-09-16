@@ -239,6 +239,15 @@ message TDiskAgentConfig
 
     // Offload the parsing of all IO requests (by default offloads only write requests).
     optional bool OffloadAllIORequestsParsingEnabled = 31;
+
+    // When enabled, the Disk Agents checks that devices were found either in
+    // the "CachedConfigPath", in the "FileDevices", or with the
+    // "StorageDiscoveryConfig". If none were found, the process falls in the
+    // deep idle state without even registering in the NodeBroker.
+    // WARNING: CMS configs can only be retrieved after registering in the
+    // NodeBroker. Enabling this option completely disables them if there were
+    // no devices found.
+    optional bool DisableNodeBrokerRegisterationOnDevicelessAgent = 32;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
