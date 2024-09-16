@@ -25,7 +25,7 @@ using TModifyRequestIt = TList<TModifyRequestPtr>::iterator;
 // it.
 // The TAlignedDeviceHandler is used to process requests. Only aligned requests
 // are sent to this handler.
-class TUnalignedDeviceHandler
+class TUnalignedDeviceHandler final
     : public IDeviceHandler
     , public std::enable_shared_from_this<TUnalignedDeviceHandler>
 {
@@ -68,7 +68,8 @@ public:
 
 private:
     // Registers the request in the in-flight lists.
-    // If the request can be processed immediately a true is returned.
+    // If the request needs to be processed immediately, a true value will be
+    // returned. This flag should not be disregarded.
     [[nodiscard]] bool RegisterRequest(TModifyRequestPtr request);
 
     NThreading::TFuture<NProto::TReadBlocksResponse>

@@ -11,6 +11,16 @@ using namespace NThreading;
 
 namespace {
 
+TErrorResponse CreateErrorAcquireResponse()
+{
+    return {E_CANCELLED, "failed to acquire sglist in DeviceHandler"};
+}
+
+TErrorResponse CreateRequestNotAlignedResponse()
+{
+    return {E_ARGUMENT, "Request is not aligned"};
+}
+
 // Removes the first blockCount elements from the sgList. Returns these removed
 // items in TGuardedSgList.
 TGuardedSgList TakeHeadBlocks(TGuardedSgList& sgList, ui32 blockCount)
@@ -40,9 +50,7 @@ NProto::TError TryToNormalize(
 
     auto guard = guardedSgList.Acquire();
     if (!guard) {
-        return MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler");
+        return CreateErrorAcquireResponse();
     }
 
     auto bufferSize = SgListGetSize(guard.Get());
@@ -114,7 +122,7 @@ TBlocksInfo TBlocksInfo::MakeAligned() const
     TBlocksInfo result(*this);
     result.BeginOffset = 0;
     result.EndOffset = 0;
-    result.SgListAligned = false;
+    result.SgListAligned = true;
     return result;
 }
 
@@ -149,7 +157,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
 
     if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
     return ExecuteReadRequest(
@@ -175,7 +183,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAlignedDeviceHandler::Write(
 
     if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
     return ExecuteWriteRequest(std::move(ctx), blocksInfo, std::move(sgList));
@@ -192,13 +200,10 @@ TAlignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
     if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TZeroBlocksResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
-    return ExecuteZeroRequest(
-        std::move(ctx),
-        blocksInfo.Range.Start,
-        blocksInfo.Range.Size());
+    return ExecuteZeroRequest(std::move(ctx), blocksInfo);
 }
 
 TStorageBuffer TAlignedDeviceHandler::AllocateBuffer(size_t bytesCount)
@@ -219,6 +224,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     TGuardedSgList sgList,
     TString checkpointId) const
 {
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
     auto requestBlockCount =
         std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
@@ -241,9 +248,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TReadBlocksResponse>(TErrorResponse(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler"));
+        return MakeFuture<NProto::TReadBlocksResponse>(
+            CreateErrorAcquireResponse());
     }
 
     auto result = Storage->ReadBlocksLocal(ctx, std::move(request));
@@ -283,6 +289,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     TBlocksInfo blocksInfo,
     TGuardedSgList sgList) const
 {
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
     auto requestBlockCount =
         std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
@@ -304,9 +312,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TWriteBlocksResponse>(TErrorResponse(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler"));
+        return MakeFuture<NProto::TWriteBlocksResponse>(
+            CreateErrorAcquireResponse());
     }
 
     auto result = Storage->WriteBlocksLocal(ctx, std::move(request));
@@ -340,31 +347,32 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
 
 TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     TCallContextPtr ctx,
-    ui64 startIndex,
-    ui32 blockCount) const
+    TBlocksInfo blocksInfo) const
 {
-    auto requestBlockCount = std::min(blockCount, MaxBlockCount);
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
+    auto requestBlockCount = std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
-    request->SetStartIndex(startIndex);
+    request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlocksCount(requestBlockCount);
 
-    if (requestBlockCount == blockCount) {
+    if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         return Storage->ZeroBlocks(std::move(ctx), std::move(request));
     }
 
     auto result = Storage->ZeroBlocks(ctx, std::move(request));
 
+    blocksInfo.Range.Start += requestBlockCount;
+
     return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
-         startIndex = startIndex + requestBlockCount,
-         blocksCount =
-             blockCount - requestBlockCount](const auto& future) mutable
+         blocksInfo = blocksInfo](const auto& future) mutable
         {
             // Only part of the request was completed. Continue doing the
             // rest of the work
@@ -375,10 +383,7 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
             }
 
             if (auto self = weakPtr.lock()) {
-                return self->ExecuteZeroRequest(
-                    std::move(ctx),
-                    startIndex,
-                    blocksCount);
+                return self->ExecuteZeroRequest(std::move(ctx), blocksInfo);
             }
             return MakeFuture<NProto::TZeroBlocksResponse>(
                 TErrorResponse(E_CANCELLED));

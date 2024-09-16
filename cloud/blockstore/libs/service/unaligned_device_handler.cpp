@@ -392,8 +392,7 @@ TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
     if (auto backend = Backend.lock()) {
         return IsAligned() ? backend->ExecuteZeroRequest(
                                  std::move(CallContext),
-                                 BlocksInfo.Range.Start,
-                                 BlocksInfo.Range.Size())
+                                 BlocksInfo)
                            : ReadModifyWrite(backend.get());
     }
 
@@ -590,7 +589,7 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             CreateUnalignedTooBigResponse(blocksInfo.Range.Size()));
     }
 
-    auto bufferSize = blocksInfo.Range.Size() * BlockSize;
+    auto bufferSize = blocksInfo.MakeAligned().BufferSize();
     auto buffer = Backend->AllocateBuffer(bufferSize);
 
     auto sgListOrError =
@@ -618,19 +617,17 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
                 return response;
             }
 
-            auto guard = sgList.Acquire();
-            if (!guard) {
-                return static_cast<NProto::TReadBlocksLocalResponse>(
-                    CreateErrorAcquireResponse());
+            if (auto guard = sgList.Acquire()) {
+                const auto& dstSgList = guard.Get();
+                auto size = SgListGetSize(dstSgList);
+                TBlockDataRef srcBuf(buffer.get() + beginOffset, size);
+                auto cpSize = SgListCopy({srcBuf}, dstSgList);
+                Y_ABORT_UNLESS(cpSize == size);
+                return response;
             }
 
-            const auto& dstSgList = guard.Get();
-            auto size = SgListGetSize(dstSgList);
-            TBlockDataRef srcBuf(buffer.get() + beginOffset, size);
-            auto cpSize = SgListCopy({srcBuf}, dstSgList);
-            Y_ABORT_UNLESS(cpSize == size);
-
-            return response;
+            return static_cast<NProto::TReadBlocksLocalResponse>(
+                CreateErrorAcquireResponse());
         });
 }
 

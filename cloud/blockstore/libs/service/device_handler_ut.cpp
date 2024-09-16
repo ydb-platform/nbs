@@ -227,9 +227,7 @@ public:
                 ++ptr;
             }
         }
-        if (!allOk) {
-            Cout << expected << "\n" << read << Endl;
-        }
+        UNIT_ASSERT_VALUES_EQUAL(expected, read);
         UNIT_ASSERT(allOk);
     }
 
