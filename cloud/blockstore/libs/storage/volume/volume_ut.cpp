@@ -8246,7 +8246,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // WriteBlocks
         {
             auto request = volume.CreateWriteBlocksRequest(
-                TBlockRange64::WithLength(2048, 1024),
+                TBlockRange64::WithLength(1500, 1024),
                 clientInfo.GetClientId(),
                 1
             );
@@ -8254,6 +8254,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response = volume.RecvWriteBlocksResponse();
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        // Writing to a valid range that is covered by the range of the
+        // previously rejected request should be successful.
+        {
+            auto response = volume.WriteBlocks(
+                TBlockRange64::WithLength(1500, 500),
+                clientInfo.GetClientId(),
+                1);
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 
         // WriteBlocksLocal
