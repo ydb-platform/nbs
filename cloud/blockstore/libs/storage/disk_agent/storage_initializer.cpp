@@ -380,7 +380,10 @@ void TInitializer::SaveCurrentConfig()
 
 void TInitializer::ValidateCurrentConfigs()
 {
-    auto cachedDevices = LoadCachedConfig(StorageConfig, AgentConfig);
+    const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
+    auto cachedDevices = LoadCachedConfig(path);
     if (cachedDevices.empty()) {
         STORAGE_INFO("There is no cached config");
         SaveCurrentConfig();

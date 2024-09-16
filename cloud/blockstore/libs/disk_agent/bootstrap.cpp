@@ -103,7 +103,10 @@ bool AgentHasDevices(
         return true;
     }
 
-    auto cachedDevices = LoadCachedConfig(storageConfig, agentConfig);
+    const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = agentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
+    auto cachedDevices = NStorage::LoadCachedConfig(path);
     if (!cachedDevices.empty()) {
         return true;
     }

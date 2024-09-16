@@ -162,14 +162,8 @@ NProto::TError FindDevices(
     return {};
 }
 
-TVector<NProto::TFileDeviceArgs> LoadCachedConfig(
-    const TStorageConfigPtr& storageConfig,
-    const TDiskAgentConfigPtr& agentConfig)
+TVector<NProto::TFileDeviceArgs> LoadCachedConfig(const TString& path)
 {
-    const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
-    const TString diskAgentPath = agentConfig->GetCachedConfigPath();
-    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-
     if (path.empty()) {
         return {};
     }
