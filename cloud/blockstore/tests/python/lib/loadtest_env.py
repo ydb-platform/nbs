@@ -51,6 +51,7 @@ class LocalLoadTest:
             kikimr_binary_path=None,
             with_endpoint_proxy=False,
             with_netlink=False,
+            load_configs_from_cms=True,
     ):
 
         self.__endpoint = endpoint
@@ -76,6 +77,9 @@ class LocalLoadTest:
         if run_kikimr:
             self.kikimr_cluster.start()
             kikimr_port = list(self.kikimr_cluster.nodes.values())[0].port
+        else:
+            # makes sense only when Kikimr is running
+            load_configs_from_cms = False
 
         self.__devices = []
 
@@ -107,7 +111,7 @@ class LocalLoadTest:
             discovery_config=discovery_config,
             restart_interval=restart_interval,
             dynamic_storage_pools=dynamic_storage_pools,
-            load_configs_from_cms=run_kikimr,
+            load_configs_from_cms=load_configs_from_cms,
             features_config_patch=features_config_patch,
             grpc_trace=grpc_trace,
             rack=rack)
