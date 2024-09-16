@@ -1,6 +1,7 @@
 SRCS(
     cache.cpp
     config.cpp
+    file_ring_buffer.cpp
     fs.cpp
     fs_impl.cpp
     fs_impl_attr.cpp
