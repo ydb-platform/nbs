@@ -404,9 +404,11 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
             EnqueueBlobIndexOpIfNeeded(ctx);
 
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u",
+                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u, "
+                "RangesWithEmptyScore: %u",
                 LogTag.c_str(),
-                s.MaxLoadedInOrderRangeId);
+                s.MaxLoadedInOrderRangeId,
+                RangesWithEmptyCompactionScore.size());
         } else {
             // Triggering the next in-order load request
             s.LoadQueue.push_back({

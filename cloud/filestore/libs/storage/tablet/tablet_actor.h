@@ -348,6 +348,8 @@ private:
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
 
+    TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+
     void AddTransaction(
         TRequestInfo& transaction,
         TRequestInfo::TCancelRoutine cancelRoutine);
