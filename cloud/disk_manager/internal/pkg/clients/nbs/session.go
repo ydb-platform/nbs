@@ -62,7 +62,7 @@ func newSession(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.NewSession",
+		"blockstore.newSession",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString(

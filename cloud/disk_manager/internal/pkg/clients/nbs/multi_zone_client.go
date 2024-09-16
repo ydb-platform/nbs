@@ -33,7 +33,7 @@ func (c *multiZoneClient) Clone(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.Clone",
+		"blockstore.Clone",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString(

@@ -429,7 +429,7 @@ func (c *client) updateVolume(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.UpdateVolume",
+		"blockstore.updateVolume",
 		tracing.WithAttributes(tracing.AttributeString("disk_id", diskID)),
 	)
 	defer span.End()
@@ -459,7 +459,7 @@ func (c *client) updateVolume(
 
 			retries++
 			span.AddEvent(
-				"Retry",
+				"Retry in blockstore client",
 				tracing.WithAttributes(
 					tracing.AttributeInt("failed_attempts", retries),
 					tracing.AttributeString("error", err.Error()),
@@ -482,7 +482,7 @@ func (c *client) updatePlacementGroup(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.UpdatePlacementGroup",
+		"blockstore.updatePlacementGroup",
 		tracing.WithAttributes(tracing.AttributeString("group_id", groupID)),
 	)
 	defer span.End()
@@ -512,7 +512,7 @@ func (c *client) updatePlacementGroup(
 
 			retries++
 			span.AddEvent(
-				"Retry",
+				"Retry in blockstore client",
 				tracing.WithAttributes(
 					tracing.AttributeInt("failed_attempts", retries),
 					tracing.AttributeString("error", err.Error()),
@@ -534,7 +534,7 @@ func (c *client) executeAction(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.ExecuteAction",
+		"blockstore.executeAction",
 		tracing.WithAttributes(
 			tracing.AttributeString("action", action),
 		),
@@ -689,7 +689,7 @@ func (c *client) CreateProxyOverlayDisk(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.CreateProxyOverlayDisk",
+		"blockstore.CreateProxyOverlayDisk",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("base_disk_id", baseDiskID),
@@ -701,9 +701,7 @@ func (c *client) CreateProxyOverlayDisk(
 	)
 	defer span.End()
 	defer func(created *bool) {
-		if created != nil {
-			span.SetAttributes(tracing.AttributeBool("created", *created))
-		}
+		span.SetAttributes(tracing.AttributeBool("created", *created))
 	}(&created)
 
 	volume, err := c.describeVolume(ctx, baseDiskID)
@@ -1298,7 +1296,7 @@ func (c *client) GetCheckpointSize(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.GetCheckpointSize",
+		"blockstore.GetCheckpointSize",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
@@ -1386,7 +1384,7 @@ func (c *client) GetChangedBytes(
 
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.GetChangedBytes",
+		"blockstore.GetChangedBytes",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("base_checkpoint_id", baseCheckpointID),
@@ -1397,9 +1395,7 @@ func (c *client) GetChangedBytes(
 	defer span.End()
 	defer tracing.SetError(span, &err)
 	defer func(diff *uint64) {
-		if diff != nil {
-			span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
-		}
+		span.SetAttributes(tracing.AttributeInt64("diff", int64(*diff)))
 	}(&diff)
 
 	volume, err := c.describeVolume(ctx, diskID)
@@ -1611,7 +1607,7 @@ func (c *client) createVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.CreateVolume",
+		"blockstore.createVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
@@ -1632,7 +1628,7 @@ func (c *client) describeVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DescribeVolume",
+		"blockstore.describeVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 		),
@@ -1644,7 +1640,7 @@ func (c *client) describeVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return volume, err
 }
 
 func (c *client) describePlacementGroup(
@@ -1655,7 +1651,7 @@ func (c *client) describePlacementGroup(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DescribePlacementGroup",
+		"blockstore.describePlacementGroup",
 		tracing.WithAttributes(
 			tracing.AttributeString("group_id", groupID),
 		),
@@ -1667,7 +1663,7 @@ func (c *client) describePlacementGroup(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return group, err
 }
 
 func (c *client) ping(ctx context.Context) (err error) {
@@ -1686,7 +1682,7 @@ func (c *client) createCheckpoint(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.CreateCheckpoint",
+		"blockstore.createCheckpoint",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
@@ -1713,7 +1709,7 @@ func (c *client) destroyVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DestroyVolume",
+		"blockstore.destroyVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeBool("sync", sync),
@@ -1736,7 +1732,7 @@ func (c *client) getCheckpointStatus(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.GetCheckpointStatus",
+		"blockstore.getCheckpointStatus",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
@@ -1764,7 +1760,7 @@ func (c *client) deleteCheckpoint(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DeleteCheckpoint",
+		"blockstore.deleteCheckpoint",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
@@ -1788,7 +1784,7 @@ func (c *client) resizeVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.ResizeVolume",
+		"blockstore.resizeVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
@@ -1821,7 +1817,7 @@ func (c *client) alterVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.AlterVolume",
+		"blockstore.alterVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeInt("config_version", int(configVersion)),
@@ -1852,7 +1848,7 @@ func (c *client) assignVolume(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.AssignVolume",
+		"blockstore.assignVolume",
 		tracing.WithAttributes(
 			tracing.AttributeString("disk_id", diskID),
 			tracing.AttributeString("instance_id", instanceID),
@@ -1872,7 +1868,7 @@ func (c *client) assignVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return volume, err
 }
 
 func (c *client) describeVolumeModel(
@@ -1886,7 +1882,7 @@ func (c *client) describeVolumeModel(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DescribeVolumeModel",
+		"blockstore.describeVolumeModel",
 		tracing.WithAttributes(
 			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
 			tracing.AttributeInt("block_size", int(blockSize)),
@@ -1910,7 +1906,7 @@ func (c *client) describeVolumeModel(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return model, err
 }
 
 func (c *client) createPlacementGroup(
@@ -1923,7 +1919,7 @@ func (c *client) createPlacementGroup(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.CreatePlacementGroup",
+		"blockstore.createPlacementGroup",
 		tracing.WithAttributes(
 			tracing.AttributeString("group_id", groupID),
 			tracing.AttributeString(
@@ -1956,7 +1952,7 @@ func (c *client) destroyPlacementGroup(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.DestroyPlacementGroup",
+		"blockstore.destroyPlacementGroup",
 		tracing.WithAttributes(
 			tracing.AttributeString("group_id", groupID),
 		),
@@ -1980,7 +1976,7 @@ func (c *client) alterPlacementGroupMembership(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.AlterPlacementGroupMembership",
+		"blockstore.alterPlacementGroupMembership",
 		tracing.WithAttributes(
 			tracing.AttributeString("group_id", groupID),
 			tracing.AttributeInt(
@@ -2011,7 +2007,7 @@ func (c *client) listPlacementGroups(
 	ctx = c.withTimeoutHeader(ctx)
 	ctx, span := tracing.StartSpan(
 		ctx,
-		"Blockstore.ListPlacementGroups",
+		"blockstore.listPlacementGroups",
 	)
 	defer span.End()
 	defer tracing.SetError(span, &err)
@@ -2020,7 +2016,7 @@ func (c *client) listPlacementGroups(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return groups, err
 }
 
 func (c *client) getChangedBlocks(
@@ -2046,7 +2042,7 @@ func (c *client) getChangedBlocks(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return
+	return blockMask, err
 }
 
 func (c *client) statVolume(
@@ -2060,5 +2056,5 @@ func (c *client) statVolume(
 	if err != nil {
 		return nil, nil, wrapError(err)
 	}
-	return
+	return volume, stats, err
 }
