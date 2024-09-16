@@ -942,9 +942,9 @@ func (s *storageYDB) listHangingTasks(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
-		declare $missed_estimates_until_hanging as Uint64;
+		declare $missed_estimates_until_task_is_hanging as Uint64;
 		declare $now as Timestamp;
-		
+
 		$task_ids = (
 			select id from ready_to_run UNION ALL
 			select id from running UNION ALL
@@ -952,17 +952,17 @@ func (s *storageYDB) listHangingTasks(
 			select id from cancelling
 		);
 		select * from tasks
-		where id in $task_ids and 
+		where id in $task_ids and
 		(
 			(ListLength($except_task_types) == 0) or
 			(task_type not in $except_task_types)
-		)  and 
+		)  and
 		(
-			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or 
+			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or
 			(
 				estimated_time > created_at and
 				$now >= MAX_OF(
-					created_at + (estimated_time - created_at) * $missed_estimates_until_hanging,
+					created_at + (estimated_time - created_at) * $missed_estimates_until_task_is_hanging,
 					created_at + $hanging_task_timeout
 				)
 			)
@@ -978,8 +978,8 @@ func (s *storageYDB) listHangingTasks(
 			persistence.IntervalValue(s.hangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"$missed_estimates_until_hanging",
-			persistence.Uint64Value(s.missedEstimatesUntilHanging),
+			"$missed_estimates_until_task_is_hanging",
+			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)

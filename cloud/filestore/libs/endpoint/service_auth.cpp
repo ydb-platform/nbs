@@ -72,7 +72,7 @@ private:
     {
         const auto& headers = request->GetHeaders();
         const auto& internal = headers.GetInternal();
-        auto permissions = GetRequestPermissions(*request);
+        auto permissions = GetRequestPermissions(*request, {});
 
         bool needAuth = AuthProvider->NeedAuth(
             internal.GetRequestSource(),

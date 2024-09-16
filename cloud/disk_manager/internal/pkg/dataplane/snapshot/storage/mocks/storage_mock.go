@@ -225,6 +225,15 @@ func (s *StorageMock) UnlockSnapshot(
 	return args.Error(0)
 }
 
+func (s *StorageMock) GetSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*storage.SnapshotMeta, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Get(0).(*storage.SnapshotMeta), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

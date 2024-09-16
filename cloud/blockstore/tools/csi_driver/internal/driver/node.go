@@ -200,6 +200,14 @@ func (s *nodeService) NodePublishVolume(
 			codes.InvalidArgument,
 			"VolumeCapability is missing in NodePublishVolumeRequest")
 	}
+
+	accessMode := req.VolumeCapability.AccessMode
+	if accessMode == nil {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"AccessMode is missing in NodePublishVolumeRequest")
+	}
+
 	if req.VolumeContext == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
@@ -211,9 +219,15 @@ func (s *nodeService) NodePublishVolume(
 			"podUID is missing in NodePublishVolumeRequest.VolumeContext")
 	}
 
-	var err error
 	nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
+	if !nfsBackend && accessMode.GetMode() ==
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"ReadWriteMany access mode is supported only with nfs backend")
+	}
 
+	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
@@ -886,9 +900,8 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	_, err = s.nbsClient.ResizeDevice(ctx, &nbsapi.TResizeDeviceRequest{
-		UnixSocketPath:    unixSocketPath,
-		DeviceSizeInBytes: newBlocksCount * uint64(resp.Volume.BlockSize),
+	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+		UnixSocketPath: unixSocketPath,
 	})
 
 	if err != nil {

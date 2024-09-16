@@ -655,6 +655,20 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
+     *  Validation of the request blocks range
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
+        if (!CheckReadWriteBlockRange(range)) {
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << DescribeRange(range)));
+            return;
+        }
+    }
+
+    /*
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
@@ -705,19 +719,6 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
-    /*
-     *  Validation of the request blocks range
-     */
-    if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
-        if (!CheckReadWriteBlockRange(range)) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "invalid block range " << DescribeRange(range)));
-            return;
-        }
-    }
 
     /*
      *  Passing the request to the underlying (storage) layer.

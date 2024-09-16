@@ -467,16 +467,17 @@ func NewStorage(
 
 	newStorage := func(storageFolder string, metrics storageMetrics) *storageYDB {
 		return &storageYDB{
-			db:                          db,
-			folder:                      storageFolder,
-			tablesPath:                  db.AbsolutePath(storageFolder),
-			taskStallingTimeout:         taskStallingTimeout,
-			updateTaskTimeout:           updateTaskTimeout,
-			livenessWindow:              livenessWindow,
-			ZoneIDs:                     config.GetZoneIds(),
-			metrics:                     metrics,
-			hangingTaskTimeout:          hangingTaskTimeout,
-			missedEstimatesUntilHanging: config.GetMissedEstimatesUntilHanging(),
+			db:                  db,
+			folder:              storageFolder,
+			tablesPath:          db.AbsolutePath(storageFolder),
+			taskStallingTimeout: taskStallingTimeout,
+			updateTaskTimeout:   updateTaskTimeout,
+			livenessWindow:      livenessWindow,
+			ZoneIDs:             config.GetZoneIds(),
+			metrics:             metrics,
+
+			hangingTaskTimeout:                hangingTaskTimeout,
+			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		}
 	}
 

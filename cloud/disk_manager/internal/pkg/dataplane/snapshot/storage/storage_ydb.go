@@ -216,3 +216,25 @@ func (s *storageYDB) UnlockSnapshot(
 		},
 	)
 }
+
+func (s *storageYDB) GetSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*SnapshotMeta, error) {
+
+	var snapshotMeta *SnapshotMeta
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			snapshotMeta, err = s.getSnapshotMeta(
+				ctx,
+				session,
+				snapshotID,
+			)
+			return err
+		},
+	)
+	return snapshotMeta, err
+}
