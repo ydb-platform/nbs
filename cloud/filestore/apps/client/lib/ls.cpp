@@ -60,6 +60,7 @@ TString FileStateModeToString(ui32 mode)
         mode & S_IROTH ? 'r' : '-',
         mode & S_IWOTH ? 'w' : '-',
         mode & S_IXOTH ? 'x' : '-',
+        '\0',
     };
     return permissions;
 }
