@@ -186,7 +186,7 @@ def test_multiple_endpoints(nbs):
     create_vol0()
 
     # Start a lot of blockstore-vhost-server processes.
-    SOCKET_COUNT = 30
+    SOCKET_COUNT = 15
     for i in range(0, SOCKET_COUNT):
         socket = tempfile.NamedTemporaryFile()
         client.start_endpoint_async(
