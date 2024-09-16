@@ -1,12 +1,14 @@
 #include "device_scanner.h"
 
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
+#include <util/system/fs.h>
 
 #include <sys/stat.h>
 
@@ -158,6 +160,32 @@ NProto::TError FindDevices(
     }
 
     return {};
+}
+
+TVector<NProto::TFileDeviceArgs> LoadCachedConfig(
+    const TStorageConfigPtr& storageConfig,
+    const TDiskAgentConfigPtr& agentConfig)
+{
+    const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = agentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
+
+    if (path.empty()) {
+        return {};
+    }
+
+    if (!NFs::Exists(path)) {
+        return {};
+    }
+
+    NProto::TDiskAgentConfig proto;
+    ParseProtoTextFromFileRobust(path, proto);
+
+    auto& devices = *proto.MutableFileDevices();
+
+    return {
+        std::make_move_iterator(devices.begin()),
+        std::make_move_iterator(devices.end())};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
