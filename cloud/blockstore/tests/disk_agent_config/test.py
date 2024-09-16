@@ -285,7 +285,7 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
     disk_agent_configurators[0].files["disk-agent"]\
         .DisableNodeBrokerRegisterationOnDevicelessAgent = True
 
-    # The first agent should register, even without devices.
+    # The second agent should register, even without devices.
     disk_agent_configurators[1].files["disk-agent"]\
         .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
     disk_agent_configurators[1].files["disk-agent"]\
