@@ -67,7 +67,6 @@ type metrics struct {
 }
 
 func (m *metrics) getOrNewCallStats(name string) *callStats {
-
 	m.callStatsMutex.Lock()
 	defer m.callStatsMutex.Unlock()
 
