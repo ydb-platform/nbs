@@ -67,6 +67,7 @@ def __run_test(test_case):
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=1)
         ],
         bs_cache_file_path=backups_folder + "/bs_cache.txt",
+        load_configs_from_cms=False,
     )
 
     client = CreateClient(env.endpoint)
