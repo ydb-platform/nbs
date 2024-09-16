@@ -5791,6 +5791,129 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TTestActorRuntimeBase::TEventFilter MakeCollectGarbageFilter(
+        ui64 keepCount,
+        ui64 doNotKeepCount)
+    {
+        return [keepCount, doNotKeepCount](auto& runtime, auto& event)
+        {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvCollectGarbage: {
+                    auto* msg =
+                        event
+                            ->template Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (msg->Channel >= TIndexTabletSchema::DataChannel) {
+                        UNIT_ASSERT_VALUES_EQUAL(keepCount, msg->Keep->size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            doNotKeepCount,
+                            msg->DoNotKeep->size());
+                    }
+                    break;
+                }
+            }
+            return false;
+        };
+    }
+
+    TABLET_TEST(FlushBytesShouldNotInterfereWithCollectGarbage)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetMinChannelCount(1);
+
+        // ensure that all blobs use the same channel
+        TTestEnv env(
+            {.ChannelCount = TIndexTabletSchema::DataChannel + 1},
+            std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto handle = CreateHandle(tablet, id);
+
+        const int size = BlockGroupSize * block;
+        tablet.WriteData(handle, 0 * size, size, 'a');
+        tablet.WriteData(handle, 1 * size, size, 'b');
+        tablet.WriteData(handle, 2 * size, size, 'c');
+        tablet.WriteData(handle, 2 * size, 1_KB, 'f');
+        tablet.WriteData(handle, 0, size, 'd');
+
+        // File contents:
+        // [dddddd][bbbbbb][fcccccc]
+
+        auto& runtime = env.GetRuntime();
+
+        runtime.SetEventFilter(MakeCollectGarbageFilter(4, 0));
+        tablet.CollectGarbage();
+        // left to right: growth of commitId
+        //     new        new        new               new     |
+        // [    a    ][    b    ][    c    ][fresh][    d    ] |
+        //                                                     |
+        //                                            lastCollectCommitId
+
+        tablet.Cleanup(GetMixedRangeIndex(id, 0));
+        //   garbage                                           |
+        // [    a    ][    b    ][    c    ][fresh][    d    ] |
+        //                                                     |
+        //                                            lastCollectCommitId
+        // runtime.SetEventFilter(MakeCollectGarbageFilter(0, 1));
+
+        // during the FlushBytes (if the barrier would have been acquired for
+        // the fresh bytes commit Id)
+        //
+        //   garbage                           |               |
+        // [    a    ][    b    ][    c    ][fresh][    d    ] |
+        //                                     |               |
+        //                                  barrier   lastCollectCommitId
+        //
+        // in order to ensure the acquired barrier is held for long enough time,
+        // we postpone the ReadBlob request, that is supposed to be sent during
+        // the FlushBytes
+
+        TAutoPtr<IEventHandle> readBlob;
+        runtime.SetEventFilter(
+            [&readBlob](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvReadBlobRequest: {
+                        readBlob = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            });
+        tablet.SendFlushBytesRequest();
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() -> bool
+            {
+                return readBlob.Get();
+            }});
+
+        runtime.SetEventFilter(MakeCollectGarbageFilter(0, 1));
+
+        tablet.CollectGarbage();
+        env.GetRuntime().Send(readBlob.Release(), nodeIdx);
+
+        auto result = tablet.RecvFlushBytesResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, result->GetStatus());
+    }
+
     TABLET_TEST(ShouldNotCollectGarbageWithPreviousGeneration)
     {
         const auto block = tabletConfig.BlockSize;
