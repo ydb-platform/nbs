@@ -19,6 +19,7 @@ type storageYDB struct {
 	ZoneIDs             []string
 	metrics             storageMetrics
 
+	exceptHangingTaskTypes            []string
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 }
@@ -252,7 +253,6 @@ func (s *storageYDB) ListTasksCancelling(
 func (s *storageYDB) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
-	exceptTaskTypes []string,
 ) ([]TaskInfo, error) {
 
 	var tasks []TaskInfo
@@ -260,12 +260,7 @@ func (s *storageYDB) ListHangingTasks(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listHangingTasks(
-				ctx,
-				session,
-				limit,
-				exceptTaskTypes,
-			)
+			tasks, err = s.listHangingTasks(ctx, session, limit)
 			return err
 		},
 	)
