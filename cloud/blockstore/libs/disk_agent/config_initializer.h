@@ -59,7 +59,6 @@ struct TConfigInitializer
 
 private:
     TString GetFullSchemeShardDir() const;
-    void AdaptNodeRegistrationParams(NProto::TStorageServiceConfig& config);
 
     void SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const;
     void SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) const;
