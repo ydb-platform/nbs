@@ -541,8 +541,6 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
-    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
-
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in follower upon CreateNode: %s, %s",

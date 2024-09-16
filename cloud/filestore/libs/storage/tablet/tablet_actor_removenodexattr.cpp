@@ -115,7 +115,6 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TRemoveNodeXAttr& args)
 {
-    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);

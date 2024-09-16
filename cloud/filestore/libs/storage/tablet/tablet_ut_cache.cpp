@@ -16,47 +16,44 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TxStats
+struct TTxStats
 {
     i64 ROCacheHitCount = 0;
     i64 ROCacheMissCount = 0;
     i64 RWCount = 0;
 };
 
-TxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
+TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
 {
-    TxStats stats;
+    TTxStats stats;
     TTestRegistryVisitor visitor;
 
     tablet.SendRequest(tablet.CreateUpdateCounters());
     env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
     env.GetRegistry()->Visit(TInstant::Zero(), visitor);
 
-    // clang-format off
     visitor.ValidateExpectedCountersWithPredicate({
-        {
-            {{"filesystem", "test"}, {"sensor", "InMemoryIndexStateROCacheHitCount"}},
-            [&stats](i64 value)
-            {
-                stats.ROCacheHitCount = value;
-                return true;
-            }
-        }, {
-            {{"filesystem", "test"}, {"sensor", "InMemoryIndexStateROCacheMissCount"}},
-            [&stats](i64 value)
-            {
-                stats.ROCacheMissCount = value;
-                return true;
-            }
-        }, {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateRWCount"}},
-            [&stats](i64 value)
-            {
-                stats.RWCount = value;
-                return true;
-            }
-        },
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateROCacheHitCount"}},
+         [&stats](i64 value)
+         {
+             stats.ROCacheHitCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateROCacheMissCount"}},
+         [&stats](i64 value)
+         {
+             stats.ROCacheMissCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateRWCount"}},
+         [&stats](i64 value)
+         {
+             stats.RWCount = value;
+             return true;
+         }},
     });
-    // clang-format on
     return stats;
 }
 

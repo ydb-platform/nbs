@@ -424,8 +424,15 @@ private:
     // node-related data. Failure to perform this operation will lead to
     // inconsistent cache state between the localDB and the in-memory index
     // state
-    void UpdateInMemoryIndexState(
-        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+    template <typename T>
+    void UpdateInMemoryIndexState(const T& args)
+    {
+        if constexpr (std::is_base_of_v<TIndexStateNodeUpdates, T>) {
+            if (Config->GetInMemoryIndexCacheEnabled()) {
+                TIndexTabletState::UpdateInMemoryIndexState(args.NodeUpdates);
+            }
+        }
+    }
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,

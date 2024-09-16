@@ -243,7 +243,7 @@ protected:
         template <typename T, typename ...Args>                                \
         static void CompleteTx(T& target, Args&& ...args)                      \
         {                                                                      \
-            target.CompleteTx_##name(std::forward<Args>(args)...);             \
+            target.CompleteAndUpdateState(std::forward<Args>(args)...);        \
         }                                                                      \
     };                                                                         \
                                                                                \
@@ -260,6 +260,14 @@ protected:
     void CompleteTx_##name(                                                    \
         const NActors::TActorContext& ctx,                                     \
         ns::T##name& args);                                                    \
+                                                                               \
+    void CompleteAndUpdateState(                                               \
+        const NActors::TActorContext& ctx,                                     \
+        ns::T##name& args)                                                     \
+    {                                                                          \
+        UpdateInMemoryIndexState(args);                                        \
+        CompleteTx_##name(ctx, args);                                          \
+    }                                                                          \
 // FILESTORE_IMPLEMENT_RW_TRANSACTION
 
 // For RO transactions we allow to alternatively declare ValidateTx_, PrepareTx_
@@ -340,6 +348,7 @@ protected:
             CompleteTx_##name(ctx, args);                                      \
             return true;                                                       \
         }                                                                      \
+        args.Clear();                                                          \
         return false;                                                          \
     }                                                                          \
 // FILESTORE_IMPLEMENT_RO_TRANSACTION

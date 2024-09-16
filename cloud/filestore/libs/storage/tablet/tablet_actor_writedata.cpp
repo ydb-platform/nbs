@@ -313,7 +313,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
-    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     auto reply = [&] (

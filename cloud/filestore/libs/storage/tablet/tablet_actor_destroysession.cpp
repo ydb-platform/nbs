@@ -325,7 +325,6 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroySession& args)
 {
-    UpdateInMemoryIndexState(std::move(args.NodeUpdates));
     RemoveTransaction(*args.RequestInfo);
 
     auto response =
