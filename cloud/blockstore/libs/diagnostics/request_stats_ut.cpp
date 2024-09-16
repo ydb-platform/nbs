@@ -63,7 +63,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -228,7 +229,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         auto totalCounters =
             monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
@@ -316,7 +318,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -427,7 +430,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -523,7 +527,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -591,7 +596,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
 
         unsigned int totalShots = 0;
         auto shoot = [&] (auto mediaKind, unsigned int count) {

@@ -741,7 +741,7 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
         });
 
-        const TMap<uint64_t, uint64_t> expectedHistogramValues = {
+        const TMap<size_t, uint64_t> expectedHistogramValues = {
             { 19, 1 }, // 1000ms
             { 20, 2 }, // 2000ms
             { 22, 1 }, // 10000ms
@@ -759,10 +759,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         const auto snapshot = histogram->Snapshot();
         UNIT_ASSERT_VALUES_EQUAL(snapshot->Count(), TRequestMsTimeBuckets::Buckets.size());
-        for (size_t i = 0; i < snapshot->Count(); i++) {
-            auto expectedValue = expectedHistogramValues.contains(i) ?
-                expectedHistogramValues[i] : 0;
-            UNIT_ASSERT_VALUES_EQUAL(snapshot->Value(i), expectedValue);
+        for (size_t bucketId = 0; bucketId < snapshot->Count(); bucketId++) {
+            auto expectedValue = expectedHistogramValues.contains(bucketId) ?
+                expectedHistogramValues.at(bucketId) : 0;
+            UNIT_ASSERT_VALUES_EQUAL(snapshot->Value(bucketId), expectedValue);
         }
     }
 
