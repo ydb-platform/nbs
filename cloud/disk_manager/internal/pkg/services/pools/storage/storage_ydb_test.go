@@ -65,6 +65,7 @@ func newStorageWithConfig(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	config *pools_config.PoolsConfig,
+	registry metrics.Registry,
 ) Storage {
 
 	folder := fmt.Sprintf("storage_ydb_test/%v", t.Name())
@@ -73,7 +74,7 @@ func newStorageWithConfig(
 	err := CreateYDBTables(ctx, config, db, false /* dropUnusedColumns */)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, db)
+	storage, err := NewStorage(config, db, registry)
 	require.NoError(t, err)
 
 	return storage
@@ -85,7 +86,7 @@ func newStorage(
 	db *persistence.YDBClient,
 ) Storage {
 
-	return newStorageWithConfig(t, ctx, db, makeDefaultConfig())
+	return newStorageWithConfig(t, ctx, db, makeDefaultConfig(), metrics.NewEmptyRegistry())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2090,7 +2091,7 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 		MaxBaseDisksInflight: &maxBaseDisksInflight,
 		MaxBaseDiskUnits:     &maxBaseDiskUnits,
 	}
-	storage := newStorageWithConfig(t, ctx, db, config)
+	storage := newStorageWithConfig(t, ctx, db, config, metrics.NewEmptyRegistry())
 
 	imageSize := uint64(10)
 	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
@@ -2501,7 +2502,7 @@ func TestStorageYDBShouldSurviveBaseDisksInflightOverlimit(t *testing.T) {
 		MaxBaseDisksInflight: &maxBaseDisksInflight,
 		MaxBaseDiskUnits:     &maxBaseDiskUnits,
 	}
-	storage := newStorageWithConfig(t, ctx, db, config)
+	storage := newStorageWithConfig(t, ctx, db, config, metrics.NewEmptyRegistry())
 
 	err = storage.ConfigurePool(ctx, "image", "zone", 2, 0)
 	require.NoError(t, err)
@@ -2517,7 +2518,7 @@ func TestStorageYDBShouldSurviveBaseDisksInflightOverlimit(t *testing.T) {
 	require.NoError(t, err)
 
 	*config.MaxBaseDisksInflight = uint32(1)
-	storage, err = NewStorage(config, db)
+	storage, err = NewStorage(config, db, metrics.NewEmptyRegistry())
 	require.NoError(t, err)
 
 	err = storage.ConfigurePool(ctx, "image", "zone", 10, 0)
@@ -2614,7 +2615,7 @@ func TestStorageYDBBaseDisksShouldHavePrefix(t *testing.T) {
 	config := &pools_config.PoolsConfig{
 		BaseDiskIdPrefix: &prefix,
 	}
-	storage := newStorageWithConfig(t, ctx, db, config)
+	storage := newStorageWithConfig(t, ctx, db, config, metrics.NewEmptyRegistry())
 
 	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
 	require.NoError(t, err)
