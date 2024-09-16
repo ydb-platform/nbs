@@ -233,8 +233,8 @@ void TBootstrapYdb::InitKikimrService()
 
     bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
     if (loadCmsConfigs &&
-        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
-        Configs->StorageConfig->GetSSProxyFallbackMode())
+        (Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode()))
     {
         STORAGE_INFO("Disable loading configs from CMS in emergency mode");
         loadCmsConfigs = false;
