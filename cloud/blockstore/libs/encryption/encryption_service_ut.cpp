@@ -14,9 +14,12 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -33,6 +36,7 @@ struct TTestCountService
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
+
         return MakeFuture(NProto::TMountVolumeResponse());
     }
 
@@ -98,6 +102,24 @@ struct TEncryptionClientFactory
         auto session = std::make_shared<TTestCountService>();
         Sessions.push_back(session);
         return MakeFuture(TResultOrError<IBlockStorePtr>(session));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestEncryptionKeyProvider final: IEncryptionKeyProvider
+{
+    std::function<TEncryptionKey(
+        const NProto::TEncryptionSpec& spec,
+        const TString& diskId)>
+        GetKeyImpl;
+
+    TFuture<TResponse> GetKey(
+        const NProto::TEncryptionSpec& spec,
+        const TString& diskId) override
+    {
+        return MakeFuture<TResultOrError<TEncryptionKey>>(
+            GetKeyImpl(spec, diskId));
     }
 };
 
@@ -193,32 +215,35 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             clientFactory);
 
         MountVolume(clientFactory, multipleService, clientId1, false);
-        UNIT_ASSERT_VALUES_EQUAL(0, clientFactory->Sessions.size());
-
-        MountVolume(clientFactory, multipleService, clientId2, true);
         UNIT_ASSERT_VALUES_EQUAL(1, clientFactory->Sessions.size());
 
-        MountVolume(clientFactory, multipleService, clientId3, true);
+        MountVolume(clientFactory, multipleService, clientId2, true);
         UNIT_ASSERT_VALUES_EQUAL(2, clientFactory->Sessions.size());
 
-        ReadBlocks(multipleService, clientId1);
-        UNIT_ASSERT_VALUES_EQUAL(1, service->IOCounter);
-        WriteBlocks(multipleService, clientId1);
-        UNIT_ASSERT_VALUES_EQUAL(2, service->IOCounter);
+        MountVolume(clientFactory, multipleService, clientId3, true);
+        UNIT_ASSERT_VALUES_EQUAL(3, clientFactory->Sessions.size());
 
-        auto& client2 = clientFactory->Sessions[0];
+        auto& client1 = clientFactory->Sessions[0];
+        ReadBlocks(multipleService, clientId1);
+        UNIT_ASSERT_VALUES_EQUAL(1, client1->IOCounter);
+
+        WriteBlocks(multipleService, clientId1);
+        UNIT_ASSERT_VALUES_EQUAL(2, client1->IOCounter);
+
+        auto& client2 = clientFactory->Sessions[1];
         ReadBlocks(multipleService, clientId2);
         UNIT_ASSERT_VALUES_EQUAL(1, client2->IOCounter);
         WriteBlocks(multipleService, clientId2);
         UNIT_ASSERT_VALUES_EQUAL(2, client2->IOCounter);
 
-        auto& client3 = clientFactory->Sessions[1];
+        auto& client3 = clientFactory->Sessions[2];
         ReadBlocks(multipleService, clientId3);
         UNIT_ASSERT_VALUES_EQUAL(1, client3->IOCounter);
         WriteBlocks(multipleService, clientId3);
         UNIT_ASSERT_VALUES_EQUAL(2, client3->IOCounter);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, service->IOCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, service->IOCounter);
+        UNIT_ASSERT_VALUES_EQUAL(2, client1->IOCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, client2->IOCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, client3->IOCounter);
 
@@ -280,6 +305,112 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
+    }
+
+    Y_UNIT_TEST(ShouldCreateEncryptedDiskWithDefaultEncryption)
+    {
+        const TString encryptionKey = "01234567890123456789012345678901";
+        const TString encryptedDEK = "42";
+        const TString testDiskId = "vol0";
+        const TString kekId = "nbs";
+        const TString clientId = "client1";
+        const ui32 volumeBlocksCount = 1000;
+
+        auto logging = CreateLoggingService("console");
+
+        auto encryptionKeyProvider =
+            std::make_shared<TTestEncryptionKeyProvider>();
+
+        bool keyRequested = false;
+
+        encryptionKeyProvider->GetKeyImpl =
+            [&](const NProto::TEncryptionSpec& spec, const TString& diskId)
+        {
+            keyRequested = true;
+
+            UNIT_ASSERT_VALUES_EQUAL(testDiskId, diskId);
+            UNIT_ASSERT_EQUAL(
+                NProto::ENCRYPTION_DEFAULT_AES_XTS,
+                spec.GetMode());
+
+            UNIT_ASSERT_C(spec.HasKeyPath(), spec);
+            UNIT_ASSERT_C(spec.GetKeyPath().HasKmsKey(), spec);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                kekId,
+                spec.GetKeyPath().GetKmsKey().GetKekId());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                encryptedDEK,
+                spec.GetKeyPath().GetKmsKey().GetEncryptedDEK());
+
+            return encryptionKey;
+        };
+
+        auto clientFactory =
+            CreateEncryptionClientFactory(logging, encryptionKeyProvider);
+
+        auto service = std::make_shared<TTestService>();
+        service->CreateVolumeHandler =
+            [&](std::shared_ptr<NProto::TCreateVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL_C(
+                NProto::NO_ENCRYPTION,
+                request->GetEncryptionSpec().GetMode(),
+                request->GetEncryptionSpec());
+
+            return MakeFuture(NProto::TCreateVolumeResponse());
+        };
+
+        service->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(testDiskId, request->GetDiskId());
+
+            NProto::TMountVolumeResponse response;
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(volumeBlocksCount);
+
+            volume.MutableEncryptionDesc()->SetMode(
+                NProto::ENCRYPTION_DEFAULT_AES_XTS);
+
+            NProto::TKmsKey& kmsKey = *volume.MutableEncryptionDesc()->MutableKmsKey();
+            kmsKey.SetKekId(kekId);
+            kmsKey.SetEncryptedDEK(encryptedDEK);
+
+            return MakeFuture(response);
+        };
+
+        auto multipleService = CreateMultipleEncryptionService(
+            service,
+            logging,
+            clientFactory);
+
+        {
+            auto future = multipleService->CreateVolume(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TCreateVolumeRequest>());
+
+            const auto& response = future.GetValue(5s);
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        {
+            auto request = std::make_shared<NProto::TMountVolumeRequest>();
+            request->MutableHeaders()->SetClientId(clientId);
+            request->SetDiskId(testDiskId);
+
+            auto future = multipleService->MountVolume(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& response = future.GetValue(5s);
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT(keyRequested);
+        }
     }
 }
 
