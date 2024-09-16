@@ -175,14 +175,14 @@ def test_ls():
     out += client.ls("fs0", "/")
     # replace timestamps with a constant value
     out = re.sub(
-        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)",
-        "1970-01-01T00:00:00Z",
-        out.decode(),
+        rb"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)",
+        b"1970-01-01T00:00:00Z",
+        out,
     )
     client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:
-        results_file.write(out.encode("utf-8"))
+        results_file.write(out)
 
     ret = common.canonical_file(results_path, local=True)
     return ret
