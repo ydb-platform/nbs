@@ -1176,12 +1176,20 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	if s.isMountAccessType(req.VolumePath) {
-		cmd := exec.Command("resize2fs", nbdDevicePath)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		needResize, err := s.mounter.NeedResize(nbdDevicePath, req.VolumePath)
+		if err != nil {
 			return nil, s.statusErrorf(
 				codes.Internal,
-				"Failed to resize filesystem %v, output %s",
-				err, out)
+				"NeedResize failed %v", err)
+		}
+
+		if needResize {
+			_, err := s.mounter.Resize(nbdDevicePath, req.VolumePath)
+			if err != nil {
+				return nil, s.statusErrorf(
+					codes.Internal,
+					"Failed to resize filesystem %v", err)
+			}
 		}
 	}
 
