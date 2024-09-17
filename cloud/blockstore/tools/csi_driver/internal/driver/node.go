@@ -131,7 +131,7 @@ func newNodeService(
 }
 
 func (s *nodeService) NodeStageVolume(
-	ctx context.Context,
+	_ context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 
 	log.Printf("csi.NodeStageVolumeRequest: %+v", req)
@@ -156,7 +156,7 @@ func (s *nodeService) NodeStageVolume(
 }
 
 func (s *nodeService) NodeUnstageVolume(
-	ctx context.Context,
+	_ context.Context,
 	req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 
 	log.Printf("csi.NodeUnstageVolumeRequest: %+v", req)
@@ -292,8 +292,8 @@ func (s *nodeService) NodeUnpublishVolume(
 }
 
 func (s *nodeService) NodeGetCapabilities(
-	ctx context.Context,
-	req *csi.NodeGetCapabilitiesRequest,
+	_ context.Context,
+	_ *csi.NodeGetCapabilitiesRequest,
 ) (*csi.NodeGetCapabilitiesResponse, error) {
 
 	if s.vmMode {
@@ -308,8 +308,8 @@ func (s *nodeService) NodeGetCapabilities(
 }
 
 func (s *nodeService) NodeGetInfo(
-	ctx context.Context,
-	req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	_ context.Context,
+	_ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 
 	return &csi.NodeGetInfoResponse{
 		NodeId: s.nodeID,
@@ -723,7 +723,7 @@ func logVolume(volumeId string, format string, v ...any) {
 }
 
 func (s *nodeService) NodeGetVolumeStats(
-	ctx context.Context,
+	_ context.Context,
 	req *csi.NodeGetVolumeStatsRequest) (
 	*csi.NodeGetVolumeStatsResponse, error) {
 
