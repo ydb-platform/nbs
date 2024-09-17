@@ -232,10 +232,11 @@ void TBootstrapYdb::InitKikimrService()
     };
 
     bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    if (loadCmsConfigs &&
-        (Configs->StorageConfig->GetHiveProxyFallbackMode() ||
-        Configs->StorageConfig->GetSSProxyFallbackMode()))
-    {
+    bool emergencyMode =
+        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode();
+
+    if (loadCmsConfigs && emergencyMode) {
         STORAGE_INFO("Disable loading configs from CMS in emergency mode");
         loadCmsConfigs = false;
     }
@@ -250,6 +251,10 @@ void TBootstrapYdb::InitKikimrService()
         .LoadCmsConfigs = loadCmsConfigs,
         .Settings = std::move(settings)
     };
+
+    if (emergencyMode) {
+        registerOpts.SchemeShardDir = "";
+    }
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;

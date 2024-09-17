@@ -483,6 +483,30 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
             os.symlink(udf_path, link_name)
         return self.__common_udfs_dir
 
+    # TODO(svartmetal): remove this when YDB learns not to erase dynamic groups
+    # data after formatting of static pdisks
+    def spoil_bs_controller_config(self):
+        flat_bs_controller = [{
+            "info": {
+                "channels": [{
+                    "channel": 0,
+                    "channel_erasure_name": str(self.__configurator.static_erasure),
+                    "history": [{
+                        "from_generation": 0,
+                        "group_id": 100500
+                    }]
+                }]
+            }
+        }]
+        self.__configurator.yaml_config["system_tablets"]["flat_bs_controller"] = flat_bs_controller
+        self.__write_configs()
+
+    def format_static_pdisks(self):
+        for node_id in self.__configurator.all_node_ids():
+            for pdisk in self.__configurator.pdisks_info:
+                if pdisk["pdisk_user_kind"] == 0:
+                    self.nodes[node_id].format_pdisk(**pdisk)
+
     def __format_disks(self, node_id):
         for pdisk in self.__configurator.pdisks_info:
             if pdisk['node_id'] != node_id:
