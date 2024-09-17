@@ -1,9 +1,5 @@
 #include "fs_impl.h"
 
-#include <cloud/filestore/libs/diagnostics/profile_log.h>
-#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
-#include <cloud/filestore/libs/vfs/fsync_queue.h>
-
 #include <util/generic/buffer.h>
 #include <util/generic/map.h>
 #include <util/random/random.h>
@@ -14,7 +10,6 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
-using namespace NThreading;
 
 namespace {
 
@@ -40,18 +35,6 @@ struct TDirectoryContent
         return Content ? Min(Size, Content->Size() - Offset) : 0;
     }
 };
-
-void InitNodeInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    bool dataOnly,
-    TNodeId nodeId,
-    THandle handle)
-{
-    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
-    nodeInfo->SetMode(dataOnly);
-    nodeInfo->SetNodeId(ToUnderlying(nodeId));
-    nodeInfo->SetHandle(ToUnderlying(handle));
-}
 
 }   // namespace
 
@@ -444,94 +427,6 @@ bool TFileSystem::ValidateDirectoryHandle(
     }
 
     return true;
-}
-
-void TFileSystem::FSyncDir(
-    TCallContextPtr callContext,
-    fuse_req_t req,
-    fuse_ino_t ino,
-    int datasync,
-    fuse_file_info* fi)
-{
-    STORAGE_DEBUG("FSyncDir #" << ino << " @" << (fi ? fi->fh : -1llu));
-
-    if (!ValidateNodeId(*callContext, req, ino)) {
-        return;
-    }
-
-    const auto reqId = callContext->RequestId;
-
-    NProto::TProfileLogRequestInfo requestInfo;
-    InitProfileLogRequestInfo(
-        requestInfo,
-        EFileStoreFuseRequest::FsyncDir,
-        Now());
-    InitNodeInfo(
-        requestInfo,
-        datasync,
-        TNodeId{fi ? ino : InvalidNodeId},
-        THandle{fi ? fi->fh : InvalidHandle});
-
-    std::function<void(const TFuture<NProto::TError>&)> callback =
-        [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)](
-            const auto& future) mutable
-    {
-        auto self = ptr.lock();
-        if (!self) {
-            return;
-        }
-
-        const auto& response = future.GetValue();
-
-        FinalizeProfileLogRequestInfo(
-            std::move(requestInfo),
-            Now(),
-            self->Config->GetFileSystemId(),
-            response,
-            self->ProfileLog);
-
-        if (self->CheckError(*callContext, req, response)) {
-            self->ReplyError(*callContext, response, req, 0);
-        }
-    };
-
-    if (fi) {
-        if (!ValidateDirectoryHandle(*callContext, req, ino, fi->fh)) {
-            return;
-        }
-
-        callback = [ptr = weak_from_this(),
-                    callContext,
-                    ino,
-                    datasync,
-                    callback = std::move(callback)](const auto& future) mutable
-        {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            if (HasError(future.GetValue())) {
-                callback(future);
-                return;
-            }
-
-            auto request = StartRequest<NProto::TFsyncDirRequest>(ino);
-            request->SetDataSync(datasync);
-            self->Session->FsyncDir(callContext, std::move(request))
-                .Apply([](const auto& future)
-                       { return future.GetValue().GetError(); })
-                .Subscribe(std::move(callback));
-        };
-    }
-
-    if (datasync) {
-        FSyncQueue.WaitForDataRequests(reqId).Subscribe(
-            std::move(callback));
-    } else {
-        FSyncQueue.WaitForRequests(reqId).Subscribe(
-            std::move(callback));
-    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

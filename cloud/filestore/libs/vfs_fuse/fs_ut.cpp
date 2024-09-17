@@ -267,14 +267,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
-        int fsyncCalled[2] = {0, 0};
+        int fsyncCalledWithDataSync = 0;
+        int fsyncCalledWithoutDataSync = 0;
         bootstrap.Service->FsyncHandler = [&] (auto callContext, auto request) {
-            Y_UNUSED(request);
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
-            fsyncCalled[request->GetDataSync() ? 1 : 0]++;
-            NProto::TFsyncResponse result;
-            return MakeFuture(result);
+            if (request->GetDataSync()) {
+                fsyncCalledWithDataSync++;
+            } else {
+                fsyncCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncResponse());
         };
 
         bootstrap.Start();
@@ -286,14 +290,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
 
-        for (auto datasync: {true, false}) {
-            auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
-                nodeId, handleId, datasync);
-            UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
-        }
+        auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT(
+            fsyncCalledWithoutDataSync == 1 && fsyncCalledWithDataSync == 0);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalled[0]);
-        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalled[1]);
+        fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT(
+            fsyncCalledWithoutDataSync == 1 && fsyncCalledWithDataSync == 1);
     }
 
     Y_UNIT_TEST(ShouldPassSessionId)
@@ -519,14 +526,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
-        int fsyncDirCalled[2] = {0, 0};
+        int fsyncDirCalledWithDataSync = 0;
+        int fsyncDirCalledWithoutDataSync = 0;
         bootstrap.Service->FsyncDirHandler = [&] (auto callContext, auto request) {
-            Y_UNUSED(request);
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
-            fsyncDirCalled[request->GetDataSync() ? 1 : 0]++;
-            NProto::TFsyncDirResponse result;
-            return MakeFuture(result);
+            if (request->GetDataSync()) {
+                fsyncDirCalledWithDataSync++;
+            } else {
+                fsyncDirCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncDirResponse());
         };
 
         bootstrap.Start();
@@ -548,14 +559,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         size = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size, 0);
 
-        for (auto datasync: {true, false}) {
-            auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
-                nodeId, handleId, datasync);
-            UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
-        }
+        auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT(
+            fsyncDirCalledWithoutDataSync == 1 &&
+            fsyncDirCalledWithDataSync == 0);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled[0]);
-        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled[1]);
+        fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT(
+            fsyncDirCalledWithoutDataSync == 1 &&
+            fsyncDirCalledWithDataSync == 1);
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
