@@ -231,6 +231,16 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
+    bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
+    bool emergencyMode =
+        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode();
+
+    if (loadCmsConfigs && emergencyMode) {
+        STORAGE_INFO("Disable loading configs from CMS in emergency mode");
+        loadCmsConfigs = false;
+    }
+
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
@@ -238,9 +248,13 @@ void TBootstrapYdb::InitKikimrService()
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
         .InterconnectPort = Configs->Options->InterconnectPort,
-        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
+        .LoadCmsConfigs = loadCmsConfigs,
         .Settings = std::move(settings)
     };
+
+    if (emergencyMode) {
+        registerOpts.SchemeShardDir = "";
+    }
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;

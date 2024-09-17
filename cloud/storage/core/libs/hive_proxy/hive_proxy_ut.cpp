@@ -1152,6 +1152,14 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             auto result2 = env.SendBootExternalRequest(
                 sender, 0xdeadbeaf, E_REJECTED);
             UNIT_ASSERT(!result2.StorageInfo);
+
+            auto result3 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result3.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                result3.StorageInfo->TabletID);
+            // suggested generation should be incremented after last boot
+            UNIT_ASSERT_VALUES_EQUAL(2u, result3.SuggestedGeneration);
         }
     }
 

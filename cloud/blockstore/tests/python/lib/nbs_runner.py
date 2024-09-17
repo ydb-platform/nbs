@@ -135,10 +135,6 @@ class LocalNbs(Daemon):
         if kms_config is not None:
             self.__proto_configs["kms.txt"] = kms_config
 
-        if storage_config_patches is not None and len(storage_config_patches) > 0:
-            for i in range(len(storage_config_patches)):
-                self.__proto_configs["storage-%s.txt" % i] = self.__generate_patched_storage_txt(i)
-
         if discovery_config is not None:
             self.__proto_configs["discovery.txt"] = discovery_config
             self.__use_discovery = True
@@ -165,6 +161,10 @@ class LocalNbs(Daemon):
         self.__init_daemon()
 
     def __init_daemon(self):
+        if self.storage_config_patches is not None and len(self.storage_config_patches) > 0:
+            for i in range(len(self.storage_config_patches)):
+                self.__proto_configs["storage-%s.txt" % i] = self.__generate_patched_storage_txt(i)
+
         cp = None
         if self.__binary_path:
             cp = core_pattern(self.__binary_path, self.__cwd)
