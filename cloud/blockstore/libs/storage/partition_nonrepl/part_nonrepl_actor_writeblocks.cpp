@@ -479,7 +479,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->Interconnect.WriteBlocks.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
+    PartCounters->Interconnect.TransportWriteBlocks.AddRequest(time, requestBytes);
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 

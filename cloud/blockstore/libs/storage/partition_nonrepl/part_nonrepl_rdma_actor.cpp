@@ -339,7 +339,9 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
     const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->Rdma.ReadBlocks.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+    PartCounters->Rdma.TransportReadBlocks.AddRequest(time, requestBytes);
+
     PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
     PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
@@ -370,7 +372,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->Rdma.WriteBlocks.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
+    PartCounters->Rdma.TransportWriteBlocks.AddRequest(time, requestBytes);
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 

@@ -642,14 +642,12 @@ struct TTransportRequestCounters
         TMemberWithMeta<TRequestCounters<THistogram<TRequestUsTimeBuckets>>>;
     using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
 
-    TCounter ReadBlocks{EPublishingPolicy::All};
-    TCounter WriteBlocks{
-        EPublishingPolicy::All
-    };
+    TCounter TransportReadBlocks{EPublishingPolicy::All};
+    TCounter TransportWriteBlocks{EPublishingPolicy::All};
 
     static constexpr TMeta AllCounters[] = {
-        MakeMeta<&TTransportRequestCounters::ReadBlocks>(),
-        MakeMeta<&TTransportRequestCounters::WriteBlocks>(),
+        MakeMeta<&TTransportRequestCounters::TransportReadBlocks>(),
+        MakeMeta<&TTransportRequestCounters::TransportWriteBlocks>(),
     };
 };
 

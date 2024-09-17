@@ -287,17 +287,6 @@ void TStatsServiceActor::HandleVolumePartCounters(
     const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    TVector<TTransportCounters*> transportCounters{
-        &State.GetInterconnectHddNonreplCounters(),
-        &State.GetInterconnectSsdNonreplCounters(),
-        &State.GetInterconnectSsdMirror2Counters(),
-        &State.GetInterconnectSsdMirror3Counters(),
-        &State.GetRdmaHddNonreplCounters(),
-        &State.GetRdmaSsdNonreplCounters(),
-        &State.GetRdmaSsdMirror2Counters(),
-        &State.GetRdmaSsdMirror3Counters(),
-    };
-
     const auto* msg = ev->Get();
 
     auto* volume = State.GetVolume(msg->DiskId);
@@ -328,21 +317,21 @@ void TStatsServiceActor::HandleVolumePartCounters(
         auto& interconnectCounter =
             State.GetInterconnectCounter(mediaKind).PartAcc.Interconnect;
 
-        rdmaCounter.ReadBlocks.Add(msg->DiskCounters->Rdma.ReadBlocks);
-        rdmaCounter.WriteBlocks.Add(msg->DiskCounters->Rdma.WriteBlocks);
-        interconnectCounter.ReadBlocks.Add(
-            msg->DiskCounters->Interconnect.ReadBlocks);
-        interconnectCounter.WriteBlocks.Add(
-            msg->DiskCounters->Interconnect.WriteBlocks);
+        rdmaCounter.TransportReadBlocks.Add(msg->DiskCounters->Rdma.TransportReadBlocks);
+        rdmaCounter.TransportWriteBlocks.Add(msg->DiskCounters->Rdma.TransportWriteBlocks);
+        interconnectCounter.TransportReadBlocks.Add(
+            msg->DiskCounters->Interconnect.TransportReadBlocks);
+        interconnectCounter.TransportWriteBlocks.Add(
+            msg->DiskCounters->Interconnect.TransportWriteBlocks);
+
+        State.GetRdmaCounter(mediaKind).Publish();
+        State.GetInterconnectCounter(mediaKind).Publish();
+
     }
     if (ev->Sender.NodeId() == SelfId().NodeId()) {
         State.GetLocalVolumesCounters().UpdateCounters(*msg->DiskCounters);
     } else {
         State.GetNonlocalVolumesCounters().UpdateCounters(*msg->DiskCounters);
-    }
-
-    for (auto* tc: transportCounters) {
-        tc->Publish();
     }
 }
 

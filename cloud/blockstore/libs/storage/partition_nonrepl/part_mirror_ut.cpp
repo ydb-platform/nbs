@@ -1,3 +1,4 @@
+
 #include "part_mirror.h"
 #include "part_mirror_actor.h"
 #include "part_mirror_resync_util.h"
@@ -444,17 +445,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
-        auto& interconnectCounters = env.StorageStatsServiceState->Counters.Interconnect;
-        UNIT_ASSERT_VALUES_EQUAL(4, interconnectCounters.ReadBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(4, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * 9336,
-            interconnectCounters.ReadBlocks.RequestBytes
-        );
-        UNIT_ASSERT_VALUES_EQUAL(3 * 3, interconnectCounters.WriteBlocks.Count);
+            counters.ReadBlocks.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(3 * 3, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 6192,
-            interconnectCounters.WriteBlocks.RequestBytes
-        );
+            counters.WriteBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.ZeroBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 1070,
@@ -546,7 +544,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
-        auto& counters = env.StorageStatsServiceState->Counters.Interconnect;
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
