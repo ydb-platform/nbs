@@ -533,16 +533,9 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
 	endpointDir := filepath.Join(s.socketsDir, s.getPodId(req), req.VolumeId)
 
-	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
-	// "If the disk.img image file has not been created manually before starting a VM
-	// then it will be created automatically with the PersistentVolumeClaim size."
-	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
-	diskImgPath := filepath.Join(endpointDir, "disk.img")
-	file, err := os.OpenFile(diskImgPath, os.O_CREATE, os.FileMode(0644))
-	if err != nil {
-		return fmt.Errorf("failed to create disk.img: %w", err)
+	if err := s.createDummyImgFile(endpointDir); err != nil {
+		return err
 	}
-	ignoreError(file.Close())
 
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
@@ -556,7 +549,7 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	err = s.mountIfNeeded(
+	err := s.mountIfNeeded(
 		req.VolumeId,
 		endpointDir,
 		req.TargetPath,
@@ -569,6 +562,21 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
 		return fmt.Errorf("failed to chmod target path: %w", err)
 	}
+
+	return nil
+}
+
+func (s *nodeService) createDummyImgFile(dirPath string) error {
+	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
+	// "If the disk.img image file has not been created manually before starting a VM
+	// then it will be created automatically with the PersistentVolumeClaim size."
+	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
+	diskImgPath := filepath.Join(dirPath, "disk.img")
+	file, err := os.OpenFile(diskImgPath, os.O_CREATE, os.FileMode(0644))
+	if err != nil {
+		return fmt.Errorf("failed to create disk.img: %w", err)
+	}
+	ignoreError(file.Close())
 
 	return nil
 }
