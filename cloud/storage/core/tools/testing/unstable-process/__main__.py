@@ -114,6 +114,7 @@ def main():
                     if process.poll() is not None:
                         if process.poll() in [0, 1, 100]:
                             logging.info(f'subprocess failed to start, code {process.poll()}')
+                            logging.info(os.system("ss -tpn"))
                             process = start_process()
                         else:
                             logging.fatal(f'unexpected exit code {process.poll()}')
