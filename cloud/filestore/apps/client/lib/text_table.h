@@ -37,27 +37,6 @@ public:
     const TColumns& GetColumns() const;
 };
 
-template <typename TProtobufMessage> requires std::is_base_of_v<::google::protobuf::Message, TProtobufMessage>
-TTextTable::TColumns ToColumns()
-{
-    auto firstNodeDescriptor = TProtobufMessage::GetDescriptor();
-    Y_ENSURE(
-        firstNodeDescriptor != nullptr,
-        "Failed to acquire proto node descriptor"
-    );
-
-    const int fieldsCount = firstNodeDescriptor->field_count();
-
-    TTextTable::TColumns columns;
-    columns.reserve(fieldsCount);
-    for (int i = 0; i < fieldsCount; ++i) {
-        auto field = firstNodeDescriptor->field(i);
-
-        columns.emplace_back(field->name(), field->name().size());
-    }
-    return columns;
-}
-
-[[maybe_unused]] TTextTable::TRow ToRow(const ::google::protobuf::Message& message);
+TTextTable::TColumns ToColumns(const TVector<TString>& columnNames);
 
 }   // namespace NCloud::NFileStore::NClient::NTextTable
