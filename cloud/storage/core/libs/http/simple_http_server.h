@@ -1,7 +1,7 @@
 #pragma once
 
-#include "library/cpp/http/server/http.h"
-#include "library/cpp/http/server/http_ex.h"
+#include <library/cpp/http/server/http.h>
+#include <library/cpp/http/server/http_ex.h>
 
 namespace NCloud::NStorage {
 
@@ -9,11 +9,8 @@ namespace NCloud::NStorage {
 
 // The most simple HTTP server. Listens to the port and responds with "Response"
 // with code 200.
-class TSimpleHttpServer: public THttpServer::ICallBack {
-private:
-    TString Response;
-    std::unique_ptr<THttpServer> Server;
-
+class TSimpleHttpServer: public THttpServer::ICallBack
+{
     class TRequest: public THttpClientRequestEx
     {
     private:
@@ -26,6 +23,10 @@ private:
         bool Reply(void* threadSpecificResource) override;
     };
 
+private:
+    TString Response;
+    std::unique_ptr<THttpServer> Server;
+
 public:
     TSimpleHttpServer(ui16 port, TString response);
     ~TSimpleHttpServer() override;
@@ -34,7 +35,6 @@ public:
     void Stop();
 
     TClientRequest* CreateClient() override;
-
 };
 
-}  // namespace NCloud::NStorage
+}   // namespace NCloud::NStorage
