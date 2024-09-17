@@ -4,17 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 	math_rand "math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 func randomData(size int, t *testing.T) []byte {
@@ -33,23 +31,7 @@ func TestYdbHangingRequest(t *testing.T) {
 func oneTestIteration(t *testing.T) {
 	ctx, cancel := context.WithCancel(test.NewContext())
 	defer cancel()
-	endpoint := fmt.Sprintf(
-		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
-	)
-	database := "/Root"
-	rootPath := "disk_manager"
-	connectionTimeout := "10s"
-	db, err := persistence.NewYDBClient(
-		ctx,
-		&persistence_config.PersistenceConfig{
-			Endpoint:          &endpoint,
-			Database:          &database,
-			RootPath:          &rootPath,
-			ConnectionTimeout: &connectionTimeout,
-		},
-		metrics.NewEmptyRegistry(),
-	)
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
 
 	folder := fmt.Sprintf("ydb_test/%v", t.Name())
