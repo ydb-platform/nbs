@@ -180,11 +180,9 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
         assert result.returncode == 0
 
         result = run(
-            "resizedevice",
+            "refreshendpoint",
             "--socket",
-            socket_path,
-            "--device-size",
-            str(new_volume_size)
+            socket_path
         )
         assert result.returncode == 0
 
