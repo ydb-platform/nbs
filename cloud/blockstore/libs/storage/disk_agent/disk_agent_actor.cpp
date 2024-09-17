@@ -269,6 +269,7 @@ STFUNC(TDiskAgentActor::StateInit)
 
         default:
             if (!RejectRequests(ev)) {
+                auto ctx = ActorContext();
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
@@ -365,6 +366,7 @@ STFUNC(TDiskAgentActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
+                auto ctx = ActorContext();
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
@@ -388,6 +390,7 @@ STFUNC(TDiskAgentActor::StateIdle)
 
         default:
             if (!RejectRequests(ev)) {
+                auto ctx = ActorContext();
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
