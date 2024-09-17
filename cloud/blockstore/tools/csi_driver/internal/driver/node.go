@@ -525,7 +525,7 @@ func (s *nodeService) nodeUnpublishVolume(
 	}
 
 	// remove pod's folder if it's empty
-	os.Remove(filepath.Join(s.socketsDir, podId))
+	ignoreError(os.Remove(filepath.Join(s.socketsDir, podId)))
 	return nil
 }
 
@@ -542,7 +542,7 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to create disk.img: %w", err)
 	}
-	file.Close()
+	ignoreError(file.Close())
 
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
@@ -587,7 +587,7 @@ func (s *nodeService) mountBlockDevice(
 	if err != nil {
 		return fmt.Errorf("failed to create target file: %w", err)
 	}
-	file.Close()
+	ignoreError(file.Close())
 
 	mountOptions := []string{"bind"}
 	err = s.mountIfNeeded(volumeId, source, target, "", mountOptions)
@@ -925,3 +925,5 @@ func (s *nodeService) NodeExpandVolume(
 		CapacityBytes: int64(newBlocksCount * uint64(resp.Volume.BlockSize)),
 	}, nil
 }
+
+func ignoreError(_ error) {}
