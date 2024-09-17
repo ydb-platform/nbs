@@ -281,6 +281,13 @@ TChild SpawnChild(
     TPipe stdOut;
     TPipe stdErr;
 
+    // Make allocations before the fork() call. In rare cases, the tcmalloc can
+    // deadlock on allocation because other threads have locked mutexes that
+    // would never be unlocked since the threads that placed the locks are not
+    // duplicated in the child.
+    TVector<char*> qargs;
+    qargs.reserve(args.size() + 2);
+
     pid_t childPid = ::fork();
 
     if (childPid == -1) {
@@ -306,10 +313,6 @@ TChild SpawnChild(
 
     // Following "const_cast"s are safe:
     // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
-
-    TVector<char*> qargs;
-    qargs.reserve(args.size() + 2);
-
     qargs.push_back(const_cast<char*>(binaryPath.data()));
     for (auto& arg: args) {
         qargs.push_back(const_cast<char*>(arg.data()));
