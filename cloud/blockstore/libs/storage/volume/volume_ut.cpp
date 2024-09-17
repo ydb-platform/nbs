@@ -7117,7 +7117,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
                 writeRequests +=
                     msg->DiskCounters->RequestCounters.WriteBlocks.Count;
-
             }
 
             return false;
