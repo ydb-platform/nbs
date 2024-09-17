@@ -606,27 +606,8 @@ public:
 
     void Start() override
     {
-        TCondVar processStarted;
-        // To avoid a race, we need to get the shared pointer in the calling
-        // thread and pass it to the background thread. This guaranteed that the
-        // background thread will deal with a live this.
-        auto workFunc = [&processStarted, self = shared_from_this()]()
-        {
-            // It is important to start the vhost-server on the thread that
-            // outlives it. vhost-server waits for the parent-death signal via
-            // PR_SET_PDEATHSIG which tracks the aliveness of the thread that
-            // spawned the process.
-            self->Process = self->StartProcess();
-            processStarted.Signal();
-            self->ThreadProc();
-        };
-
-        with_lock (Mutex) {
-            std::thread(std::move(workFunc)).detach();
-            // Infinite time wait is safe here, since we are in the coroutine
-            // thread.
-            processStarted.WaitI(Mutex);
-        }
+        Process = StartProcess();
+        std::thread(&TEndpoint::ThreadProc, shared_from_this()).detach();
     }
 
     TFuture<NProto::TError> Stop() override
@@ -679,7 +660,10 @@ private:
             }
         }
 
-        StopPromise.SetValue(error);
+        // We must call "SetValue()" on coroutine thread, since it will trigger
+        // future handlers synchronously.
+        Executor->ExecuteSimple([promise = this->StopPromise, error]() mutable
+                                { promise.SetValue(error); });
     }
 
     TIntrusivePtr<TEndpointProcess> StartProcess()

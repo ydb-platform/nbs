@@ -239,6 +239,8 @@ def generate_log_txt():
         b"BLOCKSTORE_DISK_AGENT",
         b"BLOCKSTORE_HIVE_PROXY",
         b"BLOCKSTORE_SS_PROXY",
+        b"BLOCKSTORE_EXTERNAL_ENDPOINT",
+        b"BLOCKSTORE_VHOST",
     ]
 
     log_config = TLogConfig()
