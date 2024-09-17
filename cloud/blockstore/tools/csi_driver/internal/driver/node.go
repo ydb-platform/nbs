@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -750,7 +751,7 @@ func (s *nodeService) NodeGetVolumeStats(
 
 	mounted, err := s.mounter.IsMountPoint(req.VolumePath)
 	if err != nil {
-		if err == fs.ErrNotExist {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, s.statusError(
 				codes.NotFound,
 				"Mount point does not exist")
