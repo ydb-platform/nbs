@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
-	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
+	csimounter "github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfs "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 )
 
@@ -28,7 +28,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
 	clientID := "testClientId"
@@ -201,7 +201,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	log.Printf("groupId: %s", groupId)
 
 	nbsClient := mocks.NewNbsClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
@@ -328,7 +328,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
@@ -448,7 +448,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
@@ -510,7 +510,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
 	err := os.MkdirAll(nbdDeviceFile, 0755)
@@ -564,7 +564,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	tempDir := os.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
-	mounter := mounter.NewMock()
+	mounter := csimounter.NewMock()
 
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
 	err := os.MkdirAll(nbdDeviceFile, 0755)
