@@ -11,6 +11,7 @@ RECURSE(
     features
     grpc
     hive_proxy
+    http
     kikimr
     tablet
     throttling

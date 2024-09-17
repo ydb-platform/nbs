@@ -170,7 +170,7 @@ def start_nbs(config: NbsConfigurator, name='nbs-server'):
     return nbs
 
 
-def start_disk_agent(config: NbsConfigurator, name='disk-agent', wait_for_start=True):
+def start_disk_agent(config: NbsConfigurator, name='disk-agent'):
     exe_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
 
     cwd = get_unique_path_for_current_test(
@@ -190,7 +190,7 @@ def start_disk_agent(config: NbsConfigurator, name='disk-agent', wait_for_start=
     commands = [exe_path] + config.params
 
     agent = DiskAgent(
-        mon_port=(config.mon_port if wait_for_start else None),
+        mon_port=config.mon_port,
         server_port=config.server_port,
         commands=[commands],
         cwd=cwd,

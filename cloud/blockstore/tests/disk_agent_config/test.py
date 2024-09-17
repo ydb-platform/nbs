@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import requests
 import time
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
@@ -293,10 +294,7 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
 
     agents = []
     for agent_id, configurator in zip(agent_ids, disk_agent_configurators):
-        wait_for_start = not configurator.files["disk-agent"]\
-            .DisableNodeBrokerRegisterationOnDevicelessAgent
-        agents.append(start_disk_agent(configurator, name=agent_id,
-                      wait_for_start=wait_for_start))
+        agents.append(start_disk_agent(configurator, name=agent_id))
 
     for idx, agent in enumerate(agents):
         with open(agent.stderr_file_name) as log_file:
@@ -304,6 +302,10 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
                 "Devices were not found. Skipping the node broker registration." in log_file.read()
             assert deep_idle_agent == disk_agent_configurators[idx].files[
                 "disk-agent"].DisableNodeBrokerRegisterationOnDevicelessAgent
+
+    response = requests.get(f"http://localhost:{agents[0].mon_port}")
+    assert response.status_code == 200
+    assert "This node is not registered in the NodeBroker" in response.text
 
     for agent in agents:
         agent.kill()
