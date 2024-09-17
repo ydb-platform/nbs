@@ -223,6 +223,17 @@ void TBootstrap::ParseOptions(int argc, char** argv)
     Configs = std::make_unique<TConfigInitializer>(std::move(options));
 }
 
+void TBootstrap::InitHTTPServer()
+{
+    Y_DEBUG_ABORT_UNLESS(!Initialized);
+
+    StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
+        Configs->DiagnosticsConfig->GetNbsMonPort(),
+        "This node is not registered in the NodeBroker. See "
+        "\"DisableNodeBrokerRegisterationOnDevicelessAgent\" in the disk agent "
+        "config.");
+}
+
 void TBootstrap::Init()
 {
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
@@ -233,6 +244,7 @@ void TBootstrap::Init()
     Scheduler = CreateScheduler();
 
     if (!InitKikimrService()) {
+        InitHTTPServer();
         return;
     }
 
@@ -572,6 +584,9 @@ void TBootstrap::InitLWTrace()
 void TBootstrap::Start()
 {
     if (!Initialized) {
+        if (StubMonPageServer) {
+            StubMonPageServer->Start();
+        }
         return;
     }
 #define START_COMPONENT(c)                                                     \
@@ -609,6 +624,9 @@ void TBootstrap::Start()
 void TBootstrap::Stop()
 {
     if (!Initialized) {
+        if (StubMonPageServer) {
+            StubMonPageServer->Stop();
+        }
         return;
     }
 #define STOP_COMPONENT(c)                                                      \

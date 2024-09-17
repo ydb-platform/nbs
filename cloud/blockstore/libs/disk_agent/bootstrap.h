@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/storage/core/libs/http/simple_http_server.h>
 
 #include <ydb/core/driver_lib/run/factories.h>
 
@@ -74,6 +75,7 @@ private:
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
 
+    std::unique_ptr<NCloud::NStorage::TSimpleHttpServer> StubMonPageServer;
     bool Initialized = false;
 
 public:
@@ -94,6 +96,8 @@ private:
     void InitLWTrace();
     void InitProfileLog();
     bool InitKikimrService();
+
+    void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
 };
