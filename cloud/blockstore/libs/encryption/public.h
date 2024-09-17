@@ -15,6 +15,9 @@ using IEncryptionKeyProviderPtr = std::shared_ptr<IEncryptionKeyProvider>;
 struct IKmsKeyProvider;
 using IKmsKeyProviderPtr = std::shared_ptr<IKmsKeyProvider>;
 
+struct IRootKmsKeyProvider;
+using IRootKmsKeyProviderPtr = std::shared_ptr<IRootKmsKeyProvider>;
+
 struct IEncryptionClientFactory;
 using IEncryptionClientFactoryPtr = std::shared_ptr<IEncryptionClientFactory>;
 
