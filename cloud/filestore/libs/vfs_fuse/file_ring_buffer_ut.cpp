@@ -28,6 +28,22 @@ TString Dump(const TVector<TBrokenFileRingBufferEntry>& entries)
     return sb;
 }
 
+TString PopAll(TFileRingBuffer& rb)
+{
+    TStringBuilder sb;
+
+    while (!rb.Empty()) {
+        if (sb.Size()) {
+            sb << ", ";
+        }
+
+        sb << rb.Front();
+        rb.Pop();
+    }
+
+    return sb;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,12 +106,55 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     Y_UNIT_TEST(ShouldRestore)
     {
-        // TODO
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        const ui32 maxEntrySize = 10;
+        auto rb = std::make_unique<TFileRingBuffer>(
+            f.GetName(),
+            len,
+            maxEntrySize);
+
+        UNIT_ASSERT(rb->Push("vasya"));
+        UNIT_ASSERT(rb->Push("petya"));
+        UNIT_ASSERT(rb->Push("vasya2"));
+        UNIT_ASSERT(rb->Push("petya2"));
+        rb->Pop();
+        rb->Pop();
+        UNIT_ASSERT(rb->Push("vasya3"));
+        UNIT_ASSERT(rb->Push("xxx"));
+
+        rb = std::make_unique<TFileRingBuffer>(
+            f.GetName(),
+            len,
+            maxEntrySize);
+
+        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+        UNIT_ASSERT_VALUES_EQUAL(4, rb->Size());
+
+        UNIT_ASSERT_VALUES_EQUAL("vasya2, petya2, vasya3, xxx", PopAll(*rb));
     }
 
     Y_UNIT_TEST(ShouldValidate)
     {
-        // TODO
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        const ui32 maxEntrySize = 10;
+        TFileRingBuffer rb(f.GetName(), len, maxEntrySize);
+
+        UNIT_ASSERT(rb.Push("vasya"));
+        UNIT_ASSERT(rb.Push("petya"));
+        UNIT_ASSERT(rb.Push("vasya2"));
+        UNIT_ASSERT(rb.Push("petya2"));
+
+        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len);
+        char* data = static_cast<char*>(m.Ptr());
+        data[10] = 'A';
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "data=invalid_entry_marker ecsum=0 csum=11034342",
+            Dump(rb.Validate()));
     }
 }
 

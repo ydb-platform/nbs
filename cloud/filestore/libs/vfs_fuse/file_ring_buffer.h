@@ -23,7 +23,9 @@ struct TBrokenFileRingBufferEntry
 struct TFileRingBuffer
 {
 private:
-    static const ui32 VERSION = 1;
+    static constexpr ui32 VERSION = 1;
+    static constexpr ui32 INVALID_POS = Max<ui32>();
+    static constexpr TStringBuf INVALID_MARKER = "invalid_entry_marker";
 
     TFileMap Map;
     const ui32 MaxEntrySize;
@@ -44,6 +46,7 @@ private:
 
     char* Data = nullptr;
     ui32 Count = 0;
+    const char* End = nullptr;
 
 private:
     THeader* Header()
@@ -86,12 +89,21 @@ private:
     ui32 VisitEntry(const TVisitor& visitor, ui32 pos) const
     {
         const auto* b = Data + pos;
+        if (b + sizeof(TEntryHeader) > End) {
+            visitor(0, INVALID_MARKER);
+            return INVALID_POS;
+        }
+
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
         if (eh->Size == 0) {
             return 0;
         }
 
         TStringBuf entry(b + sizeof(TEntryHeader), eh->Size);
+        if (entry.Data() + entry.Size() > End) {
+            visitor(eh->Checksum, INVALID_MARKER);
+            return INVALID_POS;
+        }
         visitor(eh->Checksum, {b + sizeof(TEntryHeader), eh->Size});
         return pos + sizeof(TEntryHeader) + eh->Size;
     }
@@ -99,11 +111,11 @@ private:
     void Visit(const TVisitor& visitor) const
     {
         ui32 pos = Header()->First;
-        while (pos > Header()->Next) {
+        while (pos > Header()->Next && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
         }
 
-        while (pos < Header()->Next) {
+        while (pos < Header()->Next && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
             if (!pos) {
                 // can happen if the buffer is corrupted
@@ -120,6 +132,8 @@ public:
         const ui32 realSize = sizeof(THeader) + capacity;
         if (Map.Length() < realSize) {
             Map.ResizeAndRemap(0, realSize);
+        } else {
+            Map.Map(0, realSize);
         }
 
         if (Header()->Version) {
@@ -131,6 +145,7 @@ public:
         }
 
         Data = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
+        End = Data + capacity;
 
         SkipSlackSpace();
         Visit([this] (ui32 checksum, TStringBuf entry) {
@@ -192,8 +207,21 @@ public:
         }
 
         const auto* b = Data + Header()->First;
+        if (b + sizeof(TEntryHeader) > End) {
+            // corruption
+            // TODO: report?
+            return {};
+        }
+
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-        return {b + sizeof(TEntryHeader), eh->Size};
+        TStringBuf result{b + sizeof(TEntryHeader), eh->Size};
+        if (result.Data() + result.Size() > End) {
+            // corruption
+            // TODO: report?
+            return {};
+        }
+
+        return result;
     }
 
     void Pop()
