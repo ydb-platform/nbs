@@ -266,9 +266,9 @@ struct TPipe
         R.Close();
 
         TFileHandle h {fd};
-        Y_SCOPE_EXIT(&h) { h.Release(); };
 
         h.LinkTo(W);
+        h.Release();
     }
 };
 
@@ -290,36 +290,40 @@ TChild SpawnChild(
 
     pid_t childPid = ::fork();
 
-    if (childPid == -1) {
-        int err = errno;
-        char buf[64] {};
-        ythrow TServiceError {MAKE_SYSTEM_ERROR(err)}
-            << "fork error: " << ::strerror_r(err, buf, sizeof(buf));
+    // WARNING: Don't make heap allocations here!
+    {
+        if (childPid == -1) {
+            int err = errno;
+            char buf[64]{};
+            ythrow TServiceError{MAKE_SYSTEM_ERROR(err)}
+                << "fork error: " << ::strerror_r(err, buf, sizeof(buf));
+        }
+
+        if (childPid) {
+            // Parent process.
+            return TChild{childPid, std::move(stdOut.R), std::move(stdErr.R)};
+        }
+
+        // child process
+
+        stdOut.LinkTo(STDOUT_FILENO);
+        stdErr.LinkTo(STDERR_FILENO);
+
+        // Last chance to figure out what's going on.
+        // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w",
+        // stdout); freopen((TString("/tmp/err.") +
+        // ToString(::getpid())).c_str(), "w", stderr);
+
+        // Following "const_cast"s are safe:
+        // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
+        qargs.push_back(const_cast<char*>(binaryPath.data()));
+        for (auto& arg: args) {
+            qargs.push_back(const_cast<char*>(arg.data()));
+        }
+        qargs.emplace_back();
+
+        ::execvp(binaryPath.c_str(), qargs.data());
     }
-
-    if (childPid) {
-        // Parent process.
-        return TChild {childPid, std::move(stdOut.R), std::move(stdErr.R)};
-    }
-
-    // child process
-
-    stdOut.LinkTo(STDOUT_FILENO);
-    stdErr.LinkTo(STDERR_FILENO);
-
-    // Last chance to figure out what's going on.
-    // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w", stdout);
-    // freopen((TString("/tmp/err.") + ToString(::getpid())).c_str(), "w", stderr);
-
-    // Following "const_cast"s are safe:
-    // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
-    qargs.push_back(const_cast<char*>(binaryPath.data()));
-    for (auto& arg: args) {
-        qargs.push_back(const_cast<char*>(arg.data()));
-    }
-    qargs.emplace_back();
-
-    ::execvp(binaryPath.c_str(), qargs.data());
 
     int err = errno;
     char buf[64] {};
