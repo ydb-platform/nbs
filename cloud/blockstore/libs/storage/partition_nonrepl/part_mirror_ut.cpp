@@ -448,11 +448,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(4, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * 9336,
-            counters.ReadBlocks.RequestBytes);
+            counters.ReadBlocks.RequestBytes
+        );
         UNIT_ASSERT_VALUES_EQUAL(3 * 3, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 6192,
-            counters.WriteBlocks.RequestBytes);
+            counters.WriteBlocks.RequestBytes
+        );
         UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.ZeroBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 1070,
