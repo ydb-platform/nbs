@@ -1,4 +1,3 @@
-# import os
 import pytest
 
 import yatest.common as common
@@ -82,15 +81,10 @@ def __run_test(test_case):
     client.execute_action(action="BackupPathDescriptions", input_bytes=str.encode(""))
     client.execute_action(action="BackupTabletBootInfos", input_bytes=str.encode(""))
 
-    static_pdisk_paths = []
-    for info in env.pdisks_info:
-        if info["pdisk_user_kind"] == 0:
-            static_pdisk_paths += [info["pdisk_path"]]
-    assert len(static_pdisk_paths) == 1
-
-    # Destroy static group in order to emulate emergency.
-    # TODO: survive outage of kikimr static tablets.
-    # os.remove(static_pdisk_paths[0])
+    env.kikimr_cluster.format_static_pdisks()
+    # spoil config to prevent BS Controller from starting otherwise it will
+    # erase dynamic groups data
+    env.kikimr_cluster.spoil_bs_controller_config()
     env.kikimr_cluster.restart_nodes()
 
     env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder)]

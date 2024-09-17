@@ -224,6 +224,11 @@ struct TLegacyNodeRegistrant
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
+        TMaybe<TString> path;
+        if (Options.SchemeShardDir) {
+            path = Options.SchemeShardDir;
+        }
+
         auto registrant = kikimr.GetNodeRegistrant();
         auto result = registrant.SyncRegisterNode(
             Options.Domain,
@@ -232,8 +237,8 @@ struct TLegacyNodeRegistrant
             HostAddress,
             HostName,
             Location,
-            false, //request fixed node id
-            Options.SchemeShardDir);
+            false, // fixedNodeId
+            path);
 
         if (!result.IsSuccess()) {
             return MakeError(
