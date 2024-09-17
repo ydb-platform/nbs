@@ -14,12 +14,9 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
-#include <chrono>
-
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -36,7 +33,6 @@ struct TTestCountService
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
-
         return MakeFuture(NProto::TMountVolumeResponse());
     }
 
@@ -377,9 +373,10 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             volume.MutableEncryptionDesc()->SetMode(
                 NProto::ENCRYPTION_DEFAULT_AES_XTS);
 
-            NProto::TKmsKey& kmsKey = *volume.MutableEncryptionDesc()->MutableKmsKey();
-            kmsKey.SetKekId(kekId);
-            kmsKey.SetEncryptedDEK(encryptedDEK);
+            NProto::TKmsKey& key =
+                *volume.MutableEncryptionDesc()->MutableEncryptedDEK();
+            key.SetKekId(kekId);
+            key.SetEncryptedDEK(encryptedDEK);
 
             return MakeFuture(response);
         };
@@ -394,7 +391,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TCreateVolumeRequest>());
 
-            const auto& response = future.GetValue(5s);
+            const auto& response = future.GetValueSync();
             UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
 
@@ -407,7 +404,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
                 MakeIntrusive<TCallContext>(),
                 std::move(request));
 
-            const auto& response = future.GetValue(5s);
+            const auto& response = future.GetValueSync();
             UNIT_ASSERT_C(!HasError(response), response.GetError());
             UNIT_ASSERT(keyRequested);
         }

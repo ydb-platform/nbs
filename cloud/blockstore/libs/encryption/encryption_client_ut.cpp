@@ -14,12 +14,10 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
-#include <chrono>
 
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -1300,8 +1298,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
                 NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
                 desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-                desc.MutableKmsKey()->SetKekId(KekId);
-                desc.MutableKmsKey()->SetEncryptedDEK(EncryptionKey);
+                desc.MutableEncryptedDEK()->SetKekId(KekId);
+                desc.MutableEncryptedDEK()->SetEncryptedDEK(EncryptionKey);
 
                 return MakeFuture(std::move(response));
             };
@@ -1353,7 +1351,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 auto future = encryptionClient->ReadBlocks(
                     MakeIntrusive<TCallContext>(),
                     std::move(request));
-                const auto& response = future.GetValue(5s);
+                const auto& response = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response.GetError().GetCode(),
@@ -1381,7 +1379,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 auto future = encryptionClient->ReadBlocksLocal(
                     MakeIntrusive<TCallContext>(),
                     std::move(request));
-                auto response = future.GetValue(5s);
+                auto response = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response.GetError().GetCode(),
@@ -1451,7 +1449,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 auto future = encryptionClient->ReadBlocks(
                     MakeIntrusive<TCallContext>(),
                     std::move(request));
-                const auto& response = future.GetValue(5s);
+                const auto& response = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response.GetError().GetCode(),
@@ -1479,7 +1477,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 auto future = encryptionClient->ReadBlocksLocal(
                     MakeIntrusive<TCallContext>(),
                     std::move(request));
-                auto response = future.GetValue(5s);
+                auto response = future.GetValueSync();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response.GetError().GetCode(),

@@ -796,7 +796,7 @@ private:
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }
 
-        if (!desc.HasKmsKey()) {
+        if (!desc.HasEncryptedDEK()) {
             return MakeFuture<TResultOrError<IBlockStorePtr>>(
                 MakeError(E_ARGUMENT, "Empty KmsKey"));
         }
@@ -807,7 +807,8 @@ private:
 
         NProto::TEncryptionSpec spec;
         spec.SetMode(desc.GetMode());
-        spec.MutableKeyPath()->MutableKmsKey()->CopyFrom(desc.GetKmsKey());
+        spec.MutableKeyPath()->MutableKmsKey()->CopyFrom(
+            desc.GetEncryptedDEK());
 
         return KeyProvider->GetKey(spec, volume.GetDiskId())
             .Apply(

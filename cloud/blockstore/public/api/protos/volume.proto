@@ -165,7 +165,7 @@ message TEncryptionDesc
 {
     EEncryptionMode Mode = 1;
     bytes KeyHash = 2;
-    TKmsKey KmsKey = 3;
+    TKmsKey EncryptedDEK = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
