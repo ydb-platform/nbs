@@ -136,17 +136,18 @@ func sleepRandomDuration() {
 	time.Sleep(durations[math_rand.Intn(len(durations))])
 }
 func TestYdbHangingRequest(t *testing.T) {
+	randomDataToWrite := make([][]byte, 0, 10)
+	for i := 0; i < cap(randomDataToWrite); i++ {
+		randomDataToWrite = append(
+			randomDataToWrite,
+			randomData(4096*1024, t),
+		)
+	}
+
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
 			defer f.cancel()
-			randomDataToWrite := make([][]byte, 0, 10)
-			for i := 0; i < cap(randomDataToWrite); i++ {
-				randomDataToWrite = append(
-					randomDataToWrite,
-					randomData(4096*1024, t),
-				)
-			}
 			launchAndCancelParallelTransactions(f, randomDataToWrite)
 			waitForTransactionsHanging(f, randomDataToWrite)
 		}()
