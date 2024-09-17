@@ -148,6 +148,7 @@ func TestYdbHangingRequest(t *testing.T) {
 		func() {
 			f := newYdbTestFixture(t)
 			defer f.cancel()
+			f.initSchema()
 			launchAndCancelParallelTransactions(f, randomDataToWrite)
 			waitForTransactionsHanging(f, randomDataToWrite)
 		}()
