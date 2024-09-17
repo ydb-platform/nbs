@@ -75,12 +75,16 @@ private:
 
     void SkipSlackSpace()
     {
-        if (!Empty()) {
-            const auto* b = Data + Header()->First;
-            const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-            if (eh->Size == 0) {
-                Header()->First = 0;
-            }
+        if (Header()->First == Header()->Next) {
+            Header()->First = 0;
+            Header()->Next = 0;
+            return;
+        }
+
+        const auto* b = Data + Header()->First;
+        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
+        if (eh->Size == 0) {
+            Header()->First = 0;
         }
     }
 
@@ -127,8 +131,10 @@ private:
 public:
     TFileRingBuffer(const TString& filePath, ui32 capacity, ui32 maxEntrySize)
         : Map(filePath, TMemoryMapCommon::oRdWr)
-        , MaxEntrySize(sizeof(TEntryHeader) + maxEntrySize)
+        , MaxEntrySize(maxEntrySize)
     {
+        Y_ABORT_UNLESS(MaxEntrySize + sizeof(TEntryHeader) <= capacity);
+
         const ui32 realSize = sizeof(THeader) + capacity;
         if (Map.Length() < realSize) {
             Map.ResizeAndRemap(0, realSize);
@@ -158,11 +164,11 @@ public:
 public:
     bool Push(TStringBuf data)
     {
-        const auto sz = data.Size() + sizeof(TEntryHeader);
-        if (data.Empty() || sz > MaxEntrySize) {
+        if (data.Empty() || data.Size() > MaxEntrySize) {
             return false;
         }
 
+        const auto sz = data.Size() + sizeof(TEntryHeader);
         auto* ptr = Data + Header()->Next;
 
         if (!Empty()) {
@@ -237,14 +243,16 @@ public:
         SkipSlackSpace();
     }
 
-    ui64 Size() const
+    ui32 Size() const
     {
         return Count;
     }
 
     bool Empty() const
     {
-        return Size() == 0;
+        const bool result = Header()->First == Header()->Next;
+        Y_DEBUG_ABORT_UNLESS(result == (Count == 0));
+        return result;
     }
 
     auto Validate() const
