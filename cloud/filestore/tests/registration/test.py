@@ -88,7 +88,6 @@ def setup_kikimr(is_secure_kikimr):
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
-        has_cluster_uuid=False,
         use_in_memory_pdisks=True,
         grpc_ssl_enable=is_secure_kikimr,
         dynamic_storage_pools=[
