@@ -383,7 +383,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return err
 	}
 
-	if mnt.VolumeMountGroup != "" {
+	if mnt != nil && mnt.VolumeMountGroup != "" {
 		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
