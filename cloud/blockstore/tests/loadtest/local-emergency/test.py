@@ -82,6 +82,8 @@ def __run_test(test_case):
     client.execute_action(action="BackupTabletBootInfos", input_bytes=str.encode(""))
 
     env.kikimr_cluster.format_static_pdisks()
+    # spoil config to prevent BS Controller from starting otherwise it will
+    # erase dynamic groups data
     env.kikimr_cluster.spoil_bs_controller_config()
     env.kikimr_cluster.restart_nodes()
 
