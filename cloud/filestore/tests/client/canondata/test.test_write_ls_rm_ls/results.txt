@@ -1,4 +1,4 @@
-Id Type Name Mode Uid Gid ATime MTime CTime Size Links FollowerFileSystemId FollowerNodeName
+Id Type Name Mode Uid Gid ATime MTime CTime Size Links
 
 [
     {

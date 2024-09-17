@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 import yatest.common as common
 
@@ -152,6 +153,36 @@ def test_stat():
 
     with open(results_path, "w") as results_file:
         json.dump(stat, results_file, indent=4)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_ls():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    out = client.ls("fs0", "/")
+    client.mkdir("fs0", "/aaa")
+    out += client.ls("fs0", "/")
+    out += client.ls("fs0", "/aaa")
+    client.mkdir("fs0", "/bbb")
+    client.touch("fs0", "/first")
+    node_id = json.loads(client.stat("fs0", "/first"))["Id"]
+    client.set_node_attr(
+        "fs0", node_id, "--uid", 10, "--gid", 20, "--size", 123, "--mode", 221
+    )
+    out += client.ls("fs0", "/")
+    # replace timestamps with a constant value
+    out = re.sub(
+        rb"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)",
+        b"1970-01-01T00:00:00Z",
+        out,
+    )
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
 
     ret = common.canonical_file(results_path, local=True)
     return ret
