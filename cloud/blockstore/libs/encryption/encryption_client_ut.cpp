@@ -1298,8 +1298,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
                 NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
                 desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-                desc.MutableEncryptedDEK()->SetKekId(KekId);
-                desc.MutableEncryptedDEK()->SetEncryptedDEK(EncryptionKey);
+                desc.MutableEncryptionKey()->SetKekId(KekId);
+                desc.MutableEncryptionKey()->SetEncryptedDEK(EncryptionKey);
 
                 return MakeFuture(std::move(response));
             };

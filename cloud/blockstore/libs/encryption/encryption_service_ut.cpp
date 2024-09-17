@@ -374,7 +374,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
                 NProto::ENCRYPTION_DEFAULT_AES_XTS);
 
             NProto::TKmsKey& key =
-                *volume.MutableEncryptionDesc()->MutableEncryptedDEK();
+                *volume.MutableEncryptionDesc()->MutableEncryptionKey();
             key.SetKekId(kekId);
             key.SetEncryptedDEK(encryptedDEK);
 
