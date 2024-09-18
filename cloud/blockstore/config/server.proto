@@ -221,6 +221,8 @@ message TNullServiceConfig
 message TLocalServiceConfig
 {
     optional string DataDir = 1;
+    // Shutdown timeout (in milliseconds).
+    optional uint32 ShutdownTimeout = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -71,7 +71,8 @@ struct TMountSession
             TString clientId,
             NProto::EVolumeAccessMode accessMode,
             IStoragePtr storage,
-            ui32 blockSize)
+            ui32 blockSize,
+            TDuration storageShutdownTimeout)
         : SessionId(CreateGuidAsString())
         , ClientId(std::move(clientId))
         , AccessMode(accessMode)
@@ -81,8 +82,7 @@ struct TMountSession
               blockSize,
               true,                // normalize,
               TDuration::Zero(),   // maxRequestDuration
-              TDuration::Zero()    // shutdownTimeout
-              ))
+              storageShutdownTimeout))
     {}
 };
 
@@ -105,14 +105,16 @@ struct TMountedVolume
     TMountSessionPtr CreateSession(
         TString clientId,
         NProto::EVolumeAccessMode accessMode,
-        IStoragePtr storage)
+        IStoragePtr storage,
+        TDuration storageShutdownTimeout)
     {
         with_lock (SessionLock) {
             auto session = std::make_shared<TMountSession>(
                 std::move(clientId),
                 accessMode,
                 std::move(storage),
-                Volume.GetBlockSize());
+                Volume.GetBlockSize(),
+                storageShutdownTimeout);
 
             Sessions.emplace(session->SessionId, session);
             return session;
@@ -157,14 +159,19 @@ class TVolumeManager
 {
 private:
     const TString DataDir;
+    const TDuration StorageShutdownTimeout;
     const IStorageProviderPtr StorageProvider;
 
     TMountedVolumeMap MountedVolumes;
     TMutex MountLock;
 
 public:
-    TVolumeManager(const TString& dataDir, IStorageProviderPtr storageProvider)
+    TVolumeManager(
+            const TString& dataDir,
+            TDuration storageShutdownTimeout,
+            IStorageProviderPtr storageProvider)
         : DataDir(dataDir ? dataDir : NFs::CurrentWorkingDirectory())
+        , StorageShutdownTimeout(storageShutdownTimeout)
         , StorageProvider(std::move(storageProvider))
     {}
 
@@ -235,7 +242,10 @@ public:
                     std::make_unique<TStorageAdapter>(
                         session.second->Storage,
                         volume.GetBlockSize(),
-                        true);
+                        true,
+                        0,
+                        TDuration::Zero(),
+                        StorageShutdownTimeout);
             }
         }
     }
@@ -291,26 +301,29 @@ public:
         NProto::TVolume volume = mountedVolume->Volume;
         volume.SetDiskId(dataPath);
         return StorageProvider->CreateStorage(volume, clientId, accessMode)
-            .Apply([=] (const auto& future) {
-                auto storage = future.GetValue();
-                if (!storage) {
+            .Apply(
+                [this, mountedVolume, clientId, accessMode](const auto& future)
+                {
+                    auto storage = future.GetValue();
+                    if (!storage) {
+                        NProto::TMountVolumeResponse response;
+                        auto& error = *response.MutableError();
+                        error.SetCode(E_FAIL);
+                        error.SetMessage("Failed to create storage");
+                        return response;
+                    }
+
+                    auto session = mountedVolume->CreateSession(
+                        clientId,
+                        accessMode,
+                        std::move(storage),
+                        StorageShutdownTimeout);
+
                     NProto::TMountVolumeResponse response;
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_FAIL);
-                    error.SetMessage("Failed to create storage");
+                    response.SetSessionId(session->SessionId);
+                    *response.MutableVolume() = mountedVolume->Volume;
                     return response;
-                }
-
-                auto session = mountedVolume->CreateSession(
-                    clientId,
-                    accessMode,
-                    std::move(storage));
-
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(session->SessionId);
-                *response.MutableVolume() = mountedVolume->Volume;
-                return response;
-            });
+                });
     }
 
     void UnmountVolume(const TString& diskId, const TString& sessionId)
@@ -391,6 +404,8 @@ struct TLocalServiceBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const ui32 kDefaultStorageShutdownTimeoutInMiliseconds = 60000;
+
 class TLocalService final
     : public TLocalServiceBase
 {
@@ -404,7 +419,13 @@ public:
             IDiscoveryServicePtr discoveryService,
             IStorageProviderPtr storageProvider)
         : DiscoveryService(std::move(discoveryService))
-        , VolumeManager(config.GetDataDir(), std::move(storageProvider))
+        , VolumeManager(
+              config.GetDataDir(),
+              TDuration::MilliSeconds(
+                  config.HasShutdownTimeout()
+                      ? config.GetShutdownTimeout()
+                      : kDefaultStorageShutdownTimeoutInMiliseconds),
+              std::move(storageProvider))
     {}
 
     void Start() override {}
