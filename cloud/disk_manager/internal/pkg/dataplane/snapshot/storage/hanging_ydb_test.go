@@ -3,9 +3,9 @@ package storage
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	mathrand "math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,8 +100,15 @@ func (f *ydbTestFixture) writeChunkData(
 			persistence.StringValue(dataToWrite),
 		),
 	)
+	if err == nil {
+		return err
+	}
 
-	if errors.Is(err, context.Canceled) {
+	if strings.Contains(err.Error(), "context deadline exceeded") {
+		return nil
+	}
+
+	if strings.Contains(err.Error(), "context canceled") {
 		return nil
 	}
 
