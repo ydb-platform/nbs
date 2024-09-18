@@ -49,7 +49,6 @@ func tableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("shard_id", optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_id", optional(persistence.TypeUTF8)),
-		persistence.WithColumn("referer", optional(persistence.TypeUTF8)),
 		persistence.WithColumn("data", optional(persistence.TypeString)),
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(5),
@@ -83,13 +82,11 @@ func (f *ydbTestFixture) writeChunkData(
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $shard_id as Uint64;
-		declare $referer as Utf8;
 		declare $chunk_id as Utf8;
 		declare $data as String;
 
-		upsert into %v (shard_id, chunk_id, referer, data)
-		values
-			($shard_id, $chunk_id, "", $data)
+		upsert into %v (shard_id, chunk_id, data)
+		values ($shard_id, $chunk_id, $data)
 	`, f.db.AbsolutePath(f.folder), f.table),
 		persistence.ValueParam(
 			"$shard_id", persistence.Uint64Value(uint64(chunkIndex))),
@@ -97,7 +94,6 @@ func (f *ydbTestFixture) writeChunkData(
 			"$chunk_id",
 			persistence.UTF8Value(fmt.Sprintf("chunk_%d", chunkIndex)),
 		),
-		persistence.ValueParam("$referer", persistence.UTF8Value("sdsdsdsd")),
 		persistence.ValueParam(
 			"$data",
 			persistence.StringValue(dataToWrite),
