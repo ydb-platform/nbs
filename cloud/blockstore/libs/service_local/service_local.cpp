@@ -404,7 +404,7 @@ struct TLocalServiceBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const ui32 kDefaultStorageShutdownTimeoutInMiliseconds = 60000;
+const ui32 kDefaultStorageShutdownTimeoutInMilliseconds = 60000;
 
 class TLocalService final
     : public TLocalServiceBase
@@ -424,7 +424,7 @@ public:
               TDuration::MilliSeconds(
                   config.HasShutdownTimeout()
                       ? config.GetShutdownTimeout()
-                      : kDefaultStorageShutdownTimeoutInMiliseconds),
+                      : kDefaultStorageShutdownTimeoutInMilliseconds),
               std::move(storageProvider))
     {}
 
