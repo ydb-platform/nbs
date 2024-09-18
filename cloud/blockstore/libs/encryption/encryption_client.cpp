@@ -22,15 +22,15 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponse>
-TFuture<TResponse> FutureErrorResponse(ui32 code, TString message)
+TFuture<TResponse> MakeFutureErrorResponse(ui32 code, TString message)
 {
     return MakeFuture(ErrorResponse<TResponse>(code, std::move(message)));
 }
 
 template <typename TResponse>
-TFuture<TResponse> FutureErrorResponse(NProto::TError error)
+TFuture<TResponse> MakeFutureErrorResponse(NProto::TError error)
 {
-    return FutureErrorResponse<TResponse>(
+    return MakeFutureErrorResponse<TResponse>(
         error.GetCode(),
         std::move(*error.MutableMessage()));
 }
@@ -232,7 +232,7 @@ TFuture<NProto::TMountVolumeResponse> TEncryptionClient::MountVolume(
 {
     auto& encryption = *request->MutableEncryptionSpec();
     if (encryption.GetKeyHash()) {
-        return FutureErrorResponse<NProto::TMountVolumeResponse>(
+        return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             "More than one encryption layer on data path");
     }
@@ -279,7 +279,7 @@ TFuture<NProto::TReadBlocksResponse> TEncryptionClient::ReadBlocks(
     std::shared_ptr<NProto::TReadBlocksRequest> request)
 {
     if (request->GetBlocksCount() == 0 || BlockSize == 0) {
-        return FutureErrorResponse<NProto::TReadBlocksResponse>(
+        return MakeFutureErrorResponse<NProto::TReadBlocksResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
@@ -361,7 +361,7 @@ TFuture<NProto::TWriteBlocksResponse> TEncryptionClient::WriteBlocks(
     std::shared_ptr<NProto::TWriteBlocksRequest> request)
 {
     if (request->GetBlocks().GetBuffers().size() == 0 || BlockSize == 0) {
-        return FutureErrorResponse<NProto::TWriteBlocksResponse>(
+        return MakeFutureErrorResponse<NProto::TWriteBlocksResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
@@ -386,7 +386,7 @@ TFuture<NProto::TWriteBlocksResponse> TEncryptionClient::WriteBlocks(
         request->GetStartIndex());
 
     if (HasError(err)) {
-        return FutureErrorResponse<NProto::TWriteBlocksResponse>(
+        return MakeFutureErrorResponse<NProto::TWriteBlocksResponse>(
             std::move(err));
     }
 
@@ -403,7 +403,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
     if (request->GetBlocksCount() == 0 || request->BlockSize == 0) {
-        return FutureErrorResponse<NProto::TReadBlocksLocalResponse>(
+        return MakeFutureErrorResponse<NProto::TReadBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
@@ -504,14 +504,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
     if (request->BlocksCount == 0 || request->BlockSize == 0) {
-        return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
+        return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {
-        return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
+        return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             E_CANCELLED,
             "failed to acquire sglist in EncryptionClient");
     }
@@ -549,7 +549,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
         request->GetStartIndex());
 
     if (HasError(err)) {
-        return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
+        return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             std::move(err));
     }
 
@@ -578,7 +578,7 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
     if (request->GetBlocksCount() == 0 || BlockSize == 0) {
-        return FutureErrorResponse<NProto::TZeroBlocksResponse>(
+        return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
@@ -723,7 +723,7 @@ public:
         if (request->HasEncryptionSpec() &&
             request->GetEncryptionSpec().GetMode() != NProto::NO_ENCRYPTION)
         {
-            return FutureErrorResponse<NProto::TMountVolumeResponse>(
+            return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
                 E_INVALID_STATE,
                 "More than one encryption layer on data path");
         }
@@ -741,7 +741,7 @@ public:
 
             auto ptr = weakPtr.lock();
             if (!ptr) {
-                return FutureErrorResponse<NProto::TMountVolumeResponse>(
+                return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
                     E_REJECTED,
                     "Encryption client is destroyed after MountVolume");
             }
@@ -765,13 +765,14 @@ private:
             {
                 auto [client, error] = f.GetValue();
                 if (HasError(error)) {
-                    return FutureErrorResponse<NProto::TMountVolumeResponse>(
-                        std::move(error));
+                    return MakeFutureErrorResponse<
+                        NProto::TMountVolumeResponse>(std::move(error));
                 }
 
                 auto ptr = weakPtr.lock();
                 if (!ptr) {
-                    return FutureErrorResponse<NProto::TMountVolumeResponse>(
+                    return MakeFutureErrorResponse<
+                        NProto::TMountVolumeResponse>(
                         E_REJECTED,
                         "Encryption client is destroyed after MountVolume");
                 }
@@ -889,7 +890,7 @@ TFuture<NProto::TMountVolumeResponse> TSnapshotEncryptionClient::MountVolume(
     if (encryption.GetKeyHash() &&
         encryption.GetKeyHash() != EncryptionDesc.GetKeyHash())
     {
-        return FutureErrorResponse<NProto::TMountVolumeResponse>(
+        return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             TStringBuilder() << "Invalid mount encryption key hash"
                 << ", actual " << encryption.GetKeyHash()
@@ -985,7 +986,7 @@ TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
     Y_UNUSED(callContext);
     Y_UNUSED(request);
 
-    return FutureErrorResponse<NProto::TZeroBlocksResponse>(
+    return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
         E_NOT_IMPLEMENTED,
         "ZeroBlocks requests not supported by snapshot encryption client");
 }
