@@ -2,9 +2,7 @@ package storage
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	mathrand "math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -63,7 +62,7 @@ func (f *ydbTestFixture) initSchema() {
 		f.folder,
 		f.table,
 		tableDescription(),
-		false,
+		false, // dropUnusedColumns
 	)
 	require.NoError(f.t, err)
 }
@@ -76,9 +75,9 @@ func (f *ydbTestFixture) close() {
 func (f *ydbTestFixture) writeChunkData(
 	ctx context.Context,
 	chunkIndex int,
-	dataToWrite []byte,
 ) error {
 
+	dataToWrite := make([]byte, 4096*1024)
 	_, err := f.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -117,45 +116,20 @@ func (f *ydbTestFixture) writeChunkData(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func randomData(size int, t *testing.T) []byte {
-	data := make([]byte, size)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
-	return data
-}
-
-func sleepRandomDuration() {
-	durations := []time.Duration{
-		10 * time.Millisecond,
-		50 * time.Millisecond,
-		100 * time.Millisecond,
-		500 * time.Millisecond,
-	}
-
-	time.Sleep(durations[mathrand.Intn(len(durations))])
-}
-func TestYdbHangingRequest(t *testing.T) {
-	randomDataToWrite := make([][]byte, 0, 10)
-	for i := 0; i < cap(randomDataToWrite); i++ {
-		randomDataToWrite = append(
-			randomDataToWrite,
-			randomData(4096*1024, t),
-		)
-	}
-
+func TestYDBRequestDoesNotHang(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
 			defer f.cancel()
 			f.initSchema()
-			launchAndCancelParallelTransactions(f, randomDataToWrite)
-			waitForTransactionsHanging(f, randomDataToWrite)
+			launchAndCancelParallelTransactions(f)
+			waitForTransactionsHanging(f)
 		}()
 	}
 
 }
 
-func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
+func waitForTransactionsHanging(f *ydbTestFixture) {
 	logging.Info(f.ctx, "Next transactions can be hanging")
 	transactionDuration := time.Minute * 3
 	secondContext, secondCancelFunc := context.WithTimeout(
@@ -165,13 +139,12 @@ func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
 	defer secondCancelFunc()
 	var errGrp errgroup.Group
 
-	for chunkInd := 100; chunkInd < 200; chunkInd++ {
-		chunkIndex := chunkInd
+	for chunkIdex := 100; chunkIdex < 200; chunkIdex++ {
+		chunkIndex := chunkIdex
 		errGrp.Go(
 			func() error {
 				now := time.Now()
-				dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
-				err := f.writeChunkData(secondContext, chunkIndex, dataToWrite)
+				err := f.writeChunkData(secondContext, chunkIndex)
 				if err != nil {
 					return err
 				}
@@ -194,24 +167,20 @@ func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
 	require.NoError(f.t, errGrp.Wait())
 }
 
-func launchAndCancelParallelTransactions(
-	f *ydbTestFixture,
-	randomDataToWrite [][]byte,
-) {
+func launchAndCancelParallelTransactions(f *ydbTestFixture) {
 
 	var errGrp errgroup.Group
 	ctx, cancel := context.WithCancel(f.ctx)
-	for chunkInd := 0; chunkInd < 100; chunkInd++ {
-		chunkIndex := chunkInd
+	for chunkIdex := 0; chunkIdex < 100; chunkIdex++ {
+		chunkIndex := chunkIdex
 		errGrp.Go(
 			func() error {
-				dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
-				return f.writeChunkData(ctx, chunkIndex, dataToWrite)
+				return f.writeChunkData(ctx, chunkIndex)
 			},
 		)
 	}
 
-	sleepRandomDuration()
+	time.Sleep(common.RandomDuration(10*time.Millisecond, 500*time.Millisecond))
 	cancel()
 	require.NoError(f.t, errGrp.Wait())
 }
