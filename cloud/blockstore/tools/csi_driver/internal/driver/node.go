@@ -361,6 +361,10 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
+	if err := s.createDummyImgFile(endpointDir); err != nil {
+		return err
+	}
+
 	return s.mountSocketDir(req)
 }
 
@@ -511,6 +515,10 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return fmt.Errorf("failed to start NFS endpoint: %w", err)
 	}
 
+	if err := s.createDummyImgFile(endpointDir); err != nil {
+		return err
+	}
+
 	return s.mountSocketDir(req)
 }
 
@@ -564,10 +572,6 @@ func (s *nodeService) nodeUnpublishVolume(
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
 	endpointDir := filepath.Join(s.socketsDir, s.getPodId(req), req.VolumeId)
-
-	if err := s.createDummyImgFile(endpointDir); err != nil {
-		return err
-	}
 
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
