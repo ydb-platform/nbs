@@ -1572,7 +1572,7 @@ struct TTxIndexTablet
         const ui64 ChunkId;
         const TVector<TBytes> Bytes;
 
-        ui64 CollectCommitId = InvalidCommitId;
+        ui64 CommitId = InvalidCommitId;
 
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
@@ -1593,7 +1593,7 @@ struct TTxIndexTablet
         {
             TProfileAware::Clear();
 
-            CollectCommitId = InvalidCommitId;
+            CommitId = InvalidCommitId;
         }
     };
 
