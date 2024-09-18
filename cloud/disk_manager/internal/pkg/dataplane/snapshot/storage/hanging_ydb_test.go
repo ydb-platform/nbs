@@ -53,7 +53,7 @@ func tableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func initSchema(t *testing.T) {
+func setup(t *testing.T) {
 	f := newYdbTestFixture(t)
 	err := f.db.CreateOrAlterTable(
 		f.ctx,
@@ -116,13 +116,23 @@ func errorIsContextCancelled(err error) bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
-	initSchema(t)
+	setup(t)
+	// Test that the issue with hanging transactions to ydb after
+	// parallel requests writing external blobs are cancelled.
+	// See: https://github.com/ydb-platform/ydb-go-sdk/issues/1025
+	// See: https://github.com/ydb-platform/nbs/issues/501
+	// We need 50 iteration to guarantee for the bug to reproduce,
+	// usually it takes less iterations.
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
 			defer f.teardown()
 			var errGrp errgroup.Group
 			ctx, cancel := context.WithCancel(f.ctx)
+			logging.Info(
+				ctx,
+				"Writing 100 chunks in parallel and cancelling the context",
+			)
 			for chunkIdex := 0; chunkIdex < 100; chunkIdex++ {
 				chunkIndex := chunkIdex
 				errGrp.Go(
@@ -149,7 +159,11 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 			)
 			cancel()
 			require.NoError(f.t, errGrp.Wait())
-			logging.Info(f.ctx, "Next transactions can be hanging")
+
+			logging.Info(
+				f.ctx,
+				"Write 100 more chunks to ensure that transactions do not hang",
+			)
 			transactionDuration := time.Minute * 3
 			secondContext, secondCancelFunc := context.WithTimeout(
 				f.ctx,
@@ -173,7 +187,7 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 						duration := time.Now().Sub(now)
 						logging.Info(
 							f.ctx,
-							"Request for %d transaction been executed for %v",
+							"Transaction with index %d took %v",
 							chunkIndex,
 							duration,
 						)
