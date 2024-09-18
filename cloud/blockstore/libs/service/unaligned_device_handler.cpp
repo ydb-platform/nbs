@@ -287,15 +287,9 @@ void TWriteRequest::DoPostpone()
 void TWriteRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto result = DoExecute();
-    result.Subscribe(
-        [weakPtr = weak_from_this()](const TResponseFuture& f)
-        {
-            if (auto self = weakPtr.lock()) {
-                static_cast<TWriteRequest*>(self.get())
-                    ->Promise.SetValue(f.GetValue());
-            }
-        });
+    auto future = DoExecute();
+    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
+                     { promise.SetValue(f.GetValue()); });
 }
 
 TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
@@ -398,15 +392,9 @@ void TZeroRequest::DoPostpone()
 void TZeroRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto result = DoExecute();
-    result.Subscribe(
-        [weakPtr = weak_from_this()](const TResponseFuture& f)
-        {
-            if (auto self = weakPtr.lock()) {
-                static_cast<TZeroRequest*>(self.get())
-                    ->Promise.SetValue(f.GetValue());
-            }
-        });
+    auto future = DoExecute();
+    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
+                     { promise.SetValue(f.GetValue()); });
 }
 
 TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
@@ -689,7 +677,9 @@ void TUnalignedDeviceHandler::OnRequestFinished(
         } else {
             UnalignedRequests.erase(request->GetIt());
         }
+        // Here we reset the last reference to the request.
         request.reset();
+        Y_DEBUG_ABORT_UNLESS(weakRequest.expired());
 
         collectReadyToRunRequests(UnalignedRequests);
         if (!isAligned) {
