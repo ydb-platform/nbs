@@ -376,8 +376,6 @@ public:
         switch (mediaKind) {
             case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
                 return RdmaSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD:
-                return InterconnectSsdNonrepl;
             case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
                 return RdmaHddNonrepl;
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
@@ -385,12 +383,12 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
                 return RdmaSsdMirror3;
             default: {
+                Y_ABORT(
+                    "unsupported media kind: %u, transport counters can only "
+                    "be used with disk registry based volumes",
+                    static_cast<ui32>(mediaKind));
             }
         }
-        Y_ABORT(
-            "unsupported media kind: %u, transport counters can only be "
-            "used with disk registry based volumes",
-            static_cast<ui32>(mediaKind));
     }
 
     TTransportCounters& GetInterconnectCounter(
@@ -399,8 +397,6 @@ public:
         switch (mediaKind) {
             case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
                 return InterconnectSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD:
-                return InterconnectSsdNonrepl;
             case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
                 return InterconnectHddNonrepl;
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
@@ -408,12 +404,12 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
                 return InterconnectSsdMirror3;
             default: {
+                Y_ABORT(
+                    "unsupported media kind: %u, transport counters can only "
+                    "be used with disk registry based volumes",
+                    static_cast<ui32>(mediaKind));
             }
         }
-        Y_ABORT(
-            "unsupported media kind: %u, transport counters can only be "
-            "used with disk registry based volumes",
-            static_cast<ui32>(mediaKind));
     }
 
     TVolumeRequestCounters& GetLocalVolumesCounters()
