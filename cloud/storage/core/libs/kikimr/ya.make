@@ -4,6 +4,7 @@ SRCS(
     actorsystem.cpp
     components.cpp
     components_start.cpp
+    config_dispatcher_helpers.cpp
     config_initializer.cpp
     events.cpp
     helpers.cpp
@@ -19,6 +20,7 @@ PEERDIR(
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/protos
 
     library/cpp/getopt/small
     library/cpp/lwtrace
@@ -30,6 +32,7 @@ PEERDIR(
     contrib/ydb/library/keys
 
     contrib/ydb/core/base
+    contrib/ydb/core/config/init
     contrib/ydb/core/mind
     contrib/ydb/core/protos
     contrib/ydb/core/tx/coordinator

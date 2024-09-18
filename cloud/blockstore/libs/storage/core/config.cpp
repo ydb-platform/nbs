@@ -123,6 +123,11 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(ConfigDispatcherTrackedConfigs,             TVector<ui32>,      {}    )\
+    xxx(ConfigDispatcherTrackedConfigs,             TVector<TString>,   {}    )\
+    xxx(YdbConfigDispatcherSettings,                                           \
+        NCloud::NProto::TYdbConfigDispatcherSettings,                          \
+        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -596,6 +601,12 @@ bool IsEmpty(const T& t)
     return !t;
 }
 
+template <>
+bool IsEmpty(const NCloud::NProto::TYdbConfigDispatcherSettings& value)
+{
+    return value.HasAllowList() || value.HasDenyList();
+}
+
 template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 {
@@ -606,6 +617,12 @@ template <>
 bool IsEmpty(const NCloud::NProto::TCertificate& value)
 {
     return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
+{
+    return value.empty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

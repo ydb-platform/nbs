@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     csi_driver
+    config-dispatcher
     disk_agent_config
     external_endpoint
     e2e-tests

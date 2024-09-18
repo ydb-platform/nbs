@@ -11,6 +11,7 @@ namespace NCloud {
     xxx(HiveProxyConcurrentLockError)                                          \
     xxx(BackupTabletBootInfosFailure)                                          \
     xxx(MlockFailed)                                                           \
+    xxx(ConfigDispatcherItemParseError)                                        \
 // STORAGE_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

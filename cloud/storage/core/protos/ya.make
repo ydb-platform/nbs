@@ -17,6 +17,7 @@ SRCS(
     tablet.proto
     throttler.proto
     trace.proto
+    ydb_config_dispatcher_settings.proto
 )
 
 END()
