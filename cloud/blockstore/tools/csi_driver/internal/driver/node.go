@@ -889,10 +889,9 @@ func (s *nodeService) NodeExpandVolume(
 
 	log.Printf("Resize volume id %v blocks count %v", req.VolumeId, newBlocksCount)
 	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
-		DiskId:             req.VolumeId,
-		BlocksCount:        newBlocksCount,
-		ConfigVersion:      resp.Volume.ConfigVersion,
-		PerformanceProfile: resp.Volume.PerformanceProfile,
+		DiskId:        req.VolumeId,
+		BlocksCount:   newBlocksCount,
+		ConfigVersion: resp.Volume.ConfigVersion,
 	})
 
 	if err != nil {
