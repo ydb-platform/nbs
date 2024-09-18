@@ -3,13 +3,14 @@ package storage
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
-	math_rand "math/rand"
-	"sync"
+	mathrand "math/rand"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -76,9 +77,9 @@ func (f *ydbTestFixture) writeChunkData(
 	ctx context.Context,
 	chunkIndex int,
 	dataToWrite []byte,
-) {
+) error {
 
-	f.db.ExecuteRW(ctx, fmt.Sprintf(`
+	_, err := f.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $shard_id as Uint64;
@@ -99,6 +100,12 @@ func (f *ydbTestFixture) writeChunkData(
 			persistence.StringValue(dataToWrite),
 		),
 	)
+
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
+	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +125,7 @@ func sleepRandomDuration() {
 		500 * time.Millisecond,
 	}
 
-	time.Sleep(durations[math_rand.Intn(len(durations))])
+	time.Sleep(durations[mathrand.Intn(len(durations))])
 }
 func TestYdbHangingRequest(t *testing.T) {
 	randomDataToWrite := make([][]byte, 0, 10)
@@ -142,7 +149,6 @@ func TestYdbHangingRequest(t *testing.T) {
 }
 
 func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
-	var wg sync.WaitGroup
 	logging.Info(f.ctx, "Next transactions can be hanging")
 	transactionDuration := time.Minute * 3
 	secondContext, secondCancelFunc := context.WithTimeout(
@@ -150,28 +156,35 @@ func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
 		transactionDuration,
 	)
 	defer secondCancelFunc()
+	var errGrp errgroup.Group
 
 	for chunkInd := 100; chunkInd < 200; chunkInd++ {
-		wg.Add(1)
-		go func(chunkIndex int) {
-			now := time.Now()
-			dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
-			f.writeChunkData(secondContext, chunkIndex, dataToWrite)
-			duration := time.Now().Sub(now)
-			logging.Info(
-				f.ctx,
-				"Request for %d transaction been executed for %v",
-				chunkIndex,
-				duration,
-			)
-			if duration > transactionDuration {
-				panic("Hanging request to YDB")
-			}
+		chunkIndex := chunkInd
+		errGrp.Go(
+			func() error {
+				now := time.Now()
+				dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
+				err := f.writeChunkData(secondContext, chunkIndex, dataToWrite)
+				if err != nil {
+					return err
+				}
 
-			wg.Done()
-		}(chunkInd)
+				duration := time.Now().Sub(now)
+				logging.Info(
+					f.ctx,
+					"Request for %d transaction been executed for %v",
+					chunkIndex,
+					duration,
+				)
+				if duration > transactionDuration {
+					return fmt.Errorf("hanging request to YDB")
+				}
+
+				return nil
+			},
+		)
 	}
-	wg.Wait()
+	require.NoError(f.t, errGrp.Wait())
 }
 
 func launchAndCancelParallelTransactions(
@@ -179,18 +192,19 @@ func launchAndCancelParallelTransactions(
 	randomDataToWrite [][]byte,
 ) {
 
-	var wg sync.WaitGroup
+	var errGrp errgroup.Group
 	ctx, cancel := context.WithCancel(f.ctx)
 	for chunkInd := 0; chunkInd < 100; chunkInd++ {
-		wg.Add(1)
-		go func(chunkIndex int) {
-			dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
-			f.writeChunkData(ctx, chunkIndex, dataToWrite)
-			wg.Done()
-		}(chunkInd)
+		chunkIndex := chunkInd
+		errGrp.Go(
+			func() error {
+				dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
+				return f.writeChunkData(ctx, chunkIndex, dataToWrite)
+			},
+		)
 	}
 
 	sleepRandomDuration()
 	cancel()
-	wg.Wait()
+	require.NoError(f.t, errGrp.Wait())
 }
