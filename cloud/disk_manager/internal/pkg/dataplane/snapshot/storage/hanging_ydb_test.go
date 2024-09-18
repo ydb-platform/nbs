@@ -23,7 +23,6 @@ type ydbTestFixture struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	db     *persistence.YDBClient
-	table  string
 	folder string
 }
 
@@ -32,13 +31,11 @@ func newYdbTestFixture(t *testing.T) *ydbTestFixture {
 	db, err := newYDB(ctx)
 	require.NoError(t, err)
 	folder := fmt.Sprintf("ydb_test/%v", t.Name())
-	table := "table"
 	return &ydbTestFixture{
 		t:      t,
 		ctx:    ctx,
 		cancel: cancel,
 		db:     db,
-		table:  table,
 		folder: folder,
 	}
 
@@ -61,7 +58,7 @@ func initSchema(t *testing.T) {
 	err := f.db.CreateOrAlterTable(
 		f.ctx,
 		f.folder,
-		f.table,
+		"table",
 		tableDescription(),
 		false, // dropUnusedColumns
 	)
@@ -88,7 +85,7 @@ func (f *ydbTestFixture) writeChunkData(
 
 		upsert into %v (shard_id, chunk_id, data)
 		values ($shard_id, $chunk_id, $data)
-	`, f.db.AbsolutePath(f.folder), f.table),
+	`, f.db.AbsolutePath(f.folder), "table"),
 		persistence.ValueParam(
 			"$shard_id", persistence.Uint64Value(uint64(chunkIndex))),
 		persistence.ValueParam(
