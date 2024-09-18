@@ -421,56 +421,23 @@ void TVolumeSelfCounters::Publish(TInstant now)
 void TTransportDiskCounters::Add(const TTransportDiskCounters& source)
 {
     for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        counter.Add(meta.GetValue(source.Rdma));
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
-        counter.Add(meta.GetValue(source.Interconnect));
+        auto& counter = meta.GetValue(RequestCounters);
+        counter.Add(meta.GetValue(source.RequestCounters));
     }
 }
 
 void TTransportDiskCounters::AggregateWith(const TTransportDiskCounters& source)
 {
     for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        counter.AggregateWith(meta.GetValue(source.Rdma));
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
-        counter.AggregateWith(meta.GetValue(source.Interconnect));
-    }
-}
-
-void TTransportDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
-{
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        counter.AggregateWith(meta.GetValue(source.Rdma));
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
-        counter.AggregateWith(meta.GetValue(source.Interconnect));
+        auto& counter = meta.GetValue(RequestCounters);
+        counter.AggregateWith(meta.GetValue(source.RequestCounters));
     }
 }
 
 void TTransportDiskCounters::Publish()
 {
     for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
-            counter.Publish();
-        }
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
+        auto& counter = meta.GetValue(RequestCounters);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
             Policy == counter.PublishingPolicy)
@@ -492,19 +459,7 @@ void TTransportDiskCounters::Register(
     }
 
     for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
-            counter.Register(
-                counters->GetSubgroup("request", TString(meta.Name)),
-                requestCounterOptions | counter.CounterOption);
-        }
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
+        auto& counter = meta.GetValue(RequestCounters);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
             Policy == counter.PublishingPolicy)
@@ -519,12 +474,7 @@ void TTransportDiskCounters::Register(
 void TTransportDiskCounters::Reset()
 {
     for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Rdma);
-        counter.Reset();
-    }
-
-    for (auto meta: TTransportRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(Interconnect);
+        auto& counter = meta.GetValue(RequestCounters);
         counter.Reset();
     }
 }

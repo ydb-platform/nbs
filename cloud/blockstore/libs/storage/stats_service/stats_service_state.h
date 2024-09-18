@@ -85,7 +85,6 @@ struct TTransportCounters
     void Register(NMonitoring::TDynamicCountersPtr counters);
     void Reset();
     void Publish();
-    void UpdatePartCounters(const TPartitionDiskCounters& source);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,6 +382,9 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
                 return RdmaSsdMirror3;
             default: {
+                // This function is called only in one place, and before it
+                // there are checks volume->IsDiskRegistryBased() and
+                // MediaKind != STORAGE_MEDIA_SSD_LOCAL
                 Y_ABORT(
                     "unsupported media kind: %u, transport counters can only "
                     "be used with disk registry based volumes",
@@ -404,6 +406,9 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
                 return InterconnectSsdMirror3;
             default: {
+                // This function is called only in one place, and before it
+                // there are checks volume->IsDiskRegistryBased() and
+                // MediaKind != STORAGE_MEDIA_SSD_LOCAL
                 Y_ABORT(
                     "unsupported media kind: %u, transport counters can only "
                     "be used with disk registry based volumes",

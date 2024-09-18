@@ -71,12 +71,6 @@ void TTransportCounters::Publish()
     PartAcc.Publish();
 }
 
-void TTransportCounters::UpdatePartCounters(
-    const TPartitionDiskCounters& source)
-{
-    PartAcc.AggregateWith(source);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeRequestCounters::Register(NMonitoring::TDynamicCountersPtr counters)

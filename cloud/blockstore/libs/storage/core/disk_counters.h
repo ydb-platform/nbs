@@ -643,7 +643,9 @@ struct TTransportRequestCounters
     using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
 
     TCounter TransportReadBlocks{EPublishingPolicy::All};
-    TCounter TransportWriteBlocks{EPublishingPolicy::All};
+    TCounter TransportWriteBlocks{
+        EPublishingPolicy::All
+    };
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TTransportRequestCounters::TransportReadBlocks>(),
@@ -704,8 +706,7 @@ struct TVolumeSelfCounters
 
 struct TTransportDiskCounters
 {
-    TTransportRequestCounters Rdma;
-    TTransportRequestCounters Interconnect;
+    TTransportRequestCounters RequestCounters;
 
     EPublishingPolicy Policy;
 
@@ -715,7 +716,6 @@ struct TTransportDiskCounters
 
     void Add(const TTransportDiskCounters& source);
     void AggregateWith(const TTransportDiskCounters& source);
-    void AggregateWith(const TPartitionDiskCounters& source);
     void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
     void Publish();
     void Reset();
