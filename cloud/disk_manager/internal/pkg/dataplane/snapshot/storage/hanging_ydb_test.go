@@ -166,7 +166,7 @@ func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
 	)
 	defer secondCancelFunc()
 
-	for i := 100; i < 200; i++ {
+	for chunkInd := 100; chunkInd < 200; chunkInd++ {
 		wg.Add(1)
 		go func(chunkIndex int) {
 			now := time.Now()
@@ -184,7 +184,7 @@ func waitForTransactionsHanging(f *ydbTestFixture, randomDataToWrite [][]byte) {
 			}
 
 			wg.Done()
-		}(i)
+		}(chunkInd)
 	}
 	wg.Wait()
 }
@@ -196,13 +196,13 @@ func launchAndCancelParallelTransactions(
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(f.ctx)
-	for i := 0; i < 100; i++ {
+	for chunkInd := 0; chunkInd < 100; chunkInd++ {
 		wg.Add(1)
 		go func(chunkIndex int) {
 			dataToWrite := randomDataToWrite[chunkIndex%len(randomDataToWrite)]
 			f.writeChunkData(ctx, chunkIndex, dataToWrite)
 			wg.Done()
-		}(i)
+		}(chunkInd)
 	}
 
 	sleepRandomDuration()
