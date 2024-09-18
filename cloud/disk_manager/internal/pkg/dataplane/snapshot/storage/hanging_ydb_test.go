@@ -65,7 +65,7 @@ func initSchema(t *testing.T) {
 	require.NoError(f.t, err)
 }
 
-func (f *ydbTestFixture) close() {
+func (f *ydbTestFixture) teardown() {
 	require.NoError(f.t, f.db.Close(f.ctx))
 	f.cancel()
 }
@@ -120,77 +120,73 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
-			defer f.cancel()
-			launchAndCancelParallelTransactions(f)
-			waitForTransactionsHanging(f)
+			defer f.teardown()
+			var errGrp errgroup.Group
+			ctx, cancel := context.WithCancel(f.ctx)
+			for chunkIdex := 0; chunkIdex < 100; chunkIdex++ {
+				chunkIndex := chunkIdex
+				errGrp.Go(
+					func() error {
+						err := f.writeChunkData(ctx, chunkIndex)
+						if err == nil {
+							return nil
+						}
+
+						if errorIsContextCancelled(err) {
+							return nil
+						}
+
+						return err
+					},
+				)
+			}
+
+			time.Sleep(
+				common.RandomDuration(
+					10*time.Millisecond,
+					500*time.Millisecond,
+				),
+			)
+			cancel()
+			require.NoError(f.t, errGrp.Wait())
+			logging.Info(f.ctx, "Next transactions can be hanging")
+			transactionDuration := time.Minute * 3
+			secondContext, secondCancelFunc := context.WithTimeout(
+				f.ctx,
+				transactionDuration,
+			)
+			defer secondCancelFunc()
+			var errGrp2 errgroup.Group
+
+			for chunkIdex := 100; chunkIdex < 200; chunkIdex++ {
+				chunkIndex := chunkIdex
+				errGrp2.Go(
+					func() error {
+						now := time.Now()
+						err := f.writeChunkData(secondContext, chunkIndex)
+						if err != nil {
+							if !errorIsContextCancelled(err) {
+								return err
+							}
+						}
+
+						duration := time.Now().Sub(now)
+						logging.Info(
+							f.ctx,
+							"Request for %d transaction been executed for %v",
+							chunkIndex,
+							duration,
+						)
+						if duration > transactionDuration {
+							return fmt.Errorf("hanging request to YDB")
+						}
+
+						return nil
+					},
+				)
+			}
+			require.NoError(f.t, errGrp2.Wait())
 		}()
 	}
 
-}
-
-func waitForTransactionsHanging(f *ydbTestFixture) {
-	logging.Info(f.ctx, "Next transactions can be hanging")
-	transactionDuration := time.Minute * 3
-	secondContext, secondCancelFunc := context.WithTimeout(
-		f.ctx,
-		transactionDuration,
-	)
-	defer secondCancelFunc()
-	var errGrp errgroup.Group
-
-	for chunkIdex := 100; chunkIdex < 200; chunkIdex++ {
-		chunkIndex := chunkIdex
-		errGrp.Go(
-			func() error {
-				now := time.Now()
-				err := f.writeChunkData(secondContext, chunkIndex)
-				if err != nil {
-					if !errorIsContextCancelled(err) {
-						return err
-					}
-				}
-
-				duration := time.Now().Sub(now)
-				logging.Info(
-					f.ctx,
-					"Request for %d transaction been executed for %v",
-					chunkIndex,
-					duration,
-				)
-				if duration > transactionDuration {
-					return fmt.Errorf("hanging request to YDB")
-				}
-
-				return nil
-			},
-		)
-	}
-	require.NoError(f.t, errGrp.Wait())
-}
-
-func launchAndCancelParallelTransactions(f *ydbTestFixture) {
-
-	var errGrp errgroup.Group
-	ctx, cancel := context.WithCancel(f.ctx)
-	for chunkIdex := 0; chunkIdex < 100; chunkIdex++ {
-		chunkIndex := chunkIdex
-		errGrp.Go(
-			func() error {
-				err := f.writeChunkData(ctx, chunkIndex)
-				if err == nil {
-					return nil
-				}
-
-				if errorIsContextCancelled(err) {
-					return nil
-				}
-
-				return err
-			},
-		)
-	}
-
-	time.Sleep(common.RandomDuration(10*time.Millisecond, 500*time.Millisecond))
-	cancel()
-	require.NoError(f.t, errGrp.Wait())
 }
