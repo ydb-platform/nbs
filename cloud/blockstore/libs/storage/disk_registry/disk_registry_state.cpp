@@ -6921,7 +6921,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     }
 
     TVector<TString> deviceIds;
-    int poolKind = -1;
+    std::optional<NProto::EDevicePoolKind> poolKind;
 
     for (auto& device: devices) {
         auto [config, error] = FindDevice(device);
@@ -6937,15 +6937,15 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
 
         const auto& uuid = config.GetDeviceUUID();
 
-        if (poolKind == -1) {
-            poolKind = static_cast<int>(config.GetPoolKind());
+        if (!poolKind) {
+            poolKind = config.GetPoolKind();
         }
 
-        if (static_cast<int>(config.GetPoolKind()) != poolKind) {
+        if (config.GetPoolKind() != *poolKind) {
             return MakeError(E_ARGUMENT, TStringBuilder() <<
                 "several device pool kinds for one disk: " <<
                 static_cast<int>(config.GetPoolKind()) << " and " <<
-                poolKind);
+                static_cast<int>(*poolKind));
         }
 
         if (!force
@@ -6991,6 +6991,9 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
     disk.State = CalculateDiskState(disk);
+    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+        disk.MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
+    }
 
     for (auto& uuid: deviceIds) {
         DeviceList.MarkDeviceAllocated(diskId, uuid);
