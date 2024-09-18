@@ -12,3 +12,4 @@ InMemoryIndexCacheEnabled: true
 InMemoryIndexCacheNodesCapacity: 10
 InMemoryIndexCacheNodeRefsCapacity: 10
 InMemoryIndexCacheNodeAttrsCapacity: 10
+UseMixedBlocksInsteadOfAliveBlocksInCompaction: true

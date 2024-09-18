@@ -139,7 +139,12 @@ void TConfigInitializer::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    AdaptNodeRegistrationParams(storageConfig);
+    if (ServerConfig && ServerConfig->GetServerConfig()) {
+        NStorage::AdaptNodeRegistrationParams(
+            Options->NodeType,
+            *ServerConfig->GetServerConfig(),
+            storageConfig);
+    }
 
     if (Options->SchemeShardDir) {
         storageConfig.SetSchemeShardDir(GetFullSchemeShardDir());
@@ -383,7 +388,12 @@ void TConfigInitializer::ApplyStorageServiceConfig(const TString& text)
     NProto::TStorageServiceConfig storageConfig;
     ParseProtoTextFromStringRobust(text, storageConfig);
 
-    AdaptNodeRegistrationParams(storageConfig);
+    if (ServerConfig && ServerConfig->GetServerConfig()) {
+        NStorage::AdaptNodeRegistrationParams(
+            Options->NodeType,
+            *ServerConfig->GetServerConfig(),
+            storageConfig);
+    }
 
     storageConfig.SetServiceVersionInfo(GetFullVersionString());
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -462,44 +472,6 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
             handler.second,
             this,
             config.GetNamedConfigs(it->second).GetConfig());
-    }
-}
-
-void TConfigInitializer::AdaptNodeRegistrationParams(
-    NProto::TStorageServiceConfig& config)
-{
-    if (!ServerConfig || !ServerConfig->GetServerConfig()) {
-        return;
-    }
-
-    const auto* serverConfig = ServerConfig->GetServerConfig();
-
-    if (!config.GetNodeRegistrationMaxAttempts()) {
-        config.SetNodeRegistrationMaxAttempts(
-            serverConfig->GetNodeRegistrationMaxAttempts());
-    }
-
-    if (!config.GetNodeRegistrationTimeout()) {
-        config.SetNodeRegistrationTimeout(
-            serverConfig->GetNodeRegistrationTimeout());
-    }
-
-    if (!config.GetNodeRegistrationErrorTimeout()) {
-        config.SetNodeRegistrationErrorTimeout(
-            serverConfig->GetNodeRegistrationErrorTimeout());
-    }
-
-    if (!config.GetNodeRegistrationToken()) {
-        config.SetNodeRegistrationToken(
-            serverConfig->GetNodeRegistrationToken());
-    }
-
-    if (Options->NodeType) {
-        config.SetNodeType(Options->NodeType);
-    }
-
-    if (!config.GetNodeType()) {
-        config.SetNodeType(serverConfig->GetNodeType());
     }
 }
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -15,9 +16,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteSnapshotTask struct {
-	storage storage.Storage
-	request *protos.DeleteSnapshotRequest
-	state   *protos.DeleteSnapshotTaskState
+	storage    storage.Storage
+	nbsFactory nbs.Factory
+	request    *protos.DeleteSnapshotRequest
+	state      *protos.DeleteSnapshotTaskState
 }
 
 func (t *deleteSnapshotTask) Save() ([]byte, error) {
@@ -43,6 +45,22 @@ func (t *deleteSnapshotTask) deletingSnapshot(
 	snapshotMeta, err := t.storage.DeletingSnapshot(ctx, t.request.SnapshotId, execCtx.GetTaskID())
 	if err != nil {
 		return err
+	}
+
+	if len(snapshotMeta.CheckpointID) != 0 {
+		nbsClient, err := t.nbsFactory.GetClient(ctx, snapshotMeta.Disk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		err = nbsClient.DeleteCheckpoint(
+			ctx,
+			snapshotMeta.Disk.DiskId,
+			snapshotMeta.CheckpointID,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	if len(snapshotMeta.BaseSnapshotID) != 0 {

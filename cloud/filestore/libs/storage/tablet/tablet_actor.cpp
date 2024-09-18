@@ -440,14 +440,16 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
     const auto used = stats.GetUsedBlocksCount();
-    auto alive = stats.GetMixedBlocksCount();
-    if (alive > stats.GetGarbageBlocksCount()) {
-        alive -= stats.GetGarbageBlocksCount();
-    } else {
-        alive = 0;
+    auto stored = stats.GetMixedBlocksCount();
+    if (!Config->GetUseMixedBlocksInsteadOfAliveBlocksInCompaction()) {
+        if (stored > stats.GetGarbageBlocksCount()) {
+            stored -= stats.GetGarbageBlocksCount();
+        } else {
+            stored = 0;
+        }
     }
-    const auto avgGarbagePercentage = used && alive > used
-        ? 100 * static_cast<double>(alive - used) / used
+    const auto avgGarbagePercentage = used && stored > used
+        ? 100 * static_cast<double>(stored - used) / used
         : 0;
     const auto rangeCount = compactionStats.UsedRangesCount;
     const auto avgCompactionScore = rangeCount
@@ -619,6 +621,18 @@ void TIndexTabletActor::HandleDescribeSessions(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
+{
+    TVector<ui32> ranges;
+    const auto& zeroRanges = RangesWithEmptyCompactionScore;
+    ui32 i = 0;
+    while (i < zeroRanges.size()) {
+        ranges.push_back(i);
+        i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
+    }
+    return ranges;
+}
+
 void TIndexTabletActor::HandleForcedOperation(
     const TEvIndexTablet::TEvForcedOperationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -665,12 +679,7 @@ void TIndexTabletActor::HandleForcedOperation(
     if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
-            const auto& zeroRanges = RangesWithEmptyCompactionScore;
-            ui32 i = 0;
-            while (i < zeroRanges.size()) {
-                ranges.push_back(i);
-                i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
-            }
+            ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = request.GetProcessAllRanges()
                 ? GetAllCompactionRanges()

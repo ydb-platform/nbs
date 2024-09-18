@@ -14,13 +14,15 @@ namespace NCloud::NFileStore {
 TPermissionList GetRequestPermissions(EFileStoreRequest requestType);
 
 template <typename T>
-TPermissionList GetRequestPermissions(const T& request)
+TPermissionList GetRequestPermissions(
+    const T& request,
+    const TVector<TString>& actionsNoAuth)
 {
-    Y_UNUSED(request);
+    Y_UNUSED(request, actionsNoAuth);
     return GetRequestPermissions(GetFileStoreRequest<T>());
 }
 
 TPermissionList GetRequestPermissions(
-    const NProto::TExecuteActionRequest& request);
+    const NProto::TExecuteActionRequest& request, const TVector<TString>& actionsNoAuth);
 
 }   // namespace NCloud::NFileStore

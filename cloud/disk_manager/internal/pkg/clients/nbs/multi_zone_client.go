@@ -7,6 +7,7 @@ import (
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +30,25 @@ func (c *multiZoneClient) Clone(
 ) (err error) {
 
 	defer c.metrics.StatRequest("Clone")(&err)
+
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"blockstore.Clone",
+		tracing.WithAttributes(
+			tracing.AttributeString("disk_id", diskID),
+			tracing.AttributeString(
+				"dst_placement_group_id",
+				dstPlacementGroupID,
+			),
+			tracing.AttributeInt(
+				"dst_placement_partition_index",
+				int(dstPlacementPartitionIndex),
+			),
+			tracing.AttributeInt64("fill_generation", int64(fillGeneration)),
+			tracing.AttributeString("base_disk_id", baseDiskID),
+		),
+	)
+	defer span.End()
 
 	err = c.clone(
 		ctx,
@@ -71,13 +91,13 @@ func (c *multiZoneClient) deleteOutdatedDstDisk(
 ) error {
 
 	if fillGeneration > 1 {
-		volume, err := c.dstZoneClient.nbs.DescribeVolume(ctx, diskID)
+		volume, err := c.dstZoneClient.describeVolume(ctx, diskID)
 		if IsNotFoundError(err) {
 			return nil
 		}
 
 		if err != nil {
-			return wrapError(err)
+			return err
 		}
 
 		if volume.IsFillFinished {
@@ -106,12 +126,12 @@ func (c *multiZoneClient) clone(
 	baseDiskID string,
 ) (err error) {
 
-	volume, err := c.srcZoneClient.nbs.DescribeVolume(ctx, diskID)
+	volume, err := c.srcZoneClient.describeVolume(ctx, diskID)
 	if err != nil {
-		return wrapError(err)
+		return err
 	}
 
-	err = c.dstZoneClient.nbs.CreateVolume(
+	err = c.dstZoneClient.createVolume(
 		ctx,
 		volume.DiskId,
 		volume.BlocksCount,
@@ -147,5 +167,5 @@ func (c *multiZoneClient) clone(
 		)
 	}
 
-	return wrapError(err)
+	return err
 }

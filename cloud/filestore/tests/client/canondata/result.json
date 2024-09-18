@@ -14,6 +14,9 @@
     "test.test_list_filestores": {
         "uri": "file://test.test_list_filestores/results.txt"
     },
+    "test.test_ls": {
+        "uri": "file://test.test_ls/results.txt"
+    },
     "test.test_multitablet_findgarbage": {
         "uri": "file://test.test_multitablet_findgarbage/results.txt"
     },

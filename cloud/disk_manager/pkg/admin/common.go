@@ -165,6 +165,7 @@ func newPoolStorage(
 	poolsStorage, err := pools_storage.NewStorage(
 		config.GetPoolsConfig(),
 		db,
+		metrics.NewEmptyRegistry(),
 	)
 
 	return poolsStorage, db, err

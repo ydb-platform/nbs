@@ -30,6 +30,7 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
+#include <util/system/condvar.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
@@ -180,14 +181,14 @@ public:
     {}
 
     TChild(const TChild&) = delete;
-    TChild& operator = (const TChild&) = delete;
+    TChild& operator=(const TChild&) = delete;
 
     TChild(TChild&& rhs) noexcept
     {
         Swap(rhs);
     }
 
-    TChild& operator = (TChild&& rhs) noexcept
+    TChild& operator=(TChild&& rhs) noexcept
     {
         Swap(rhs);
 
@@ -265,9 +266,9 @@ struct TPipe
         R.Close();
 
         TFileHandle h {fd};
-        Y_SCOPE_EXIT(&h) { h.Release(); };
 
         h.LinkTo(W);
+        h.Release();
     }
 };
 
@@ -280,42 +281,49 @@ TChild SpawnChild(
     TPipe stdOut;
     TPipe stdErr;
 
-    pid_t childPid = ::fork();
-
-    if (childPid == -1) {
-        int err = errno;
-        char buf[64] {};
-        ythrow TServiceError {MAKE_SYSTEM_ERROR(err)}
-            << "fork error: " << ::strerror_r(err, buf, sizeof(buf));
-    }
-
-    if (childPid) {
-        // Parent process.
-        return TChild {childPid, std::move(stdOut.R), std::move(stdErr.R)};
-    }
-
-    // child process
-
-    stdOut.LinkTo(STDOUT_FILENO);
-    stdErr.LinkTo(STDERR_FILENO);
-
-    // Last chance to figure out what's going on.
-    // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w", stdout);
-    // freopen((TString("/tmp/err.") + ToString(::getpid())).c_str(), "w", stderr);
-
-    // Following "const_cast"s are safe:
-    // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
-
+    // Make allocations before the fork() call. In rare cases, the tcmalloc can
+    // deadlock on allocation because other threads have locked mutexes that
+    // would never be unlocked since the threads that placed the locks are not
+    // duplicated in the child.
     TVector<char*> qargs;
     qargs.reserve(args.size() + 2);
 
-    qargs.push_back(const_cast<char*>(binaryPath.data()));
-    for (auto& arg: args) {
-        qargs.push_back(const_cast<char*>(arg.data()));
-    }
-    qargs.emplace_back();
+    pid_t childPid = ::fork();
 
-    ::execvp(binaryPath.c_str(), qargs.data());
+    // WARNING: Don't make heap allocations here!
+    {
+        if (childPid == -1) {
+            int err = errno;
+            char buf[64]{};
+            ythrow TServiceError{MAKE_SYSTEM_ERROR(err)}
+                << "fork error: " << ::strerror_r(err, buf, sizeof(buf));
+        }
+
+        if (childPid) {
+            // Parent process.
+            return TChild{childPid, std::move(stdOut.R), std::move(stdErr.R)};
+        }
+
+        // child process
+
+        stdOut.LinkTo(STDOUT_FILENO);
+        stdErr.LinkTo(STDERR_FILENO);
+
+        // Last chance to figure out what's going on.
+        // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w",
+        // stdout); freopen((TString("/tmp/err.") +
+        // ToString(::getpid())).c_str(), "w", stderr);
+
+        // Following "const_cast"s are safe:
+        // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
+        qargs.push_back(const_cast<char*>(binaryPath.data()));
+        for (auto& arg: args) {
+            qargs.push_back(const_cast<char*>(arg.data()));
+        }
+        qargs.emplace_back();
+
+        ::execvp(binaryPath.c_str(), qargs.data());
+    }
 
     int err = errno;
     char buf[64] {};
@@ -508,8 +516,10 @@ private:
         long long logPriority = TLOG_INFO;
         logRec["priority"].GetInteger(&logPriority);
 
-        STORAGE_LOG(logPriority, "[" << ClientId << "] "
-            << logRec["message"].GetString());
+        STORAGE_LOG(
+            logPriority,
+            "vhost-server[" << Process.Pid << "] [" << ClientId << "] "
+                            << logRec["message"].GetString());
     }
 };
 
@@ -597,15 +607,7 @@ public:
     void Start() override
     {
         Process = StartProcess();
-
-        // To avoid a race, we need to get the shared pointer in the calling
-        // thread and pass it to the background thread. This guaranteed that the
-        // background thread will deal with a live this.
-        auto workFunc = [self = shared_from_this()]()
-        {
-            self->ThreadProc();
-        };
-        std::thread(std::move(workFunc)).detach();
+        std::thread(&TEndpoint::ThreadProc, shared_from_this()).detach();
     }
 
     TFuture<NProto::TError> Stop() override
@@ -658,7 +660,10 @@ private:
             }
         }
 
-        StopPromise.SetValue(error);
+        // We must call "SetValue()" on coroutine thread, since it will trigger
+        // future handlers synchronously.
+        Executor->ExecuteSimple([promise = this->StopPromise, error]() mutable
+                                { promise.SetValue(error); });
     }
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
@@ -682,6 +687,7 @@ private:
             Logging,
             Stats,
             std::move(process));
+        process = TChild{0};
 
         Executor->ExecuteSimple([=] {
             ep->Start(Executor->GetContExecutor());

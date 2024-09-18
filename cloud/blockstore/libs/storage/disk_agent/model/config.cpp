@@ -41,6 +41,7 @@ namespace {
     xxx(TemporaryAgent,                     bool,       false                 )\
     xxx(IOParserActorCount,                 ui32,       0                     )\
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
+    xxx(DisableNodeBrokerRegisterationOnDevicelessAgent, bool,         false  )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

@@ -36,6 +36,8 @@ constexpr TDuration Seconds(int s)
     xxx(Certs,                       TVector<TCertificate>,     {}            )\
     xxx(UnixSocketPath,              TString,                   {}            )\
     xxx(UnixSocketBacklog,           ui32,                      16            )\
+                                                                               \
+    xxx(ActionsNoAuth,               TVector<TString>,          {}            )\
 // FILESTORE_SERVER_CONFIG
 
 #define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \
@@ -71,6 +73,17 @@ TVector<TCertificate> ConvertValue(
     return v;
 }
 
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    TVector<TString> v;
+    for (const auto& x : value) {
+        v.push_back(x);
+    }
+    return v;
+}
+
 template <typename T>
 bool IsEmpty(const T& t)
 {
@@ -102,6 +115,17 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
           << ", "
           << value[i].CertPrivateKeyFile
           << " }";
+    }
+}
+
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
     }
 }
 

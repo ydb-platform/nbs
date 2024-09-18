@@ -64,22 +64,6 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 		)
 	}
 
-	if len(snapshotMeta.CheckpointID) != 0 {
-		nbsClient, err := t.nbsFactory.GetClient(ctx, snapshotMeta.Disk.ZoneId)
-		if err != nil {
-			return err
-		}
-
-		err = nbsClient.DeleteCheckpoint(
-			ctx,
-			snapshotMeta.Disk.DiskId,
-			snapshotMeta.CheckpointID,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Hack for NBS-2225.
 	if snapshotMeta.DeleteTaskID != selfTaskID {
 		return t.scheduler.WaitTaskEnded(ctx, snapshotMeta.DeleteTaskID)

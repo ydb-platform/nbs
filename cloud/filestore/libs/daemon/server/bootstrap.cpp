@@ -141,7 +141,8 @@ void TBootstrapServer::InitKikimrService()
 
     Service = CreateAuthService(
         std::move(Service),
-        CreateKikimrAuthProvider(ActorSystem));
+        CreateKikimrAuthProvider(ActorSystem),
+        Configs->ServerConfig->GetActionsNoAuth());
 
     STORAGE_INFO("AuthService initialized");
 }

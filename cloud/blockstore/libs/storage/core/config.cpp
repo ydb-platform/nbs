@@ -958,4 +958,38 @@ const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() con
     return Impl->StorageServiceConfig;
 }
 
+void AdaptNodeRegistrationParams(
+    const TString& overriddenNodeType,
+    const NProto::TServerConfig& serverConfig,
+    NProto::TStorageServiceConfig& storageConfig)
+{
+    if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
+        storageConfig.SetNodeRegistrationMaxAttempts(
+            serverConfig.GetNodeRegistrationMaxAttempts());
+    }
+
+    if (!storageConfig.GetNodeRegistrationTimeout()) {
+        storageConfig.SetNodeRegistrationTimeout(
+            serverConfig.GetNodeRegistrationTimeout());
+    }
+
+    if (!storageConfig.GetNodeRegistrationErrorTimeout()) {
+        storageConfig.SetNodeRegistrationErrorTimeout(
+            serverConfig.GetNodeRegistrationErrorTimeout());
+    }
+
+    if (!storageConfig.GetNodeRegistrationToken()) {
+        storageConfig.SetNodeRegistrationToken(
+            serverConfig.GetNodeRegistrationToken());
+    }
+
+    if (overriddenNodeType) {
+        storageConfig.SetNodeType(overriddenNodeType);
+    }
+
+    if (!storageConfig.GetNodeType()) {
+        storageConfig.SetNodeType(serverConfig.GetNodeType());
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

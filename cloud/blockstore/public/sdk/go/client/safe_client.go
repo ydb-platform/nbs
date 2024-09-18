@@ -101,12 +101,12 @@ func (client *safeClient) DestroyVolume(
 	ctx context.Context,
 	diskId string,
 	sync bool,
-	FillGeneration uint64,
+	fillGeneration uint64,
 ) error {
 	req := &protos.TDestroyVolumeRequest{
 		DiskId:         diskId,
 		Sync:           sync,
-		FillGeneration: FillGeneration,
+		FillGeneration: fillGeneration,
 	}
 
 	_, err := client.Impl.DestroyVolume(ctx, req)
@@ -484,14 +484,14 @@ func (client *safeClient) DescribePlacementGroup(
 func (client *safeClient) AlterPlacementGroupMembership(
 	ctx context.Context,
 	groupId string,
-	placemenetPartitionIndex uint32,
+	placementPartitionIndex uint32,
 	disksToAdd []string,
 	disksToRemove []string,
 	configVersion uint32,
 ) error {
 	req := &protos.TAlterPlacementGroupMembershipRequest{
 		GroupId:                 groupId,
-		PlacementPartitionIndex: placemenetPartitionIndex,
+		PlacementPartitionIndex: placementPartitionIndex,
 		DisksToAdd:              disksToAdd,
 		DisksToRemove:           disksToRemove,
 		ConfigVersion:           configVersion,
