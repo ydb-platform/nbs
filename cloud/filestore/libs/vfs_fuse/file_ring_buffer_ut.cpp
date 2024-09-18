@@ -5,6 +5,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
+#include <util/system/filemap.h>
 #include <util/system/tempfile.h>
 
 namespace NCloud::NFileStore {
