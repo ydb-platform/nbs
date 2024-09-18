@@ -53,7 +53,6 @@ func tableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("data", optional(persistence.TypeString)),
 		persistence.WithColumn("refcnt", optional(persistence.TypeUint32)),
 		persistence.WithColumn("checksum", optional(persistence.TypeUint32)),
-		persistence.WithColumn("compression", optional(persistence.TypeUTF8)),
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(5),
 		persistence.WithExternalBlobs("rotencrypted"),
@@ -90,12 +89,10 @@ func (f *ydbTestFixture) writeChunkData(
 		declare $chunk_id as Utf8;
 		declare $data as String;
 		declare $checksum as Uint32;
-		declare $compression as Utf8;
 
-		upsert into %v (shard_id, chunk_id, referer, data, refcnt, checksum, compression)
+		upsert into %v (shard_id, chunk_id, referer, data, refcnt, checksum)
 		values
-			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum, $compression),
-			($shard_id, $chunk_id, $referer, null, null, null, null)
+			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum)
 	`, f.db.AbsolutePath(f.folder), f.table),
 		persistence.ValueParam(
 			"$shard_id", persistence.Uint64Value(uint64(chunkIndex))),
@@ -112,7 +109,6 @@ func (f *ydbTestFixture) writeChunkData(
 			"$checksum",
 			persistence.Uint32Value(uint32(1231231)),
 		),
-		persistence.ValueParam("$compression", persistence.UTF8Value("lz4")),
 	)
 }
 
