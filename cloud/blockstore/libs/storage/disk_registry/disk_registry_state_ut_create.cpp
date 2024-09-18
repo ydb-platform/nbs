@@ -30,10 +30,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         const ui32 nativeBlockSize = 512;
-        const ui64 adjustedBlockCount = 93_GB / nativeBlockSize;
+        const ui64 adjustedBlockCount = 10_GB / nativeBlockSize;
         const ui64 unAdjustedBlockCount = adjustedBlockCount + 100;
 
-        auto deviceConfig = [&] (auto name, auto uuid) {
+        auto deviceConfig = [&] (auto name, auto uuid, bool local) {
             NProto::TDeviceConfig config;
 
             config.SetDeviceName(name);
@@ -41,27 +41,46 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             config.SetBlockSize(nativeBlockSize);
             config.SetBlocksCount(adjustedBlockCount);
             config.SetUnadjustedBlockCount(unAdjustedBlockCount);
+            if (local) {
+                config.SetPoolKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                config.SetPoolName("local-ssd");
+            }
 
             return config;
         };
 
         TVector agents {
             AgentConfig(1, {
-                deviceConfig("dev-1", "uuid-1.1"),    // disk-1
-                deviceConfig("dev-2", "uuid-1.2"),
-                deviceConfig("dev-3", "uuid-1.3"),
+                deviceConfig("dev-1", "uuid-1.1", false),    // disk-1
+                deviceConfig("dev-2", "uuid-1.2", false),
+                deviceConfig("dev-3", "uuid-1.3", false),
+                deviceConfig("dev-4", "uuid-1.4", true),
+                deviceConfig("dev-5", "uuid-1.5", true),
             }),
             AgentConfig(2, {
-                deviceConfig("dev-1", "uuid-2.1"),    // dirty
-                deviceConfig("dev-2", "uuid-2.2"),
-                deviceConfig("dev-3", "uuid-2.3"),
-                deviceConfig("dev-4", "uuid-2.4"),
+                deviceConfig("dev-1", "uuid-2.1", false),    // dirty
+                deviceConfig("dev-2", "uuid-2.2", false),
+                deviceConfig("dev-3", "uuid-2.3", false),
+                deviceConfig("dev-4", "uuid-2.4", false),
+                deviceConfig("dev-5", "uuid-2.5", true),
             })
         };
 
         TDiskRegistryState state =
             TDiskRegistryStateBuilder()
-                .WithKnownAgents(agents)
+                .WithAgents(agents)
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(agents);
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(
+                            adjustedBlockCount * nativeBlockSize);
+
+                        return config;
+                    }())
                 .WithDisks({Disk("disk-1", {"uuid-1.1"})})
                 .WithDirtyDevices({TDirtyDevice{"uuid-2.1", {}}})
                 .Build();
@@ -171,6 +190,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("bar", info));
 
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                info.MediaKind);
             UNIT_ASSERT_VALUES_EQUAL(1, info.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL(unAdjustedBlockCount, info.Devices[0].GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", info.Devices[0].GetDeviceUUID());
@@ -203,6 +225,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("baz", info));
 
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                info.MediaKind);
             UNIT_ASSERT_VALUES_EQUAL(2, info.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-1.2", info.Devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.2", info.Devices[1].GetDeviceUUID());
@@ -235,6 +260,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("nonrepl", info));
 
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                info.MediaKind);
             UNIT_ASSERT_VALUES_EQUAL(2, info.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.3", info.Devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-1.3", info.Devices[1].GetDeviceUUID());
@@ -268,6 +296,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_SUCCESS(state.GetDiskInfo("nonrepl-4K", info));
 
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                info.MediaKind);
             UNIT_ASSERT_VALUES_EQUAL(1, info.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.4", info.Devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -281,6 +312,39 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 info.Devices[0].GetUnadjustedBlockCount());
             UNIT_ASSERT_VALUES_EQUAL(4_KB, info.LogicalBlockSize);
             UNIT_ASSERT_VALUES_EQUAL(2000, info.StateTs.GetValue());
+        });
+
+        // local
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TDiskRegistryState::TAllocateDiskResult result {};
+            auto error = state.CreateDiskFromDevices(
+                TInstant::FromValue(1000),
+                db,
+                false,  // force
+                "local",
+                nativeBlockSize,
+                {
+                    deviceByUUID("uuid-1.4"),
+                    deviceByUUID("uuid-1.5")
+                },
+                &result);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.4", result.Devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.5", result.Devices[1].GetDeviceUUID());
+
+            TDiskInfo info;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("local", info));
+
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+            UNIT_ASSERT_EQUAL(NProto::STORAGE_MEDIA_SSD_LOCAL, info.MediaKind);
+            UNIT_ASSERT_VALUES_EQUAL(2, info.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.4", info.Devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.5", info.Devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(nativeBlockSize, info.LogicalBlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(1000, info.StateTs.GetValue());
         });
     }
 
