@@ -97,19 +97,20 @@ func (f *ydbTestFixture) writeChunkData(
 			persistence.StringValue(dataToWrite),
 		),
 	)
-	if err == nil {
-		return err
-	}
 
+	return err
+}
+
+func errorIsContextCancelled(err error) bool {
 	if strings.Contains(err.Error(), "context deadline exceeded") {
-		return nil
+		return true
 	}
 
 	if strings.Contains(err.Error(), "context canceled") {
-		return nil
+		return true
 	}
 
-	return err
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,7 +145,9 @@ func waitForTransactionsHanging(f *ydbTestFixture) {
 				now := time.Now()
 				err := f.writeChunkData(secondContext, chunkIndex)
 				if err != nil {
-					return err
+					if !errorIsContextCancelled(err) {
+						return err
+					}
 				}
 
 				duration := time.Now().Sub(now)
@@ -173,7 +176,16 @@ func launchAndCancelParallelTransactions(f *ydbTestFixture) {
 		chunkIndex := chunkIdex
 		errGrp.Go(
 			func() error {
-				return f.writeChunkData(ctx, chunkIndex)
+				err := f.writeChunkData(ctx, chunkIndex)
+				if err == nil {
+					return nil
+				}
+
+				if errorIsContextCancelled(err) {
+					return nil
+				}
+
+				return err
 			},
 		)
 	}
