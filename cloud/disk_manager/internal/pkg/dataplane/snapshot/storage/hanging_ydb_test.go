@@ -51,7 +51,7 @@ func tableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("shard_id", optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_id", optional(persistence.TypeUTF8)),
 		persistence.WithColumn("data", optional(persistence.TypeString)),
-		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
+		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id"),
 		persistence.WithUniformPartitions(5),
 		persistence.WithExternalBlobs("rotencrypted"),
 	)
