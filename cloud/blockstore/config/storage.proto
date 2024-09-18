@@ -1033,5 +1033,5 @@ message TStorageServiceConfig
     optional string NodeType = 384;
 
     // settings for ydb config dispatcher service.
-    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 377;
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 385;
 }

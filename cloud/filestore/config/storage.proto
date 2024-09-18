@@ -406,6 +406,7 @@ message TStorageConfig
     // uncontrollable behaviour change for production systems. TODO: gradually
     // enable this flag everywhere and make this behaviour the new default.
     optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 391;
+
     // settings for ydb config dispatcher service.
-    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 360;
+    optional NCloud.NProto.TYdbConfigDispatcherSettings YdbConfigDispatcherSettings = 392;
 }
