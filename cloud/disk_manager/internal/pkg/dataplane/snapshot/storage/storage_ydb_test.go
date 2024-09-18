@@ -1560,7 +1560,6 @@ func newYdbTestFixture(t *testing.T) *ydbTestFixture {
 		db:     db,
 		folder: folder,
 	}
-
 }
 
 func tableDescription() persistence.CreateTableDescription {
