@@ -13,6 +13,12 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Create an encryption client that uses EncryptionDesc from the Volume config.
+IBlockStorePtr CreateVolumeEncryptionClient(
+    IBlockStorePtr client,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    ILoggingServicePtr logging);
+
 IBlockStorePtr CreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
