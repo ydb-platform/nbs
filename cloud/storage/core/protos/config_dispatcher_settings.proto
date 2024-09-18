@@ -12,7 +12,7 @@ message TConfigNames
     repeated string Names = 1;
 }
 
-message TYdbConfigDispatcherSettings
+message TConfigDispatcherSettings
 {
     oneof AllowDenySettings {
         TConfigNames AllowList = 1;

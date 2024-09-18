@@ -10,6 +10,7 @@ PEERDIR(
 SRCS(
     authorization_mode.proto
     certificate.proto
+    config_dispatcher_settings.proto
     endpoints.proto
     error.proto
     media.proto
@@ -17,7 +18,6 @@ SRCS(
     tablet.proto
     throttler.proto
     trace.proto
-    ydb_config_dispatcher_settings.proto
 )
 
 END()

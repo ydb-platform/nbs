@@ -9,7 +9,7 @@ using namespace NKikimr::NConfig;
 ////////////////////////////////////////////////////////////////////////////////
 
 void SetupConfigDispatcher(
-    const NProto::TYdbConfigDispatcherSettings& settings,
+    const NProto::TConfigDispatcherSettings& settings,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
     const auto& names = settings.HasAllowList()
@@ -17,23 +17,21 @@ void SetupConfigDispatcher(
         : settings.GetDenyList().GetNames();
 
     std::set<ui32> items;
-    bool anyFailed = false;
-    TVector<TString> failedItems;
+    TVector<TString> failedItemNames;
 
     for (const auto& name: names) {
         NKikimrConsole::TConfigItem::EKind value {};
         if (!NKikimrConsole::TConfigItem::EKind_Parse(name, &value)) {
-            anyFailed = true;
-            failedItems.push_back(name);
+            failedItemNames.push_back(name);
             continue;
         }
         items.emplace(value);
     }
 
-    if (anyFailed) {
+    if (!failedItemNames.empty()) {
         ReportConfigDispatcherItemParseError(TStringBuilder()
             << "Failed to parse: ("
-            << JoinRange(",", failedItems.begin(), failedItems.end())
+            << JoinRange(",", failedItemNames.begin(), failedItemNames.end())
             << ") as NKikimrConsole::TConfigItem::EKind value");
     }
 

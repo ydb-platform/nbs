@@ -34,13 +34,13 @@ auto SetupCriticalEvent()
 
 Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 {
-    Y_UNIT_TEST(ShouldRaiseCriticalEventIfCannotParseConfigDispatcherEkind)
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfCannotParseConfigDispatcherItem)
     {
         {
             auto counter = SetupCriticalEvent();
 
             NKikimr::NConfig::TConfigsDispatcherInitInfo config;
-            NProto::TYdbConfigDispatcherSettings settings;
+            NProto::TConfigDispatcherSettings settings;
             settings.MutableAllowList()->AddNames("xyz");
             SetupConfigDispatcher(settings, &config);
 
@@ -53,7 +53,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             auto counter = SetupCriticalEvent();
 
             NKikimr::NConfig::TConfigsDispatcherInitInfo config;
-            NProto::TYdbConfigDispatcherSettings settings;
+            NProto::TConfigDispatcherSettings settings;
             settings.MutableDenyList()->AddNames("xyz");
             SetupConfigDispatcher(settings, &config);
 
@@ -63,12 +63,12 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldParseConfigDispatcherEkind)
+    Y_UNIT_TEST(ShouldParseConfigDispatcherItems)
     {
         NKikimr::NConfig::TConfigsDispatcherInitInfo config;
         auto counter = SetupCriticalEvent();
 
-        NProto::TYdbConfigDispatcherSettings settings;
+        NProto::TConfigDispatcherSettings settings;
 
         constexpr auto minVal = NKikimrConsole::TConfigItem_EKind_EKind_MIN;
         constexpr auto maxVal = NKikimrConsole::TConfigItem_EKind_EKind_MAX;
