@@ -47,6 +47,7 @@ private:
         Created,
         Postponed,
         InFlight,
+        Completed,
     };
     // The current status of the request execution can be read and written
     // only under the RequestsLock.
@@ -90,14 +91,17 @@ public:
     // Returns a flag indicating whether the request can be executed. The method
     // modifies the internal state and gives permission to execute only once. It
     // is necessary to call the method under RequestsLock.
-    [[nodiscard]] bool ReadyToRun();
+    [[nodiscard]] bool PrepareToRun();
 
     // Starts the execution of the postponed request. The method can only be
     // called if the request has been postponed.
     void ExecutePostponed();
 
+    // It is necessary to call the method under RequestsLock.
+    void SetCompleted();
+
 protected:
-    void AllocateRMWBuffer();
+    void AllocateRMWBuffer(TAlignedDeviceHandler& backend);
 
     virtual void DoPostpone() = 0;
     virtual void DoExecutePostponed() = 0;
@@ -107,10 +111,8 @@ protected:
 class TWriteRequest final: public TModifyRequest
 {
 public:
-    using TResponsePromise =
-        NThreading::TPromise<NProto::TWriteBlocksLocalResponse>;
-    using TResponseFuture =
-        NThreading::TFuture<NProto::TWriteBlocksLocalResponse>;
+    using TResponsePromise = TPromise<NProto::TWriteBlocksLocalResponse>;
+    using TResponseFuture = TFuture<NProto::TWriteBlocksLocalResponse>;
 
 private:
     TResponsePromise Promise;
@@ -131,7 +133,7 @@ protected:
 
 private:
     TResponseFuture DoExecute();
-    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
+    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler& backend);
     TResponseFuture ModifyAndWrite();
 };
 
@@ -139,8 +141,8 @@ private:
 class TZeroRequest final: public TModifyRequest
 {
 public:
-    using TResponsePromise = NThreading::TPromise<NProto::TZeroBlocksResponse>;
-    using TResponseFuture = NThreading::TFuture<NProto::TZeroBlocksResponse>;
+    using TResponsePromise = TPromise<NProto::TZeroBlocksResponse>;
+    using TResponseFuture = TFuture<NProto::TZeroBlocksResponse>;
 
 private:
     TResponsePromise Promise;
@@ -161,7 +163,7 @@ protected:
 
 private:
     TResponseFuture DoExecute();
-    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler* backend);
+    TResponseFuture ReadModifyWrite(TAlignedDeviceHandler& backend);
     TResponseFuture ModifyAndWrite();
 };
 
@@ -200,7 +202,7 @@ bool TModifyRequest::IsAligned() const
     return BlocksInfo.IsAligned();
 }
 
-bool TModifyRequest::ReadyToRun()
+bool TModifyRequest::PrepareToRun()
 {
     if (Status == EStatus::InFlight) {
         // can't run a request that is already running
@@ -209,7 +211,13 @@ bool TModifyRequest::ReadyToRun()
 
     bool allDependenciesCompleted = AllOf(
         Dependencies,
-        [](const TModifyRequestWeakPtr& dep) { return dep.expired(); });
+        [](const TModifyRequestWeakPtr& weakRequest)
+        {
+            if (auto request = weakRequest.lock()) {
+                return request->Status == EStatus::Completed;
+            }
+            return true;
+        });
     if (!allDependenciesCompleted) {
         if (Status == EStatus::Created) {
             // Postponing the execution of the newly created request.
@@ -233,13 +241,15 @@ void TModifyRequest::ExecutePostponed()
     DoExecutePostponed();
 }
 
-void TModifyRequest::AllocateRMWBuffer()
+void TModifyRequest::SetCompleted()
 {
-    auto backend = Backend.lock();
-    Y_DEBUG_ABORT_UNLESS(backend);
+    Status = EStatus::Completed;
+}
 
+void TModifyRequest::AllocateRMWBuffer(TAlignedDeviceHandler& backend)
+{
     auto bufferSize = BlocksInfo.MakeAligned().BufferSize();
-    RMWBuffer = backend->AllocateBuffer(bufferSize);
+    RMWBuffer = backend.AllocateBuffer(bufferSize);
 
     auto sgListOrError = SgListNormalize(
         TBlockDataRef(RMWBuffer.get(), bufferSize),
@@ -278,8 +288,14 @@ void TWriteRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
     auto result = DoExecute();
-    result.Apply([this](const TResponseFuture& f)
-                 { this->Promise.SetValue(f.GetValue()); });
+    result.Subscribe(
+        [weakPtr = weak_from_this()](const TResponseFuture& f)
+        {
+            if (auto self = weakPtr.lock()) {
+                static_cast<TWriteRequest*>(self.get())
+                    ->Promise.SetValue(f.GetValue());
+            }
+        });
 }
 
 TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
@@ -289,7 +305,7 @@ TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
                                  std::move(CallContext),
                                  BlocksInfo,
                                  std::move(SgList))
-                           : ReadModifyWrite(backend.get());
+                           : ReadModifyWrite(*backend);
     }
 
     return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -297,11 +313,11 @@ TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
 }
 
 TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
-    TAlignedDeviceHandler* backend)
+    TAlignedDeviceHandler& backend)
 {
-    AllocateRMWBuffer();
+    AllocateRMWBuffer(backend);
 
-    auto read = backend->ExecuteReadRequest(
+    auto read = backend.ExecuteReadRequest(
         CallContext,
         BlocksInfo.MakeAligned(),
         SgList.Create(RMWBufferSgList),
@@ -383,8 +399,14 @@ void TZeroRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
     auto result = DoExecute();
-    result.Apply([this](const TResponseFuture& f)
-                 { this->Promise.SetValue(f.GetValue()); });
+    result.Subscribe(
+        [weakPtr = weak_from_this()](const TResponseFuture& f)
+        {
+            if (auto self = weakPtr.lock()) {
+                static_cast<TZeroRequest*>(self.get())
+                    ->Promise.SetValue(f.GetValue());
+            }
+        });
 }
 
 TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
@@ -393,7 +415,7 @@ TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
         return IsAligned() ? backend->ExecuteZeroRequest(
                                  std::move(CallContext),
                                  BlocksInfo)
-                           : ReadModifyWrite(backend.get());
+                           : ReadModifyWrite(*backend);
     }
 
     return MakeFuture<NProto::TZeroBlocksResponse>(
@@ -401,12 +423,12 @@ TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
 }
 
 TZeroRequest::TResponseFuture TZeroRequest::ReadModifyWrite(
-    TAlignedDeviceHandler* backend)
+    TAlignedDeviceHandler& backend)
 {
-    AllocateRMWBuffer();
+    AllocateRMWBuffer(backend);
     SgList.SetSgList(RMWBufferSgList);
 
-    auto read = backend->ExecuteReadRequest(
+    auto read = backend.ExecuteReadRequest(
         CallContext,
         BlocksInfo.MakeAligned(),
         SgList,
@@ -521,12 +543,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
         ctx,
         blocksInfo,
         std::move(sgList));
+    auto weakRequest = request->weak_from_this();
+    auto* rawRequest = request.get();
 
-    const bool readyToRun = RegisterRequest(request);
-    auto result = request->ExecuteOrPostpone(readyToRun);
+    const bool readyToRun = RegisterRequest(std::move(request));
+    auto result = rawRequest->ExecuteOrPostpone(readyToRun);
     return result.Apply(
         [weakDeviceHandler = weak_from_this(),
-         weakRequest = request->weak_from_this()](
+         weakRequest = std::move(weakRequest)](
             const TFuture<NProto::TWriteBlocksLocalResponse>& f) mutable
         {
             if (auto p = weakDeviceHandler.lock()) {
@@ -541,12 +565,14 @@ TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
     auto request = std::make_shared<TZeroRequest>(Backend, ctx, blocksInfo);
+    auto weakRequest = request->weak_from_this();
+    auto* rawRequest = request.get();
 
-    const bool readyToRun = RegisterRequest(request);
-    auto result = request->ExecuteOrPostpone(readyToRun);
+    const bool readyToRun = RegisterRequest(std::move(request));
+    auto result = rawRequest->ExecuteOrPostpone(readyToRun);
     return result.Apply(
         [weakDeviceHandler = weak_from_this(),
-         weakRequest = request->weak_from_this()](
+         weakRequest = std::move(weakRequest)](
             const TFuture<NProto::TZeroBlocksResponse>& f) mutable
         {
             if (auto p = weakDeviceHandler.lock()) {
@@ -573,7 +599,7 @@ bool TUnalignedDeviceHandler::RegisterRequest(TModifyRequestPtr request)
             UnalignedRequests.push_front(request);
             request->SetIt(UnalignedRequests.begin());
         }
-        return request->ReadyToRun();
+        return request->PrepareToRun();
     }
 }
 
@@ -649,13 +675,14 @@ void TUnalignedDeviceHandler::OnRequestFinished(
         [&](const TList<TModifyRequestPtr>& requests)
     {
         for (const auto& request: requests) {
-            if (request->ReadyToRun()) {
+            if (request->PrepareToRun()) {
                 readyToRunPostponedRequests.push_back(request.get());
             }
         }
     };
 
     with_lock (RequestsLock) {
+        request->SetCompleted();
         const bool isAligned = request->IsAligned();
         if (isAligned) {
             AlignedRequests.erase(request->GetIt());
