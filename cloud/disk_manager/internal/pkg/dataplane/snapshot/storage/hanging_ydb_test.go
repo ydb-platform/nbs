@@ -56,7 +56,8 @@ func tableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func (f *ydbTestFixture) initSchema() {
+func initSchema(t *testing.T) {
+	f := newYdbTestFixture(t)
 	err := f.db.CreateOrAlterTable(
 		f.ctx,
 		f.folder,
@@ -117,11 +118,11 @@ func (f *ydbTestFixture) writeChunkData(
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
+	initSchema(t)
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
 			defer f.cancel()
-			f.initSchema()
 			launchAndCancelParallelTransactions(f)
 			waitForTransactionsHanging(f)
 		}()
