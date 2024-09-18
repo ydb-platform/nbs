@@ -44,9 +44,9 @@ void SetupConfigDispatcher(
     auto& rules = config->ItemsServeRules;
 
     if (settings.HasAllowList()) {
-        rules.emplace<TAllowList>(items);
+        rules.emplace<TAllowList>(std::move(items));
     } else {
-        rules.emplace<TDenyList>(items);
+        rules.emplace<TDenyList>(std::move(items));
     }
 }
 
