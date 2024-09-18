@@ -51,8 +51,6 @@ func tableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("chunk_id", optional(persistence.TypeUTF8)),
 		persistence.WithColumn("referer", optional(persistence.TypeUTF8)),
 		persistence.WithColumn("data", optional(persistence.TypeString)),
-		persistence.WithColumn("refcnt", optional(persistence.TypeUint32)),
-		persistence.WithColumn("checksum", optional(persistence.TypeUint32)),
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(5),
 		persistence.WithExternalBlobs("rotencrypted"),
@@ -88,11 +86,10 @@ func (f *ydbTestFixture) writeChunkData(
 		declare $referer as Utf8;
 		declare $chunk_id as Utf8;
 		declare $data as String;
-		declare $checksum as Uint32;
 
-		upsert into %v (shard_id, chunk_id, referer, data, refcnt, checksum)
+		upsert into %v (shard_id, chunk_id, referer, data)
 		values
-			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum)
+			($shard_id, $chunk_id, "", $data)
 	`, f.db.AbsolutePath(f.folder), f.table),
 		persistence.ValueParam(
 			"$shard_id", persistence.Uint64Value(uint64(chunkIndex))),
@@ -104,10 +101,6 @@ func (f *ydbTestFixture) writeChunkData(
 		persistence.ValueParam(
 			"$data",
 			persistence.StringValue(dataToWrite),
-		),
-		persistence.ValueParam(
-			"$checksum",
-			persistence.Uint32Value(uint32(1231231)),
 		),
 	)
 }
