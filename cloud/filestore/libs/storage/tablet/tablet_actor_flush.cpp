@@ -323,9 +323,6 @@ void TIndexTabletActor::HandleFlush(
             MakeError(S_FALSE, "nothing to flush"));
         FlushState.Complete();
 
-        // FlushBytes may need to be triggered
-        EnqueueBlobIndexOpIfNeeded(ctx);
-
         return;
     }
 
