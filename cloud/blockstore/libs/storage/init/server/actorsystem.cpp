@@ -37,6 +37,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
@@ -504,6 +505,12 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
             sArgs.IsDiskRegistrySpareNode));
+
+        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                sArgs.StorageConfig->GetConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
+        }
     };
 
     auto storageConfig = sArgs.StorageConfig;

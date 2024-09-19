@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
+#include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -138,6 +139,12 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
 
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             daArgs));
+
+        if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                daArgs.StorageConfig->GetConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
+        }
     };
 
     // TODO: disable the services that are not needed by disk agent
