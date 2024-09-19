@@ -1671,10 +1671,10 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 				f.ctx,
 				"Write 100 more chunks to ensure that transactions do not hang",
 			)
-			transactionDuration := time.Minute * 3
+			transactionTimeout := time.Minute * 3
 			ctx, cancel = context.WithTimeout(
 				f.ctx,
-				transactionDuration,
+				transactionTimeout,
 			)
 			defer cancel()
 
@@ -1694,7 +1694,7 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 						if errorIsTimeout {
 							return fmt.Errorf(
 								"request to ydb took more than %v",
-								transactionDuration,
+								transactionTimeout,
 							)
 						}
 
