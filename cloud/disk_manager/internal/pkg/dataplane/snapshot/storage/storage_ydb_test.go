@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	internalcommon "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
@@ -391,15 +391,15 @@ func createFixture(t *testing.T) *fixture {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func makeChunk(chunkIndex uint32, chunkData string) common.Chunk {
-	return common.Chunk{
+func makeChunk(chunkIndex uint32, chunkData string) dataplane_common.Chunk {
+	return dataplane_common.Chunk{
 		Index: chunkIndex,
 		Data:  []byte(chunkData),
 	}
 }
 
-func makeZeroChunk(chunkIndex uint32) common.Chunk {
-	return common.Chunk{
+func makeZeroChunk(chunkIndex uint32) dataplane_common.Chunk {
+	return dataplane_common.Chunk{
 		Index: chunkIndex,
 		Zero:  true,
 	}
@@ -859,7 +859,7 @@ func TestShallowCopySnapshot(t *testing.T) {
 			chunk3 := makeChunk(10, "aaa")
 			chunkID3, err := f.storage.WriteChunk(f.ctx, "", "src", chunk3, testCase.useS3)
 			require.NoError(t, err)
-			chunk4 := common.Chunk{
+			chunk4 := dataplane_common.Chunk{
 				Index: 11,
 				Zero:  true,
 			}
@@ -1043,10 +1043,10 @@ func TestShallowCopySnapshotWithRandomFailure(t *testing.T) {
 					defer wg.Done()
 
 					for j := i * chunksPerWorker; j < (i+1)*chunksPerWorker; j++ {
-						var chunk common.Chunk
+						var chunk dataplane_common.Chunk
 
 						data := []byte(fmt.Sprintf("chunk-%v", j))
-						chunk = common.Chunk{Index: j, Data: data}
+						chunk = dataplane_common.Chunk{Index: j, Data: data}
 
 						chunkID, err := f.storage.WriteChunk(f.ctx, "", "src", chunk, testCase.useS3)
 						require.NoError(t, err)
@@ -1214,7 +1214,7 @@ func TestFlattenChunkData(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			chunk := common.Chunk{
+			chunk := dataplane_common.Chunk{
 				Index: 0,
 				Data:  []byte("abcdef"),
 			}
@@ -1244,7 +1244,7 @@ func TestReadChunk(t *testing.T) {
 			chunkMapEntries := readChunkMap(f, snapshotID)
 			require.Len(t, chunkMapEntries, 1)
 
-			readChunk := common.Chunk{
+			readChunk := dataplane_common.Chunk{
 				ID:         chunkID,
 				Data:       make([]byte, len(chunk.Data)),
 				StoredInS3: chunkMapEntries[0].storedInS3,
@@ -1262,7 +1262,7 @@ func TestReadNonExistentChunk(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
-			readChunk := common.Chunk{
+			readChunk := dataplane_common.Chunk{
 				ID:         "nonexistent",
 				Data:       make([]byte, 10000),
 				StoredInS3: testCase.useS3,
@@ -1361,7 +1361,7 @@ func TestChunkChecksumMismatch(t *testing.T) {
 
 			updateBlobChecksum(f, chunkID, 1111111111, testCase.useS3)
 
-			readChunk := common.Chunk{
+			readChunk := dataplane_common.Chunk{
 				ID:         chunkID,
 				Data:       make([]byte, len(chunk.Data)),
 				StoredInS3: testCase.useS3,
@@ -1383,7 +1383,7 @@ func TestS3BlobMetadataMissing(t *testing.T) {
 
 	clearS3BlobMetadata(f, chunkID)
 
-	readChunk := common.Chunk{
+	readChunk := dataplane_common.Chunk{
 		ID:         chunkID,
 		Data:       make([]byte, len(chunk.Data)),
 		StoredInS3: true,
@@ -1414,7 +1414,7 @@ func TestChunkCompression(t *testing.T) {
 			chunkID, err := f.storage.WriteChunk(f.ctx, "", "test", chunk, testCase.useS3)
 			require.NoError(t, err)
 
-			readChunk := common.Chunk{
+			readChunk := dataplane_common.Chunk{
 				ID:         chunkID,
 				Data:       make([]byte, len(chunk.Data)),
 				StoredInS3: testCase.useS3,
@@ -1456,7 +1456,7 @@ func TestGetDataChunkCount(t *testing.T) {
 			}
 
 			for i, data := range chunks {
-				var chunk common.Chunk
+				var chunk dataplane_common.Chunk
 
 				if len(data) != 0 {
 					chunk = makeChunk(uint32(i), data)
@@ -1510,7 +1510,7 @@ func TestCompressionMetricsCollection(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				readChunk := common.Chunk{
+				readChunk := dataplane_common.Chunk{
 					ID:         chunkID,
 					Data:       make([]byte, len(chunk.Data)),
 					StoredInS3: testCase.useS3,
@@ -1625,7 +1625,7 @@ func (f *ydbTestFixture) writeChunkData(
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
 	setup(t)
-	// Test that the issue with hanging transactions in ydb after
+	// Test that reproduces the issue with hanging transactions in ydb after
 	// parallel requests that write external blobs are cancelled.
 	// See: https://github.com/ydb-platform/ydb-go-sdk/issues/1025
 	// See: https://github.com/ydb-platform/nbs/issues/501
@@ -1660,7 +1660,7 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 			}
 
 			time.Sleep(
-				internalcommon.RandomDuration(
+				common.RandomDuration(
 					10*time.Millisecond,
 					500*time.Millisecond,
 				),
