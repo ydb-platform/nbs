@@ -1653,7 +1653,6 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 						if strings.Contains(err.Error(), "context canceled") {
 							return nil
 						}
-
 						return err
 					},
 				)
@@ -1678,11 +1677,10 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 				transactionDuration,
 			)
 			defer cancel()
-			var errGrp2 errgroup.Group
 
 			for chunkIdex := 100; chunkIdex < 200; chunkIdex++ {
 				chunkIndex := chunkIdex
-				errGrp2.Go(
+				errGrp.Go(
 					func() error {
 						err := f.writeChunkData(ctx, chunkIndex)
 						if err == nil {
@@ -1700,11 +1698,11 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 							)
 						}
 
-						return nil
+						return err
 					},
 				)
 			}
-			require.NoError(f.t, errGrp2.Wait())
+			require.NoError(f.t, errGrp.Wait())
 		}()
 	}
 }
