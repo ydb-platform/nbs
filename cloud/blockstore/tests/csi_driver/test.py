@@ -205,7 +205,7 @@ class NbsCsiDriverRunner:
             volume_id,
         )
 
-    def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
+    def publish_volume(self, pod_id: str, volume_id: str, pod_name: str, fs_type: str = ""):
         return self._node_run(
             "publishvolume",
             "--pod-id",
@@ -214,6 +214,8 @@ class NbsCsiDriverRunner:
             volume_id,
             "--pod-name",
             pod_name,
+            "--fs-type",
+            fs_type,
         )
 
     def unpublish_volume(self, pod_id: str, volume_id: str):
@@ -424,7 +426,8 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
         cleanup_after_test(env)
 
 
-def test_node_volume_expand():
+@pytest.mark.parametrize('fs_type', ["ext4", "xfs"])
+def test_node_volume_expand(fs_type):
     env, run = init()
     try:
         volume_name = "example-disk"
@@ -433,7 +436,7 @@ def test_node_volume_expand():
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id, volume_name, pod_name)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, fs_type)
 
         new_volume_size = 2 * volume_size
         env.csi.expand_volume(pod_id, volume_name, new_volume_size)
