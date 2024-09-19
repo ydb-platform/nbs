@@ -1712,7 +1712,10 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 							duration,
 						)
 						if duration > transactionDuration {
-							return fmt.Errorf("hanging request to YDB")
+							return fmt.Errorf(
+								"request to ydb took more than %v",
+								transactionDuration,
+							)
 						}
 
 						return nil
