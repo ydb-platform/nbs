@@ -57,8 +57,8 @@ struct TReferenceImplementation
     const ui32 MaxEntrySize;
 
     TDeque<TString> Q;
-    ui32 First = 0;
-    ui32 Next = 0;
+    ui32 ReadPos = 0;
+    ui32 WritePos = 0;
     ui32 SlackSpace = 0;
 
     explicit TReferenceImplementation(ui32 maxWeight, ui32 maxEntrySize)
@@ -75,19 +75,19 @@ struct TReferenceImplementation
         const ui32 sz = EntryOverhead + data.Size();
 
         if (!Empty()) {
-            if (First < Next) {
-                const auto avail = MaxWeight - Next;
+            if (ReadPos < WritePos) {
+                const auto avail = MaxWeight - WritePos;
                 if (avail <= sz) {
-                    if (First <= sz) {
+                    if (ReadPos <= sz) {
                         // out of space
                         return false;
                     }
 
                     SlackSpace = avail;
-                    Next = 0;
+                    WritePos = 0;
                 }
             } else {
-                const auto avail = First - Next;
+                const auto avail = ReadPos - WritePos;
                 if (avail <= sz) {
                     // out of space
                     return false;
@@ -95,7 +95,7 @@ struct TReferenceImplementation
             }
         }
 
-        Next += sz;
+        WritePos += sz;
         Q.emplace_back(data);
         return true;
     }
@@ -116,13 +116,13 @@ struct TReferenceImplementation
         }
 
         const ui32 sz = Q.front().Size() + EntryOverhead;
-        First += sz;
-        if (MaxWeight - First <= SlackSpace) {
-            UNIT_ASSERT_VALUES_EQUAL(SlackSpace, MaxWeight - First);
-            if (First == Next) {
-                Next = 0;
+        ReadPos += sz;
+        if (MaxWeight - ReadPos <= SlackSpace) {
+            UNIT_ASSERT_VALUES_EQUAL(SlackSpace, MaxWeight - ReadPos);
+            if (ReadPos == WritePos) {
+                WritePos = 0;
             }
-            First = 0;
+            ReadPos = 0;
             SlackSpace = 0;
         }
 

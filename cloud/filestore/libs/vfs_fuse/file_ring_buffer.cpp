@@ -24,8 +24,8 @@ struct THeader
 {
     ui32 Version = 0;
     ui32 Capacity = 0;
-    ui32 First = 0;
-    ui32 Next = 0;
+    ui32 ReadPos = 0;
+    ui32 WritePos = 0;
 };
 
 struct TEntryHeader
@@ -70,16 +70,16 @@ private:
 
     void SkipSlackSpace()
     {
-        if (Header()->First == Header()->Next) {
-            Header()->First = 0;
-            Header()->Next = 0;
+        if (Header()->ReadPos == Header()->WritePos) {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
             return;
         }
 
-        const auto* b = Data + Header()->First;
+        const auto* b = Data + Header()->ReadPos;
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
         if (eh->Size == 0) {
-            Header()->First = 0;
+            Header()->ReadPos = 0;
         }
     }
 
@@ -109,12 +109,12 @@ private:
 
     void Visit(const TVisitor& visitor) const
     {
-        ui32 pos = Header()->First;
-        while (pos > Header()->Next && pos != INVALID_POS) {
+        ui32 pos = Header()->ReadPos;
+        while (pos > Header()->WritePos && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
         }
 
-        while (pos < Header()->Next && pos != INVALID_POS) {
+        while (pos < Header()->WritePos && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
             if (!pos) {
                 // can happen if the buffer is corrupted
@@ -164,17 +164,17 @@ public:
         }
 
         const auto sz = data.Size() + sizeof(TEntryHeader);
-        auto* ptr = Data + Header()->Next;
+        auto* ptr = Data + Header()->WritePos;
 
         if (!Empty()) {
             // checking that we have a contiguous chunk of sz + 1 bytes
             // 1 extra byte is needed to distinguish between an empty buffer
             // and a buffer which is completely full
-            if (Header()->First < Header()->Next) {
+            if (Header()->ReadPos < Header()->WritePos) {
                 // we have a single contiguous occupied region
-                ui32 freeSpace = Header()->Capacity - Header()->Next;
+                ui32 freeSpace = Header()->Capacity - Header()->WritePos;
                 if (freeSpace <= sz) {
-                    if (Header()->First <= sz) {
+                    if (Header()->ReadPos <= sz) {
                         // out of space
                         return false;
                     }
@@ -184,7 +184,7 @@ public:
                 }
             } else {
                 // we have two occupied regions
-                ui32 freeSpace = Header()->First - Header()->Next;
+                ui32 freeSpace = Header()->ReadPos - Header()->WritePos;
                 if (freeSpace <= sz) {
                     // out of space
                     return false;
@@ -195,7 +195,7 @@ public:
         TMemoryOutput mo(ptr, sz);
         WriteEntry(mo, data);
 
-        Header()->Next = ptr - Data + sz;
+        Header()->WritePos = ptr - Data + sz;
         ++Count;
 
         return true;
@@ -207,7 +207,7 @@ public:
             return {};
         }
 
-        const auto* b = Data + Header()->First;
+        const auto* b = Data + Header()->ReadPos;
         if (b + sizeof(TEntryHeader) > End) {
             // corruption
             // TODO: report?
@@ -232,7 +232,7 @@ public:
             return;
         }
 
-        Header()->First += sizeof(TEntryHeader) + data.Size();
+        Header()->ReadPos += sizeof(TEntryHeader) + data.Size();
         --Count;
 
         SkipSlackSpace();
@@ -245,7 +245,7 @@ public:
 
     bool Empty() const
     {
-        const bool result = Header()->First == Header()->Next;
+        const bool result = Header()->ReadPos == Header()->WritePos;
         Y_DEBUG_ABORT_UNLESS(result == (Count == 0));
         return result;
     }
