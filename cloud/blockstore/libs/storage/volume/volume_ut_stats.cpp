@@ -52,6 +52,17 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    msg->DiskCounters->RequestCounters.ReadBlocks
+                        .GetRequestBytes(),
+                    msg->DiskCounters->Interconnect.TransportReadBlocks
+                        .GetRequestBytes());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    msg->DiskCounters->RequestCounters.WriteBlocks
+                        .GetRequestBytes(),
+                    msg->DiskCounters->Interconnect.TransportWriteBlocks
+                        .GetRequestBytes());
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
