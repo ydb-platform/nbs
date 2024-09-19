@@ -636,6 +636,27 @@ static_assert(
     sizeof(TVolumeSelfRequestCounters::TCounter) *
         std::size(TVolumeSelfRequestCounters::AllCounters));
 
+struct TTransportRequestCounters
+{
+    using TCounter =
+        TMemberWithMeta<TRequestCounters<THistogram<TRequestUsTimeBuckets>>>;
+    using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
+
+    TCounter TransportReadBlocks{EPublishingPolicy::All};
+    TCounter TransportWriteBlocks{
+        EPublishingPolicy::All
+    };
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TTransportRequestCounters::TransportReadBlocks>(),
+        MakeMeta<&TTransportRequestCounters::TransportWriteBlocks>(),
+    };
+};
+
+static_assert(
+    sizeof(TTransportRequestCounters) ==
+    (sizeof(TTransportRequestCounters::TCounter) *
+     std::size(TTransportRequestCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionDiskCounters
@@ -644,6 +665,8 @@ struct TPartitionDiskCounters
     TCumulativeDiskCounters Cumulative;
     THistogramRequestCounters RequestCounters;
     THistogramCounters Histogram;
+    TTransportRequestCounters Rdma;
+    TTransportRequestCounters Interconnect;
 
     EPublishingPolicy Policy;
 
@@ -676,6 +699,25 @@ struct TVolumeSelfCounters
     void AggregateWith(const TVolumeSelfCounters& source);
     void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
     void Publish(TInstant now);
+    void Reset();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTransportDiskCounters
+{
+    TTransportRequestCounters RequestCounters;
+
+    EPublishingPolicy Policy;
+
+    explicit TTransportDiskCounters(EPublishingPolicy policy)
+        : Policy(policy)
+    {}
+
+    void Add(const TTransportDiskCounters& source);
+    void AggregateWith(const TTransportDiskCounters& source);
+    void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
+    void Publish();
     void Reset();
 };
 

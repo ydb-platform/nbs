@@ -310,6 +310,24 @@ void TStatsServiceActor::HandleVolumePartCounters(
 
     State.GetCounters(volume->VolumeInfo).UpdatePartCounters(*msg->DiskCounters);
 
+    const auto mediaKind = volume->VolumeInfo.GetStorageMediaKind();
+
+    if (volume->IsDiskRegistryBased() && mediaKind != STORAGE_MEDIA_SSD_LOCAL) {
+        auto& rdmaCounter = State.GetRdmaCounter(mediaKind);
+        auto& interconnectCounter = State.GetInterconnectCounter(mediaKind);
+
+        rdmaCounter.PartAcc.RequestCounters.TransportReadBlocks.Add(
+            msg->DiskCounters->Rdma.TransportReadBlocks);
+        rdmaCounter.PartAcc.RequestCounters.TransportWriteBlocks.Add(
+            msg->DiskCounters->Rdma.TransportWriteBlocks);
+        interconnectCounter.PartAcc.RequestCounters.TransportReadBlocks.Add(
+            msg->DiskCounters->Interconnect.TransportReadBlocks);
+        interconnectCounter.PartAcc.RequestCounters.TransportWriteBlocks.Add(
+            msg->DiskCounters->Interconnect.TransportWriteBlocks);
+
+        rdmaCounter.Publish();
+        interconnectCounter.Publish();
+    }
     if (ev->Sender.NodeId() == SelfId().NodeId()) {
         State.GetLocalVolumesCounters().UpdateCounters(*msg->DiskCounters);
     } else {

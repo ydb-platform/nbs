@@ -309,6 +309,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& rdmaCounters = env.StorageStatsServiceState->Counters.Rdma;
+
         UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
@@ -323,6 +325,19 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             ),
             counters.WriteBlocks.RequestBytes
         );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportReadBlocks.Count,
+            counters.ReadBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportWriteBlocks.Count,
+            counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportReadBlocks.RequestBytes,
+            counters.ReadBlocks.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportWriteBlocks.RequestBytes,
+            counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -386,6 +401,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& rdmaCounters = env.StorageStatsServiceState->Counters.Rdma;
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
@@ -400,6 +416,19 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             ),
             counters.WriteBlocks.RequestBytes
         );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportReadBlocks.Count,
+            counters.ReadBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportWriteBlocks.Count,
+            counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportReadBlocks.RequestBytes,
+            counters.ReadBlocks.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rdmaCounters.TransportWriteBlocks.RequestBytes,
+            counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
