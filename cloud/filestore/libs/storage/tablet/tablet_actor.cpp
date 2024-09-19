@@ -359,15 +359,15 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
+        TDuration backpressurePeriod;
         if (CompactionStateLoadStatus.Finished) {
             if (!BackpressurePeriodStart) {
                 BackpressurePeriodStart = ctx.Now();
             }
 
             ++BackpressureErrorCount;
+            backpressurePeriod = ctx.Now() - BackpressurePeriodStart;
         }
-
-        const auto backpressurePeriod = ctx.Now() - BackpressurePeriodStart;
 
         if (BackpressureErrorCount >=
                 Config->GetMaxBackpressureErrorsBeforeSuicide()

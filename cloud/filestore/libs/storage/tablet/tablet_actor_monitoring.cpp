@@ -1076,11 +1076,15 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                 out << "Write allowed: " << message;
             }
         }
-        DIV_CLASS("alert") {
-            out << "Backpressure errors: " << BackpressureErrorCount;
-        }
-        DIV_CLASS("alert") {
-            out << "Backpressure period: " << BackpressurePeriodStart;
+        if (BackpressurePeriodStart || BackpressureErrorCount) {
+            DIV_CLASS("alert") {
+                out << "Backpressure errors: " << BackpressureErrorCount;
+            }
+            DIV_CLASS("alert") {
+                out << "Backpressure period start: " << BackpressurePeriodStart;
+                out << "Backpressure period: "
+                    << (ctx.Now() - BackpressurePeriodStart);
+            }
         }
 
         TABLE_CLASS("table table-bordered") {
