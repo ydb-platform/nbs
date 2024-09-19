@@ -1625,8 +1625,8 @@ func (f *ydbTestFixture) writeChunkData(
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
 	setup(t)
-	// Test that the issue with hanging transactions to ydb after
-	// parallel requests writing external blobs are cancelled.
+	// Test that the issue with hanging transactions in ydb after
+	// parallel requests that write external blobs are cancelled.
 	// See: https://github.com/ydb-platform/ydb-go-sdk/issues/1025
 	// See: https://github.com/ydb-platform/nbs/issues/501
 	// We need 50 iteration to guarantee for the bug to reproduce,
@@ -1673,18 +1673,18 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 				"Write 100 more chunks to ensure that transactions do not hang",
 			)
 			transactionDuration := time.Minute * 3
-			secondContext, secondCancelFunc := context.WithTimeout(
+			ctx, cancel = context.WithTimeout(
 				f.ctx,
 				transactionDuration,
 			)
-			defer secondCancelFunc()
+			defer cancel()
 			var errGrp2 errgroup.Group
 
 			for chunkIdex := 100; chunkIdex < 200; chunkIdex++ {
 				chunkIndex := chunkIdex
 				errGrp2.Go(
 					func() error {
-						err := f.writeChunkData(secondContext, chunkIndex)
+						err := f.writeChunkData(ctx, chunkIndex)
 						if err == nil {
 							return nil
 						}
