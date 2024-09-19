@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import requests
 import time
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
@@ -274,3 +275,37 @@ def test_null_backend(nbs, agent_ids, disk_agent_configurators):
     blocks = session.read_blocks(0, 1, checkpoint_id="")
     assert len(blocks) == 1
     session.unmount_volume()
+
+
+def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurators):
+    assert len(disk_agent_configurators) >= 2
+
+    # The first agent will not register in the node broker.
+    disk_agent_configurators[0].files["disk-agent"]\
+        .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
+    disk_agent_configurators[0].files["disk-agent"]\
+        .DisableNodeBrokerRegisterationOnDevicelessAgent = True
+
+    # The second agent should register, even without devices.
+    disk_agent_configurators[1].files["disk-agent"]\
+        .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
+    disk_agent_configurators[1].files["disk-agent"]\
+        .DisableNodeBrokerRegisterationOnDevicelessAgent = False
+
+    agents = []
+    for agent_id, configurator in zip(agent_ids, disk_agent_configurators):
+        agents.append(start_disk_agent(configurator, name=agent_id))
+
+    for idx, agent in enumerate(agents):
+        with open(agent.stderr_file_name) as log_file:
+            deep_idle_agent = \
+                "Devices were not found. Skipping the node broker registration." in log_file.read()
+            assert deep_idle_agent == disk_agent_configurators[idx].files[
+                "disk-agent"].DisableNodeBrokerRegisterationOnDevicelessAgent
+
+    response = requests.get(f"http://localhost:{agents[0].mon_port}")
+    assert response.status_code == 200
+    assert "This node is not registered in the NodeBroker" in response.text
+
+    for agent in agents:
+        agent.kill()

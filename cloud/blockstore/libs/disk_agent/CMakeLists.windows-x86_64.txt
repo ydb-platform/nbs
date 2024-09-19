@@ -28,6 +28,7 @@ target_link_libraries(blockstore-libs-disk_agent PUBLIC
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics
+  core-libs-http
   core-libs-version
   ydb-core-protos
   udf-service-exception_policy

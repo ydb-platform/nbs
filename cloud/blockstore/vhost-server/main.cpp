@@ -239,9 +239,9 @@ int main(int argc, char** argv)
     for (bool running = true, parentExit = false; running;) {
         int sig = 0;
         if (parentExit) {
-            TDuration delayAfterParentExit = TInstant::Now() +
+            TDuration delayAfterParentExit = deathTimerStartedAt +
                                              options.WaitAfterParentExit -
-                                             deathTimerStartedAt;
+                                             TInstant::Now();
             if (!delayAfterParentExit) {
                 break;
             }
