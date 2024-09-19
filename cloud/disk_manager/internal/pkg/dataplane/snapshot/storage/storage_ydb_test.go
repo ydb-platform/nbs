@@ -1649,10 +1649,10 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 						if err == nil {
 							return nil
 						}
-
 						if strings.Contains(err.Error(), "context canceled") {
 							return nil
 						}
+
 						return err
 					},
 				)
