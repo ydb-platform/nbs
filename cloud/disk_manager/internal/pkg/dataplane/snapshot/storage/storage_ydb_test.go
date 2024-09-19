@@ -1707,5 +1707,4 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 			require.NoError(f.t, errGrp2.Wait())
 		}()
 	}
-
 }
