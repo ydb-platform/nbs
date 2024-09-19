@@ -134,8 +134,8 @@ func (t *replicateDiskTask) saveProgress(
 		return err
 	}
 
-	bytesPerSecond := uint64(performance.ConvertMiBsToBytes(
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs()),
+	bytesPerSecond := performance.ConvertMiBsToBytes(
+		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
 	)
 
 	if t.state.ChunkCount != 0 && t.state.Progress != 1 {
