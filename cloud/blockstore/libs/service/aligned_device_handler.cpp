@@ -11,6 +11,16 @@ using namespace NThreading;
 
 namespace {
 
+TErrorResponse CreateErrorAcquireResponse()
+{
+    return {E_CANCELLED, "failed to acquire sglist in DeviceHandler"};
+}
+
+TErrorResponse CreateRequestNotAlignedResponse()
+{
+    return {E_ARGUMENT, "Request is not aligned"};
+}
+
 // Removes the first blockCount elements from the sgList. Returns these removed
 // items in TGuardedSgList.
 TGuardedSgList TakeHeadBlocks(TGuardedSgList& sgList, ui32 blockCount)
@@ -29,21 +39,18 @@ TGuardedSgList TakeHeadBlocks(TGuardedSgList& sgList, ui32 blockCount)
 
 }   // namespace
 
-TResultOrError<bool> TryToNormalize(
+NProto::TError TryToNormalize(
     TGuardedSgList& guardedSgList,
-    const TBlocksInfo& blocksInfo,
-    ui64 length,
-    ui32 blockSize)
+    TBlocksInfo& blocksInfo)
 {
+    const auto length = blocksInfo.BufferSize();
     if (length == 0) {
         return MakeError(E_ARGUMENT, "Local request has zero length");
     }
 
     auto guard = guardedSgList.Acquire();
     if (!guard) {
-        return MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler");
+        return CreateErrorAcquireResponse();
     }
 
     auto bufferSize = SgListGetSize(guard.Get());
@@ -51,45 +58,37 @@ TResultOrError<bool> TryToNormalize(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "Invalid local request:" << " buffer size " << bufferSize
+                << "Invalid local request: buffer size " << bufferSize
                 << " not equal to length " << length);
     }
 
-    if (blocksInfo.BeginOffset != 0 || blocksInfo.EndOffset != 0) {
-        return false;
+    if (!blocksInfo.IsAligned()) {
+        return MakeError(S_OK);
     }
 
-    for (const auto& buffer: guard.Get()) {
-        if (buffer.Size() % blockSize != 0) {
-            return false;
-        }
+    bool allBuffersAligned = AllOf(
+        guard.Get(),
+        [blockSize = blocksInfo.BlockSize](const auto& buffer)
+        { return buffer.Size() % blockSize == 0; });
+
+    if (!allBuffersAligned) {
+        blocksInfo.SgListAligned = false;
+        return MakeError(S_OK);
     }
 
-    auto sgListOrError = SgListNormalize(guard.Get(), blockSize);
+    auto sgListOrError = SgListNormalize(guard.Get(), blocksInfo.BlockSize);
     if (HasError(sgListOrError)) {
         return sgListOrError.GetError();
     }
 
     guardedSgList.SetSgList(sgListOrError.ExtractResult());
-    return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TStorageBuffer AllocateStorageBuffer(IStorage& storage, size_t bytesCount)
-{
-    auto buffer = storage.AllocateBuffer(bytesCount);
-    if (!buffer) {
-        buffer = std::shared_ptr<char>(
-            new char[bytesCount],
-            std::default_delete<char[]>());
-    }
-    return buffer;
+    return MakeError(S_OK);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
+    : BlockSize(blockSize)
 {
     ui64 startIndex = from / blockSize;
     ui64 beginOffset = from - startIndex * blockSize;
@@ -106,6 +105,25 @@ TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
     Range = TBlockRange64::WithLength(startIndex, blocksCount);
     BeginOffset = beginOffset;
     EndOffset = endOffset;
+}
+
+size_t TBlocksInfo::BufferSize() const
+{
+    return Range.Size() * BlockSize - BeginOffset - EndOffset;
+}
+
+bool TBlocksInfo::IsAligned() const
+{
+    return SgListAligned && BeginOffset == 0 && EndOffset == 0;
+}
+
+TBlocksInfo TBlocksInfo::MakeAligned() const
+{
+    TBlocksInfo result(*this);
+    result.BeginOffset = 0;
+    result.EndOffset = 0;
+    result.SgListAligned = true;
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,16 +149,15 @@ TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
     const TString& checkpointId)
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
-
-    auto aligned = TryToNormalize(sgList, blocksInfo, length, BlockSize);
-    if (HasError(aligned)) {
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(aligned.GetError()));
+            TErrorResponse(normalizeError));
     }
 
-    if (!aligned.GetResult()) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
     return ExecuteReadRequest(
@@ -158,15 +175,15 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAlignedDeviceHandler::Write(
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
 
-    auto aligned = TryToNormalize(sgList, blocksInfo, length, BlockSize);
-    if (HasError(aligned)) {
+    auto normalizeError = TryToNormalize(sgList, blocksInfo);
+    if (HasError(normalizeError)) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(aligned.GetError()));
+            TErrorResponse(normalizeError));
     }
 
-    if (!aligned.GetResult()) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
     return ExecuteWriteRequest(std::move(ctx), blocksInfo, std::move(sgList));
@@ -181,20 +198,23 @@ TAlignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
     }
 
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
-    if (blocksInfo.BeginOffset != 0 || blocksInfo.EndOffset != 0) {
+    if (!blocksInfo.IsAligned()) {
         return MakeFuture<NProto::TZeroBlocksResponse>(
-            TErrorResponse(E_ARGUMENT, "Request is not aligned"));
+            CreateRequestNotAlignedResponse());
     }
 
-    return ExecuteZeroRequest(
-        std::move(ctx),
-        blocksInfo.Range.Start,
-        blocksInfo.Range.Size());
+    return ExecuteZeroRequest(std::move(ctx), blocksInfo);
 }
 
 TStorageBuffer TAlignedDeviceHandler::AllocateBuffer(size_t bytesCount)
 {
-    return AllocateStorageBuffer(*Storage, bytesCount);
+    auto buffer = Storage->AllocateBuffer(bytesCount);
+    if (!buffer) {
+        buffer = std::shared_ptr<char>(
+            new char[bytesCount],
+            std::default_delete<char[]>());
+    }
+    return buffer;
 }
 
 TFuture<NProto::TReadBlocksLocalResponse>
@@ -204,6 +224,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     TGuardedSgList sgList,
     TString checkpointId) const
 {
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
     auto requestBlockCount =
         std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
@@ -226,9 +248,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TReadBlocksResponse>(TErrorResponse(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler"));
+        return MakeFuture<NProto::TReadBlocksResponse>(
+            CreateErrorAcquireResponse());
     }
 
     auto result = Storage->ReadBlocksLocal(ctx, std::move(request));
@@ -268,6 +289,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     TBlocksInfo blocksInfo,
     TGuardedSgList sgList) const
 {
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
     auto requestBlockCount =
         std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
@@ -289,9 +312,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TWriteBlocksResponse>(TErrorResponse(
-            E_CANCELLED,
-            "failed to acquire sglist in DeviceHandler"));
+        return MakeFuture<NProto::TWriteBlocksResponse>(
+            CreateErrorAcquireResponse());
     }
 
     auto result = Storage->WriteBlocksLocal(ctx, std::move(request));
@@ -325,31 +347,32 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
 
 TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     TCallContextPtr ctx,
-    ui64 startIndex,
-    ui32 blockCount) const
+    TBlocksInfo blocksInfo) const
 {
-    auto requestBlockCount = std::min(blockCount, MaxBlockCount);
+    Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
+
+    auto requestBlockCount = std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
 
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
-    request->SetStartIndex(startIndex);
+    request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlocksCount(requestBlockCount);
 
-    if (requestBlockCount == blockCount) {
+    if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         return Storage->ZeroBlocks(std::move(ctx), std::move(request));
     }
 
     auto result = Storage->ZeroBlocks(ctx, std::move(request));
 
+    blocksInfo.Range.Start += requestBlockCount;
+
     return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
-         startIndex = startIndex + requestBlockCount,
-         blocksCount =
-             blockCount - requestBlockCount](const auto& future) mutable
+         blocksInfo = blocksInfo](const auto& future) mutable
         {
             // Only part of the request was completed. Continue doing the
             // rest of the work
@@ -360,10 +383,7 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
             }
 
             if (auto self = weakPtr.lock()) {
-                return self->ExecuteZeroRequest(
-                    std::move(ctx),
-                    startIndex,
-                    blocksCount);
+                return self->ExecuteZeroRequest(std::move(ctx), blocksInfo);
             }
             return MakeFuture<NProto::TZeroBlocksResponse>(
                 TErrorResponse(E_CANCELLED));
