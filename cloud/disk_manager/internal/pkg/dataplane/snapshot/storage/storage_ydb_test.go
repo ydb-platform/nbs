@@ -199,12 +199,6 @@ func readChunkMap(
 	return sortChunkMapEntries(result)
 }
 
-type s3ChunkObject struct {
-	Data        []byte
-	Checksum    uint32
-	Compression string
-}
-
 func updateBlobChecksum(
 	f *fixture,
 	chunkID string,
