@@ -8942,6 +8942,102 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1u, updateUsedBlocksRequestCount);
     }
+
+    void DoShouldRejectRequestsWhenVolumesIsKilled(
+        bool multipartition,
+        bool trackUsed)
+    {
+        auto runtime = PrepareTestActorRuntime({});
+        const ui32 partitionCount = multipartition ? 2 : 1;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            7 * 1024,   // block count per partition
+            "vol0",
+            "cloud",
+            "folder",
+            partitionCount,                 // partition count
+            2,                              // blocksPerStripe
+            trackUsed ? "track-used" : ""   // tags
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        // Make the interceptor for WriteBlocks responses from the partition.
+        ui32 droppedResponseCount = 0;
+        auto dropPartitionResponses =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksResponse) {
+                ++droppedResponseCount;
+                return true;
+            }
+
+            return false;
+        };
+        auto oldFilter = runtime->SetEventFilter(dropPartitionResponses);
+
+        // Send write request.
+        volume.SendWriteBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+
+        // Waiting for the interception of all responses from the partitions.
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]()
+        {
+            return droppedResponseCount == partitionCount;
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        // Remove the responses interceptor.
+        runtime->SetEventFilter(oldFilter);
+
+        // Restarting the volume tablet. It must respond to requests that have
+        // not yet been completed.
+        volume.RebootTablet();
+
+        // Check response.
+        auto response = volume.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Shutting down",
+            response->GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsWhenSinglePartitionVolumesIsKilled)
+    {
+        DoShouldRejectRequestsWhenVolumesIsKilled(false, false);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsWhenMultiPartitionVolumesIsKilled)
+    {
+        DoShouldRejectRequestsWhenVolumesIsKilled(true, false);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsWhenTrackUsedAndSinglePartitionVolumesIsKilled)
+    {
+        DoShouldRejectRequestsWhenVolumesIsKilled(false, true);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsWhenTrackUsedAndMultiPartitionVolumesIsKilled)
+    {
+        DoShouldRejectRequestsWhenVolumesIsKilled(true, true);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
