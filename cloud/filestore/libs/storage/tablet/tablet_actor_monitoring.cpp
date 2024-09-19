@@ -1068,9 +1068,19 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             &message);
         TAG(TH3) { out << "Backpressure"; }
         if (!isWriteAllowed) {
-            out << "<div class='alert alert-danger'>" << "Write not allowed: " << message << "</div>";
+            DIV_CLASS("alert alert-danger") {
+                out << "Write NOT allowed: " << message;
+            }
         } else {
-            out << "<div class='alert'>Write allowed</div>";
+            DIV_CLASS("alert") {
+                out << "Write allowed: " << message;
+            }
+        }
+        DIV_CLASS("alert") {
+            out << "Backpressure errors: " << BackpressureErrorCount;
+        }
+        DIV_CLASS("alert") {
+            out << "Backpressure period: " << BackpressurePeriodStart;
         }
 
         TABLE_CLASS("table table-bordered") {

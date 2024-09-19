@@ -105,10 +105,6 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    // this request passed the backpressure check => tablet is not stuck
-    // anywhere, we can reset our backpressure error counter
-    BackpressureErrorCount = 0;
-
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
         return;
