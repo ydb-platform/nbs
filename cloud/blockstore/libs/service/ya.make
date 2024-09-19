@@ -17,6 +17,7 @@ SRCS(
     storage_provider.cpp
     storage_test.cpp
     storage.cpp
+    unaligned_device_handler.cpp
 )
 
 PEERDIR(
