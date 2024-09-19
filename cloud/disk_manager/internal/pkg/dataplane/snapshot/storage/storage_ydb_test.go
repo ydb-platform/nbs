@@ -1574,7 +1574,7 @@ func tableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func setup(t *testing.T) {
+func setupTestYdbRequestDoesNotHang(t *testing.T) {
 	f := newYdbTestFixture(t)
 	err := f.db.CreateOrAlterTable(
 		f.ctx,
@@ -1624,13 +1624,13 @@ func (f *ydbTestFixture) writeChunkData(
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
-	setup(t)
 	// Test that reproduces the issue with hanging transactions in ydb after
 	// parallel requests that write external blobs are cancelled.
 	// See: https://github.com/ydb-platform/ydb-go-sdk/issues/1025
 	// See: https://github.com/ydb-platform/nbs/issues/501
 	// We need 50 iteration to guarantee for the bug to reproduce,
 	// usually it takes less iterations.
+	setupTestYdbRequestDoesNotHang(t)
 	for i := 0; i < 50; i++ {
 		func() {
 			f := newYdbTestFixture(t)
