@@ -1621,18 +1621,6 @@ func (f *ydbTestFixture) writeChunkData(
 	return err
 }
 
-func errorIsContextCancelled(err error) bool {
-	if strings.Contains(err.Error(), "context deadline exceeded") {
-		return true
-	}
-
-	if strings.Contains(err.Error(), "context canceled") {
-		return true
-	}
-
-	return false
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestYDBRequestDoesNotHang(t *testing.T) {
@@ -1662,7 +1650,7 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 							return nil
 						}
 
-						if errorIsContextCancelled(err) {
+						if strings.Contains(err.Error(), "context canceled") {
 							return nil
 						}
 
@@ -1696,22 +1684,16 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 				chunkIndex := chunkIdex
 				errGrp2.Go(
 					func() error {
-						now := time.Now()
 						err := f.writeChunkData(secondContext, chunkIndex)
-						if err != nil {
-							if !errorIsContextCancelled(err) {
-								return err
-							}
+						if err == nil {
+							return nil
 						}
 
-						duration := time.Now().Sub(now)
-						logging.Info(
-							f.ctx,
-							"Transaction with index %d took %v",
-							chunkIndex,
-							duration,
+						errorIsTimeout := strings.Contains(
+							err.Error(),
+							"context deadline exceeded",
 						)
-						if duration > transactionDuration {
+						if errorIsTimeout {
 							return fmt.Errorf(
 								"request to ydb took more than %v",
 								transactionDuration,
