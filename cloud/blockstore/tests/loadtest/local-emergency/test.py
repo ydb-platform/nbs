@@ -101,8 +101,6 @@ def __run_test(test_case):
     session = Session(client, "vol0", "")
     session.mount_volume()
     session.write_blocks(100500, [b'\1' * 4096])
-    # TODO: should not unmount volume to make emergency unexpected
-    session.unmount_volume()
 
     client.execute_action(action="BackupPathDescriptions", input_bytes=str.encode(""))
     client.execute_action(action="BackupTabletBootInfos", input_bytes=str.encode(""))
@@ -116,11 +114,9 @@ def __run_test(test_case):
     env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder)]
     env.nbs.restart()
 
-    session.mount_volume()
     data = session.read_blocks(100499, 3, "")
     # check data (that was written) together with left & right neighborhood
     assert data == [b''] + [b'\1' * 4096] + [b'']
-    # TODO: should not unmount volume to make emergency unexpected
     session.unmount_volume()
 
     try:
