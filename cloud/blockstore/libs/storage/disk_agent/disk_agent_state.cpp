@@ -42,10 +42,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxRequestSize = 128*1024*1024;  // TODO
-
-////////////////////////////////////////////////////////////////////////////////
-
 void ToDeviceStats(
     const TString& uuid,
     const TString& name,
@@ -358,7 +354,6 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
                         std::move(r.Devices[i]),
                         config.GetBlockSize(),
                         false,  // normalize
-                        MaxRequestSize,
                         ioTimeout,
                         AgentConfig->GetShutdownTimeout())
                 };
@@ -405,7 +400,6 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                         std::move(r.Devices[i]),
                         config.GetBlockSize(),
                         false,  // normalize
-                        MaxRequestSize,
                         ioTimeout,
                         AgentConfig->GetShutdownTimeout()),
                     .Stats = std::move(r.Stats[i])

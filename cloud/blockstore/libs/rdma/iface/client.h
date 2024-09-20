@@ -22,7 +22,12 @@ namespace NCloud::NBlockStore::NRdma {
 struct TClientConfig
 {
     ui32 QueueSize = 10;
-    ui32 MaxBufferSize = 1024*1024;
+    // Keep the value greater then MaxSubRequestSize, ProcessingRangeSize,
+    // ResyncRangeSize in cloud/blockstore/libs/service/device_handler.cpp
+    // cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h
+    // cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync_util.h
+    // Keep sync with MaxBufferSize in cloud/blockstore/vhost-server/options.h
+    ui32 MaxBufferSize = 4_MB + 4_KB;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 PollerThreads = 1;
     TDuration MaxReconnectDelay = TDuration::Seconds(60);

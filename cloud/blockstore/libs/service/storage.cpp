@@ -21,6 +21,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 MaxRequestSize = 32_MB;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageStub final
     : public IStorage
 {
@@ -173,7 +177,6 @@ private:
     const IStoragePtr Storage;
     const ui32 StorageBlockSize;
     const bool Normalize;
-    const ui32 MaxRequestSize;
     const TDuration MaxRequestDuration;
 
     std::shared_ptr<TInflightReads> InflightReads{
@@ -190,7 +193,6 @@ public:
         IStoragePtr storage,
         ui32 storageBlockSize,
         bool normalize,
-        ui32 maxRequestSize,
         TDuration maxRequestDuration);
 
     TFuture<NProto::TReadBlocksResponse> ReadBlocks(
@@ -240,12 +242,10 @@ TStorageAdapter::TImpl::TImpl(
         IStoragePtr storage,
         ui32 storageBlockSize,
         bool normalize,
-        ui32 maxRequestSize,
         TDuration maxRequestDuration)
     : Storage(std::move(storage))
     , StorageBlockSize(storageBlockSize)
     , Normalize(normalize)
-    , MaxRequestSize(maxRequestSize)
     , MaxRequestDuration(maxRequestDuration)
 {}
 
@@ -666,14 +666,12 @@ TStorageAdapter::TStorageAdapter(
         IStoragePtr storage,
         ui32 storageBlockSize,
         bool normalize,
-        ui32 maxRequestSize,
         TDuration maxRequestDuration,
         TDuration shutdownTimeout)
     : Impl(std::make_unique<TImpl>(
         std::move(storage),
         storageBlockSize,
         normalize,
-        maxRequestSize,
         maxRequestDuration))
     , ShutdownTimeout(shutdownTimeout)
 {}
