@@ -2740,7 +2740,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT(poisonPillObserved);
     }
 
-    TABLET_TEST(ShouldAutomaticallyEnqueueFlushBytesAfterFlushShortcut)
+    TABLET_TEST(FlushBytesShouldReenqueueAfterAttemptToEnqueueItDuringFlush)
     {
         const auto block = tabletConfig.BlockSize;
 
@@ -2757,13 +2757,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, block, '0'); // 1 fresh block
-        tablet.WriteData(handle, 0, 1, '0'); // 1 fresh byte
 
         TAutoPtr<IEventHandle> flush;
         TAutoPtr<IEventHandle> flushBytesCompletion;
