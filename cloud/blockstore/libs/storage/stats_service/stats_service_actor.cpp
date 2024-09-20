@@ -71,23 +71,6 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
     State.GetSsdBlobCounters().Register(ssdCounters);
     State.GetHddBlobCounters().Register(hddCounters);
 
-    State.GetRdmaSsdNonreplCounters().Register(
-        ssdNonreplCounters->GetSubgroup("transport", "RDMA"));
-    State.GetInterconnectSsdNonreplCounters().Register(
-        ssdNonreplCounters->GetSubgroup("transport", "Interconnect"));
-    State.GetRdmaHddNonreplCounters().Register(
-        hddNonreplCounters->GetSubgroup("transport", "RDMA"));
-    State.GetInterconnectHddNonreplCounters().Register(
-        hddNonreplCounters->GetSubgroup("transport", "Interconnect"));
-    State.GetRdmaSsdMirror2Counters().Register(
-        ssdMirror2Counters->GetSubgroup("transport", "RDMA"));
-    State.GetInterconnectSsdMirror2Counters().Register(
-        ssdMirror2Counters->GetSubgroup("transport", "Interconnect"));
-    State.GetRdmaSsdMirror3Counters().Register(
-        ssdMirror3Counters->GetSubgroup("transport", "RDMA"));
-    State.GetInterconnectSsdMirror3Counters().Register(
-        ssdMirror3Counters->GetSubgroup("transport", "Interconnect"));
-
     YDbFailedRequests = totalCounters->GetCounter("Ydb/FailedRequests", true);
     FailedPartitionBoots = totalCounters->GetCounter("FailedBoots", true);
 
