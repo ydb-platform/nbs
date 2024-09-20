@@ -1413,9 +1413,7 @@ struct TTxIndexTablet
     // AddData
     //
 
-    struct TAddData
-        : TSessionAware
-        , TIndexStateNodeUpdates
+    struct TAddData: TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;

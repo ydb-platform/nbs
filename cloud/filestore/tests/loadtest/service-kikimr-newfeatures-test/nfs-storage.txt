@@ -8,4 +8,8 @@ PreferredBlockSizeMultiplier: 64
 MultiTabletForwardingEnabled: true
 GetNodeAttrBatchEnabled: true
 UnalignedThreeStageWriteEnabled: true
+InMemoryIndexCacheEnabled: true
+InMemoryIndexCacheNodesCapacity: 10
+InMemoryIndexCacheNodeRefsCapacity: 10
+InMemoryIndexCacheNodeAttrsCapacity: 10
 UseMixedBlocksInsteadOfAliveBlocksInCompaction: true

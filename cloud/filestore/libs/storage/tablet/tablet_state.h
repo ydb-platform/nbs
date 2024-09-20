@@ -1281,6 +1281,8 @@ public:
     TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
+    void UpdateInMemoryIndexState(
+        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
