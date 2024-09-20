@@ -132,5 +132,5 @@ runs:
       if: ${{ steps.create-vm.outputs.console-output }}
       uses: actions/upload-artifact@v4
       with:
-        name: console-output
+        name: console-output-${{ inputs.vm_name }}
         path: ${{ steps.create-vm.outputs.console-output }}
