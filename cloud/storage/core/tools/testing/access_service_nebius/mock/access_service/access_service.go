@@ -6,27 +6,69 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
 	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/protos"
-	mockConfig "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type accessServiceMock struct {
-	accountsByToken map[string]mockConfig.AccountConfig
+type Permission struct {
+	Permission string `json:"permission,omitempty"`
+	Resource   string `json:"resource,omitempty"`
 }
 
-func newAccessServiceMock(config mockConfig.MockConfig) *accessServiceMock {
-	accountsByToken := make(map[string]mockConfig.AccountConfig)
-	for _, accountConfig := range config.Accounts {
-		accountsByToken[accountConfig.Token] = accountConfig
+type AccountConfig struct {
+	Permissions      []Permission `json:"permissions,omitempty"`
+	Id               string       `json:"id,omitempty"`
+	IsUnknownSubject bool         `json:"is_unknown_subject,omitempty"`
+	Token            string       `json:"token,omitempty"`
+}
+
+type MockConfig struct {
+	Port        int    `json:"port,omitempty"`
+	ControlPort int    `json:"control_port,omitempty"`
+	CertFile    string `json:"cert_file,omitempty"`
+	CertKeyFile string `json:"cert_key_file,omitempty"`
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type accessServiceMock struct {
+	mu              *sync.Mutex
+	accountsByToken map[string]AccountConfig
+}
+
+func newAccessServiceMock() *accessServiceMock {
+	return &accessServiceMock{
+		accountsByToken: make(map[string]AccountConfig),
+		mu:              &sync.Mutex{},
 	}
-	return &accessServiceMock{accountsByToken: accountsByToken}
+}
+
+func (t *accessServiceMock) HandleCreateAccount(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var accountConfig AccountConfig
+	err := json.NewDecoder(r.Body).Decode(&accountConfig)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	t.addAccount(accountConfig)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (t *accessServiceMock) Authorize(_ context.Context, request *iamv1.AuthorizeRequest) (*iamv1.AuthorizeResponse, error) {
@@ -41,7 +83,7 @@ func (t *accessServiceMock) Authorize(_ context.Context, request *iamv1.Authoriz
 			continue
 		}
 
-		accountConfig, ok := t.accountsByToken[token]
+		accountConfig, ok := t.getAccount(token)
 		if !ok {
 			results[key] = &iamv1.AuthorizeResult{
 				ResultCode: iamv1.AuthorizeResult_INVALID_TOKEN,
@@ -91,7 +133,7 @@ func (t *accessServiceMock) Authenticate(_ context.Context, request *iamv1.Authe
 		}, nil
 	}
 
-	accountConfig, ok := t.accountsByToken[token]
+	accountConfig, ok := t.getAccount(token)
 	if !ok {
 		return &iamv1.AuthenticateResponse{
 			ResultCode: iamv1.AuthenticateResponse_INVALID_TOKEN,
@@ -111,7 +153,7 @@ func (t *accessServiceMock) Authenticate(_ context.Context, request *iamv1.Authe
 	}, nil
 }
 
-func (t *accessServiceMock) checkPermissions(permissions []mockConfig.Permission, value *iamv1.AuthorizeCheck) bool {
+func (t *accessServiceMock) checkPermissions(permissions []Permission, value *iamv1.AuthorizeCheck) bool {
 	for _, permission := range permissions {
 		if permission.Permission == value.Permission.Name && permission.Resource == value.GetContainerId() {
 			return true
@@ -120,10 +162,25 @@ func (t *accessServiceMock) checkPermissions(permissions []mockConfig.Permission
 	return false
 }
 
+func (t *accessServiceMock) addAccount(config AccountConfig) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.accountsByToken[config.Token] = config
+}
+
+func (t *accessServiceMock) getAccount(token string) (AccountConfig, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	account, ok := t.accountsByToken[token]
+	return account, ok
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func StartAccessService(configPath string) error {
-	var config mockConfig.MockConfig
+	var config MockConfig
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
@@ -134,7 +191,7 @@ func StartAccessService(configPath string) error {
 		return err
 	}
 
-	accessService := newAccessServiceMock(config)
+	accessService := newAccessServiceMock()
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if err != nil {
 		log.Fatalf("failed to listen on %v: %v", config.Port, err)
@@ -148,7 +205,16 @@ func StartAccessService(configPath string) error {
 	if err != nil {
 		log.Fatalf("failed to parse certificates %v", err)
 	}
-
+	http.HandleFunc("/", accessService.HandleCreateAccount)
+	go func() {
+		err := http.ListenAndServe(fmt.Sprintf(":%d", config.ControlPort), nil)
+		if err != nil {
+			log.Fatalf(
+				"Error while serving access service mock control api %v",
+				err,
+			)
+		}
+	}()
 	server := grpc.NewServer(grpc.Creds(creds))
 	iamv1.RegisterAccessServiceServer(server, accessService)
 	return server.Serve(listener)

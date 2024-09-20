@@ -8,6 +8,5 @@ END()
 
 RECURSE(
     access_service
-    config
     protos
 )
