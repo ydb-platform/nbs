@@ -446,7 +446,8 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
     bool ready = db.ReadCompactionMap(
         args.CompactionMap,
         args.FirstRangeId,
-        args.RangeCount);
+        args.RangeCount,
+        true);
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading compaction map chunk "
