@@ -28,7 +28,7 @@ class AccessServiceServer(Daemon):
         )
 
 
-class NewAccessServiceLauncher:
+class NewAccessService:
     def __init__(
             self,
             host: str,
