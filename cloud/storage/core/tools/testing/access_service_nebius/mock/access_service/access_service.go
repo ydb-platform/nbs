@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/service/protos"
-	mockConfig "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/service/config"
+	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/protos"
+	mockConfig "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

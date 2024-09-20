@@ -6,9 +6,9 @@ import "google/api/field_behavior.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
-import "cloud/storage/core/tools/testing/access_service_nebius/service/protos/access.proto";
+import "cloud/storage/core/tools/testing/access_service_nebius/mock/protos/access.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/service/protos";
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/protos";
 
 
 service AccessService {

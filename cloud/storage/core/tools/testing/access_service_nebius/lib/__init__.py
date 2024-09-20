@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
@@ -71,8 +72,9 @@ class AccessServiceLauncher:
             cert_file: str,
             cert_key_file: str,
             folder_id: str,
-            accounts: list[str]
+            accounts_config_path: str,
         ):
+
 
         self.__port_manager = yatest_common.PortManager()
         self.__access_service_port = self.__port_manager.get_port()

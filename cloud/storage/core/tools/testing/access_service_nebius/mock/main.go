@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/service/access_service"
+	"github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/access_service"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
