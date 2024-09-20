@@ -10,6 +10,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -173,7 +174,7 @@ func startAndCancelMigration(
 	require.NotEmpty(t, operation)
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	common.WaitForRandomDuration(time.Millisecond, time.Second)
 
 	_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 		OperationId: operation.Id,
@@ -324,7 +325,7 @@ func migrateDiskInParallel(
 	}
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	common.WaitForRandomDuration(time.Millisecond, time.Second)
 
 	err = waitForWrite()
 	require.NoError(t, err)
@@ -352,7 +353,7 @@ func migrateDiskInParallel(
 	}
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	common.WaitForRandomDuration(time.Millisecond, time.Second)
 
 	for _, operation := range operations {
 		_ = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
@@ -954,7 +955,7 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 	retireOperation := make(chan *disk_manager.Operation)
 	go func() {
 		// Need to add some variance for better testing.
-		testcommon.WaitForRandomDuration(1*time.Second, 2*time.Second)
+		common.WaitForRandomDuration(1*time.Second, 2*time.Second)
 
 		reqCtx := testcommon.GetRequestContext(t, ctx)
 		operation, err := privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{

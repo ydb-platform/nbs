@@ -10,6 +10,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 )
 
@@ -488,7 +489,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	require.NotEmpty(t, operation)
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, time.Second)
+	common.WaitForRandomDuration(time.Millisecond, time.Second)
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
 		SnapshotId: snapshotID1,
@@ -731,7 +732,7 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	require.NotEmpty(t, createOp)
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, 2*time.Second)
+	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{

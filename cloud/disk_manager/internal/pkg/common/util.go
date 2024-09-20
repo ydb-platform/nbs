@@ -49,3 +49,19 @@ func RandomElement(slice []string) string {
 	rand.Seed(time.Now().UnixNano())
 	return slice[rand.Intn(len(slice))]
 }
+
+func WaitForRandomDuration(min time.Duration, max time.Duration) {
+	var duration time.Duration
+
+	rand.Seed(time.Now().UnixNano())
+	x := min.Microseconds()
+	y := max.Microseconds()
+
+	if y <= x {
+		duration = min
+	} else {
+		duration = time.Duration(x+rand.Int63n(y-x)) * time.Microsecond
+	}
+
+	<-time.After(duration)
+}
