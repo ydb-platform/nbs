@@ -35,10 +35,6 @@ void SetupConfigDispatcher(
             << ") as NKikimrConsole::TConfigItem::EKind value");
     }
 
-    if (items.empty()) {
-        return;
-    }
-
     auto& rules = config->ItemsServeRules;
 
     if (settings.HasAllowList()) {

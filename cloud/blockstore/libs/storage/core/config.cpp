@@ -602,7 +602,7 @@ bool IsEmpty(const T& t)
 template <>
 bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
 {
-    return value.HasAllowList() || value.HasDenyList();
+    return !value.HasAllowList() && !value.HasDenyList();
 }
 
 template <typename T>
