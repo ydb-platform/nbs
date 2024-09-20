@@ -51,5 +51,5 @@ func RandomElement(slice []string) string {
 }
 
 func WaitForRandomDuration(min time.Duration, max time.Duration) {
-	<-time.After(RandomDuration(min, max))
+	time.Sleep(RandomDuration(min, max))
 }
