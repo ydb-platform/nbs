@@ -87,3 +87,7 @@ class AccessService:
     @property
     def pid(self):
         return self.__get_pid()
+
+    @property
+    def access_service_type(self):
+        return "Yandex_v2"

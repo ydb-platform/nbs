@@ -33,6 +33,7 @@ type AccountConfig struct {
 }
 
 type MockConfig struct {
+	Host        string `json:"host,omitempty"`
 	Port        int    `json:"port,omitempty"`
 	ControlPort int    `json:"control_port,omitempty"`
 	CertFile    string `json:"cert_file,omitempty"`
@@ -194,7 +195,14 @@ func StartAccessService(configPath string) error {
 	}
 
 	accessService := newAccessServiceMock()
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
+	listener, err := net.Listen(
+		"tcp",
+		fmt.Sprintf(
+			"%s:%d",
+			config.Host,
+			config.Port,
+		),
+	)
 	if err != nil {
 		log.Fatalf("failed to listen on %v: %v", config.Port, err)
 	}
@@ -214,7 +222,14 @@ func StartAccessService(configPath string) error {
 
 	http.HandleFunc("/", accessService.HandleCreateAccount)
 	go func() {
-		err := http.ListenAndServe(fmt.Sprintf(":%d", config.ControlPort), nil)
+		err := http.ListenAndServe(
+			fmt.Sprintf(
+				"%s:%d",
+				config.Host,
+				config.ControlPort,
+			),
+			nil,
+		)
 		if err != nil {
 			log.Fatalf(
 				"Error while serving access service mock control api %v",

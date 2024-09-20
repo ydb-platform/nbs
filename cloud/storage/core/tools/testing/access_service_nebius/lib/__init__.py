@@ -3,10 +3,11 @@ import os
 
 import requests
 
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
+
 from cloud.storage.core.tools.common.python.daemon import Daemon
-
 from cloud.tasks.test.common.processes import register_process, kill_processes
-
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 SERVICE_NAME = "access_service_nebius"
 
@@ -27,16 +28,28 @@ class AccessServiceServer(Daemon):
         )
 
 
-class AccessServiceLauncher:
+class NewAccessServiceLauncher:
     def __init__(
             self,
-            binary_path: str,
+            host: str,
             port: int,
             control_port: int,
-            working_dir: str,
-            cert_file: str,
-            cert_key_file: str,
+            working_dir: str | None=None,
+            binary_path: str | None=None,
+            cert_file: str="",
+            cert_key_file: str="",
         ):
+        if working_dir is None:
+            working_dir = get_unique_path_for_current_test(
+                output_path=yatest_common.output_path(),
+                sub_folder=""
+            )
+            ensure_path_exists(working_dir)
+        if binary_path is None:
+            binary_path = yatest_common.binary_path(
+                "cloud/storage/core/tools/testing/access_service_nebius/service/access-service-mock",
+            )
+        self._host = host
         config = {
             "port": port,
             "control_port": control_port,
@@ -65,7 +78,7 @@ class AccessServiceLauncher:
         permissions: list
     ):
         requests.post(
-            f"localhost:{self._control_port}/",
+            f"{self._host}:{self._control_port}/",
             json={
                 "is_unknown_subject": is_unknown_subject,
                 "token": token,
@@ -77,3 +90,7 @@ class AccessServiceLauncher:
     @staticmethod
     def stop():
         kill_processes(SERVICE_NAME)
+
+    @property
+    def access_service_type(self):
+        return "Nebius_v1"

@@ -5,7 +5,7 @@ import os
 from library.python.testing.recipe import declare_recipe, set_env
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
-from cloud.storage.core.tools.testing.access_service_nebius.lib import AccessServiceLauncher
+from cloud.storage.core.tools.testing.access_service_nebius.lib import NewAccessServiceLauncher
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,8 @@ def start(argv):
         cert_file = os.path.join(certs_dir, "server.crt")
         cert_key_file = os.path.join(certs_dir, "server.key")
 
-    access_service = AccessServiceLauncher(
+    access_service = NewAccessServiceLauncher(
+        host="localhost",
         binary_path=yatest_common.binary_path(
             "cloud/storage/core/tools/testing/access_service_nebius/service/access-service-mock",
         ),
@@ -53,7 +54,7 @@ def start(argv):
 
 
 def stop(argv):
-    AccessServiceLauncher.stop()
+    NewAccessServiceLauncher.stop()
 
 
 if __name__ == "__main__":
