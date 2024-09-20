@@ -133,7 +133,7 @@ func newNodeService(
 }
 
 func (s *nodeService) NodeStageVolume(
-	_ context.Context,
+	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 
 	log.Printf("csi.NodeStageVolumeRequest: %+v", req)
@@ -154,11 +154,30 @@ func (s *nodeService) NodeStageVolume(
 			"VolumeCapability is missing in NodeStageVolumeRequest")
 	}
 
+	if s.vmMode {
+		nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
+		instanceID := req.VolumeContext[instanceIDKey]
+
+		var err error
+		if instanceID != "" {
+			if nfsBackend {
+				err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceID, req.VolumeId)
+			} else {
+				err = s.nodeStageDiskAsVhostSocket(ctx, instanceID, req.VolumeId, req.VolumeContext)
+			}
+		}
+
+		if err != nil {
+			return nil, s.statusErrorf(codes.Internal,
+				"Failed to stage volume: %v", err)
+		}
+	}
+
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
 func (s *nodeService) NodeUnstageVolume(
-	_ context.Context,
+	ctx context.Context,
 	req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 
 	log.Printf("csi.NodeUnstageVolumeRequest: %+v", req)
@@ -172,6 +191,14 @@ func (s *nodeService) NodeUnstageVolume(
 		return nil, s.statusError(
 			codes.InvalidArgument,
 			"StagingTargetPath is missing in NodeUnstageVolumeRequest")
+	}
+
+	if s.vmMode {
+		if err := s.nodeUnstageVhostSocket(ctx, req.VolumeId); err != nil {
+			return nil, s.statusErrorf(
+				codes.InvalidArgument,
+				"Failed to unstage volume: %v", err)
+		}
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -234,10 +261,14 @@ func (s *nodeService) NodePublishVolume(
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
-			if nfsBackend {
-				err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
+				err = s.nodePublishStagedVhostSocket(req)
 			} else {
-				err = s.nodePublishDiskAsVhostSocket(ctx, req)
+				if nfsBackend {
+					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+				} else {
+					err = s.nodePublishDiskAsVhostSocket(ctx, req)
+				}
 			}
 		} else {
 			if nfsBackend {
@@ -368,6 +399,51 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	return s.mountSocketDir(req)
+}
+
+func (s *nodeService) nodeStageDiskAsVhostSocket(
+	ctx context.Context,
+	instanceId string,
+	volumeId string,
+	volumeContext map[string]string) error {
+
+	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, volumeId, volumeContext)
+
+	endpointDir := filepath.Join(s.socketsDir, stagingDirName, volumeId)
+	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
+		return err
+	}
+
+	deviceName, found := volumeContext[deviceNameVolumeContextKey]
+	if !found {
+		deviceName = volumeId
+	}
+
+	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
+	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
+		DiskId:           volumeId,
+		InstanceId:       instanceId,
+		ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
+		DeviceName:       deviceName,
+		IpcType:          vhostIpc,
+		VhostQueuesCount: 8,
+		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		Persistent:       true,
+		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
+			false,
+		},
+		ClientProfile: &nbsapi.TClientProfile{
+			HostType: &hostType,
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+	}
+
+	return s.createDummyImgFile(endpointDir)
 }
 
 func (s *nodeService) nodePublishDiskAsFilesystem(
@@ -524,6 +600,42 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	return s.mountSocketDir(req)
 }
 
+func (s *nodeService) nodeStageFileStoreAsVhostSocket(
+	ctx context.Context,
+	instanceID string,
+	volumeID string) error {
+
+	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, volumeID)
+
+	endpointDir := filepath.Join(s.socketsDir, stagingDirName, volumeID)
+	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
+		return err
+	}
+
+	if s.nfsClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+			FileSystemId:     volumeID,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceID),
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+	}
+
+	return s.createDummyImgFile(endpointDir)
+}
+
+func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest) error {
+	return s.mountSocketDir(req)
+}
+
 func (s *nodeService) nodeUnpublishVolume(
 	ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) error {
@@ -601,6 +713,45 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 		return fmt.Errorf("failed to chmod target path: %w", err)
 	}
 
+	return nil
+}
+
+func (s *nodeService) nodeUnstageVhostSocket(
+	ctx context.Context,
+	volumeID string) error {
+
+	log.Printf("csi.nodeUnstageVhostSocket: %s", volumeID)
+
+	socketDir := filepath.Join(s.socketsDir, stagingDirName, volumeID)
+
+	// Trying to stop both NBS and NFS endpoints,
+	// because the endpoint's backend service is unknown here.
+	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+
+	if s.nbsClient != nil {
+		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(socketDir, nbsSocketName),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+		}
+	}
+
+	if s.nfsClient != nil {
+		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+			SocketPath: filepath.Join(socketDir, nfsSocketName),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
+		}
+	}
+
+	if err := os.RemoveAll(socketDir); err != nil {
+		return err
+	}
+
+	// remove staging folder if it's empty
+	ignoreError(os.Remove(filepath.Join(s.socketsDir, stagingDirName)))
 	return nil
 }
 
