@@ -1082,6 +1082,8 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             }
             DIV_CLASS("alert") {
                 out << "Backpressure period start: " << BackpressurePeriodStart;
+            }
+            DIV_CLASS("alert") {
                 out << "Backpressure period: "
                     << (ctx.Now() - BackpressurePeriodStart);
             }
