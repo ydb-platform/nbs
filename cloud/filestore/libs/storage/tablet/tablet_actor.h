@@ -258,6 +258,7 @@ private:
     NProto::TStorageConfig StorageConfigOverride;
 
     ui32 BackpressureErrorCount = 0;
+    TInstant BackpressurePeriodStart;
 
     const NBlockCodecs::ICodec* BlobCodec;
 

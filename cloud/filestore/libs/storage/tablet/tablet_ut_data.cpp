@@ -2672,7 +2672,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThresholdForBackpressure(999'999);
         storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
         storageConfig.SetFlushThresholdForBackpressure(block);
-        storageConfig.SetMaxBackpressureErrorsBeforeSuicide(2);
+        storageConfig.SetMaxBackpressureErrorsBeforeSuicide(999999);
+        storageConfig.SetMaxBackpressurePeriodBeforeSuicide(60'000); // 1m
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -2714,6 +2715,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         });
 
         // backpressure due to FlushThresholdForBackpressure
+        // should not cause tablet reboot since the backpressure period hasn't
+        // passed yet
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!poisonPillObserved);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+
+        // backpressure due to FlushThresholdForBackpressure
         // should cause tablet reboot
         tablet.SendWriteDataRequest(handle, 0, block, '0');
         {
@@ -2723,6 +2738,78 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(poisonPillObserved);
+    }
+
+    TABLET_TEST(FlushBytesShouldReenqueueAfterAttemptToEnqueueItDuringFlush)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(2 * block);
+        storageConfig.SetFlushBytesThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        TAutoPtr<IEventHandle> flush;
+        TAutoPtr<IEventHandle> flushBytesCompletion;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvFlushRequest: {
+                    UNIT_ASSERT(!flush);
+                    flush = event.Release();
+                    return true;
+                }
+
+                case TEvIndexTabletPrivate::EvFlushBytesCompleted: {
+                    UNIT_ASSERT(!flushBytesCompletion);
+                    flushBytesCompletion = event.Release();
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        // triggering Flush
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 fresh blocks
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        // Flush caught
+        UNIT_ASSERT(flush);
+
+        // triggering FlushBytes
+        // FlushBytes shouldn't get triggered since Flush is already enqueued
+        tablet.WriteData(handle, 0, block / 2, '0'); // fresh bytes
+        tablet.WriteData(handle, 0, block / 2, '0'); // fresh bytes
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // releasing Flush
+        env.GetRuntime().Send(flush.Release(), 1 /* node index */);
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        // FlushBytes should get enqueued and should successfully run and finish
+        UNIT_ASSERT(flushBytesCompletion);
     }
 
     TABLET_TEST(ShouldReadUnAligned)

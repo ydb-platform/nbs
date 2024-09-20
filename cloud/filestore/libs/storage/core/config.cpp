@@ -170,7 +170,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
-    xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
+    xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
+    xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
                                                                                \
     xxx(NewLocalDBCompactionPolicyEnabled,              bool,      false      )\
                                                                                \
