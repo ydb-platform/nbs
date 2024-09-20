@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_nebius/mock/protos"
 )
@@ -199,13 +200,18 @@ func StartAccessService(configPath string) error {
 	}
 
 	log.Printf("listening on %v", listener.Addr().String())
-	creds, err := credentials.NewServerTLSFromFile(
-		config.CertFile,
-		config.CertKeyFile,
-	)
-	if err != nil {
-		log.Fatalf("failed to parse certificates %v", err)
+	var creds credentials.TransportCredentials
+	creds = insecure.NewCredentials()
+	if config.CertFile != "" && config.CertKeyFile != "" {
+		creds, err = credentials.NewServerTLSFromFile(
+			config.CertFile,
+			config.CertKeyFile,
+		)
+		if err != nil {
+			log.Fatalf("failed to parse certificates %v", err)
+		}
 	}
+
 	http.HandleFunc("/", accessService.HandleCreateAccount)
 	go func() {
 		err := http.ListenAndServe(fmt.Sprintf(":%d", config.ControlPort), nil)
