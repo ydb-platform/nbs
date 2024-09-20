@@ -4,6 +4,7 @@
 
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
+#include <util/system/compiler.h>
 #include <util/system/filemap.h>
 
 #include <functional>
@@ -28,7 +29,7 @@ struct THeader
     ui32 WritePos = 0;
 };
 
-struct TEntryHeader
+struct Y_PACKED TEntryHeader
 {
     ui32 Size = 0;
     ui32 Checksum = 0;
