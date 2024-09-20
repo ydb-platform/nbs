@@ -9,6 +9,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 )
 
@@ -89,7 +90,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	}
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, 2*time.Second)
+	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
 	// Should wait for first disk creation in order to ensure that pool is
 	// created.
@@ -346,7 +347,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	}
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(time.Millisecond, 2*time.Second)
+	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
 	// Should wait for first disk creation in order to ensure that pool is
 	// created.
