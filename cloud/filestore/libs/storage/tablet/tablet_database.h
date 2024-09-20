@@ -498,7 +498,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,
         ui32 firstRangeId,
-        ui32 rangeCount);
+        ui32 rangeCount,
+        bool prechargeAll);
 
     //
     // OpLog

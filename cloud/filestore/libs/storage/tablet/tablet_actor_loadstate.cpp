@@ -404,9 +404,11 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
             EnqueueBlobIndexOpIfNeeded(ctx);
 
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u",
+                "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u, "
+                "RangesWithEmptyScore: %u",
                 LogTag.c_str(),
-                s.MaxLoadedInOrderRangeId);
+                s.MaxLoadedInOrderRangeId,
+                RangesWithEmptyCompactionScore.size());
         } else {
             // Triggering the next in-order load request
             s.LoadQueue.push_back({
@@ -444,7 +446,8 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
     bool ready = db.ReadCompactionMap(
         args.CompactionMap,
         args.FirstRangeId,
-        args.RangeCount);
+        args.RangeCount,
+        true);
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading compaction map chunk "

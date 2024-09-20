@@ -1683,15 +1683,20 @@ void TIndexTabletDatabase::WriteCompactionMap(
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {
-    return ReadCompactionMap(compactionMap, 0, Max<ui32>());
+    return ReadCompactionMap(compactionMap, 0, Max<ui32>(), true);
 }
 
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap,
     ui32 firstRangeId,
-    ui32 rangeCount)
+    ui32 rangeCount,
+    bool prechargeAll)
 {
     using TTable = TIndexTabletSchema::CompactionMap;
+
+    if (!firstRangeId && prechargeAll) {
+        Table<TTable>().Precharge();
+    }
 
     auto it = Table<TTable>()
         .GreaterOrEqual(firstRangeId)
