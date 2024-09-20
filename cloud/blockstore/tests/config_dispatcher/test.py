@@ -18,7 +18,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 import yatest.common as yatest_common
 
 
-def test_config_dispatcher():
+def run_test(trigger_update):
     kikimr_binary_path = yatest_common.binary_path('contrib/ydb/apps/ydbd/ydbd')
 
     configurator = KikimrConfigGenerator(
@@ -60,7 +60,8 @@ def test_config_dispatcher():
     # file config
     storage = TStorageServiceConfig()
     storage.ConfigsDispatcherServiceEnabled = True
-    storage.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
+    if trigger_update:
+        storage.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
 
     nbs = LocalNbs(
         kikimr_port,
@@ -105,6 +106,16 @@ def test_config_dispatcher():
                 time.sleep(10)
         return False
 
-    assert wait_cms()
+    result = wait_cms()
 
     os.kill(nbs.pid, signal.SIGTERM)
+
+    return result == trigger_update
+
+
+def test_nameservice_config_on():
+    run_test(True)
+
+
+def test_nameservice_config_off():
+    run_test(False)
