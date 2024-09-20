@@ -95,8 +95,10 @@ def run_test(trigger_update):
 
     kikimr_cluster.client.add_config_item(app_config)
 
-    def wait_cms():
-        for _ in range(10):
+    def wait_cms(attempts):
+        cnt = attempts
+        while attempts == 0 or cnt > 0:
+            cnt = cnt - 1
             url = f'http://localhost:{nbs.mon_port}/actors/dnameserver'
             r = requests.get(url, timeout=10)
             r.raise_for_status()
@@ -106,7 +108,7 @@ def run_test(trigger_update):
                 time.sleep(10)
         return False
 
-    result = wait_cms()
+    result = wait_cms(10 if trigger_update else 0)
 
     os.kill(nbs.pid, signal.SIGTERM)
 
