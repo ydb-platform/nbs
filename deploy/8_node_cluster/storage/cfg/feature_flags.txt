@@ -1,0 +1,3 @@
+EnableSeparateSolomonShardForPDisk: true
+EnableVPatch: true
+
