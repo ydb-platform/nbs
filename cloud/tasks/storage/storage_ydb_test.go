@@ -1077,14 +1077,10 @@ func (f hangingTaskTestFixture) createHangingTaskWithEstimate(
 	)
 }
 
-func (f hangingTaskTestFixture) ListHangingTasksIDs(
-	exceptHangingTaskTypes []string,
-) []string {
-
+func (f hangingTaskTestFixture) ListHangingTasksIDs() []string {
 	hangingTasks, err := f.storage.ListHangingTasks(
 		f.ctx,
 		^uint64(0),
-		exceptHangingTaskTypes,
 	)
 	require.NoError(f.t, err)
 	hangingTaskIDs := make([]string, 0, len(hangingTasks))
@@ -1103,8 +1099,13 @@ func (f hangingTaskTestFixture) teardown() {
 
 func newHangingTaskTestFixture(
 	t *testing.T,
-	hangingTaskTimeout time.Duration,
+	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
+
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(newContext())
 	fixture := hangingTaskTestFixture{
@@ -1120,14 +1121,11 @@ func newHangingTaskTestFixture(
 
 	fixture.db = db
 	metricsRegistry := empty.NewRegistry()
-	stringDuration := hangingTaskTimeout.String()
 	storage, err := newStorage(
 		t,
 		ctx,
 		db,
-		&tasks_config.TasksConfig{
-			HangingTaskTimeout: &stringDuration,
-		},
+		config,
 		metricsRegistry,
 	)
 	require.NoError(t, err)
@@ -1138,7 +1136,10 @@ func newHangingTaskTestFixture(
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
-	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
+	hangingTaskTimeoutString := hangingTaskTimeout.String()
+	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
+		HangingTaskTimeout: &hangingTaskTimeoutString,
+	})
 	defer fixture.teardown()
 
 	expectedHangingTaskIDs := make([]string, 0, 10)
@@ -1183,22 +1184,24 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		hangingTaskTimeout+time.Hour,
 	)
 
-	actualHangingTasks := fixture.ListHangingTasksIDs([]string{})
+	actualHangingTasks := fixture.ListHangingTasksIDs()
 	require.ElementsMatch(t, expectedHangingTaskIDs, actualHangingTasks)
 }
 
-func TestStorageYDBListHangingTasksExceptsHangingTasks(t *testing.T) {
-	hangingTaskTimeout := 5 * time.Hour
-	fixture := newHangingTaskTestFixture(t, hangingTaskTimeout)
+func TestStorageYDBListHangingTasksWithExceptions(t *testing.T) {
+	hangingTaskTimeout := "5h"
+	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
+		ExceptHangingTaskTypes: []string{"exception"},
+		HangingTaskTimeout:     &hangingTaskTimeout,
+	})
 	defer fixture.teardown()
 
-	exceptTaskType := "excepted"
 	taskID := fixture.createHangingTaskNoEstimate("first", TaskStatusRunning)
-	fixture.createHangingTaskNoEstimate(exceptTaskType, TaskStatusRunning)
+	fixture.createHangingTaskNoEstimate("exception", TaskStatusRunning)
 	require.ElementsMatch(
 		t,
 		[]string{taskID},
-		fixture.ListHangingTasksIDs([]string{exceptTaskType}),
+		fixture.ListHangingTasksIDs(),
 	)
 }
 
