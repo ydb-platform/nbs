@@ -359,9 +359,20 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        if (CompactionStateLoadStatus.Finished &&
-            ++BackpressureErrorCount >=
-                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        TDuration backpressurePeriod;
+        if (CompactionStateLoadStatus.Finished) {
+            if (!BackpressurePeriodStart) {
+                BackpressurePeriodStart = ctx.Now();
+            }
+
+            ++BackpressureErrorCount;
+            backpressurePeriod = ctx.Now() - BackpressurePeriodStart;
+        }
+
+        if (BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide()
+                || backpressurePeriod >=
+                Config->GetMaxBackpressurePeriodBeforeSuicide())
         {
             LOG_WARN(
                 ctx,
@@ -373,10 +384,18 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
             Suicide(ctx);
         }
 
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+
         return MakeError(
             E_REJECTED,
             TStringBuilder() << "rejected due to backpressure: " << message);
     }
+
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
+    BackpressurePeriodStart = TInstant::Zero();
 
     return NProto::TError{};
 }

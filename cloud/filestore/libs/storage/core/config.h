@@ -204,6 +204,7 @@ public:
     bool GetConfigsDispatcherServiceEnabled() const;
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+    TDuration GetMaxBackpressurePeriodBeforeSuicide() const;
 
     TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
 

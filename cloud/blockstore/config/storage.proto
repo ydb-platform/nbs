@@ -47,6 +47,14 @@ enum EVolumePreemptionType
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+//  !!!IMPORTANT!!!
+//  Even though StorageServiceConfig is usually stored in textual format, it may
+//  be overridden for some tablets and in this case it's stored in binary format
+//  in the tablet's localdb. So binary backward-compatibility should be
+//  maintained.
+//
+////////////////////////////////////////////////////////////////////////////////
 
 message TStorageServiceConfig
 {

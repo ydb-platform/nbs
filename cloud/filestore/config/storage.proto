@@ -17,6 +17,14 @@ enum EBlobIndexOpsPriority
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+//  !!!IMPORTANT!!!
+//  Even though StorageConfig is usually stored in textual format, it may be
+//  overridden for some tablets and in this case it's stored in binary format
+//  in the tablet's localdb. So binary backward-compatibility should be
+//  maintained.
+//
+////////////////////////////////////////////////////////////////////////////////
 
 message TStorageConfig
 {
@@ -402,4 +410,10 @@ message TStorageConfig
     // uncontrollable behaviour change for production systems. TODO: gradually
     // enable this flag everywhere and make this behaviour the new default.
     optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 391;
+
+    // IndexTabletActor will suicide (and thus reboot) after observing
+    // consecutive backpressure errors for this period of time. Needed to
+    // automatically recover after various races that may happen during index
+    // tablet startup due to bugs.
+    optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
 }
