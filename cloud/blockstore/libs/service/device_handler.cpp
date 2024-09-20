@@ -12,17 +12,23 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 MaxUnalignedRequestSize = 32_MB;
+constexpr ui32 MaxSubRequestSize = 4_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TDefaultDeviceHandlerFactory final
     : public IDeviceHandlerFactory
 {
+    const ui32 MaxSubRequestSize;
+
+    explicit TDefaultDeviceHandlerFactory(ui32 maxSubRequestSize)
+        : MaxSubRequestSize(maxSubRequestSize)
+    {}
+
     IDeviceHandlerPtr CreateDeviceHandler(
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount,
         bool unalignedRequestsDisabled) override
     {
         if (unalignedRequestsDisabled) {
@@ -30,14 +36,14 @@ struct TDefaultDeviceHandlerFactory final
                 std::move(storage),
                 std::move(clientId),
                 blockSize,
-                maxBlockCount);
+                MaxSubRequestSize);
         }
 
         return std::make_shared<TUnalignedDeviceHandler>(
             std::move(storage),
             std::move(clientId),
             blockSize,
-            maxBlockCount,
+            MaxSubRequestSize,
             MaxUnalignedRequestSize);
     }
 };
@@ -48,7 +54,12 @@ struct TDefaultDeviceHandlerFactory final
 
 IDeviceHandlerFactoryPtr CreateDefaultDeviceHandlerFactory()
 {
-    return std::make_shared<TDefaultDeviceHandlerFactory>();
+    return std::make_shared<TDefaultDeviceHandlerFactory>(MaxSubRequestSize);
+}
+
+IDeviceHandlerFactoryPtr CreateDeviceHandlerFactory(ui32 maxSubRequestSize)
+{
+    return std::make_shared<TDefaultDeviceHandlerFactory>(maxSubRequestSize);
 }
 
 }   // namespace NCloud::NBlockStore
