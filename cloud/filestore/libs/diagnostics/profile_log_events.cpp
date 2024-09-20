@@ -282,6 +282,20 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetNewParentNodeId(request.GetNodeId());
     nodeInfo->SetNewNodeName(request.GetName());
+
+    if (request.HasFile()) {
+        nodeInfo->SetType(NProto::E_REGULAR_NODE);
+    } else if (request.HasDirectory()) {
+        nodeInfo->SetType(NProto::E_DIRECTORY_NODE);
+    } else if (request.HasLink()) {
+        nodeInfo->SetType(NProto::E_LINK_NODE);
+    } else if (request.HasSocket()) {
+        nodeInfo->SetType(NProto::E_SOCK_NODE);
+    } else if (request.HasSymLink()) {
+        nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+    } else {
+        nodeInfo->SetType(NProto::E_INVALID_NODE);
+    }
 }
 
 template <>
