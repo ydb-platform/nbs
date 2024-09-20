@@ -56,23 +56,6 @@ void TTotalCounters::UpdateVolumeSelfCounters(const TVolumeSelfCounters& source)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TTransportCounters::Register(NMonitoring::TDynamicCountersPtr counters)
-{
-    PartAcc.Register(counters, true);
-}
-
-void TTransportCounters::Reset()
-{
-    PartAcc.Reset();
-}
-
-void TTransportCounters::Publish()
-{
-    PartAcc.Publish();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TVolumeRequestCounters::Register(NMonitoring::TDynamicCountersPtr counters)
 {
     ReadCount.Register(counters->GetSubgroup("request", "ReadBlocks"), "Count");

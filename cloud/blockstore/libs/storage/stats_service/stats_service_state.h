@@ -75,20 +75,6 @@ struct TTotalCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTransportCounters
-{
-    TTransportDiskCounters PartAcc;
-
-    TTransportCounters(EPublishingPolicy policy)
-        : PartAcc(policy){};
-
-    void Register(NMonitoring::TDynamicCountersPtr counters);
-    void Reset();
-    void Publish();
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TVolumeRequestCounters
 {
     TCumulativeCounter ReadCount;
@@ -186,18 +172,6 @@ private:
     TTotalCounters SsdLocal;
     TTotalCounters SsdSystem;
     TTotalCounters HddSystem;
-    TTransportCounters RdmaSsdNonrepl{EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters RdmaHddNonrepl{EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters RdmaSsdMirror2{EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters RdmaSsdMirror3{EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters InterconnectSsdNonrepl{
-        EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters InterconnectHddNonrepl{
-        EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters InterconnectSsdMirror2{
-        EPublishingPolicy::DiskRegistryBased};
-    TTransportCounters InterconnectSsdMirror3{
-        EPublishingPolicy::DiskRegistryBased};
 
     TVolumeRequestCounters LocalVolumes;
     TVolumeRequestCounters NonlocalVolumes;
@@ -301,46 +275,6 @@ public:
         return HddSystem;
     }
 
-    TTransportCounters& GetRdmaSsdNonreplCounters()
-    {
-        return RdmaSsdNonrepl;
-    }
-
-    TTransportCounters& GetRdmaHddNonreplCounters()
-    {
-        return RdmaHddNonrepl;
-    }
-
-    TTransportCounters& GetRdmaSsdMirror2Counters()
-    {
-        return RdmaSsdMirror2;
-    }
-
-    TTransportCounters& GetRdmaSsdMirror3Counters()
-    {
-        return RdmaSsdMirror3;
-    }
-
-    TTransportCounters& GetInterconnectSsdNonreplCounters()
-    {
-        return InterconnectSsdNonrepl;
-    }
-
-    TTransportCounters& GetInterconnectHddNonreplCounters()
-    {
-        return InterconnectHddNonrepl;
-    }
-
-    TTransportCounters& GetInterconnectSsdMirror2Counters()
-    {
-        return InterconnectSsdMirror2;
-    }
-
-    TTransportCounters& GetInterconnectSsdMirror3Counters()
-    {
-        return InterconnectSsdMirror3;
-    }
-
     TTotalCounters& GetCounters(
         bool isSystem,
         const NProto::EStorageMediaKind mediaKind)
@@ -367,54 +301,6 @@ public:
     TTotalCounters& GetCounters(const NProto::TVolume& volume)
     {
         return GetCounters(volume.GetIsSystem(), volume.GetStorageMediaKind());
-    }
-
-    TTransportCounters& GetRdmaCounter(
-        const NCloud::NProto::EStorageMediaKind mediaKind)
-    {
-        switch (mediaKind) {
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-                return RdmaSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
-                return RdmaHddNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
-                return RdmaSsdMirror2;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
-                return RdmaSsdMirror3;
-            default: {
-                // This function is called only in one place, and before it
-                // there are checks volume->IsDiskRegistryBased() and
-                // MediaKind != STORAGE_MEDIA_SSD_LOCAL
-                Y_ABORT(
-                    "unsupported media kind: %u, transport counters can only "
-                    "be used with disk registry based volumes",
-                    static_cast<ui32>(mediaKind));
-            }
-        }
-    }
-
-    TTransportCounters& GetInterconnectCounter(
-        const NCloud::NProto::EStorageMediaKind mediaKind)
-    {
-        switch (mediaKind) {
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-                return InterconnectSsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
-                return InterconnectHddNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
-                return InterconnectSsdMirror2;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
-                return InterconnectSsdMirror3;
-            default: {
-                // This function is called only in one place, and before it
-                // there are checks volume->IsDiskRegistryBased() and
-                // MediaKind != STORAGE_MEDIA_SSD_LOCAL
-                Y_ABORT(
-                    "unsupported media kind: %u, transport counters can only "
-                    "be used with disk registry based volumes",
-                    static_cast<ui32>(mediaKind));
-            }
-        }
     }
 
     TVolumeRequestCounters& GetLocalVolumesCounters()
