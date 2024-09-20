@@ -419,19 +419,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
             TVector<TCompactionRangeInfo> chunk;
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 0, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 111, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 111, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 5, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 6002, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 6002, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 10, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5, true));
             UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
         });
 
@@ -446,7 +446,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
             TVector<TCompactionRangeInfo> chunk;
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, Max<ui32>()));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, Max<ui32>(), true));
             UNIT_ASSERT_VALUES_EQUAL(
                 toString(entries, 0, Max<ui32>(), true),
                 toString(chunk));
