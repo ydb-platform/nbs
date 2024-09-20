@@ -249,6 +249,7 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteCheckpoint& args)
 {
+    // TODO(#1146) checkpoint-related tables are not yet supported
     RemoveTransaction(*args.RequestInfo);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
