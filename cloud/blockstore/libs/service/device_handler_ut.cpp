@@ -34,11 +34,17 @@ private:
 
     TVector<TFuture<NProto::TError>> Futures;
 
+    ui32 ReadRequestCount = 0;
+    ui32 WriteRequestCount = 0;
+    ui32 ZeroRequestCount = 0;
+
 public:
     TTestEnvironment(
             ui64 blocksCount,
             ui32 blockSize,
-            ui32 sectorsPerBlock)
+            ui32 sectorsPerBlock,
+            ui32 maxBlockCount = 1024,
+            bool unalignedRequestsDisabled = false)
         : BlocksCount(blocksCount)
         , BlockSize(blockSize)
         , SectorSize(BlockSize / sectorsPerBlock)
@@ -51,6 +57,7 @@ public:
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->ReadBlocksLocalHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
+                ++ReadRequestCount;
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(1));
 
                 auto startIndex = request->GetStartIndex();
@@ -70,6 +77,7 @@ public:
             };
         testStorage->WriteBlocksLocalHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
+                ++WriteRequestCount;
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(10));
 
                 auto future = WriteTrigger.GetFuture();
@@ -94,6 +102,7 @@ public:
             };
         testStorage->ZeroBlocksHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TZeroBlocksRequest> request) {
+                ++ZeroRequestCount;
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(100));
 
                 auto future = WriteTrigger.GetFuture();
@@ -118,8 +127,8 @@ public:
             std::move(testStorage),
             "testClientId",
             BlockSize,
-            1024,
-            false);
+            maxBlockCount,
+            unalignedRequestsDisabled);
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -202,18 +211,43 @@ public:
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
 
+        TString read;
+        read.resize(expected.size(), 0);
         const char* ptr = buffer.data();
-        for (const char& c: expected) {
-            for (size_t i = 0; i < SectorSize; ++i) {
-
+        bool allOk = true;
+        for (size_t i = 0; i != expected.size(); ++i) {
+            char c = expected[i];
+            read[i] = *ptr == 0 ? 'Z' : *ptr;
+            for (size_t j = 0; j < SectorSize; ++j) {
                 if (c == 'Z') {
-                    UNIT_ASSERT(*ptr == 0);
+                    allOk = allOk && *ptr == 0;
                 } else {
-                    UNIT_ASSERT(*ptr == c);
+                    allOk = allOk && *ptr == c;
                 }
                 ++ptr;
             }
         }
+        UNIT_ASSERT_VALUES_EQUAL(expected, read);
+        UNIT_ASSERT(allOk);
+    }
+
+    ui32 GetReadRequestCount() const {
+        return ReadRequestCount;
+    }
+
+    ui32 GetWriteRequestCount() const {
+        return WriteRequestCount;
+    }
+
+    ui32 GetZeroRequestCount() const {
+        return ZeroRequestCount;
+    }
+
+    void ResetRequestCounters()
+    {
+        ReadRequestCount = 0;
+        WriteRequestCount = 0;
+        ZeroRequestCount = 0;
     }
 };
 
@@ -495,7 +529,64 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSliceHugeUnalignedZeroRequest)
+    void ShouldSliceHugeAlignedRequests(bool unalignedRequestsDisabled)
+    {
+        TTestEnvironment
+            env(24, DefaultBlockSize, 1, 4, unalignedRequestsDisabled);
+
+        env.RunWriteService();
+
+        env.ZeroSectors(0, 24);
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetZeroRequestCount());
+        env.WriteSectors(0, 8, 'a');
+        env.WriteSectors(8, 8, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(4, env.GetWriteRequestCount());
+
+        env.ReadSectorsAndCheck(0, 24, "aaaaaaaabbbbbbbbZZZZZZZZ");
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+    }
+
+    Y_UNIT_TEST(ShouldSliceHugeAlignedRequestsInAlignedBackend)
+    {
+       ShouldSliceHugeAlignedRequests(true);
+    }
+
+     Y_UNIT_TEST(ShouldSliceHugeAlignedRequestsInUnalignedBackend)
+    {
+       ShouldSliceHugeAlignedRequests(false);
+    }
+
+    Y_UNIT_TEST (ShouldSliceHugeUnalignedRequests)
+    {
+        TTestEnvironment
+            env(24, DefaultBlockSize, 2, 4, false);
+
+        env.RunWriteService();
+
+        // An unaligned request requires the execution of a read-modify-write pattern.
+        env.ZeroSectors(1, 46);
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.WriteSectors(3, 8, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.WriteSectors(13, 3, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.ReadSectorsAndCheck(
+            0,
+            48,
+            "0ZZaaaaaaaaZZbbbZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ0");
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+    }
+
+    void DoShouldSliceHugeZeroRequest(bool requestUnaligned, bool unalignedRequestDisabled)
     {
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
@@ -512,7 +603,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             blocksCountLimit,
-            false);
+            unalignedRequestDisabled);
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -586,8 +677,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             return MakeFuture(std::move(response));
         };
 
-        ui64 from = 4567;
-        ui64 length = deviceBlocksCount * blockSize - 9876;
+        ui64 from = requestUnaligned ? 4567 : 0;
+        ui64 length = deviceBlocksCount * blockSize - (requestUnaligned ? 9876 : 0);
 
         auto future = deviceHandler->Zero(
             MakeIntrusive<TCallContext>(),
@@ -601,6 +692,18 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             bool isZero = (from <= i && i < (from + length));
             UNIT_ASSERT_VALUES_EQUAL_C(isZero ? 0 : 1, device[i], i);
         }
+    }
+
+    Y_UNIT_TEST(ShouldSliceHugeUnalignedZeroRequest) {
+        DoShouldSliceHugeZeroRequest(true, false);
+    }
+
+    Y_UNIT_TEST(ShouldSliceHugeAlignedZeroRequest) {
+        DoShouldSliceHugeZeroRequest(false, false);
+    }
+
+    Y_UNIT_TEST(ShouldSliceHugeZeroRequestWhenUnalignedDisabled) {
+        DoShouldSliceHugeZeroRequest(false, true);
     }
 
     Y_UNIT_TEST(ShouldReturnErrorForHugeUnalignedReadWriteRequests)

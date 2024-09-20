@@ -20,6 +20,7 @@ target_link_libraries(blockstore-libs-service PUBLIC
   library-cpp-lwtrace
 )
 target_sources(blockstore-libs-service PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/aligned_device_handler.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/auth_provider.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/auth_scheme.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/context.cpp
@@ -35,4 +36,5 @@ target_sources(blockstore-libs-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/storage.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/storage_provider.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/storage_test.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service/unaligned_device_handler.cpp
 )

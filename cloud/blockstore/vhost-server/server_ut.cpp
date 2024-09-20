@@ -242,6 +242,14 @@ public:
 
     TCompleteStats GetStats(ui64 expectedCompleted) const
     {
+        return GetStats(
+            [expectedCompleted](const TCompleteStats& stats)
+            { return stats.SimpleStats.Completed == expectedCompleted; });
+    }
+
+    TCompleteStats GetStats(
+        std::function<bool(const TCompleteStats&)> func) const
+    {
         // Without I/O, stats are synced every second and only if there is a
         // pending GetStats call. The first call to GetStats might not bring the
         // latest stats; therefore, you need at least two calls so that the AIO
@@ -251,7 +259,7 @@ public:
         TCompleteStats stats;
         for (int i = 0; i != 5; ++i) {
             stats = Server->GetStats(prevStats);
-            if (stats.SimpleStats.Completed == expectedCompleted) {
+            if (func(stats)) {
                 break;
             }
             Sleep(TDuration::Seconds(1));
@@ -959,7 +967,9 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
     }
 
     // validate stats
-    const auto completeStats = GetStats(0);
+    const auto completeStats =
+        GetStats([](const TCompleteStats& stats)
+                 { return stats.CriticalEvents.size() != 0; });
     const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
