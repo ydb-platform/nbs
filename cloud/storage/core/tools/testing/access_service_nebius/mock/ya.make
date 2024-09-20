@@ -7,6 +7,5 @@ SRCS(
 END()
 
 RECURSE(
-    access_service
     protos
 )
