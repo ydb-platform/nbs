@@ -102,6 +102,7 @@ class _TestFixture:
         )
         self._client_config_path = Path(common.output_path()) / "client-config.txt"
         self._client_config = create_client_config()
+        self._client_config.ClientConfig.SecurePort = self._env.nbs_secure_port
         self._client_config.ClientConfig.RetryTimeout = 1
         self._flush_config()
         self.folder_id = folder_id
@@ -153,6 +154,7 @@ def test_auth_unauthorized():
         env.access_service.authenticate(token)
         result = env.create_volume()
         assert result.returncode != 0
+        assert "E_UNAUTHORIZED" in result.stderr
 
 
 def test_auth_unauthenticated():
@@ -162,7 +164,7 @@ def test_auth_unauthenticated():
         env.access_service.authorize(token)
         result = env.create_volume()
         assert result.returncode != 0
-
+        assert "E_UNAUTHORIZED" in result.stderr
 
 def test_auth_empty_token():
     with _TestFixture() as env:
@@ -170,7 +172,7 @@ def test_auth_empty_token():
         env.access_service.authorize("test_auth_token")
         result = env.create_volume()
         assert result.returncode != 0
-
+        assert "E_UNAUTHORIZED" in result.stderr
 
 def test_new_auth_authorization_ok():
     with _TestFixture(NewAccessService) as env:
@@ -202,14 +204,14 @@ def test_new_auth_unauthorized():
         )
         result = env.create_volume()
         assert result.returncode != 0
-
+        assert "E_UNAUTHORIZED" in result.stderr
 
 def test_new_auth_unauthenticated():
     with _TestFixture(NewAccessService) as env:
         env.set_auth_token("some_other_token")
         result = env.create_volume()
         assert result.returncode != 0
-
+        assert "E_UNAUTHORIZED" in result.stderr
 
 def test_new_auth_unknown_subject():
     with _TestFixture(NewAccessService) as env:
@@ -225,3 +227,4 @@ def test_new_auth_unknown_subject():
         )
         result = env.create_volume()
         assert result.returncode != 0
+        assert "E_UNAUTHORIZED" in result.stderr
