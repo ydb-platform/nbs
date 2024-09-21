@@ -77,7 +77,7 @@ class NewAccessService:
         permissions: list
     ):
         requests.post(
-            f"{self._host}:{self._control_port}/",
+            f"http://{self._host}:{self._control_port}/",
             json={
                 "is_unknown_subject": is_unknown_subject,
                 "token": token,
