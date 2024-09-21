@@ -7,7 +7,7 @@ from pathlib import Path
 
 from google.protobuf.text_format import MessageToString
 
-from cloud.blockstore.config.client_pb2 import TClientConfig
+from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
@@ -15,6 +15,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_nebius.lib import NewAccessService
+
 
 def create_server_app_config():
     server = TServerAppConfig()
@@ -57,7 +58,7 @@ def test_load():
     env.access_service.authorize("test_auth_token")
 
     client = create_client_config()
-    client.AuthToken = "test_auth_token"
+    client.ClientConfig.AuthToken = "test_auth_token"
 
     try:
         ret = run_test(
@@ -77,10 +78,12 @@ def test_load():
 
 
 def create_client_config():
-    client = TClientConfig()
-    client.RootCertsFile = common.source_path(
+    client = TClientAppConfig()
+    client.ClientConfig.CopyFrom(TClientConfig())
+    client.ClientConfig.RootCertsFile = common.source_path(
         "cloud/blockstore/tests/certs/server.crt")
     return client
+
 
 class _TestFixture:
     _binary_path = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
@@ -99,7 +102,7 @@ class _TestFixture:
         )
         self._client_config_path = Path(common.output_path()) / "client-config.txt"
         self._client_config = create_client_config()
-        self._client_config.RetryTimeout = 1
+        self._client_config.ClientConfig.RetryTimeout = 1
         self._flush_config()
         self.folder_id = folder_id
 
@@ -136,7 +139,7 @@ class _TestFixture:
         return self._env.access_service
 
     def set_auth_token(self, token: str):
-        self._client_config.AuthToken = token
+        self._client_config.ClientConfig.AuthToken = token
         self._flush_config()
 
     def _flush_config(self):
@@ -187,8 +190,7 @@ def test_new_auth_authorization_ok():
 
 def test_new_auth_unauthorized():
     with _TestFixture(NewAccessService) as env:
-        with _TestFixture(NewAccessService) as env:
-            token = "test_auth_token"
+        token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.create_account(
             "test_user",
