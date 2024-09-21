@@ -1616,7 +1616,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto createRequest = [&] (ui64 reqId, ui64 nodeId) {
+        auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
             auto request = tablet.CreateCreateHandleRequest(
                 nodeId, TCreateHandleArgs::RDWR);
             request->Record.MutableHeaders()->SetRequestId(reqId);
@@ -1624,8 +1624,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             return request;
         };
 
+        auto createCreateNodeRequest = [&] (ui64 reqId, TString name) {
+            auto request = tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, std::move(name)));
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
         const TString name1 = "file1";
         const TString name2 = "file2";
+        const TString name3 = "file3";
 
         const auto nodeId1 = tablet.CreateNode(TCreateNodeArgs::File(
             RootNodeId,
@@ -1640,7 +1649,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         const ui64 requestId = 100500;
 
-        tablet.SendRequest(createRequest(requestId, nodeId1));
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId1));
         {
             auto response = tablet.RecvCreateHandleResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1653,7 +1662,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                 response->Record.GetNodeAttr().GetId());
         }
 
-        tablet.SendRequest(createRequest(requestId, nodeId2));
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId2));
         {
             auto response = tablet.RecvCreateHandleResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1664,6 +1673,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT_VALUES_EQUAL(
                 nodeId2,
                 response->Record.GetNodeAttr().GetId());
+        }
+
+        tablet.SendRequest(createCreateNodeRequest(requestId, name3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                nodeId1,
+                response->Record.GetNode().GetId());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                nodeId2,
+                response->Record.GetNode().GetId());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetNode().GetId());
         }
     }
 }

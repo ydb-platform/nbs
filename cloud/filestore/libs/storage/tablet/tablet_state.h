@@ -678,7 +678,7 @@ public:                                                                         
         const NProto::T##name##Response& response,                              \
         ui32 maxEntries);                                                       \
                                                                                 \
-    void GetDupCacheEntry(                                                      \
+    bool GetDupCacheEntry(                                                      \
         const TDupCacheEntry* entry,                                            \
         NProto::T##name##Response& response);                                   \
 // FILESTORE_DECLARE_DUPCACHE
