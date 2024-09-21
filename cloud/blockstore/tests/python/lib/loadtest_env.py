@@ -160,7 +160,7 @@ class LocalLoadTest:
             try:
                 with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
                     subprocess.run(
-                        ["sudo", "dmesg", "-T"],
+                        ["sudo", "-n", "dmesg", "-T"],
                         stdout=dmesg_output,
                         stderr=dmesg_output,
                         timeout=10
