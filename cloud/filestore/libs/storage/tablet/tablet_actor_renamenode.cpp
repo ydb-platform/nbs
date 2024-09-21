@@ -55,7 +55,7 @@ void TIndexTabletActor::HandleRenameNode(
 
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
-    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TEvService::TEvRenameNodeResponse>();
         if (GetDupCacheEntry(e, response->Record)) {
             return NCloud::Reply(ctx, *ev, std::move(response));
