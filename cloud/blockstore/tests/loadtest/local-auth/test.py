@@ -93,7 +93,7 @@ class _TestFixture:
     def __init__(self, access_service_type=AccessService, folder_id="test_folder_id"):
         server = create_server_app_config()
         storage = create_storage_service_config(folder_id)
-        self._env = LocalLoadTest(
+        self._local_load_test = LocalLoadTest(
             "",
             server_app_config=server,
             enable_access_service=True,
@@ -104,16 +104,17 @@ class _TestFixture:
         )
         self._client_config_path = Path(common.output_path()) / "client-config.txt"
         self._client_config = create_client_config()
-        self._client_config.ClientConfig.SecurePort = self._env.nbs_secure_port
+        self._client_config.ClientConfig.SecurePort = self._local_load_test.nbs_secure_port
         self._client_config.ClientConfig.RetryTimeout = 1
         self._flush_config()
         self.folder_id = folder_id
+        self._auth_token = None
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._env.tear_down()
+        self._local_load_test.tear_down()
 
     def run(self, *args, **kwargs):
         args = [self._binary_path, *args, "--config", str(self._client_config_path)]
@@ -121,6 +122,9 @@ class _TestFixture:
         if script_input is not None:
             script_input = script_input + "\n"
 
+        env = {}
+        if self._auth_token is not None:
+            env['IAM_TOKEN'] = self._auth_token
         logging.info("running command: %s" % args)
         result = subprocess.run(
             args,
@@ -129,6 +133,7 @@ class _TestFixture:
             capture_output=True,
             input=script_input,
             text=True,
+            env=env,
         )
         return result
 
@@ -139,11 +144,10 @@ class _TestFixture:
 
     @property
     def access_service(self):
-        return self._env.access_service
+        return self._local_load_test.access_service
 
     def set_auth_token(self, token: str):
-        self._client_config.ClientConfig.AuthToken = token
-        self._flush_config()
+        self._auth_token = token
 
     def _flush_config(self):
         self._client_config_path.write_text(MessageToString(self._client_config))
@@ -183,7 +187,7 @@ def test_new_auth_authorization_ok():
         token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.create_account(
-            "test_auth_token",
+            token,
             token,
             is_unknown_subject=False,
             permissions=[
