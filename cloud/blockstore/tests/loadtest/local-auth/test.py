@@ -181,7 +181,7 @@ def test_new_auth_authorization_ok():
         token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.create_account(
-            "test_user",
+            "test_auth_token",
             token,
             is_unknown_subject=False,
             permissions=[
