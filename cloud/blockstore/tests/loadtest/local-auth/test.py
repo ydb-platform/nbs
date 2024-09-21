@@ -10,7 +10,7 @@ from google.protobuf.text_format import MessageToString
 from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
-from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest, logger
+from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
@@ -99,7 +99,7 @@ class _TestFixture:
         )
         self._client_config_path = Path(common.output_path()) / "client-config.txt"
         self._client_config = create_client_config()
-        self._client_config.ClientConfig.RetryTimeout = 1
+        self._client_config.RetryTimeout = 1
         self._flush_config()
         self.folder_id = folder_id
 
@@ -184,6 +184,7 @@ def test_new_auth_authorization_ok():
         result = env.create_volume()
         assert result.returncode == 0
 
+
 def test_new_auth_unauthorized():
     with _TestFixture(NewAccessService) as env:
         with _TestFixture(NewAccessService) as env:
@@ -200,11 +201,13 @@ def test_new_auth_unauthorized():
         result = env.create_volume()
         assert result.returncode != 0
 
+
 def test_new_auth_unauthenticated():
     with _TestFixture(NewAccessService) as env:
         env.set_auth_token("some_other_token")
         result = env.create_volume()
         assert result.returncode != 0
+
 
 def test_new_auth_unknown_subject():
     with _TestFixture(NewAccessService) as env:
