@@ -61,10 +61,11 @@ void TIndexTabletActor::HandleCreateHandle(
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TResponse>();
-        GetDupCacheEntry(e, response->Record);
         // sometimes bugged clients send us duplicate request ids
         // see #2033
-        if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
+        if (!GetDupCacheEntry(e, response->Record)) {
+            session->DropDupEntry(requestId);
+        } else if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
                 != response->Record.GetNodeAttr().GetId())
         {
             ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
