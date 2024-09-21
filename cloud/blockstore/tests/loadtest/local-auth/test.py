@@ -168,6 +168,7 @@ def test_auth_unauthenticated():
         assert result.returncode != 0
         assert "E_UNAUTHORIZED" in result.stderr
 
+
 def test_auth_empty_token():
     with _TestFixture() as env:
         env.set_auth_token("")
@@ -175,6 +176,7 @@ def test_auth_empty_token():
         result = env.create_volume()
         assert result.returncode != 0
         assert "E_UNAUTHORIZED" in result.stderr
+
 
 def test_new_auth_authorization_ok():
     with _TestFixture(NewAccessService) as env:
@@ -208,12 +210,14 @@ def test_new_auth_unauthorized():
         assert result.returncode != 0
         assert "E_UNAUTHORIZED" in result.stderr
 
+
 def test_new_auth_unauthenticated():
     with _TestFixture(NewAccessService) as env:
         env.set_auth_token("some_other_token")
         result = env.create_volume()
         assert result.returncode != 0
         assert "E_UNAUTHORIZED" in result.stderr
+
 
 def test_new_auth_unknown_subject():
     with _TestFixture(NewAccessService) as env:
