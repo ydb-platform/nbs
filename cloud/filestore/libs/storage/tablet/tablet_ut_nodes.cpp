@@ -1098,16 +1098,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT(!HasError(response->Record.GetError()));
 
             nodeId = response->Record.GetNode().GetId();
-            UNIT_ASSERT(nodeId != InvalidNodeId);
+            UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, nodeId);
+        }
+
+        {
+            auto response = tablet.ListNodes(RootNodeId);
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("xxx", names[0]);
         }
 
         tablet.SendRequest(createOther(100500));
         {
             auto response = tablet.RecvUnlinkNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
+                S_OK,
                 response->Record.GetError().GetCode(),
                 response->Record.GetError().GetMessage());
+        }
+
+        {
+            auto response = tablet.ListNodes(RootNodeId);
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(0, names.size());
         }
     }
 
