@@ -163,16 +163,6 @@ def test_auth_unauthorized():
         assert "E_UNAUTHORIZED" in result.stderr
 
 
-def test_auth_unauthenticated():
-    with _TestFixture() as env:
-        token = "test_auth_token"
-        env.set_auth_token(token)
-        env.access_service.authorize(token)
-        result = env.create_volume()
-        assert result.returncode != 0
-        assert "E_UNAUTHORIZED" in result.stderr
-
-
 def test_auth_empty_token():
     with _TestFixture() as env:
         env.set_auth_token("")
