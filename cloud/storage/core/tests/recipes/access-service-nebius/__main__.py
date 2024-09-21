@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import signal
 
 from library.python.testing.recipe import declare_recipe, set_env
 
@@ -20,7 +21,7 @@ def parse_args(args):
 
 def start(argv):
     args = parse_args(argv)
-    logger.info("Starting nebius access-service")
+    logger.info("Starting new access-service")
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder=""
@@ -51,10 +52,20 @@ def start(argv):
     access_service.start()
     set_env("NEBIUS_ACCESS_SERVICE_PORT", str(port))
     set_env("NEBIUS_ACCESS_SERVICE_CONTROL_PORT", str(control_port))
-
+    set_env("NEBIUS_ACCESS_SERVICE_PID", str(access_service.pid))
 
 def stop(argv):
-    NewAccessService.stop()
+    logger.info("Shutdown new access-service")
+
+    pid = os.getenv("ACCESS_SERVICE_PID")
+
+    if pid:
+        logger.info("will kill access-service with pid `%s`", pid)
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except OSError:
+            logger.exception("While killing pid `%s`", pid)
+            raise
 
 
 if __name__ == "__main__":

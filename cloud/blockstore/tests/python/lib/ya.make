@@ -8,6 +8,7 @@ PEERDIR(
 
     cloud/storage/core/tools/common/python
     cloud/storage/core/tools/testing/access_service/lib
+    cloud/storage/core/tools/testing/access_service_nebius/lib
     cloud/storage/core/tools/testing/qemu/lib
 
     contrib/ydb/core/protos

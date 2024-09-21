@@ -6,8 +6,8 @@ import requests
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.storage.core.tools.common.python.daemon import Daemon
-from cloud.tasks.test.common.processes import register_process, kill_processes
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+
 
 SERVICE_NAME = "access_service_nebius"
 
@@ -68,7 +68,6 @@ class NewAccessService:
 
     def start(self):
         self.__daemon.start()
-        register_process(SERVICE_NAME, self.__daemon.pid)
 
     def create_account(
         self,
@@ -87,9 +86,12 @@ class NewAccessService:
             }
         ).raise_for_status()
 
-    @staticmethod
-    def stop():
-        kill_processes(SERVICE_NAME)
+    @property
+    def pid(self):
+        return self.__daemon.pid
+
+    def stop(self):
+        self.__daemon.stop()
 
     @property
     def access_service_type(self):

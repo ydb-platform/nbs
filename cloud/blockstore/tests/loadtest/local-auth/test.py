@@ -130,6 +130,7 @@ class _TestFixture:
         result = self.run("createvolume", "--disk-id", "vol0", "--blocks-count", "25000")
         logging.info("Disk creation stdout: %s, stderr: %s", result.stdout, result.stderr)
         return result
+
     @property
     def access_service(self):
         return self._env.access_service
@@ -159,12 +160,14 @@ def test_auth_unauthenticated():
         result = env.create_volume()
         assert result.returncode != 0
 
+
 def test_auth_empty_token():
     with _TestFixture() as env:
         env.set_auth_token("")
         env.access_service.authorize("test_auth_token")
         result = env.create_volume()
         assert result.returncode != 0
+
 
 def test_new_auth_authorization_ok():
     with _TestFixture(NewAccessService) as env:
