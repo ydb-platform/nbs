@@ -57,8 +57,10 @@ def test_load():
     env.access_service.authenticate("test_auth_token")
     env.access_service.authorize("test_auth_token")
 
-    client = create_client_config()
-    client.ClientConfig.AuthToken = "test_auth_token"
+    client = TClientConfig()
+    client.RootCertsFile = common.source_path(
+        "cloud/blockstore/tests/certs/server.crt")
+    client.AuthToken = "test_auth_token"
 
     try:
         ret = run_test(
