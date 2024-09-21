@@ -41,7 +41,7 @@ def start(argv):
     access_service = NewAccessService(
         host="localhost",
         binary_path=yatest_common.binary_path(
-            "cloud/storage/core/tools/testing/access_service_nebius/service/access-service-mock",
+            "cloud/storage/core/tools/testing/access_service_nebius/mock/access-service-mock",
         ),
         port=port,
         control_port=control_port,

@@ -47,7 +47,7 @@ class NewAccessService:
             ensure_path_exists(working_dir)
         if binary_path is None:
             binary_path = yatest_common.binary_path(
-                "cloud/storage/core/tools/testing/access_service_nebius/service/access-service-mock",
+                "cloud/storage/core/tools/testing/access_service_nebius/mock/access-service-mock",
             )
         self._host = host
         config = {
