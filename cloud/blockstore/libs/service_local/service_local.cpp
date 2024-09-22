@@ -302,7 +302,10 @@ public:
         volume.SetDiskId(dataPath);
         return StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply(
-                [this, mountedVolume, clientId, accessMode](const auto& future)
+                [mountedVolume,
+                 clientId,
+                 accessMode,
+                 shutdownTimeout = StorageShutdownTimeout](const auto& future)
                 {
                     auto storage = future.GetValue();
                     if (!storage) {
@@ -317,7 +320,7 @@ public:
                         clientId,
                         accessMode,
                         std::move(storage),
-                        StorageShutdownTimeout);
+                        shutdownTimeout);
 
                     NProto::TMountVolumeResponse response;
                     response.SetSessionId(session->SessionId);
