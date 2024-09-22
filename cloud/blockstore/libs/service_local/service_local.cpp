@@ -229,23 +229,22 @@ public:
         }
         with_lock (mountedVolume->SessionLock) {
             mountedVolume->Volume = volume;
-            for (auto& session: mountedVolume->Sessions) {
+            for (auto& [_, session]: mountedVolume->Sessions) {
                 auto dataPath = MakeDataPath(volume.GetDiskId());
                 volume.SetDiskId(dataPath);
-                session.second->Storage = StorageProvider
-                                              ->CreateStorage(
-                                                  volume,
-                                                  session.second->ClientId,
-                                                  session.second->AccessMode)
-                                              .GetValueSync();
-                session.second->StorageAdapter =
-                    std::make_unique<TStorageAdapter>(
-                        session.second->Storage,
-                        volume.GetBlockSize(),
-                        true,
-                        0,
-                        TDuration::Zero(),
-                        StorageShutdownTimeout);
+                session->Storage = StorageProvider
+                                       ->CreateStorage(
+                                           volume,
+                                           session->ClientId,
+                                           session->AccessMode)
+                                       .GetValueSync();
+                session->StorageAdapter = std::make_unique<TStorageAdapter>(
+                    session->Storage,
+                    volume.GetBlockSize(),
+                    true,
+                    0,
+                    TDuration::Zero(),
+                    StorageShutdownTimeout);
             }
         }
     }
