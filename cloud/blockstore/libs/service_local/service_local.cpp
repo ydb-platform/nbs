@@ -94,19 +94,20 @@ using TMountSessionMap = THashMap<TString, TMountSessionPtr>;
 struct TMountedVolume
 {
     NProto::TVolume Volume;
+    TDuration StorageShutdownTimeout;
 
     TMountSessionMap Sessions;
     TMutex SessionLock;
 
-    TMountedVolume(NProto::TVolume volume)
+    TMountedVolume(NProto::TVolume volume, TDuration storageShutdownTimeout)
         : Volume(std::move(volume))
+        , StorageShutdownTimeout(storageShutdownTimeout)
     {}
 
     TMountSessionPtr CreateSession(
         TString clientId,
         NProto::EVolumeAccessMode accessMode,
-        IStoragePtr storage,
-        TDuration storageShutdownTimeout)
+        IStoragePtr storage)
     {
         with_lock (SessionLock) {
             auto session = std::make_shared<TMountSession>(
@@ -114,7 +115,7 @@ struct TMountedVolume
                 accessMode,
                 std::move(storage),
                 Volume.GetBlockSize(),
-                storageShutdownTimeout);
+                StorageShutdownTimeout);
 
             Sessions.emplace(session->SessionId, session);
             return session;
@@ -141,6 +142,33 @@ struct TMountedVolume
                 return true;
             }
             return false;
+        }
+    }
+
+    void Resize(
+        ui64 blocksCount,
+        const TString& dataPath,
+        const IStorageProviderPtr& storageProvider)
+    {
+        with_lock (SessionLock) {
+            Volume.SetBlocksCount(blocksCount);
+            auto volume = Volume;
+            volume.SetDiskId(dataPath);
+            for (auto& [_, session]: Sessions) {
+                session->Storage = storageProvider
+                                       ->CreateStorage(
+                                           volume,
+                                           session->ClientId,
+                                           session->AccessMode)
+                                       .GetValueSync();
+                session->StorageAdapter = std::make_unique<TStorageAdapter>(
+                    session->Storage,
+                    volume.GetBlockSize(),
+                    true,
+                    0,
+                    TDuration::Zero(),
+                    StorageShutdownTimeout);
+            }
         }
     }
 };
@@ -220,33 +248,20 @@ public:
         TFileOutput out(fileMeta);
         SerializeToTextFormat(volume, out);
 
-        TFile fileData(MakeDataPath(diskId), EOpenModeFlag::OpenExisting);
+        auto dataPath = MakeDataPath(diskId);
+        TFile fileData(dataPath, EOpenModeFlag::OpenExisting);
         fileData.Resize(volume.GetBlockSize() * blocksCount);
 
         auto mountedVolume = FindMountedVolume(diskId);
         if (!mountedVolume) {
             return;
         }
-        with_lock (mountedVolume->SessionLock) {
-            mountedVolume->Volume = volume;
-            for (auto& [_, session]: mountedVolume->Sessions) {
-                auto dataPath = MakeDataPath(volume.GetDiskId());
-                volume.SetDiskId(dataPath);
-                session->Storage = StorageProvider
-                                       ->CreateStorage(
-                                           volume,
-                                           session->ClientId,
-                                           session->AccessMode)
-                                       .GetValueSync();
-                session->StorageAdapter = std::make_unique<TStorageAdapter>(
-                    session->Storage,
-                    volume.GetBlockSize(),
-                    true,
-                    0,
-                    TDuration::Zero(),
-                    StorageShutdownTimeout);
-            }
-        }
+
+        mountedVolume->Resize(
+            blocksCount,
+            dataPath,
+            StorageProvider,
+            StorageShutdownTimeout);
     }
 
     void DestroyVolume(const TString& diskId)
