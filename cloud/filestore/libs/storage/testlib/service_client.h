@@ -444,36 +444,6 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvFsyncRequest> CreateFsyncRequest(
-        const THeaders& headers,
-        const TString& fileSystemId,
-        const ui64 nodeId,
-        const ui64 handle,
-        bool dataSync)
-    {
-        auto request = std::make_unique<TEvService::TEvFsyncRequest>();
-        headers.Fill(request->Record);
-        request->Record.SetFileSystemId(fileSystemId);
-        request->Record.SetNodeId(nodeId);
-        request->Record.SetHandle(handle);
-        request->Record.SetDataSync(dataSync);
-        return request;
-    }
-
-    std::unique_ptr<TEvService::TEvFsyncDirRequest> CreateFsyncDirRequest(
-        const THeaders& headers,
-        const TString& fileSystemId,
-        const ui64 nodeId,
-        bool dataSync)
-    {
-        auto request = std::make_unique<TEvService::TEvFsyncDirRequest>();
-        headers.Fill(request->Record);
-        request->Record.SetFileSystemId(fileSystemId);
-        request->Record.SetNodeId(nodeId);
-        request->Record.SetDataSync(dataSync);
-        return request;
-    }
-
     std::unique_ptr<TEvService::TEvSetNodeXAttrRequest> CreateSetNodeXAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,

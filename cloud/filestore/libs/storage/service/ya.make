@@ -25,7 +25,6 @@ SRCS(
     service_actor_destroyfs.cpp
     service_actor_destroysession.cpp
     service_actor_forward.cpp
-    service_actor_fsync.cpp
     service_actor_getfsinfo.cpp
     service_actor_getnodeattr.cpp
     service_actor_getsessionevents.cpp

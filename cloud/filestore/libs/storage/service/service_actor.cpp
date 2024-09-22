@@ -182,4 +182,26 @@ void TStorageServiceActor::HandleUnregisterLocalFileStore(
     }
 }
 
+void TStorageServiceActor::HandleFsync(
+    const TEvService::TEvFsyncRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    // Fsync is handled in service_kikimr
+    Y_ABORT();
+}
+
+void TStorageServiceActor::HandleFsyncDir(
+    const TEvService::TEvFsyncDirRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    // FsyncDir is handled in service_kikimr
+    Y_ABORT();
+}
+
 }   // namespace NCloud::NFileStore::NStorage

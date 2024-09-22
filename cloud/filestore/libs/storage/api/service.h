@@ -266,17 +266,20 @@ struct TEvService
         EvExecuteActionRequest = EvBegin + 95,
         EvExecuteActionResponse,
 
-        EvFsyncRequest = EvBegin + 97,
+        EvEnd,
+
+        // These events are never handled in actor system.
+        // We need to specify them here to avoid breaking template code
+        // which generates handlers for all events in actor system
+        EvFsyncRequest = TFileStoreEvents::END + 1,
         EvFsyncResponse,
 
-        EvFsyncDirRequest = EvBegin + 99,
+        EvFsyncDirRequest,
         EvFsyncDirResponse,
-
-        EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_PART2_END,
-        "EvEnd expected to be < TFileStoreEvents::SERVICE_PART2_END");
+    static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
+        "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
 
     FILESTORE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 

@@ -291,6 +291,32 @@ private:
             std::move(response)));
     }
 
+    template<>
+    void ExecuteRequest<TFsyncMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TFsyncMethod::TRequest> request,
+        TPromise<TFsyncMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        Y_UNUSED(TFsyncMethod::RequestName);
+
+        response.SetValue(TFsyncMethod::TResponse());
+    }
+
+    template<>
+    void ExecuteRequest<TFsyncDirMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TFsyncDirMethod::TRequest> request,
+        TPromise<TFsyncDirMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        Y_UNUSED(TFsyncDirMethod::RequestName);
+
+        response.SetValue(TFsyncDirMethod::TResponse());
+    }
+
     template <typename T>
     void ExecuteStreamRequest(
         TCallContextPtr callContext,

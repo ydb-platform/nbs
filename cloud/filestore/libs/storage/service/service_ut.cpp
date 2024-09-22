@@ -5809,41 +5809,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 29);
     }
-
-    Y_UNIT_TEST(ShouldFsyncFileAndDir)
-    {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1'000);
-
-        auto headers = service.InitSession("test", "client");
-
-        ui64 fileNodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-
-        ui64 fileHandle =
-            service
-                .CreateHandle(headers, "test", fileNodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
-
-        ui64 dirNodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir"))
-                ->Record.GetNode()
-                .GetId();
-
-        for (auto datasync: {true, false}) {
-            service.Fsync(headers, "test", fileNodeId, fileHandle, datasync);
-            service.FsyncDir(headers, "test", dirNodeId, datasync);
-        }
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
