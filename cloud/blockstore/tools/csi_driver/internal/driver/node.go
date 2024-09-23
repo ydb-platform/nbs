@@ -156,20 +156,19 @@ func (s *nodeService) NodeStageVolume(
 
 	if s.vmMode {
 		nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
-		instanceID := req.VolumeContext[instanceIDKey]
 
 		var err error
-		if instanceID != "" {
+		if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
 			if nfsBackend {
 				err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceID, req.VolumeId)
 			} else {
 				err = s.nodeStageDiskAsVhostSocket(ctx, instanceID, req.VolumeId, req.VolumeContext)
 			}
-		}
 
-		if err != nil {
-			return nil, s.statusErrorf(codes.Internal,
-				"Failed to stage volume: %v", err)
+			if err != nil {
+				return nil, s.statusErrorf(codes.Internal,
+					"Failed to stage volume: %v", err)
+			}
 		}
 	}
 
