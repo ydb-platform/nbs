@@ -70,9 +70,12 @@ struct TMountSession
         , ClientId(std::move(clientId))
         , Storage(storage)
         , StorageAdapter(
-            std::move(storage),
-            blockSize,
-            true)
+              std::move(storage),
+              blockSize,
+              true,                // normalize,
+              TDuration::Zero(),   // maxRequestDuration
+              TDuration::Zero()    // shutdownTimeout
+          )
     {}
 };
 

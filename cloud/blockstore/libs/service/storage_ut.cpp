@@ -74,9 +74,11 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         auto adapter = std::make_shared<TStorageAdapter>(
             storage,
-            4_KB,   // storageBlockSize
-            false,  // normalize
-            32_MB); // maxRequestSize
+            4_KB,                // storageBlockSize
+            false,               // normalize,
+            TDuration::Zero(),   // maxRequestDuration
+            TDuration::Zero()    // shutdownTimeout
+        );
 
         auto request = std::make_shared<NProto::TWriteBlocksRequest>();
         request->SetStartIndex(1000);
@@ -143,9 +145,11 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         auto adapter = std::make_shared<TStorageAdapter>(
             storage,
-            4_KB,   // storageBlockSize
-            true,   // normalize
-            32_MB); // maxRequestSize
+            4_KB,                // storageBlockSize
+            true,                // normalize,
+            TDuration::Zero(),   // maxRequestDuration
+            TDuration::Zero()    // shutdownTimeout
+        );
 
         auto request = std::make_shared<NProto::TWriteBlocksRequest>();
         request->SetStartIndex(1000);
@@ -215,10 +219,10 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         auto adapter = std::make_shared<TStorageAdapter>(
             storage,
-            4_KB,                   // storageBlockSize
-            false,                  // normalize
-            32_MB,                  // maxRequestSize
-            TDuration::Seconds(1)   // timeout
+            4_KB,                    // storageBlockSize
+            false,                   // normalize
+            TDuration::Seconds(1),   // maxRequestDuration
+            TDuration::Zero()        // shutdownTimeout
         );
 
         auto now = TInstant::Seconds(1);
@@ -337,7 +341,6 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             storage,
             4_KB,                    // storageBlockSize
             false,                   // normalize
-            32_MB,                   // maxRequestSize
             TDuration::Seconds(1),   // request timeout
             shutdownTimeout          // shutdown timeout
         );
@@ -463,9 +466,11 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         auto adapter = std::make_shared<TStorageAdapter>(
             storage,
-            4096,   // storageBlockSize
+            4_KB,   // storageBlockSize
             normalize,
-            32_MB);   // maxRequestSize
+            TDuration::Zero(),   // request timeout
+            TDuration::Zero()    // shutdown timeout
+        );
 
         {   // Requesting the reading of two blocks. Since the first block will
             // be filled with zeros, it should be optimized and will return an
@@ -542,9 +547,11 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         auto adapter = std::make_shared<TStorageAdapter>(
             storage,
-            4096,   // storageBlockSize
+            4_KB,   // storageBlockSize
             normalize,
-            32_MB); // maxRequestSize
+            TDuration::Zero(),   // request timeout
+            TDuration::Zero()    // shutdown timeout
+        );
 
         {
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
