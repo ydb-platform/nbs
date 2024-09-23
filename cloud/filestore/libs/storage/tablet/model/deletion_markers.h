@@ -35,9 +35,16 @@ struct TDeletionMarker
             && BlockIndex == other.BlockIndex
             && BlockCount == other.BlockCount;
     }
+
+    bool IsValid() const
+    {
+        return CommitId != InvalidCommitId && BlockCount > 0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// TODO(#1923): support checkpoints in TDeletionMarkers. Right now the
+// implementation simply overwrites older commitIds with newer ones.
 
 class TDeletionMarkers
 {

@@ -40,30 +40,37 @@ void TIndexTabletActor::HandleCleanup(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
-        return;
-    }
-
-    if (!BlobIndexOpState.Start()) {
+    if (!started) {
         replyError(
             MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
 
+
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+        return;
+    }
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s Cleanup started (range: #%u)",
+        "%s Cleanup started (range: #%u, priority queue size: %u"
+        ", large marker count: %lu / large cleanup threshold: %lu)",
         LogTag.c_str(),
-        msg->RangeId);
+        msg->RangeId,
+        GetPriorityRangeCount(),
+        GetLargeDeletionMarkersCount(),
+        Config->GetLargeDeletionMarkersCleanupThreshold());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TCleanup>(
         ctx,
@@ -102,7 +109,7 @@ void TIndexTabletActor::ExecuteTx_Cleanup(
     TIndexTabletDatabase db(tx.DB);
 
     args.ProcessedDeletionMarkerCount =
-        CleanupMixedBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
+        CleanupBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_Cleanup(
@@ -121,7 +128,7 @@ void TIndexTabletActor::CompleteTx_Cleanup(
         "%s Cleanup completed (range: #%u)",
         LogTag.c_str(), args.RangeId);
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     ReleaseMixedBlocks(args.RangeId);
     TABLET_VERIFY(TryReleaseCollectBarrier(args.CollectBarrier));
 

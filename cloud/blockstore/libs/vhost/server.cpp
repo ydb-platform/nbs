@@ -29,10 +29,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxZeroRequestSize = 32*1024*1024;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TReadBlocksLocalMethod
 {
     static TFuture<NProto::TReadBlocksLocalResponse> Execute(
@@ -425,7 +421,6 @@ public:
             std::move(storage),
             options.ClientId,
             options.BlockSize,
-            MaxZeroRequestSize / options.BlockSize,
             options.UnalignedRequestsDisabled);
 
         auto endpoint = std::make_shared<TEndpoint>(

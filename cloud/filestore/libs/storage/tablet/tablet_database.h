@@ -37,18 +37,19 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UsedLocksCount,         __VA_ARGS__)                                   \
     xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
                                                                                \
-    xxx(FreshBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlobsCount,        __VA_ARGS__)                                   \
-    xxx(DeletionMarkersCount,   __VA_ARGS__)                                   \
-    xxx(GarbageQueueSize,       __VA_ARGS__)                                   \
-    xxx(GarbageBlocksCount,     __VA_ARGS__)                                   \
-    xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
-    xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
-    xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
-    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
-    xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
-    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
+    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
+    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
+    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
+    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
+    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
+    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
+    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
+    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
+    xxx(FreshBytesCount,            __VA_ARGS__)                               \
+    xxx(AttrsUsedBytesCount,        __VA_ARGS__)                               \
+    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
+    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
 // FILESTORE_FILESYSTEM_STATS
 
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
@@ -410,6 +411,23 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TDeletionMarker>& deletionMarkers);
 
     //
+    // LargeDeletionMarkers
+    //
+
+    void WriteLargeDeletionMarkers(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount);
+
+    void DeleteLargeDeletionMarker(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex);
+
+    bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers);
+
+    //
     // NewBlobs
     //
 
@@ -480,7 +498,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,
         ui32 firstRangeId,
-        ui32 rangeCount);
+        ui32 rangeCount,
+        bool prechargeAll);
 
     //
     // OpLog

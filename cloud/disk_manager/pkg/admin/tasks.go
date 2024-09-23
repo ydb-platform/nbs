@@ -385,6 +385,43 @@ func newListFailedCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func listHangingTasks(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) error {
+
+	ctx := newContext(clientConfig)
+
+	taskStorage, db, err := newTaskStorage(ctx, serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	taskInfos, err := taskStorage.ListHangingTasks(ctx, ^uint64(0))
+	if err != nil {
+		return err
+	}
+
+	tasks := getTaskIDs(taskInfos)
+	return printTasks(ctx, taskStorage, tasks)
+}
+
+func newListHangingTasksCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	return &cobra.Command{
+		Use: "hanging",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return listHangingTasks(clientConfig, serverConfig)
+		},
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type slowLister func(context.Context, tasks_storage.Storage, time.Time, time.Duration) ([]string, error)
 
 type listSlowTasks struct {
@@ -492,6 +529,7 @@ func newListCmd(
 		newListCancellingCmd(clientConfig, serverConfig),
 		newListFailedCmd(clientConfig, serverConfig),
 		newListSlowCmd(clientConfig, serverConfig),
+		newListHangingTasksCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

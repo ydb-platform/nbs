@@ -419,19 +419,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
             TVector<TCompactionRangeInfo> chunk;
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 0, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 111, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 111, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 5, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 6002, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 6002, 5, true));
             UNIT_ASSERT_VALUES_EQUAL(toString(entries, 10, 5), toString(chunk));
 
             chunk.clear();
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5, true));
             UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
         });
 
@@ -446,10 +446,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
             TVector<TCompactionRangeInfo> chunk;
-            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, Max<ui32>()));
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, Max<ui32>(), true));
             UNIT_ASSERT_VALUES_EQUAL(
                 toString(entries, 0, Max<ui32>(), true),
                 toString(chunk));
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreLargeDeletionMarkers)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema(false);
+        });
+
+        using TEntries = TVector<TDeletionMarker>;
+        TEntries entries = {
+            {1, 100500, 1024, 1024 * 1024},
+            {4, 100501, 20 * 1024 * 1024, 5 * 1024 * 1024},
+            {10, 100502, 100 * 1024 * 1024, 100 * 1024 * 1024},
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            for (const auto& entry: entries) {
+                db.WriteLargeDeletionMarkers(
+                    entry.NodeId,
+                    entry.CommitId,
+                    entry.BlockIndex,
+                    entry.BlockCount);
+            }
+        });
+
+        auto toString = [] (const TEntries& v) {
+            TStringBuilder sb;
+            for (ui32 i = 0; i < v.size(); ++i) {
+                if (i) {
+                    sb << " ";
+                }
+                sb << v[i].NodeId
+                    << ",@" << v[i].CommitId
+                    << "," << v[i].BlockIndex
+                    << "," << v[i].BlockCount;
+            }
+            return sb;
+        };
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TDeletionMarker> markers;
+            UNIT_ASSERT(db.ReadLargeDeletionMarkers(markers));
+            UNIT_ASSERT_VALUES_EQUAL(toString(entries), toString(markers));
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteLargeDeletionMarker(
+                entries.back().NodeId,
+                entries.back().CommitId,
+                entries.back().BlockIndex);
+            entries.pop_back();
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TDeletionMarker> markers;
+            UNIT_ASSERT(db.ReadLargeDeletionMarkers(markers));
+            UNIT_ASSERT_VALUES_EQUAL(toString(entries), toString(markers));
         });
     }
 }

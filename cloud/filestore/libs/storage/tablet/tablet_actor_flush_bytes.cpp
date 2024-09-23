@@ -25,6 +25,7 @@ namespace {
 class TReadBlockVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
+    , public ILargeBlockVisitor
     , public IFreshBytesVisitor
 {
 private:
@@ -72,6 +73,15 @@ public:
         }
     }
 
+    void Accept(const TBlockDeletion& deletion) override
+    {
+        TABLET_VERIFY(!ApplyingByteLayer);
+
+        if (BlockMinCommitId < deletion.CommitId) {
+            Block = {};
+        }
+    }
+
     void Accept(const TBytes& bytes, TStringBuf data) override
     {
         ApplyingByteLayer = true;
@@ -98,7 +108,7 @@ private:
     const TString FileSystemId;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
-    const ui64 CollectCommitId;
+    const ui64 CommitId;
     const ui32 BlockSize;
     const ui64 ChunkId;
     const IProfileLogPtr ProfileLog;
@@ -123,7 +133,7 @@ public:
         TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
-        ui64 collectCommitId,
+        ui64 commitId,
         ui32 blockSize,
         ui64 chunkId,
         IProfileLogPtr profileLog,
@@ -170,7 +180,7 @@ TFlushBytesActor::TFlushBytesActor(
         TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
-        ui64 collectCommitId,
+        ui64 commitId,
         ui32 blockSize,
         ui64 chunkId,
         IProfileLogPtr profileLog,
@@ -184,7 +194,7 @@ TFlushBytesActor::TFlushBytesActor(
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
-    , CollectCommitId(collectCommitId)
+    , CommitId(commitId)
     , BlockSize(blockSize)
     , ChunkId(chunkId)
     , ProfileLog(std::move(profileLog))
@@ -248,6 +258,7 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
                 BlockSize
             ));
             request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
+            request->Blobs.back().Async = true;
 
             Buffers[blobToRead.BlobId] = request->Buffer;
 
@@ -314,6 +325,7 @@ void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -429,7 +441,7 @@ void TFlushBytesActor::ReplyAndDie(
             ctx.Now() - RequestInfo->StartedTs,
             RequestInfo->CallContext,
             std::move(MixedBlocksRanges),
-            CollectCommitId,
+            CommitId,
             ChunkId);
 
         NCloud::Send(ctx, Tablet, std::move(response));
@@ -500,27 +512,10 @@ void TIndexTabletActor::HandleFlushBytes(
         }
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        // Flush may have been enqueued if FlushBytes was enqueued by the
-        // tablet (via EnqueueBlobIndexOpIfNeeded).
-        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
-            FlushState.Complete();
-        }
-
-        reply(
-            ctx,
-            *ev,
-            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
-        );
-
-        return;
-    }
-
-    if (!BlobIndexOpState.Start()) {
+    if (!started) {
         if (FlushState.Start()) {
             FlushState.Complete();
         }
@@ -535,9 +530,22 @@ void TIndexTabletActor::HandleFlushBytes(
     }
 
     if (!FlushState.Start()) {
-        BlobIndexOpState.Complete();
+        CompleteBlobIndexOp();
 
         reply(ctx, *ev, MakeError(E_TRY_AGAIN, "flush is in progress"));
+
+        return;
+    }
+
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+        FlushState.Complete();
+
+        reply(
+            ctx,
+            *ev,
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
+        );
 
         return;
     }
@@ -560,8 +568,8 @@ void TIndexTabletActor::HandleFlushBytes(
 
     if (bytes.empty()) {
         if (deletionMarkers.empty()) {
+            CompleteBlobIndexOp();
             FlushState.Complete();
-            BlobIndexOpState.Complete();
             EnqueueBlobIndexOpIfNeeded(ctx);
             EnqueueFlushIfNeeded(ctx);
 
@@ -664,11 +672,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-    args.CollectCommitId = Max<ui64>();
 
-    for (const auto& bytes: args.Bytes) {
-        args.CollectCommitId = Min(args.CollectCommitId, bytes.MinCommitId);
-    }
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
@@ -712,6 +716,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             1);
 
         FindMixedBlocks(
+            visitor,
+            bytes.NodeId,
+            args.ReadCommitId,
+            blockIndex,
+            1);
+
+        FindLargeBlocks(
             visitor,
             bytes.NodeId,
             args.ReadCommitId,
@@ -793,15 +804,15 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     auto dstBlobs = builder.Finish();
     TABLET_VERIFY(dstBlobs);
 
-    auto commitId = GenerateCommitId();
-    if (commitId == InvalidCommitId) {
+    args.CommitId = GenerateCommitId();
+    if (args.CommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
     }
 
     ui32 blobIndex = 0;
     for (auto& blob: dstBlobs) {
         const auto ok = GenerateBlobId(
-            commitId,
+            args.CommitId,
             blob.Blocks.size() * GetBlockSize(),
             blobIndex++,
             &blob.BlobId);
@@ -814,7 +825,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
                 args,
                 MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
-            BlobIndexOpState.Complete();
+            CompleteBlobIndexOp();
             FlushState.Complete();
             EnqueueBlobIndexOpIfNeeded(ctx);
             EnqueueFlushIfNeeded(ctx);
@@ -823,14 +834,18 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     }
 
-    AcquireCollectBarrier(args.CollectCommitId);
+    AcquireCollectBarrier(args.CommitId);
+    // TODO(#1923): it may be problematic to acquire the barrier only upon
+    // completion of the transaction, because blobs, that have been read at the
+    // prepare stage, may be tampered with by the time of the transaction
+    // completion
 
     auto actor = std::make_unique<TFlushBytesActor>(
         LogTag,
         GetFileSystemId(),
         ctx.SelfID,
         args.RequestInfo,
-        args.CollectCommitId,
+        args.CommitId,
         GetBlockSize(),
         args.ChunkId,
         ProfileLog,
@@ -859,7 +874,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
     Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
@@ -953,7 +968,7 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         args.ChunkId,
         args.TrimmedBytes);
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     FlushState.Complete();
 
     EnqueueBlobIndexOpIfNeeded(ctx);

@@ -1,0 +1,12 @@
+Features {
+  Name: "ChangeThrottlingPolicy"
+  Whitelist {
+    CloudIds: "my_cloud"
+  }
+}
+Features {
+  Name: "ReplaceDevice"
+  Whitelist {
+    CloudIds: "my_cloud"
+  }
+}

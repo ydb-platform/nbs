@@ -89,7 +89,7 @@ bool TIndexTabletActor::PrepareTx_AddData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    TIndexTabletDatabase db(tx.DB);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
         return false;
@@ -250,6 +250,12 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         validator);
 
     if (!accepted) {
+        return;
+    }
+
+    if (Config->GetMultipleStageRequestThrottlingEnabled() &&
+        ThrottleIfNeeded<TEvIndexTablet::TGenerateBlobIdsMethod>(ev, ctx))
+    {
         return;
     }
 

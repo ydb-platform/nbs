@@ -10,6 +10,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -582,7 +583,7 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	require.NotEmpty(t, operation)
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
+	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
 	// Overwrites image URL contents.
 	testcommon.UseOtherQCOW2ImageFile(t)
 
@@ -984,5 +985,139 @@ func TestImageServiceDeleteImage(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID1 := t.Name() + "1"
+	diskSize := uint64(4194304)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID1,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	imageID1 := t.Name()
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID1,
+			},
+		},
+		DstImageId: imageID1,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response := disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+
+	meta := disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
+
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
+	require.NoError(t, err)
+	err = waitForWrite()
+	require.NoError(t, err)
+
+	imageID2 := t.Name() + "2"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID1,
+			},
+		},
+		DstImageId: imageID2,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response = disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta = disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
+
+	testcommon.CheckBaseSnapshot(t, ctx, imageID2, imageID1)
+
+	diskContentInfo, err := nbsClient.CalculateCrc32(diskID1, diskSize)
+	require.NoError(t, err)
+
+	diskID2 := t.Name() + "2"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID2,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID2,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+		ImageId: imageID1,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+		ImageId: imageID2,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
 	testcommon.CheckConsistency(t, ctx)
 }

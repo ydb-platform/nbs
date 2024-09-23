@@ -306,6 +306,17 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     };
 }
 
+TIndexTabletState::TBackpressureValues
+TIndexTabletActor::GetBackpressureValues() const
+{
+    return {
+        GetFreshBlocksCount() * GetBlockSize(),
+        GetFreshBytesCount(),
+        GetRangeToCompact().Score,
+        GetRangeToCleanup().Score,
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::ResetThrottlingPolicy()
@@ -329,7 +340,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TRequest& request,
     const TByteRange& range)
 {
-    if (auto error = ValidateRange(range); HasError(error)) {
+    auto error = ValidateRange(range, Config->GetMaxFileBlocks());
+    if (HasError(error)) {
         return error;
     }
 
@@ -339,13 +351,28 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
     }
 
     TString message;
-    if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
+    if (!IsWriteAllowed(
+            BuildBackpressureThresholds(),
+            GetBackpressureValues(),
+            &message))
+    {
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        if (CompactionStateLoadStatus.Finished &&
-            ++BackpressureErrorCount >=
-                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        TDuration backpressurePeriod;
+        if (CompactionStateLoadStatus.Finished) {
+            if (!BackpressurePeriodStart) {
+                BackpressurePeriodStart = ctx.Now();
+            }
+
+            ++BackpressureErrorCount;
+            backpressurePeriod = ctx.Now() - BackpressurePeriodStart;
+        }
+
+        if (BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide()
+                || backpressurePeriod >=
+                Config->GetMaxBackpressurePeriodBeforeSuicide())
         {
             LOG_WARN(
                 ctx,
@@ -357,10 +384,18 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
             Suicide(ctx);
         }
 
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+
         return MakeError(
             E_REJECTED,
             TStringBuilder() << "rejected due to backpressure: " << message);
     }
+
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
+    BackpressurePeriodStart = TInstant::Zero();
 
     return NProto::TError{};
 }
@@ -424,14 +459,16 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
     const auto used = stats.GetUsedBlocksCount();
-    auto alive = stats.GetMixedBlocksCount();
-    if (alive > stats.GetGarbageBlocksCount()) {
-        alive -= stats.GetGarbageBlocksCount();
-    } else {
-        alive = 0;
+    auto stored = stats.GetMixedBlocksCount();
+    if (!Config->GetUseMixedBlocksInsteadOfAliveBlocksInCompaction()) {
+        if (stored > stats.GetGarbageBlocksCount()) {
+            stored -= stats.GetGarbageBlocksCount();
+        } else {
+            stored = 0;
+        }
     }
-    const auto avgGarbagePercentage = used && alive > used
-        ? 100 * static_cast<double>(alive - used) / used
+    const auto avgGarbagePercentage = used && stored > used
+        ? 100 * static_cast<double>(stored - used) / used
         : 0;
     const auto rangeCount = compactionStats.UsedRangesCount;
     const auto avgCompactionScore = rangeCount
@@ -470,6 +507,13 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         : 0;
     const bool shouldCleanup =
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
+    bool isPriority = false;
+
+    if (auto priorityRange = NextPriorityRangeForCleanup()) {
+        cleanupRangeId = priorityRange->RangeId;
+        cleanupScore = Max<ui32>();
+        isPriority = true;
+    }
 
     return {
         Config->GetCleanupThreshold(),
@@ -477,11 +521,15 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         cleanupScore,
         cleanupRangeId,
         avgCleanupScore,
+        Config->GetLargeDeletionMarkersThreshold(),
+        GetLargeDeletionMarkersCount(),
+        GetPriorityRangeCount(),
+        isPriority,
         Config->GetNewCleanupEnabled(),
         cleanupScore >= Config->GetCleanupThreshold()
             || Config->GetNewCleanupEnabled()
-            && cleanupScore && shouldCleanup,
-    };
+            && cleanupScore && shouldCleanup
+            || isPriority};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -592,6 +640,18 @@ void TIndexTabletActor::HandleDescribeSessions(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
+{
+    TVector<ui32> ranges;
+    const auto& zeroRanges = RangesWithEmptyCompactionScore;
+    ui32 i = 0;
+    while (i < zeroRanges.size()) {
+        ranges.push_back(i);
+        i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
+    }
+    return ranges;
+}
+
 void TIndexTabletActor::HandleForcedOperation(
     const TEvIndexTablet::TEvForcedOperationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -638,12 +698,7 @@ void TIndexTabletActor::HandleForcedOperation(
     if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
-            const auto& zeroRanges = RangesWithEmptyCompactionScore;
-            ui32 i = 0;
-            while (i < zeroRanges.size()) {
-                ranges.push_back(i);
-                i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
-            }
+            ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = request.GetProcessAllRanges()
                 ? GetAllCompactionRanges()

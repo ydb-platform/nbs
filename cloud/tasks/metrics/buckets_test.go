@@ -98,6 +98,6 @@ func TestNewExponentialDurationBuckets(t *testing.T) {
 	require.Equal(
 		t,
 		NewDurationBuckets(2*time.Second, 4*time.Second, 8*time.Second),
-		MakeExponentialDurationBuckets(2*time.Second, 2, 3),
+		NewExponentialDurationBuckets(2*time.Second, 2, 3),
 	)
 }

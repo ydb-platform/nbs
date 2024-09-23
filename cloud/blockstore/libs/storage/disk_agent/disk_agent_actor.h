@@ -86,6 +86,9 @@ private:
 
     TRequestInfoPtr PartiallySuspendAgentRequestInfo;
 
+    TVector<NActors::TActorId> IOParserActors;
+    ui32 ParserActorIdx = 0;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -151,6 +154,8 @@ private:
     void UpdateSessionCache(const NActors::TActorContext& ctx);
     void RunSessionCacheActor(const NActors::TActorContext& ctx);
 
+    bool ShouldOffloadRequest(ui32 eventType) const;
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
@@ -210,6 +215,7 @@ private:
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
+    bool RejectRequests(STFUNC_SIG);
 
     BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgent)
     BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgentPrivate)

@@ -150,13 +150,13 @@ NProto::TError ValidateXAttrValue(const TString& name, const TString& value)
     return {};
 }
 
-NProto::TError ValidateRange(TByteRange byteRange)
+NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks)
 {
     if (!byteRange.Length) {
         return ErrorInvalidArgument();
     }
 
-    if (byteRange.LastBlock() + 1 > MaxFileBlocks) {
+    if (byteRange.LastBlock() + 1 > maxFileBlocks) {
         return ErrorFileTooBig();
     }
 

@@ -3,7 +3,6 @@ package testcommon
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
@@ -294,22 +295,6 @@ func GetRequestContext(t *testing.T, ctx context.Context) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func WaitForRandomDuration(min time.Duration, max time.Duration) {
-	var duration time.Duration
-
-	rand.Seed(time.Now().UnixNano())
-	x := min.Microseconds()
-	y := max.Microseconds()
-
-	if y <= x {
-		duration = min
-	} else {
-		duration = time.Duration(x+rand.Int63n(y-x)) * time.Microsecond
-	}
-
-	<-time.After(duration)
-}
-
 func RequireCheckpointsAreEmpty(
 	t *testing.T,
 	ctx context.Context,
@@ -465,10 +450,56 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	return pools_storage.NewStorage(&pools_config.PoolsConfig{
 		CloudId:  &cloudID,
 		FolderId: &folderID,
-	}, db)
+	}, db, metrics.NewEmptyRegistry())
+}
+
+func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
+	// Should be in sync with settings from SnapshotConfig in test recipe.
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	config := &snapshot_config.SnapshotConfig{
+		PersistenceConfig: &persistence_config.PersistenceConfig{
+			Endpoint: &endpoint,
+			Database: &database,
+		},
+	}
+
+	db, err := persistence.NewYDBClient(
+		ctx,
+		config.GetPersistenceConfig(),
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot_storage.NewStorage(
+		config,
+		metrics.NewEmptyRegistry(),
+		db,
+		nil, // do not need s3 here
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func CheckBaseSnapshot(
+	t *testing.T,
+	ctx context.Context,
+	snapshotID string,
+	expectedBaseSnapshotID string,
+) {
+
+	storage, err := newSnapshotStorage(ctx)
+	require.NoError(t, err)
+
+	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err)
+	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
+}
 
 func CheckBaseDiskSlotReleased(
 	t *testing.T,

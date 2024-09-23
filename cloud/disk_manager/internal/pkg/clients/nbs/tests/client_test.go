@@ -15,7 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -1209,7 +1209,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 
 	go func() {
 		// Need to add some variance for better testing.
-		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+		common.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
 
 		errs <- multiZoneClient.Clone(
 			ctx,
@@ -1223,7 +1223,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 
 	go func() {
 		// Need to add some variance for better testing.
-		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+		common.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
 
 		errs <- otherZoneClient.DeleteWithFillGeneration(
 			ctx,

@@ -575,8 +575,6 @@ struct TServer: IEndpointProxyServer
             Scheduler,
             ep.RequestStats,
             volumeStats);
-
-        ep.Client->Start();
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
@@ -646,7 +644,8 @@ struct TServer: IEndpointProxyServer
                 TDuration::Days(1));        // timeout
         }
 
-        auto status = ep.NbdDevice->Start().ExtractValue();
+        auto future = ep.NbdDevice->Start();
+        const auto& status = future.GetValue();
         if (HasError(status)) {
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "

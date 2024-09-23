@@ -200,6 +200,14 @@ func (s *nodeService) NodePublishVolume(
 			codes.InvalidArgument,
 			"VolumeCapability is missing in NodePublishVolumeRequest")
 	}
+
+	accessMode := req.VolumeCapability.AccessMode
+	if accessMode == nil {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"AccessMode is missing in NodePublishVolumeRequest")
+	}
+
 	if req.VolumeContext == nil {
 		return nil, s.statusError(
 			codes.InvalidArgument,
@@ -211,9 +219,15 @@ func (s *nodeService) NodePublishVolume(
 			"podUID is missing in NodePublishVolumeRequest.VolumeContext")
 	}
 
-	var err error
 	nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
+	if !nfsBackend && accessMode.GetMode() ==
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"ReadWriteMany access mode is supported only with nfs backend")
+	}
 
+	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
@@ -837,10 +851,10 @@ func (s *nodeService) NodeExpandVolume(
 	newBlocksCount := uint64(math.Ceil(
 		float64(req.CapacityRange.RequiredBytes) / float64(resp.Volume.BlockSize)),
 	)
-	if newBlocksCount <= resp.Volume.BlocksCount {
+	if newBlocksCount < resp.Volume.BlocksCount {
 		return nil, status.Error(
 			codes.InvalidArgument,
-			"New blocks count is less than or equal to current blocks count value")
+			"New blocks count is less than current blocks count value")
 	}
 
 	podId, err := s.parsePodId(req.VolumePath)
@@ -875,10 +889,9 @@ func (s *nodeService) NodeExpandVolume(
 
 	log.Printf("Resize volume id %v blocks count %v", req.VolumeId, newBlocksCount)
 	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
-		DiskId:             req.VolumeId,
-		BlocksCount:        newBlocksCount,
-		ConfigVersion:      resp.Volume.ConfigVersion,
-		PerformanceProfile: resp.Volume.PerformanceProfile,
+		DiskId:        req.VolumeId,
+		BlocksCount:   newBlocksCount,
+		ConfigVersion: resp.Volume.ConfigVersion,
 	})
 
 	if err != nil {
@@ -886,9 +899,8 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	_, err = s.nbsClient.ResizeDevice(ctx, &nbsapi.TResizeDeviceRequest{
-		UnixSocketPath:    unixSocketPath,
-		DeviceSizeInBytes: newBlocksCount * uint64(resp.Volume.BlockSize),
+	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+		UnixSocketPath: unixSocketPath,
 	})
 
 	if err != nil {

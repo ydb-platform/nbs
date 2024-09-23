@@ -18,6 +18,10 @@ type storageYDB struct {
 	livenessWindow      time.Duration
 	ZoneIDs             []string
 	metrics             storageMetrics
+
+	exceptHangingTaskTypes            []string
+	hangingTaskTimeout                time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (s *storageYDB) CreateTask(
@@ -240,6 +244,23 @@ func (s *storageYDB) ListTasksCancelling(
 				limit,
 				nil, // taskTypeWhitelist
 			)
+			return err
+		},
+	)
+	return tasks, err
+}
+
+func (s *storageYDB) ListHangingTasks(
+	ctx context.Context,
+	limit uint64,
+) ([]TaskInfo, error) {
+
+	var tasks []TaskInfo
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			tasks, err = s.listHangingTasks(ctx, session, limit)
 			return err
 		},
 	)

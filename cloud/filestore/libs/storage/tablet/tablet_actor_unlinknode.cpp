@@ -245,10 +245,14 @@ void TIndexTabletActor::HandleUnlinkNode(
     }
 
     auto* msg = ev->Get();
-    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    const auto requestId = GetRequestId(msg->Record);
+    if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        GetDupCacheEntry(e, response->Record);
-        return NCloud::Reply(ctx, *ev, std::move(response));
+        if (GetDupCacheEntry(e, response->Record)) {
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+
+        session->DropDupEntry(requestId);
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -455,6 +459,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     RemoveTransaction(*args.RequestInfo);
+    EnqueueBlobIndexOpIfNeeded(ctx);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);

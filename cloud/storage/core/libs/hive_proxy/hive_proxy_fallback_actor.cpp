@@ -242,6 +242,15 @@ void THiveProxyFallbackActor::HandleBootExternal(
             return;
         }
 
+        // increment suggested generation to ensure that the tablet does not get
+        // stuck with an outdated generation, no matter what
+        auto request = std::make_unique<
+            TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
+               r->StorageInfo,
+               r->SuggestedGeneration + 1
+            );
+        NCloud::Send(ctx, TabletBootInfoBackup, std::move(request));
+
         auto response = std::make_unique<TResponse>(
             std::move(r->StorageInfo),
             r->SuggestedGeneration,

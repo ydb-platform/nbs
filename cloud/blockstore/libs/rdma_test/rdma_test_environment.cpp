@@ -15,8 +15,13 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     : Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
 {
     THashMap<TString, TStorageAdapterPtr> devices;
-    devices[Device_1] =
-        std::make_shared<TStorageAdapter>(Storage, 4_KB, true, 0);
+    devices[Device_1] = std::make_shared<TStorageAdapter>(
+        Storage,
+        4_KB,                // storageBlockSize
+        true,                // normalize,
+        TDuration::Zero(),   // maxRequestDuration
+        TDuration::Zero()    // shutdownTimeout
+    );
     TVector<TString> uuids;
     for (const auto& [key, value]: devices) {
         uuids.push_back(key);

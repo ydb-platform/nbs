@@ -48,6 +48,11 @@ func (c *ExecutionContextMock) AddTaskDependency(
 	return args.Error(0)
 }
 
+func (c *ExecutionContextMock) IsHanging() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
 func (c *ExecutionContextMock) SetEstimate(estimatedDuration time.Duration) {
 	c.Called(estimatedDuration)
 }

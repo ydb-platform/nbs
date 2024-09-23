@@ -1,4 +1,4 @@
-# Data index in Filestore
+# Data index in Filestore Tablet
 
 Data index is represented by the following layers:
 * FreshBytes layer - used for unaligned writes (predominantly smaller than BlockSize)
@@ -33,3 +33,7 @@ This layer is planned for use with large files. For simplicity the code is going
 * Each large DeletionMarker will describe a range of up to 1GiB
 * Large DeletionMarkers will be generated only upon large (> 128GiB) truncate ops.
 * Cleanup operation will keep track of the number of large DeletionMarkers and will start applying and trimming them if their total number becomes too big (e.g. greater than, say, 2 ^ 20).
+
+## Deletions
+* Small (`deletedBlockCount < LargeDeletionMarkersThreshold`) deletions are propagated to all layers except the LargeBlocks layer
+* Large deletions are propagated to the FreshBlocks, FreshBytes and LargeBlocks layers which means that the LargeBlocks layer MUST be visited AFTER the MixedBlocks layer

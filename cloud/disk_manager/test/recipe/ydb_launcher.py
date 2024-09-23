@@ -17,7 +17,6 @@ class YDBLauncher:
         configurator = KikimrConfigGenerator(
             binary_path=ydb_binary_path,
             erasure=None,
-            has_cluster_uuid=False,
             static_pdisk_size=64 * 2**30,
             dynamic_storage_pools=dynamic_storage_pools,
             enable_public_api_external_blobs=True)

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// YDB Config Dispatcher allow/deny lists
+
+message TConfigNames
+{
+    repeated string Names = 1;
+}
+
+message TConfigDispatcherSettings
+{
+    oneof AllowDenySettings {
+        TConfigNames AllowList = 1;
+        TConfigNames DenyList = 2;
+    };
+};

@@ -13,18 +13,12 @@ TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
 
 void TInMemoryIndexState::Reset(
     ui64 nodesCapacity,
-    ui64 nodesVerCapacity,
     ui64 nodeAttrsCapacity,
-    ui64 nodeAttrsVerCapacity,
-    ui64 nodeRefsCapacity,
-    ui64 nodeRefsVerCapacity)
+    ui64 nodeRefsCapacity)
 {
     NodesCapacity = nodesCapacity;
-    NodesVerCapacity = nodesVerCapacity;
     NodeAttrsCapacity = nodeAttrsCapacity;
-    NodeAttrsVerCapacity = nodeAttrsVerCapacity;
     NodeRefsCapacity = nodeRefsCapacity;
-    NodeRefsVerCapacity = nodeRefsVerCapacity;
 }
 
 //
@@ -47,7 +41,27 @@ bool TInMemoryIndexState::ReadNode(
     if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
         node = TNode{nodeId, it->second.Node, minCommitId, maxCommitId};
     }
+
+    // We found the entry in table. There is at most one entry matching the key,
+    // meaning that cache lookup was successful, independent of whether the
+    // entry is visible or not to the given commitId.
     return true;
+}
+
+void TInMemoryIndexState::WriteNode(
+    ui64 nodeId,
+    ui64 commitId,
+    const NProto::TNode& attrs)
+{
+    if (Nodes.size() == NodesCapacity && !Nodes.contains(nodeId)) {
+        Nodes.clear();
+    }
+    Nodes[nodeId] = TNodeRow{.CommitId = commitId, .Node = attrs};
+}
+
+void TInMemoryIndexState::DeleteNode(ui64 nodeId)
+{
+    Nodes.erase(nodeId);
 }
 
 //
@@ -59,30 +73,8 @@ bool TInMemoryIndexState::ReadNodeVer(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
-    auto it =
-        NodesVer.lower_bound(TNodesVerKey(nodeId, ReverseCommitId(commitId)));
-    if (it == NodesVer.end()) {
-        return false;
-    }
-
-    while (it != NodesVer.end()) {
-        if (it->first.NodeId != nodeId) {
-            break;
-        }
-
-        ui64 minCommitId = ReverseCommitId(it->first.MinCommitId);
-        ui64 maxCommitId = it->second.MaxCommitId;
-
-        if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            node = TNode{nodeId, it->second.Node, minCommitId, maxCommitId};
-            return true;
-        }
-
-        ++it;
-    }
-    // Unlike TIndexTabletDatabase, if the node has not been explicitly set,
-    // there is no way to determine, whether the entry is present in the
-    // original table.
+    Y_UNUSED(nodeId, commitId, node);
+    // TODO(#1146): _Ver tables not supported yet
     return false;
 }
 
@@ -112,10 +104,11 @@ bool TInMemoryIndexState::ReadNodeAttr(
             minCommitId,
             maxCommitId,
             it->second.Version};
-        return true;
     }
-
-    return false;
+    // We found the entry in table. There is at most one entry matching the key,
+    // meaning that cache lookup was successful, independent of whether the
+    // entry is visible or not to the given commitId.
+    return true;
 }
 
 bool TInMemoryIndexState::ReadNodeAttrs(
@@ -129,6 +122,26 @@ bool TInMemoryIndexState::ReadNodeAttrs(
     return false;
 }
 
+void TInMemoryIndexState::WriteNodeAttr(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    const TString& value,
+    ui64 version)
+{
+    const auto key = TNodeAttrsKey(nodeId, name);
+    if (NodeAttrs.size() == NodeAttrsCapacity && !NodeAttrs.contains(key)) {
+        NodeAttrs.clear();
+    }
+    NodeAttrs[key] =
+        TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version};
+}
+
+void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)
+{
+    NodeAttrs.erase(TNodeAttrsKey(nodeId, name));
+}
+
 //
 // NodeAttrs_Ver
 //
@@ -139,34 +152,8 @@ bool TInMemoryIndexState::ReadNodeAttrVer(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
-    auto it = NodeAttrsVer.lower_bound(
-        TNodeAttrsVerKey(nodeId, name, ReverseCommitId(commitId)));
-    if (it == NodeAttrsVer.end()) {
-        return false;
-    }
-
-    while (it != NodeAttrsVer.end()) {
-        if (it->first.NodeId != nodeId || it->first.Name != name) {
-            break;
-        }
-
-        ui64 minCommitId = ReverseCommitId(it->first.MinCommitId);
-        ui64 maxCommitId = it->second.MaxCommitId;
-
-        if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            attr = TNodeAttr{
-                nodeId,
-                name,
-                it->second.Value,
-                minCommitId,
-                maxCommitId,
-                it->second.Version};
-            return true;
-        }
-
-        ++it;
-    }
-
+    Y_UNUSED(nodeId, commitId, name, attr);
+    // TODO(#1146): _Ver tables not supported yet
     return false;
 }
 
@@ -208,10 +195,12 @@ bool TInMemoryIndexState::ReadNodeRef(
             it->second.FollowerName,
             minCommitId,
             maxCommitId};
-        return true;
     }
 
-    return false;
+    // We found the entry in table. There is at most one entry matching the key,
+    // meaning that cache lookup was successful, independent of whether the
+    // entry is visible or not to the given commitId.
+    return true;
 }
 
 bool TInMemoryIndexState::ReadNodeRefs(
@@ -237,6 +226,30 @@ bool TInMemoryIndexState::PrechargeNodeRefs(
     return true;
 }
 
+void TInMemoryIndexState::WriteNodeRef(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    ui64 childNode,
+    const TString& followerId,
+    const TString& followerName)
+{
+    const auto key = TNodeRefsKey(nodeId, name);
+    if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
+        NodeRefs.clear();
+    }
+    NodeRefs[key] = TNodeRefsRow{
+        .CommitId = commitId,
+        .ChildId = childNode,
+        .FollowerId = followerId,
+        .FollowerName = followerName};
+}
+
+void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)
+{
+    NodeRefs.erase(TNodeRefsKey(nodeId, name));
+}
+
 //
 // NodeRefs_Ver
 //
@@ -247,35 +260,8 @@ bool TInMemoryIndexState::ReadNodeRefVer(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
-    auto it = NodeRefsVer.lower_bound(
-        TNodeRefsVerKey(nodeId, name, ReverseCommitId(commitId)));
-    if (it == NodeRefsVer.end()) {
-        return false;
-    }
-
-    while (it != NodeRefsVer.end()) {
-        if (it->first.NodeId != nodeId || it->first.Name != name) {
-            break;
-        }
-
-        ui64 minCommitId = ReverseCommitId(it->first.MinCommitId);
-        ui64 maxCommitId = it->second.MaxCommitId;
-
-        if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef{
-                nodeId,
-                name,
-                it->second.ChildId,
-                it->second.FollowerId,
-                it->second.FollowerName,
-                minCommitId,
-                maxCommitId};
-            return true;
-        }
-
-        ++it;
-    }
-
+    Y_UNUSED(nodeId, commitId, name, ref);
+    // TODO(#1146): _Ver tables not supported yet
     return false;
 }
 
@@ -303,6 +289,54 @@ bool TInMemoryIndexState::ReadCheckpointNodes(
     // determine, whether the set of stored nodes is complete.
     Y_UNUSED(checkpointId, nodes, maxCount);
     return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TInMemoryIndexState::UpdateState(
+    const TVector<TIndexStateRequest>& nodeUpdates)
+{
+    for (const auto& update: nodeUpdates) {
+        if (const auto* request = std::get_if<TWriteNodeRequest>(&update)) {
+            WriteNode(
+                request->NodeId,
+                request->Row.CommitId,
+                request->Row.Node);
+        } else if (
+            const auto* request = std::get_if<TDeleteNodeRequest>(&update))
+        {
+            DeleteNode(request->NodeId);
+        } else if (
+            const auto* request = std::get_if<TWriteNodeAttrsRequest>(&update))
+        {
+            WriteNodeAttr(
+                request->NodeAttrsKey.NodeId,
+                request->NodeAttrsRow.CommitId,
+                request->NodeAttrsKey.Name,
+                request->NodeAttrsRow.Value,
+                request->NodeAttrsRow.Version);
+        } else if (
+            const auto* request = std::get_if<TDeleteNodeAttrsRequest>(&update))
+        {
+            DeleteNodeAttr(request->NodeId, request->Name);
+        } else if (
+            const auto* request = std::get_if<TWriteNodeRefsRequest>(&update))
+        {
+            WriteNodeRef(
+                request->NodeRefsKey.NodeId,
+                request->NodeRefsRow.CommitId,
+                request->NodeRefsKey.Name,
+                request->NodeRefsRow.ChildId,
+                request->NodeRefsRow.FollowerId,
+                request->NodeRefsRow.FollowerName);
+        } else if (
+            const auto* request = std::get_if<TDeleteNodeRefsRequest>(&update))
+        {
+            DeleteNodeRef(request->NodeId, request->Name);
+        } else {
+            Y_UNREACHABLE();
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

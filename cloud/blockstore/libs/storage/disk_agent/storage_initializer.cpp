@@ -143,7 +143,6 @@ private:
     bool ValidateStorageDiscoveryConfig() const;
     void ValidateCurrentConfigs();
 
-    TVector<NProto::TFileDeviceArgs> LoadCachedConfig() const;
     void SaveCurrentConfig();
 
     void ReportDiskAgentConfigMismatchEvent(const TString& error);
@@ -349,31 +348,6 @@ void TInitializer::ScanFileDevices()
     }
 }
 
-TVector<NProto::TFileDeviceArgs> TInitializer::LoadCachedConfig() const
-{
-    const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
-    const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
-    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-
-    if (path.empty()) {
-        return {};
-    }
-
-    if (!NFs::Exists(path)) {
-        return {};
-    }
-
-    NProto::TDiskAgentConfig proto;
-    ParseProtoTextFromFileRobust(path, proto);
-
-    auto& devices = *proto.MutableFileDevices();
-
-    return {
-        std::make_move_iterator(devices.begin()),
-        std::make_move_iterator(devices.end())
-    };
-}
-
 void TInitializer::SaveCurrentConfig()
 {
     const auto path = AgentConfig->GetCachedConfigPath();
@@ -406,7 +380,10 @@ void TInitializer::SaveCurrentConfig()
 
 void TInitializer::ValidateCurrentConfigs()
 {
-    auto cachedDevices = LoadCachedConfig();
+    const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
+    auto cachedDevices = LoadCachedConfig(path);
     if (cachedDevices.empty()) {
         STORAGE_INFO("There is no cached config");
         SaveCurrentConfig();

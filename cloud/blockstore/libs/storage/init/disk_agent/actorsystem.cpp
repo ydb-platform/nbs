@@ -115,7 +115,7 @@ public:
                 MakeDiskAgentServiceId(Args.NodeId),
                 TActorSetupCmd(
                     diskAgent.release(),
-                    TMailboxType::Revolving,
+                    TMailboxType::TinyReadAsFilled,
                     appData->UserPoolId));
         }
     }

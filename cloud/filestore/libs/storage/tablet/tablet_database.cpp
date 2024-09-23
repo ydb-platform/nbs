@@ -1350,6 +1350,61 @@ bool TIndexTabletDatabase::ReadDeletionMarkers(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// LargeDeletionMarkers
+
+void TIndexTabletDatabase::WriteLargeDeletionMarkers(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    ui32 blocksCount)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Update(NIceDb::TUpdate<TTable::BlocksCount>(blocksCount));
+}
+
+void TIndexTabletDatabase::DeleteLargeDeletionMarker(
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    Table<TTable>()
+        .Key(nodeId, commitId, blockIndex)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
+    TVector<TDeletionMarker>& deletionMarkers)
+{
+    using TTable = TIndexTabletSchema::LargeDeletionMarkers;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        deletionMarkers.emplace_back(
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::CommitId>(),
+            it.GetValue<TTable::BlockIndex>(),
+            it.GetValue<TTable::BlocksCount>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)
@@ -1628,15 +1683,20 @@ void TIndexTabletDatabase::WriteCompactionMap(
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {
-    return ReadCompactionMap(compactionMap, 0, Max<ui32>());
+    return ReadCompactionMap(compactionMap, 0, Max<ui32>(), true);
 }
 
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap,
     ui32 firstRangeId,
-    ui32 rangeCount)
+    ui32 rangeCount,
+    bool prechargeAll)
 {
     using TTable = TIndexTabletSchema::CompactionMap;
+
+    if (!firstRangeId && prechargeAll) {
+        Table<TTable>().Precharge();
+    }
 
     auto it = Table<TTable>()
         .GreaterOrEqual(firstRangeId)
@@ -1822,16 +1882,13 @@ void TIndexTabletDatabaseProxy::WriteNodeVer(
     const NProto::TNode& attrs)
 {
     TIndexTabletDatabase::WriteNodeVer(nodeId, minCommitId, maxCommitId, attrs);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeVerRequest{
-        .NodesVerKey = {nodeId, minCommitId},
-        .NodesVerRow = {.MaxCommitId = maxCommitId, .Node = attrs}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeVer(ui64 nodeId, ui64 commitId)
 {
     TIndexTabletDatabase::DeleteNodeVer(nodeId, commitId);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeVerRequest{
-        .NodesVerKey{nodeId, commitId}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeAttr(
@@ -1851,8 +1908,8 @@ void TIndexTabletDatabaseProxy::WriteNodeAttr(
 void TIndexTabletDatabaseProxy::DeleteNodeAttr(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeAttr(nodeId, name);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsRequest{
-        .NodeAttrsKey = {nodeId, name}});
+    NodeUpdates.emplace_back(
+        TInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId, name});
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeAttrVer(
@@ -1870,10 +1927,7 @@ void TIndexTabletDatabaseProxy::WriteNodeAttrVer(
         name,
         value,
         version);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsVerRequest{
-        .NodeAttrsVerKey = {nodeId, name, minCommitId},
-        .NodeAttrsVerRow =
-            {.MaxCommitId = maxCommitId, .Value = value, .Version = version}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeAttrVer(
@@ -1882,8 +1936,7 @@ void TIndexTabletDatabaseProxy::DeleteNodeAttrVer(
     const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeAttrVer(nodeId, commitId, name);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeAttrsVerRequest{
-        .NodeAttrsVerKey = {nodeId, name, commitId}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRef(
@@ -1913,8 +1966,8 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
 void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeRef(nodeId, name);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeRefsRequest{
-        .NodeRefsKey = {nodeId, name}});
+    NodeUpdates.emplace_back(
+        TInMemoryIndexState::TDeleteNodeRefsRequest{nodeId, name});
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRefVer(
@@ -1934,13 +1987,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRefVer(
         childNode,
         followerId,
         followerName);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsVerRequest{
-        .NodeRefsVerKey = {nodeId, name, minCommitId},
-        .NodeRefsVerRow = {
-            .MaxCommitId = maxCommitId,
-            .ChildId = childNode,
-            .FollowerId = followerId,
-            .FollowerName = followerName}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
@@ -1949,8 +1996,7 @@ void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
     const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeRefVer(nodeId, commitId, name);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TDeleteNodeRefsVerRequest{
-        .NodeRefsVerKey = {nodeId, name, commitId}});
+    // TODO(#1146): _Ver tables not yet supported
 }
 
 }   // namespace NCloud::NFileStore::NStorage

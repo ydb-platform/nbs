@@ -239,6 +239,8 @@ def generate_log_txt():
         b"BLOCKSTORE_DISK_AGENT",
         b"BLOCKSTORE_HIVE_PROXY",
         b"BLOCKSTORE_SS_PROXY",
+        b"BLOCKSTORE_EXTERNAL_ENDPOINT",
+        b"BLOCKSTORE_VHOST",
     ]
 
     log_config = TLogConfig()
@@ -298,6 +300,8 @@ def generate_disk_agent_txt(
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = 0
+    config.IOParserActorCount = 4
+    config.OffloadAllIORequestsParsingEnabled = True
 
     if device_erase_method is not None:
         config.DeviceEraseMethod = EDeviceEraseMethod.Value(device_erase_method)

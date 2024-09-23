@@ -1,6 +1,6 @@
 #include "volume_actor.h"
 
-#include "partition_requests.h"
+#include "multi_partition_requests.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -96,7 +96,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
     }
 
     // For DescribeBlocks should always forward request to
-    // TPartitionRequestActor
+    // TMultiPartitionRequestActor
     if (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>) {
         ev->Get()->Record = std::move(partitionRequests.front().Event->Record);
         SendRequestToPartition<TMethod>(
@@ -108,11 +108,6 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
 
         return true;
     }
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
 
     for (const auto& partitionRequest: partitionRequests) {
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
@@ -128,9 +123,9 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         ++MultipartitionWriteAndZeroRequestsInProgress;
     }
 
-    NCloud::Register<TPartitionRequestActor<TMethod>>(
+    NCloud::Register<TMultiPartitionRequestActor<TMethod>>(
         ctx,
-        std::move(requestInfo),
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         SelfId(),
         volumeRequestId,
         blockRange,
@@ -660,6 +655,20 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
+     *  Validation of the request blocks range
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
+        if (!CheckReadWriteBlockRange(range)) {
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << DescribeRange(range)));
+            return;
+        }
+    }
+
+    /*
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
@@ -710,19 +719,6 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
-    /*
-     *  Validation of the request blocks range
-     */
-    if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
-        if (!CheckReadWriteBlockRange(range)) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "invalid block range " << DescribeRange(range)));
-            return;
-        }
-    }
 
     /*
      *  Passing the request to the underlying (storage) layer.

@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -1062,7 +1063,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT(count == 1);
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
+    Y_UNIT_TEST(ShouldReturnERejectedIfSchemeShardDetectsPathIdVersionMismatch)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1221,7 +1222,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, modifyResponse->GetError().GetCode());
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedWhenSSisUnavailable)
+    Y_UNIT_TEST(ShouldReturnRetriableErrorWhenSSIsUnavailable)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1235,7 +1236,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                             std::make_unique<TEvSchemeShard::TEvDescribeSchemeResult>();
                         auto& rec = *response->MutableRecord();
                         rec.SetStatus(NKikimrScheme::StatusNotAvailable);
-                        rec.SetReason("ss is gone");
+                        rec.SetReason("SS is gone");
                         Send(
                             runtime,
                             event->Sender,
@@ -1249,7 +1250,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                                 TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecError);
                         auto& rec = response->Record;
                         rec.SetSchemeShardStatus(NKikimrScheme::StatusNotAvailable);
-                        rec.SetSchemeShardReason("ss is gone");
+                        rec.SetSchemeShardReason("SS is gone");
                         Send(
                             runtime,
                             event->Sender,
@@ -1277,10 +1278,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                     describeHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                describeResponse->GetStatus(),
-                E_REJECTED);
+                EErrorKind::ErrorRetriable,
+                GetErrorKind(describeResponse->GetError()));
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                "SS is gone",
                 describeResponse->GetError().GetMessage());
         }
 
@@ -1297,10 +1298,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                     describeHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                describeResponse->GetStatus(),
-                E_REJECTED);
+                EErrorKind::ErrorRetriable,
+                GetErrorKind(describeResponse->GetError()));
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                "SS is gone",
                 describeResponse->GetError().GetMessage());
         }
 
@@ -1321,8 +1322,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                     modifyHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                modifyResponse->GetStatus(),
-                E_REJECTED);
+                EErrorKind::ErrorRetriable,
+                GetErrorKind(modifyResponse->GetError()));
         }
     }
 
@@ -1371,8 +1372,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                     modifyHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                modifyResponse->GetStatus(),
-                E_REJECTED);
+                EErrorKind::ErrorRetriable,
+                GetErrorKind(modifyResponse->GetError()));
         }
 
         txStatus = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::WrongRequest;
@@ -1399,7 +1400,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfSchemeShardIsUnavailableForDeprecatedPath)
+    Y_UNIT_TEST(ShouldReturnRetriableErrorIfSchemeShardIsUnavailableForDeprecatedPath)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1416,7 +1417,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                                 std::make_unique<TEvSchemeShard::TEvDescribeSchemeResult>();
                             auto& record = *response->MutableRecord();
                             record.SetStatus(NKikimrScheme::StatusNotAvailable);
-                            record.SetReason("ss is gone");
+                            record.SetReason("SS is gone");
                             Send(
                                 runtime,
                                 event->Sender,
@@ -1443,9 +1444,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
                     handle);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                EErrorKind::ErrorRetriable,
+                GetErrorKind(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "SS is gone",
                 response->GetError().GetMessage());
         }
     }
@@ -1490,7 +1493,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
                 handle);
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EErrorKind::ErrorRetriable,
+            GetErrorKind(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldReturnERejectedIfAnyOfPartitionIdsIsZero)
@@ -1539,7 +1544,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
                 handle);
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EErrorKind::ErrorRetriable,
+            GetErrorKind(response->GetError()));
     }
 }
 

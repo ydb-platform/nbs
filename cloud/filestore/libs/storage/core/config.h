@@ -81,15 +81,17 @@ public:
     ui32 GetCompactionThresholdAverage() const;
     ui32 GetGarbageCompactionThresholdAverage() const;
     bool GetNewCompactionEnabled() const;
+    bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
-    ui32 GetFlushBytesThreshold() const;
+    ui64 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
     ui32 GetFlushThresholdForBackpressure() const;
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
-    ui32 GetFlushBytesThresholdForBackpressure() const;
+    ui64 GetFlushBytesThresholdForBackpressure() const;
+    ui32 GetBackpressurePercentageForFairBlobIndexOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;
@@ -202,6 +204,7 @@ public:
     bool GetConfigsDispatcherServiceEnabled() const;
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+    TDuration GetMaxBackpressurePeriodBeforeSuicide() const;
 
     TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
 
@@ -228,11 +231,8 @@ public:
 
     bool GetInMemoryIndexCacheEnabled() const;
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
-    ui64 GetInMemoryIndexCacheNodesVerCapacity() const;
     ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
-    ui64 GetInMemoryIndexCacheNodeAttrsVerCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
-    ui64 GetInMemoryIndexCacheNodeRefsVerCapacity() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
@@ -261,6 +261,14 @@ public:
 
     ui32 GetChannelFreeSpaceThreshold() const;
     ui32 GetChannelMinFreeSpace() const;
+
+    ui32 GetMaxFileBlocks() const;
+    bool GetLargeDeletionMarkersEnabled() const;
+    ui64 GetLargeDeletionMarkerBlocks() const;
+    ui64 GetLargeDeletionMarkersThreshold() const;
+    ui64 GetLargeDeletionMarkersCleanupThreshold() const;
+
+    bool GetMultipleStageRequestThrottlingEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -163,6 +163,7 @@ void TCompactionActor::ReadBlob(const TActorContext& ctx)
                 BlockSize
             ));
             request->Blobs.emplace_back(blob.BlobId, std::move(blocks));
+            request->Blobs.back().Async = true;
 
             Buffers[blob.BlobId] = request->Buffer;
 
@@ -204,6 +205,7 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
+        request->Blobs.back().Async = true;
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -322,55 +324,68 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
 
-    if (BlobIndexOps.Empty()) {
-        switch (Config->GetBlobIndexOpsPriority()) {
+    if (IsBlobIndexOpsQueueEmpty()) {
+        auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
+        auto bpThresholds = BuildBackpressureThresholds();
+        const double scale =
+            Config->GetBackpressurePercentageForFairBlobIndexOpsPriority()
+            / 100.;
+        bpThresholds.CompactionScore *= scale;
+        bpThresholds.CleanupScore *= scale;
+        TString message;
+        if (!IsWriteAllowed(bpThresholds, GetBackpressureValues(), &message)) {
+            // if we are close to our backpressure thresholds, we should fall
+            // back to fair scheduling so that all operations show some progress
+            blobIndexOpsPriority = NProto::BIOP_FAIR;
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s EnqueueBlobIndexOpIfNeeded: Falling back to BIOP_FAIR: %s",
+                LogTag.c_str(),
+                message.Quote().c_str());
+        }
+
+        switch (blobIndexOpsPriority) {
             case NProto::BIOP_CLEANUP_FIRST: {
                 if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 } else if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
                 break;
             }
 
             case NProto::BIOP_COMPACTION_FIRST: {
                 if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 } else if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
             }
 
             case NProto::BIOP_FAIR: {
                 if (compactionInfo.ShouldCompact) {
-                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
                 if (cleanupInfo.ShouldCleanup) {
-                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
             }
         }
 
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold())
+                || GetDeletedFreshBytesCount()
+                >= Config->GetFlushBytesThreshold())
         {
-            BlobIndexOps.Push(EBlobIndexOp::FlushBytes);
+            AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
         }
     }
 
-    if (BlobIndexOps.Empty()) {
+    if (!EnqueueBackgroundBlobIndexOp()) {
         return;
     }
 
-    if (!BlobIndexOpState.Enqueue()) {
-        return;
-    }
-
-    auto op = BlobIndexOps.Pop();
-
-    switch (op) {
+    switch (GetCurrentBackgroundBlobIndexOp()) {
         case EBlobIndexOp::Compaction: {
             ctx.Send(
                 SelfId(),
@@ -394,8 +409,9 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             // Flush blocked since FlushBytes op rewrites some fresh blocks as
             // blobs
             if (!FlushState.Enqueue()) {
-                BlobIndexOpState.Complete();
-                if (!BlobIndexOps.Empty()) {
+                StartBackgroundBlobIndexOp();
+                CompleteBlobIndexOp();
+                if (!IsBlobIndexOpsQueueEmpty()) {
                     EnqueueBlobIndexOpIfNeeded(ctx);
                 }
 
@@ -445,17 +461,18 @@ void TIndexTabletActor::HandleCompaction(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (!CompactionStateLoadStatus.Finished) {
-        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
-            BlobIndexOpState.Complete();
-        }
+    const bool started = ev->Sender == ctx.SelfID
+        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
 
-        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
+    if (!started) {
+        replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
 
-    if (!BlobIndexOpState.Start()) {
-        replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
+    if (!CompactionStateLoadStatus.Finished) {
+        CompleteBlobIndexOp();
+
+        replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
         return;
     }
 
@@ -582,7 +599,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
         replyError(ctx, args, MakeError(S_FALSE, "nothing to do"));
 
-        BlobIndexOpState.Complete();
+        CompleteBlobIndexOp();
         EnqueueBlobIndexOpIfNeeded(ctx);
         Metrics.Compaction.Update(
             1,  // count
@@ -640,7 +657,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
                 args,
                 MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
-            BlobIndexOpState.Complete();
+            CompleteBlobIndexOp();
 
             return;
         }
@@ -681,7 +698,7 @@ void TIndexTabletActor::HandleCompactionCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
-    BlobIndexOpState.Complete();
+    CompleteBlobIndexOp();
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 

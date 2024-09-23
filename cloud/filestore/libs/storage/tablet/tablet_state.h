@@ -95,6 +95,10 @@ struct TCleanupInfo
     const ui32 Score;
     const ui32 RangeId;
     const double AverageScore;
+    const ui64 LargeDeletionMarkersThreshold;
+    const ui64 LargeDeletionMarkerCount;
+    const ui32 PriorityRangeIdCount;
+    const bool IsPriority;
     const bool NewCleanupEnabled;
     const bool ShouldCleanup;
 
@@ -104,6 +108,10 @@ struct TCleanupInfo
             ui32 score,
             ui32 rangeId,
             double averageScore,
+            ui64 largeDeletionMarkersThreshold,
+            ui64 largeDeletionMarkerCount,
+            ui32 priorityRangeIdCount,
+            bool isPriority,
             bool newCleanupEnabled,
             bool shouldCleanup)
         : Threshold(threshold)
@@ -111,6 +119,10 @@ struct TCleanupInfo
         , Score(score)
         , RangeId(rangeId)
         , AverageScore(averageScore)
+        , LargeDeletionMarkersThreshold(largeDeletionMarkersThreshold)
+        , LargeDeletionMarkerCount(largeDeletionMarkerCount)
+        , PriorityRangeIdCount(priorityRangeIdCount)
+        , IsPriority(isPriority)
         , NewCleanupEnabled(newCleanupEnabled)
         , ShouldCleanup(shouldCleanup)
     {
@@ -155,6 +167,10 @@ private:
     /*const*/ ui32 SessionHistoryEntryCount = 0;
     /*const*/ double ChannelMinFreeSpace = 0;
     /*const*/ double ChannelFreeSpaceThreshold = 1;
+    /*const*/ bool LargeDeletionMarkersEnabled = false;
+    /*const*/ ui64 LargeDeletionMarkerBlocks = 0;
+    /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
+    /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
 
     bool StateLoaded = false;
 
@@ -173,6 +189,7 @@ public:
         const NProto::TFileSystem& fileSystem,
         const NProto::TFileSystemStats& fileSystemStats,
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
+        const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TThrottlerConfig& throttlerConfig);
 
     bool IsStateLoaded() const
@@ -661,7 +678,7 @@ public:                                                                         
         const NProto::T##name##Response& response,                              \
         ui32 maxEntries);                                                       \
                                                                                 \
-    void GetDupCacheEntry(                                                      \
+    bool GetDupCacheEntry(                                                      \
         const TDupCacheEntry* entry,                                            \
         NProto::T##name##Response& response);                                   \
 // FILESTORE_DECLARE_DUPCACHE
@@ -714,8 +731,11 @@ public:
         }
     };
 
+    using TBackpressureValues = TBackpressureThresholds;
+
     bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
+        const TBackpressureValues& values,
         TString* message) const;
 
     //
@@ -845,7 +865,7 @@ public:
         ui32 blocksCount);
 
     // returns processed deletion marker count
-    ui32 CleanupMixedBlockDeletions(
+    ui32 CleanupBlockDeletions(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -879,6 +899,18 @@ private:
         const TVector<TBlock>& blocks);
 
     TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
+
+    //
+    // LargeBlocks
+    //
+
+public:
+    void FindLargeBlocks(
+        ILargeBlockVisitor& visitor,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blocksCount) const;
 
     //
     // Garbage
@@ -982,7 +1014,80 @@ public:
     TOperationState BlobIndexOpState;
     TOperationState CollectGarbageState;
 
+private:
     TBlobIndexOpQueue BlobIndexOps;
+    EBlobIndexOp CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+    bool StartedBackgroundBlobIndexOp = false;
+
+public:
+    bool IsBlobIndexOpsQueueEmpty() const
+    {
+        return BlobIndexOps.Empty();
+    }
+
+    void AddBackgroundBlobIndexOp(EBlobIndexOp op)
+    {
+        if (CurrentBackgroundBlobIndexOp != op) {
+            BlobIndexOps.Push(op);
+        }
+    }
+
+    EBlobIndexOp GetCurrentBackgroundBlobIndexOp() const
+    {
+        return CurrentBackgroundBlobIndexOp;
+    }
+
+    bool EnqueueBackgroundBlobIndexOp()
+    {
+        if (BlobIndexOps.Empty()) {
+            return false;
+        }
+
+        if (!BlobIndexOpState.Enqueue()) {
+            return false;
+        }
+
+        Y_DEBUG_ABORT_UNLESS(!StartedBackgroundBlobIndexOp);
+        CurrentBackgroundBlobIndexOp = BlobIndexOps.Pop();
+        return true;
+    }
+
+    bool StartBackgroundBlobIndexOp()
+    {
+        Y_DEBUG_ABORT_UNLESS(CurrentBackgroundBlobIndexOp != EBlobIndexOp::Max);
+        Y_DEBUG_ABORT_UNLESS(!StartedBackgroundBlobIndexOp);
+
+        if (BlobIndexOpState.Start()) {
+            StartedBackgroundBlobIndexOp = true;
+            return true;
+        }
+
+        CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+        return false;
+    }
+
+    void CompleteBlobIndexOp()
+    {
+        BlobIndexOpState.Complete();
+        if (StartedBackgroundBlobIndexOp) {
+            Y_DEBUG_ABORT_UNLESS(
+                CurrentBackgroundBlobIndexOp != EBlobIndexOp::Max);
+            CurrentBackgroundBlobIndexOp = EBlobIndexOp::Max;
+            StartedBackgroundBlobIndexOp = false;
+        }
+    }
+
+public:
+    struct TPriorityRange
+    {
+        ui64 NodeId = 0;
+        ui32 BlockIndex = 0;
+        ui32 BlockCount = 0;
+        ui32 RangeId = 0;
+    };
+
+private:
+    mutable TDeque<TPriorityRange> PriorityRangesForCleanup;
 
     //
     // Compaction map
@@ -994,6 +1099,8 @@ public:
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
+    TMaybe<TPriorityRange> NextPriorityRangeForCleanup() const;
+    ui32 GetPriorityRangeCount() const;
 
     TCompactionMapStats GetCompactionMapStats(ui32 topSize) const;
 
@@ -1164,6 +1271,8 @@ public:
     TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
+    void UpdateInMemoryIndexState(
+        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

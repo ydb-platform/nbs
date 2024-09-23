@@ -78,6 +78,7 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateCheckpoint& args)
 {
+    // TODO(#1146) checkpoint-related tables are not yet supported
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);

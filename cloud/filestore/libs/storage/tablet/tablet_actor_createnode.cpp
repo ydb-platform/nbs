@@ -290,16 +290,22 @@ void TIndexTabletActor::HandleCreateNode(
     }
 
     auto* msg = ev->Get();
-    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    const auto requestId = GetRequestId(msg->Record);
+    if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TEvService::TEvCreateNodeResponse>();
-        GetDupCacheEntry(e, response->Record);
-        if (response->Record.GetNode().GetId() == 0) {
-            // it's an external node which is not yet created in follower
-            *response->Record.MutableError() = MakeError(
-                E_REJECTED,
-                "node not yet created in follower");
+        if (GetDupCacheEntry(e, response->Record)) {
+            if (response->Record.GetNode().GetId() == 0) {
+                // it's an external node which is not yet created in follower
+                // this check is needed for the case of leader reboot
+                *response->Record.MutableError() = MakeError(
+                    E_REJECTED,
+                    "node not yet created in follower");
+            }
+
+            return NCloud::Reply(ctx, *ev, std::move(response));
         }
-        return NCloud::Reply(ctx, *ev, std::move(response));
+
+        session->DropDupEntry(requestId);
     }
 
     ui64 parentNodeId = msg->Record.GetNodeId();

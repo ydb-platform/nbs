@@ -939,7 +939,6 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         std::move(storage),
         options.ClientId,
         options.BlockSize,
-        NBD_MAX_BUFFER_SIZE / options.BlockSize,
         options.UnalignedRequestsDisabled);
 
     return std::make_shared<TServerHandlerFactory>(

@@ -927,6 +927,69 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+func (s *storageYDB) listHangingTasks(
+	ctx context.Context,
+	session *persistence.Session,
+	limit uint64,
+) ([]TaskInfo, error) {
+
+	now := time.Now()
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		pragma AnsiInForEmptyOrNullableItemsCollections;
+		declare $limit as Uint64;
+		declare $except_task_types as List<Utf8>;
+		declare $hanging_task_timeout as Interval;
+		declare $missed_estimates_until_task_is_hanging as Uint64;
+		declare $now as Timestamp;
+
+		$task_ids = (
+			select id from ready_to_run UNION ALL
+			select id from running UNION ALL
+			select id from ready_to_cancel UNION ALL
+			select id from cancelling
+		);
+		select * from tasks
+		where id in $task_ids and
+		(
+			(ListLength($except_task_types) == 0) or
+			(task_type not in $except_task_types)
+		)  and
+		(
+			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or
+			(
+				estimated_time > created_at and
+				$now >= MAX_OF(
+					created_at + (estimated_time - created_at) * $missed_estimates_until_task_is_hanging,
+					created_at + $hanging_task_timeout
+				)
+			)
+		) limit $limit;
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+		persistence.ValueParam(
+			"$except_task_types",
+			strListValue(s.exceptHangingTaskTypes),
+		),
+		persistence.ValueParam(
+			"$hanging_task_timeout",
+			persistence.IntervalValue(s.hangingTaskTimeout),
+		),
+		persistence.ValueParam(
+			"$missed_estimates_until_task_is_hanging",
+			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
+		),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanTaskInfosStream(ctx, res)
+}
+
 func (s *storageYDB) listTasksStallingWhileExecuting(
 	ctx context.Context,
 	session *persistence.Session,

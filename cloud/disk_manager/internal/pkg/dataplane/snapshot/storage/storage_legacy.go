@@ -269,3 +269,11 @@ func (s *legacyStorage) UnlockSnapshot(
 
 	return task_errors.NewNonRetriableErrorf("not implemented")
 }
+
+func (s *legacyStorage) GetSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*SnapshotMeta, error) {
+
+	return nil, task_errors.NewNonRetriableErrorf("not implemented")
+}
