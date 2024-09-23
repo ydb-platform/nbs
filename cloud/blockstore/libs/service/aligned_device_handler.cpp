@@ -132,11 +132,11 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount)
+        ui32 maxSubRequestSize)
     : Storage(std::move(storage))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
-    , MaxBlockCount(maxBlockCount)
+    , MaxBlockCount(maxSubRequestSize / BlockSize)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
 }

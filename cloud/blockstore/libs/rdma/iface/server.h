@@ -20,7 +20,8 @@ struct TServerConfig
 {
     ui32 Backlog = 10;
     ui32 QueueSize = 10;
-    ui32 MaxBufferSize = 1024*1024;
+    // Keep sync with MaxBufferSize in cloud/blockstore/libs/rdma/iface/client.h
+    ui32 MaxBufferSize = 4_MB + 4_KB;
     TDuration KeepAliveTimeout = TDuration::Seconds(10);
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 PollerThreads = 1;
