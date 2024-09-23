@@ -398,7 +398,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		return err
 	}
 
-	return s.mountSocketDir(req)
+	return s.mountSocketDir(endpointDir, req)
 }
 
 func (s *nodeService) nodeStageDiskAsVhostSocket(
@@ -597,7 +597,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return err
 	}
 
-	return s.mountSocketDir(req)
+	return s.mountSocketDir(endpointDir, req)
 }
 
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
@@ -633,7 +633,8 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 }
 
 func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest) error {
-	return s.mountSocketDir(req)
+	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
+	return s.mountSocketDir(endpointDir, req)
 }
 
 func (s *nodeService) nodeUnpublishVolume(
@@ -687,9 +688,7 @@ func (s *nodeService) getEndpointDir(instanceOrPodId string, volumeId string) st
 	return filepath.Join(s.socketsDir, instanceOrPodId, volumeId)
 }
 
-func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
-
-	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
+func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolumeRequest) error {
 
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
@@ -705,7 +704,7 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	}
 	err := s.mountIfNeeded(
 		req.VolumeId,
-		endpointDir,
+		sourcePath,
 		req.TargetPath,
 		"",
 		mountOptions)
