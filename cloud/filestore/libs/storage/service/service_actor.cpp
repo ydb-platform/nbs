@@ -125,7 +125,7 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         FILESTORE_HANDLE_REQUEST(name, ns)              \
         FILESTORE_HANDLE_RESPONSE(name, ns)             \
 
-        FILESTORE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
+        FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
         FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvServicePrivate)
     #undef FILESTORE_HANDLE_REQUEST_RESPONSE
 
@@ -180,28 +180,6 @@ void TStorageServiceActor::HandleUnregisterLocalFileStore(
             msg->FileStoreId,
             msg->Generation);
     }
-}
-
-void TStorageServiceActor::HandleFsync(
-    const TEvService::TEvFsyncRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    // Fsync is handled in service_kikimr
-    Y_ABORT();
-}
-
-void TStorageServiceActor::HandleFsyncDir(
-    const TEvService::TEvFsyncDirRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    // FsyncDir is handled in service_kikimr
-    Y_ABORT();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

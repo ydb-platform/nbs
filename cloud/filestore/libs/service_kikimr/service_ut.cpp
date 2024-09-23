@@ -53,14 +53,14 @@ struct TTestServiceActor final
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
-    FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            FILESTORE_SERVICE(FILESTORE_HANDLE_REQUEST, TEvService)
+            FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST, TEvService)
         }
     }
 };
@@ -69,7 +69,7 @@ struct TTestServiceActor final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(KikimrFileStore)
+Y_UNIT_TEST_SUITE(TKikimrFileStore)
 {
     Y_UNIT_TEST(ShouldHandleRequests)
     {
@@ -104,19 +104,6 @@ Y_UNIT_TEST_SUITE(KikimrFileStore)
     Y_UNIT_TEST(ShouldHandleFsyncRequestsOutsideActorSystem)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
-        serviceActor->FsyncHandler =
-            [] (const TEvService::TEvFsyncRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                UNIT_ASSERT_C(false, "fsync called in actor system");
-                return std::make_unique<TEvService::TEvFsyncResponse>();
-            };
-
-        serviceActor->FsyncDirHandler =
-            [] (const TEvService::TEvFsyncDirRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                UNIT_ASSERT_C(false, "fsyncdir called in actor system");
-                return std::make_unique<TEvService::TEvFsyncDirResponse>();
-            };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
@@ -135,7 +122,10 @@ Y_UNIT_TEST_SUITE(KikimrFileStore)
             actorSystem->DispatchEvents(WaitTimeout);
 
             const auto& response = future.GetValue(WaitTimeout);
-            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
         }
 
         {
@@ -149,7 +139,10 @@ Y_UNIT_TEST_SUITE(KikimrFileStore)
             actorSystem->DispatchEvents(WaitTimeout);
 
             const auto& response = future.GetValue(WaitTimeout);
-            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
         }
 
         service->Stop();

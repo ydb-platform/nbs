@@ -71,7 +71,7 @@ void TStorageServiceActor::CompleteRequest(
         CompleteRequest<ns::T##name##Method>(ctx, ev);                         \
     }
 
-    FILESTORE_SERVICE(FILESTORE_IMPLEMENT_RESPONSE, TEvService)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_RESPONSE, TEvService)
     FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_IMPLEMENT_RESPONSE, TEvServicePrivate)
 
 #undef FILESTORE_IMPLEMENT_RESPONSE

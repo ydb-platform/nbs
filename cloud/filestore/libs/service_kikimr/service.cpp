@@ -34,7 +34,21 @@ namespace {
     };                                                                         \
 // FILESTORE_DECLARE_METHOD
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD)
+
+#undef FILESTORE_DECLARE_METHOD
+
+#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        static constexpr auto RequestName = TStringBuf(#name);                 \
+                                                                               \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+    };                                                                         \
+// FILESTORE_DECLARE_METHOD
+
+FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
