@@ -20,7 +20,7 @@ NProto::TError GetErrorFromPreconditionFailed(const NProto::TError& error)
     NProto::TError result = error;
     const auto& msg = error.GetMessage();
 
-    if (msg.Contains("Wrong version in config")) {
+    if (msg.Contains("Wrong version in")) {
         // ConfigVersion is different from current one in SchemeShard
         // return E_ABORTED to client to read
         // updated config (Stat FS) and issue new request
