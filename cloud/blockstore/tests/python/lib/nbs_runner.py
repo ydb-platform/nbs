@@ -267,6 +267,10 @@ ModifyScheme {
     def cwd(self):
         return self.__cwd
 
+    @property
+    def log_txt(self):
+        return self.__proto_configs["server-log.txt"]
+
     def __generate_server_log_txt(self):
         services_info = [
             b"TABLET_EXECUTOR",
