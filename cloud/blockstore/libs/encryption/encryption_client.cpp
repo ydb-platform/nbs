@@ -788,7 +788,9 @@ private:
         const NProto::TVolume& volume)
     {
         const auto& desc = volume.GetEncryptionDesc();
-        if (desc.GetMode() == NProto::NO_ENCRYPTION) {
+        if (desc.GetMode() == NProto::NO_ENCRYPTION ||
+            desc.GetMode() == NProto::ENCRYPTION_AES_XTS)
+        {
             return MakeFuture<TResultOrError<IBlockStorePtr>>(Client);
         }
 

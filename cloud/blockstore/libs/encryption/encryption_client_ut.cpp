@@ -1261,7 +1261,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         auto testClient = std::make_shared<TTestService>();
 
-        // Mount a volume with an unexpected encryption mode
+        // Mount a volume encrypted with ENCRYPTION_AES_XTS without encryption
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
                 UNIT_ASSERT(!request->HasEncryptionSpec());
@@ -1282,7 +1282,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT, // Unexpected encryption mode
+                S_OK,   // It's OK to mount an encrypted disk without an
+                        // encryption key to make snapshot or fill from snapshot
                 response.GetError().GetCode(),
                 response.GetError());
         }
