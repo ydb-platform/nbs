@@ -326,8 +326,8 @@ public:
                     "%s request sent: %s %lu %lu",
                     MakeTestTag().c_str(),
                     SessionId.c_str(),
-                    SeqNo, RequestsSent);
-                //DUMP("re");
+                    SeqNo,
+                    RequestsSent);
             }
             DUMP("fin");
 //PrintBackTrace();
@@ -582,23 +582,20 @@ private:
             return false;
         }
 
-        ++CurrentIoDepth;
         auto self = weak_from_this();
-        const auto future = RequestGenerator->ExecuteNextRequest();
-        // DUMP(future.Initialized(), CurrentIoDepth);
-        if (!future.Initialized()) {
-            return true;
-        }
-        future.Apply(
+        ++CurrentIoDepth;
+        RequestGenerator->ExecuteNextRequest().Apply(
             [=](const TFuture<TCompletedRequest>& future)
             {
-                if (!future.Initialized()) {
-                    return;
-                }
                 if (auto ptr = self.lock()) {
                     ptr->SignalCompletion(future.GetValue());
                 }
             });
+
+        if (RequestGenerator->InstantProcessQueue()) {
+            ProcessCompletedRequests();
+        }
+
         return true;
     }
 

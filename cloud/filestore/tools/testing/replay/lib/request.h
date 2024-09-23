@@ -47,6 +47,11 @@ struct IRequestGenerator
     virtual bool HasNextRequest() = 0;
     // virtual TInstant NextRequestAt() = 0;
     virtual NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() = 0;
+
+    virtual bool InstantProcessQueue()
+    {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
