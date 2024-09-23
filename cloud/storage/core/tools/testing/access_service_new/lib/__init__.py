@@ -9,7 +9,7 @@ from cloud.storage.core.tools.common.python.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
-SERVICE_NAME = "access_service_nebius"
+SERVICE_NAME = "access_service_new"
 
 
 class AccessServiceServer(Daemon):
@@ -47,7 +47,7 @@ class NewAccessService:
             ensure_path_exists(working_dir)
         if binary_path is None:
             binary_path = yatest_common.binary_path(
-                "cloud/storage/core/tools/testing/access_service_nebius/mock/access-service-mock",
+                "cloud/storage/core/tools/testing/access_service_new/mock/access-service-mock",
             )
         self._host = host
         config = {

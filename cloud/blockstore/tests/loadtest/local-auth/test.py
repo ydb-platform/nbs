@@ -14,7 +14,7 @@ from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
-from cloud.storage.core.tools.testing.access_service_nebius.lib import NewAccessService
+from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 
 
 def create_server_app_config():

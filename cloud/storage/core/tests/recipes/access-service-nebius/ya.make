@@ -3,7 +3,7 @@ PY3_PROGRAM(access-service-nebius-recipe)
 PY_SRCS(__main__.py)
 
 DEPENDS(
-    cloud/storage/core/tools/testing/access_service_nebius/mock
+    cloud/storage/core/tools/testing/access_service_new/mock
 )
 
 DATA(
@@ -12,7 +12,7 @@ DATA(
 )
 
 PEERDIR(
-    cloud/storage/core/tools/testing/access_service_nebius/lib
+    cloud/storage/core/tools/testing/access_service_new/lib
     contrib/ydb/tests/library
     library/python/testing/recipe
 )

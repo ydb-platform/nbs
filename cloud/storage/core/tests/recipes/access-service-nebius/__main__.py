@@ -6,7 +6,7 @@ import signal
 from library.python.testing.recipe import declare_recipe, set_env
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
-from cloud.storage.core.tools.testing.access_service_nebius.lib import NewAccessService
+from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def start(argv):
     access_service = NewAccessService(
         host="localhost",
         binary_path=yatest_common.binary_path(
-            "cloud/storage/core/tools/testing/access_service_nebius/mock/access-service-mock",
+            "cloud/storage/core/tools/testing/access_service_new/mock/access-service-mock",
         ),
         port=port,
         control_port=control_port,
