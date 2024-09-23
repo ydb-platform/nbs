@@ -33,7 +33,6 @@ const topologyNodeKey = "topology.nbs.csi/node"
 
 const nbsSocketName = "nbs.sock"
 const nfsSocketName = "nfs.sock"
-const stagingDirName = "staging"
 
 const vhostIpc = nbsapi.EClientIpcType_IPC_VHOST
 const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
@@ -161,17 +160,15 @@ func (s *nodeService) NodeStageVolume(
 		var err error
 		if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
 			stageRecordPath := filepath.Join(req.StagingTargetPath, req.VolumeId+".json")
-
 			// Backend can be empty for old disks, in this case we use NBS
 			backend := "nbs"
 			if nfsBackend {
 				backend = "nfs"
 			}
-
 			if err = s.writeStageData(stageRecordPath, &StageData{
 				Backend:       backend,
 				InstanceId:    instanceID,
-				RealStagePath: s.getEndpointDir(stagingDirName, req.VolumeId),
+				RealStagePath: s.getEndpointDir(instanceID, req.VolumeId),
 			}); err != nil {
 				return nil, s.statusErrorf(codes.Internal,
 					"Failed to write stage record: %v", err)
@@ -283,7 +280,7 @@ func (s *nodeService) NodePublishVolume(
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
 			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
-				err = s.nodePublishStagedVhostSocket(req)
+				err = s.nodePublishStagedVhostSocket(req, instanceID)
 			} else {
 				if nfsBackend {
 					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
@@ -471,7 +468,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, volumeId, volumeContext)
 
-	endpointDir := s.getEndpointDir(stagingDirName, volumeId)
+	endpointDir := s.getEndpointDir(instanceId, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -670,7 +667,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 
 	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, volumeID)
 
-	endpointDir := s.getEndpointDir(stagingDirName, volumeID)
+	endpointDir := s.getEndpointDir(instanceID, volumeID)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -695,8 +692,8 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	return s.createDummyImgFile(endpointDir)
 }
 
-func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest) error {
-	endpointDir := s.getEndpointDir(stagingDirName, req.VolumeId)
+func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest, instanceId string) error {
+	endpointDir := s.getEndpointDir(instanceId, req.VolumeId)
 	return s.mountSocketDir(endpointDir, req)
 }
 
@@ -811,7 +808,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 	}
 
 	// remove staging folder if it's empty
-	ignoreError(os.Remove(s.getEndpointDir(stagingDirName, "")))
+	ignoreError(os.Remove(s.getEndpointDir(stageData.InstanceId, "")))
 	return nil
 }
 

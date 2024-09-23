@@ -210,7 +210,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
 	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, stagingDirName, diskID)
+	sourcePath := filepath.Join(socketsDir, instanceID, diskID)
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
