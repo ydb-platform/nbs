@@ -1208,7 +1208,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             timestamp,
             message);
         if (HasError(error)) {
-            TryUpdateDiskState(db, diskId, timestamp);
+            *diskStateUpdated = TryUpdateDiskState(db, diskId, timestamp);
             return error;
         }
 
@@ -4777,7 +4777,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
     UpdateAgent(db, agent);
     DeviceList.UpdateDevices(agent, DevicePoolConfigs);
 
-    THashSet<TString> diskIds;
+    THashMap<TString, NProto::EDiskState> maybeAffectedDisks;
 
     for (const auto& d: agent.GetDevices()) {
         const auto& deviceId = d.GetDeviceUUID();
@@ -4789,12 +4789,12 @@ void TDiskRegistryState::ApplyAgentStateChange(
 
         auto& disk = Disks[diskId];
 
+        maybeAffectedDisks.emplace(diskId, disk.State);
+
         // check if deviceId is target for migration
         if (RestartDeviceMigration(timestamp, db, diskId, disk, deviceId)) {
             continue;
         }
-
-        bool isAffected = true;
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
             if (disk.MigrationSource2Target.contains(deviceId)) {
@@ -4846,24 +4846,18 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         ReportMirroredDiskDeviceReplacementFailure(
                             FormatError(error));
                     }
-
-                    if (!updated) {
-                        isAffected = false;
-                    }
                 }
             }
 
             CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
         }
-
-        if (isAffected) {
-            diskIds.emplace(std::move(diskId));
-        }
     }
 
-    for (auto& id: diskIds) {
-        if (TryUpdateDiskState(db, id, timestamp)) {
-            affectedDisks.push_back(std::move(id));
+    for (auto& [diskId, oldState]: maybeAffectedDisks) {
+        auto& disk = Disks[diskId];
+        TryUpdateDiskState(db, diskId, disk, timestamp);
+        if (oldState != disk.State) {
+            affectedDisks.push_back(diskId);
         }
     }
 }
