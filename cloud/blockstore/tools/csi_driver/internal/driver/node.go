@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -159,6 +160,23 @@ func (s *nodeService) NodeStageVolume(
 
 		var err error
 		if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
+			stageRecordPath := filepath.Join(req.StagingTargetPath, req.VolumeId+".json")
+
+			// Backend can be empty for old disks, in this case we use NBS
+			backend := "nbs"
+			if nfsBackend {
+				backend = "nfs"
+			}
+
+			if err = s.writeStageData(stageRecordPath, &StageData{
+				Backend:       backend,
+				InstanceId:    instanceID,
+				RealStagePath: s.getEndpointDir(stagingDirName, req.VolumeId),
+			}); err != nil {
+				return nil, s.statusErrorf(codes.Internal,
+					"Failed to write stage record: %v", err)
+			}
+
 			if nfsBackend {
 				err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceID, req.VolumeId)
 			} else {
@@ -193,10 +211,14 @@ func (s *nodeService) NodeUnstageVolume(
 	}
 
 	if s.vmMode {
-		if err := s.nodeUnstageVhostSocket(ctx, req.VolumeId); err != nil {
-			return nil, s.statusErrorf(
-				codes.InvalidArgument,
-				"Failed to unstage volume: %v", err)
+		stageRecordPath := filepath.Join(req.StagingTargetPath, req.VolumeId+".json")
+		if stageData, err := s.readStageData(stageRecordPath); err == nil {
+			if err := s.nodeUnstageVhostSocket(ctx, req.VolumeId, stageData); err != nil {
+				return nil, s.statusErrorf(
+					codes.InvalidArgument,
+					"Failed to unstage volume: %v", err)
+			}
+			ignoreError(os.Remove(stageRecordPath))
 		}
 	}
 
@@ -398,6 +420,47 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	return s.mountSocketDir(endpointDir, req)
+}
+
+type StageData struct {
+	Backend       string `json:"backend"`
+	InstanceId    string `json:"instanceId"`
+	RealStagePath string `json:"realStagePath"`
+}
+
+func (s *nodeService) writeStageData(path string, data *StageData) error {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(filepath.Dir(path), 0750)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path, bytes, 0600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *nodeService) readStageData(path string) (*StageData, error) {
+	data := StageData{}
+
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(bytes, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &data, nil
 }
 
 func (s *nodeService) nodeStageDiskAsVhostSocket(
@@ -721,35 +784,29 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 
 func (s *nodeService) nodeUnstageVhostSocket(
 	ctx context.Context,
-	volumeID string) error {
+	volumeID string,
+	stageData *StageData) error {
 
-	log.Printf("csi.nodeUnstageVhostSocket: %s", volumeID)
+	log.Printf("csi.nodeUnstageVhostSocket[%s]: %s %s %s", stageData.Backend, stageData.InstanceId,
+		volumeID, stageData.RealStagePath)
 
-	endpointDir := s.getEndpointDir(stagingDirName, volumeID)
-
-	// Trying to stop both NBS and NFS endpoints,
-	// because the endpoint's backend service is unknown here.
-	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
-
-	if s.nbsClient != nil {
+	if stageData.Backend == "nbs" {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			UnixSocketPath: filepath.Join(stageData.RealStagePath, nbsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
 		}
-	}
-
-	if s.nfsClient != nil {
+	} else if stageData.Backend == "nfs" {
 		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
 		}
 	}
 
-	if err := os.RemoveAll(endpointDir); err != nil {
+	if err := os.RemoveAll(stageData.RealStagePath); err != nil {
 		return err
 	}
 

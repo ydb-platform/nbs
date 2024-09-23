@@ -170,14 +170,6 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	_, err = os.Stat(filepath.Join(socketsDir, podID))
 	assert.True(t, os.IsNotExist(err))
 
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: filepath.Join(socketsDir, stagingDirName, diskID, nbsSocketName),
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
-
-	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
-		SocketPath: filepath.Join(socketsDir, stagingDirName, diskID, nfsSocketName),
-	}).Return(&nfs.TStopEndpointResponse{}, nil)
-
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: stagingTargetPath,
@@ -216,7 +208,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	if deviceNameOpt != nil {
 		deviceName = *deviceNameOpt
 	}
-	stagingTargetPath := "testStagingTargetPath"
+	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := filepath.Join(socketsDir, stagingDirName, diskID)
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
@@ -343,13 +335,17 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	})
 	require.NoError(t, err)
 
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: nbsSocketPath,
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
+	if backend == "nbs" {
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+			UnixSocketPath: nbsSocketPath,
+		}).Return(&nbs.TStopEndpointResponse{}, nil)
+	}
 
-	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
-		SocketPath: nfsSocketPath,
-	}).Return(&nfs.TStopEndpointResponse{}, nil)
+	if backend == "nfs" {
+		nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+			SocketPath: nfsSocketPath,
+		}).Return(&nfs.TStopEndpointResponse{}, nil)
+	}
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
 		VolumeId:          diskID,
