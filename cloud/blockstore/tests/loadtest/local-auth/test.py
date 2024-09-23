@@ -40,7 +40,6 @@ def create_storage_service_config(folder_id="test_folder_id"):
 
 def test_load():
     server = create_server_app_config()
-    server.ServerConfig.StrictContractValidation = False
     server.ServerConfig.ThreadsCount = thread_count()
 
     storage = create_storage_service_config("test_folder_id")
