@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 namespace NCloud::NBlockStore::NClient {
@@ -186,12 +187,11 @@ protected:
             // TError.PrintJSON() writes only code, and
             // it is more reliable to use formatted error in
             // tests and scripts.
-            output << '{';
-            if (result.HasError()) {
-                TString errorString = FormatError(result.GetError());
-                output << "\"Error\":" << "\"" << errorString << "\"";
+            NJson::TJsonValue resultJson;
+            if (HasError(result)){
+                resultJson["Error"] = FormatErrorJson(result.GetError());
             }
-            output << '}';
+            NJson::WriteJson(&output, &resultJson, false, true, true);
             return !HasError(result);
         }
 

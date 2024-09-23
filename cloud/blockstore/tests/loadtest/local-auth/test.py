@@ -160,7 +160,7 @@ def test_auth_unauthorized():
         env.access_service.authenticate(token)
         result = env.create_volume()
         assert result.returncode != 0
-        assert json.loads(result.stdout)["Error"] == "E_UNAUTHORIZED"
+        assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_auth_empty_token():
@@ -169,7 +169,7 @@ def test_auth_empty_token():
         env.access_service.authorize("test_auth_token")
         result = env.create_volume()
         assert result.returncode != 0
-        assert json.loads(result.stdout)["Error"] == "E_UNAUTHORIZED"
+        assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_new_auth_authorization_ok():
@@ -202,7 +202,7 @@ def test_new_auth_unauthorized():
         )
         result = env.create_volume()
         assert result.returncode != 0
-        assert json.loads(result.stdout)["Error"] == "E_UNAUTHORIZED"
+        assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_new_auth_unauthenticated():
@@ -210,7 +210,7 @@ def test_new_auth_unauthenticated():
         env.set_auth_token("some_other_token")
         result = env.create_volume()
         assert result.returncode != 0
-        assert json.loads(result.stdout)["Error"] == "E_UNAUTHORIZED"
+        assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_new_auth_unknown_subject():
@@ -227,4 +227,4 @@ def test_new_auth_unknown_subject():
         )
         result = env.create_volume()
         assert result.returncode != 0
-        assert json.loads(result.stdout)["Error"] == "E_UNAUTHORIZED"
+        assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
