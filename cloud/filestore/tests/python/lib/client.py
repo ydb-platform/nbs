@@ -18,13 +18,24 @@ KEYRING_FILE_NAME = "vhost-endpoint-keyring-name.txt"
 
 
 class NfsCliClient:
-    def __init__(self, binary_path, port, vhost_port=None, verbose=False, cwd=".", timeout=60):
+    def __init__(
+        self, binary_path,
+        port,
+        vhost_port=None,
+        verbose=False,
+        cwd=".",
+        timeout=60,
+        auth_token=None,
+    ):
         self.__binary_path = binary_path
         self.__port = port
         self.__vhost_port = vhost_port
         self.__verbose = verbose
         self.__cwd = cwd
         self.__timeout = timeout
+        self._env = {}
+        if auth_token is not None:
+            self._env = {"IAM_TOKEN": auth_token}
 
     def create(self, fs, cloud, folder, blk_size=4096, blk_count=100 * 1024 * 1024 * 1024):
         cmd = [
@@ -37,7 +48,7 @@ class NfsCliClient:
         ] + self.__cmd_opts()
 
         logger.info("creating nfs: " + " ".join(cmd))
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def destroy(self, fs):
         cmd = [
@@ -46,7 +57,7 @@ class NfsCliClient:
         ] + self.__cmd_opts()
 
         logger.info("destroying nfs: " + " ".join(cmd))
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def mount(self, fs, path, mount_seqno=0, readonly=False):
         cmd = [
@@ -88,14 +99,14 @@ class NfsCliClient:
             cmd.append("--force")
 
         logger.info("resizing nfs: " + " ".join(cmd))
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def list_filestores(self):
         cmd = [
             self.__binary_path, "listfilestores",
         ] + self.__cmd_opts()
 
-        names = common.execute(cmd).stdout.decode().splitlines()
+        names = common.execute(cmd, env=self._env).stdout.decode().splitlines()
         return sorted(names)
 
     def start_endpoint(self, fs, socket, mount_seqno, readonly, persistent=False):
@@ -113,7 +124,7 @@ class NfsCliClient:
             cmd.append("--persistent")
 
         logger.info("starting endpoint: " + " ".join(cmd))
-        return common.execute(cmd)
+        return common.execute(cmd, env=self._env)
 
     def stop_endpoint(self, socket):
         cmd = [
@@ -122,14 +133,14 @@ class NfsCliClient:
         ] + self.__cmd_opts(vhost=True)
 
         logger.info("stopping endpoint: " + " ".join(cmd))
-        return common.execute(cmd)
+        return common.execute(cmd, env=self._env)
 
     def list_endpoints(self):
         cmd = [
             self.__binary_path, "listendpoints",
         ] + self.__cmd_opts(vhost=True)
 
-        return common.execute(cmd)
+        return common.execute(cmd, env=self._env)
 
     def kick_endpoint(self, keyring_id):
         cmd = [
@@ -137,7 +148,7 @@ class NfsCliClient:
             "--keyring-id", str(keyring_id),
         ] + self.__cmd_opts(vhost=True)
 
-        return common.execute(cmd)
+        return common.execute(cmd, env=self._env)
 
     def create_session(self, fs, session_id, client_id):
         cmd = [
@@ -147,7 +158,7 @@ class NfsCliClient:
             "--client-id", client_id,
         ] + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def reset_session(self, fs, session_id, client_id, session_state):
         cmd = [
@@ -158,7 +169,7 @@ class NfsCliClient:
             "--session-state", base64.b64encode(session_state).decode("utf-8"),
         ] + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def destroy_session(self, fs, session_id, client_id):
         cmd = [
@@ -168,7 +179,7 @@ class NfsCliClient:
             "--client-id", client_id,
         ] + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def stat(self, fs, path):
         cmd = [
@@ -178,7 +189,7 @@ class NfsCliClient:
             "--json",
         ] + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def find_garbage(self, fs, shards):
         shard_params = []
@@ -189,7 +200,7 @@ class NfsCliClient:
             "--filesystem", fs,
         ] + shard_params + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def set_node_attr(self, fs, node_id, *argv):
         list_args = [str(x) for x in argv]
@@ -199,7 +210,7 @@ class NfsCliClient:
             "--node-id", str(node_id),
         ] + list_args + self.__cmd_opts()
 
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
@@ -212,7 +223,7 @@ class NfsCliClient:
         ] + self.__cmd_opts()
         print(cmd)
 
-        res = common.execute(cmd)
+        res = common.execute(cmd, env=self._env)
         os.unlink(request_file.name)
         return res.stdout
 
@@ -251,15 +262,15 @@ class NfsCliClient:
 
     @standard_command("ls")
     def ls(self, cmd):
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     @standard_command("mkdir")
     def mkdir(self, cmd):
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     @standard_command("write")
     def write(self, cmd):
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     @standard_command("read")
     def read(self, cmd):
@@ -267,11 +278,11 @@ class NfsCliClient:
 
     @standard_command("touch")
     def touch(self, cmd):
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
     @standard_command("rm")
     def rm(self, cmd):
-        return common.execute(cmd).stdout
+        return common.execute(cmd, env=self._env).stdout
 
 
 def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_storage_dir, mount_seqno=0, readonly=False):
