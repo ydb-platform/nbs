@@ -2,9 +2,11 @@
 
 #include <cloud/blockstore/config/server.pb.h>
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
@@ -794,24 +796,17 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
                 << "Volume not mounted";
         }
 
-        ui64 startIndex = request->GetStartIndex();
-        if (startIndex >= volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
-        }
+        const auto requestRange = TBlockRange64::WithLength(
+            request->GetStartIndex(),
+            CalculateWriteRequestBlockCount(
+                *request,
+                volume->Volume.GetBlocksCount()));
+        bool rangeOk =
+            TBlockRange64::WithLength(0, volume->Volume.GetBlocksCount())
+                .Contains(requestRange);
 
-        auto sgListOrError = SgListNormalize(
-            GetSgList(*request),
-            volume->Volume.GetBlockSize());
-        if (HasError(sgListOrError)) {
-            const auto& error = sgListOrError.GetError();
-            ythrow TServiceError(error.GetCode()) << error.GetMessage();
-        }
-        auto sglist = sgListOrError.ExtractResult();
-
-        if (startIndex + sglist.size() > volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
+        if (!rangeOk) {
+            ythrow TServiceError(E_ARGUMENT) << "Out of bounds write request";
         }
 
         return session->StorageAdapter->WriteBlocks(
