@@ -15,12 +15,13 @@ from contrib.ydb.core.protos import config_pb2
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
+from contrib.ydb.core.protos.config_pb2 import TLogConfig
+
 import yatest.common as yatest_common
 
 
-def run_test(trigger_update):
+def test_config_dispatcher():
     kikimr_binary_path = yatest_common.binary_path('contrib/ydb/apps/ydbd/ydbd')
-
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
@@ -30,9 +31,6 @@ def run_test(trigger_update):
             dict(name='dynamic_storage_pool:1', kind='hdd', pdisk_user_kind=0),
             dict(name='dynamic_storage_pool:2', kind='ssd', pdisk_user_kind=0)
         ])
-
-    nbs_binary_path = yatest_common.binary_path('cloud/blockstore/apps/server/nbsd')
-
     kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
     kikimr_cluster.start()
 
@@ -44,25 +42,22 @@ def run_test(trigger_update):
     server_app_config.ServerConfig.NodeType = 'nbs'
 
     certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
-
     server_app_config.ServerConfig.RootCertsFile = os.path.join(certs_dir, 'server.crt')
     cert = server_app_config.ServerConfig.Certs.add()
     cert.CertFile = os.path.join(certs_dir, 'server.crt')
     cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
 
     pm = yatest_common.network.PortManager()
-
     nbs_port = pm.get_port()
     nbs_secure_port = pm.get_port()
-
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
 
     # file config
     storage = TStorageServiceConfig()
     storage.ConfigsDispatcherServiceEnabled = True
-    if trigger_update:
-        storage.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
+    storage.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
 
+    nbs_binary_path = yatest_common.binary_path('cloud/blockstore/apps/server/nbsd')
     nbs = LocalNbs(
         kikimr_port,
         configurator.domains_txt,
@@ -73,11 +68,22 @@ def run_test(trigger_update):
         nbs_port=nbs_port,
         kikimr_binary_path=kikimr_binary_path,
         nbs_binary_path=nbs_binary_path)
-
     nbs.start()
-
     wait_for_nbs_server(nbs.nbs_port)
 
+    app_config = config_pb2.TAppConfig()
+
+    # add new log entry
+    app_config = config_pb2.TAppConfig()
+    log_config = TLogConfig()
+    entry = log_config.Entry.add()
+    entry.Component = 'BLOCKSTORE_SERVER'.encode()
+    entry.Level = 1  # ALERT
+    app_config.LogConfig.MergeFrom(log_config)
+    kikimr_cluster.client.add_config_item(app_config)
+
+    # add new static node
+    app_config = config_pb2.TAppConfig()
     naming_config = configurator.names_txt
     node = naming_config.Node.add(
         NodeId=2,
@@ -85,39 +91,29 @@ def run_test(trigger_update):
         Port=65535,
         Host='somewhere',
     )
-
     node.WalleLocation.DataCenter = 'xyz'
     node.WalleLocation.Rack = 'somewhere'
     node.WalleLocation.Body = 1
-
-    app_config = config_pb2.TAppConfig()
     app_config.NameserviceConfig.MergeFrom(naming_config)
-
     kikimr_cluster.client.add_config_item(app_config)
 
-    def wait_cms(attempts):
-        cnt = attempts
-        while attempts == 0 or cnt > 0:
-            cnt = cnt - 1
-            url = f'http://localhost:{nbs.mon_port}/actors/dnameserver'
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            if r.text.find('somewhere') != -1:
-                return True
-            else:
-                time.sleep(10)
-        return False
+    def query_monitoring(url, text):
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        return r.text.find(text) != -1
 
-    result = wait_cms(10 if trigger_update else 0)
+    # wait for nameservice config update
+    while True:
+        if query_monitoring(f'http://localhost:{nbs.mon_port}/actors/dnameserver', 'somewhere'):
+            break
+        else:
+            time.sleep(10)
+
+    # check that logging config was not changed
+    result = not query_monitoring(
+        f'http://localhost:{nbs.mon_port}/actors/logger',
+        'BLOCKSTORE_SERVER</a></td><td>ALERT')
 
     os.kill(nbs.pid, signal.SIGTERM)
 
-    return result == trigger_update
-
-
-def test_nameservice_config_on():
-    run_test(True)
-
-
-def test_nameservice_config_off():
-    run_test(False)
+    assert result

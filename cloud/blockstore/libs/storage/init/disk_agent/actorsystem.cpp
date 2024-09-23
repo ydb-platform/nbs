@@ -131,6 +131,13 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     TVector<TIntrusivePtr<IServiceInitializer>> initializers = {
         new TStorageServicesInitializer(daArgs)
     };
+    auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
+        if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                daArgs.StorageConfig->GetConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
+        }
+    };
     auto onInitialize = [&] (
         TKikimrRunConfig& runConfig,
         TServiceInitializersList& initializers)
@@ -139,12 +146,6 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
 
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             daArgs));
-
-        if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
-            SetupConfigDispatcher(
-                daArgs.StorageConfig->GetConfigDispatcherSettings(),
-                &runConfig.ConfigsDispatcherInitInfo);
-        }
     };
 
     // TODO: disable the services that are not needed by disk agent
@@ -178,6 +179,7 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         .AppConfig = daArgs.AppConfig,
         .AsyncLogger = daArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
+        .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
         .ServicesMask = servicesMask,
         .OnStart = [] (IActorSystem&) {},
     };

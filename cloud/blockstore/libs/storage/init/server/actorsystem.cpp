@@ -482,6 +482,13 @@ public:
 
 IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
+    auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
+        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                sArgs.StorageConfig->GetConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
+        }
+    };
     auto onInitialize = [&] (
         TKikimrRunConfig& runConfig,
         TServiceInitializersList& initializers)
@@ -505,12 +512,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
             sArgs.IsDiskRegistrySpareNode));
-
-        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
-            SetupConfigDispatcher(
-                sArgs.StorageConfig->GetConfigDispatcherSettings(),
-                &runConfig.ConfigsDispatcherInitInfo);
-        }
     };
 
     auto storageConfig = sArgs.StorageConfig;
@@ -561,6 +562,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         .AppConfig = sArgs.AppConfig,
         .AsyncLogger = sArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
+        .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
         .ServicesMask = servicesMask,
         .OnStart = std::move(onStart),
     };

@@ -12,6 +12,10 @@ void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
+    if (!settings.HasAllowList() && !settings.HasDenyList()) {
+        return;
+    }
+
     const auto& names = settings.HasAllowList()
         ? settings.GetAllowList().GetNames()
         : settings.GetDenyList().GetNames();
