@@ -244,7 +244,7 @@ func (s *nodeService) NodePublishVolume(
 			"VolumeContext is missing in NodePublishVolumeRequest")
 	}
 
-	if s.getInstanceOrPodId(req) == "" {
+	if s.getPodId(req) == "" {
 		return nil, s.statusError(codes.Internal,
 			"podUID is missing in NodePublishVolumeRequest.VolumeContext")
 	}
@@ -356,7 +356,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	podId := s.getInstanceOrPodId(req)
+	podId := s.getPodId(req)
 	volumeId := req.VolumeId
 	volumeContext := req.VolumeContext
 
@@ -450,7 +450,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getInstanceOrPodId(req), req.VolumeId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
@@ -517,7 +517,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getInstanceOrPodId(req), req.VolumeId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
@@ -571,7 +571,8 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
+	podId := s.getPodId(req)
+	endpointDir := s.getEndpointDir(podId, req.VolumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -584,7 +585,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     req.VolumeId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, s.getInstanceOrPodId(req)),
+			ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
@@ -633,7 +634,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 }
 
 func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest) error {
-	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
+	endpointDir := s.getEndpointDir(stagingDirName, req.VolumeId)
 	return s.mountSocketDir(endpointDir, req)
 }
 
@@ -849,14 +850,8 @@ func (s *nodeService) makeFilesystemIfNeeded(
 	return nil
 }
 
-func (s *nodeService) getInstanceOrPodId(req *csi.NodePublishVolumeRequest) string {
+func (s *nodeService) getPodId(req *csi.NodePublishVolumeRequest) string {
 	// another way to get podId is: return req.VolumeContext["csi.storage.k8s.io/pod.uid"]
-
-	if s.vmMode {
-		if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
-			return stagingDirName
-		}
-	}
 
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
