@@ -29,6 +29,8 @@ class AccessServiceServer(Daemon):
 
 
 class NewAccessService:
+    access_service_type = "Nebius_v1"
+
     def __init__(
             self,
             host: str,
@@ -92,7 +94,3 @@ class NewAccessService:
 
     def stop(self):
         self.__daemon.stop()
-
-    @property
-    def access_service_type(self):
-        return "Nebius_v1"

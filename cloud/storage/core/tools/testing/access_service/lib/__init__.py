@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class AccessService:
+    access_service_type = "Yandex_v2"
 
     def __init__(self, host, port, control_server_port):
         self.__host = host
@@ -87,7 +88,3 @@ class AccessService:
     @property
     def pid(self):
         return self.__get_pid()
-
-    @property
-    def access_service_type(self):
-        return "Yandex_v2"
