@@ -71,13 +71,16 @@ def test_config_dispatcher():
     nbs.start()
     wait_for_nbs_server(nbs.nbs_port)
 
-    app_config = config_pb2.TAppConfig()
+    def query_monitoring(url, text):
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        return r.text.find(text) != -1
 
-    def get_server_log_entry(name):
-        for e in nbs.log_txt.Entry:
-            if e.Component == name:
-                return e
-        return None
+    assert query_monitoring(
+        f'http://localhost:{nbs.mon_port}/actors/logger?c=1025',
+        'Sampling rate: 0')
+
+    app_config = config_pb2.TAppConfig()
 
     # add new log entry
     component_to_test = 'BLOCKSTORE_SERVER'.encode()
@@ -85,8 +88,6 @@ def test_config_dispatcher():
     log_config = TLogConfig()
     entry = log_config.Entry.add()
     entry.Component = component_to_test
-    # set sampling rate for entry. by default LocalNbs does not set it
-    assert get_server_log_entry(component_to_test).SamplingRate != 1000
     entry.SamplingRate = 1000
     app_config.LogConfig.MergeFrom(log_config)
     kikimr_cluster.client.add_config_item(app_config)
@@ -119,9 +120,9 @@ def test_config_dispatcher():
             time.sleep(10)
 
     # check that logging config was not changed
-    result = not query_monitoring(
+    result = query_monitoring(
         f'http://localhost:{nbs.mon_port}/actors/logger?c=1025',
-        'Sampling rate: 1000')
+        'Sampling rate: 0')
 
     os.kill(nbs.pid, signal.SIGTERM)
 
