@@ -123,6 +123,9 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(ConfigDispatcherSettings,                                              \
+        NCloud::NProto::TConfigDispatcherSettings,                             \
+        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -594,6 +597,12 @@ template <typename T>
 bool IsEmpty(const T& t)
 {
     return !t;
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
+{
+    return !value.HasAllowList() && !value.HasDenyList();
 }
 
 template <typename T>
