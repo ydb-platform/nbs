@@ -84,7 +84,9 @@ def start(argv):
         )
 
         storage_config.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
-        storage_config.FolderId = "test_folder"
+        folder_id = "test_folder"
+        storage_config.FolderId = folder_id
+        set_env("TEST_FOLDER_ID", folder_id)
 
     domain = kikimr_configurator.domains_txt.Domain[0].Name
 
