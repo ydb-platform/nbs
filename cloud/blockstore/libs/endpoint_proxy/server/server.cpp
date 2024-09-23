@@ -575,8 +575,6 @@ struct TServer: IEndpointProxyServer
             Scheduler,
             ep.RequestStats,
             volumeStats);
-
-        ep.Client->Start();
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
@@ -635,18 +633,19 @@ struct TServer: IEndpointProxyServer
                 TDuration::Days(1),         // connection timeout
                 true);                      // reconfigure device if exists
         } else {
-            // For netlink devices we have to balance request timeout between
-            // time it takes to fail request for good and resend it if socket
-            // is dead due to proxy restart. We can't configure ioctl device
-            // to use a fresh socket, so there is no point configuring it
+            // The only case we want kernel to retry requests is when the socket
+            // is dead due to nbd server restart. And since we can't configure
+            // ioctl device to use a new socket, request timeout effectively
+            // becomes connection timeout
             ep.NbdDevice = NBD::CreateDevice(
                 Logging,
                 *ep.ListenAddress,
                 request.GetNbdDevice(),
-                TDuration::Days(1));    // request timeout
+                TDuration::Days(1));        // timeout
         }
 
-        auto status = ep.NbdDevice->Start().ExtractValue();
+        auto future = ep.NbdDevice->Start();
+        const auto& status = future.GetValue();
         if (HasError(status)) {
             STORAGE_ERROR(request.ShortDebugString().Quote()
                 << " - Unable to start nbd device: "

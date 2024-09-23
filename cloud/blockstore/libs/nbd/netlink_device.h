@@ -10,14 +10,14 @@ IDevicePtr CreateNetlinkDevice(
     ILoggingServicePtr logging,
     TNetworkAddress connectAddress,
     TString deviceName,
-    TDuration timeout,
-    TDuration deadConnectionTimeout,
+    TDuration requestTimeout,
+    TDuration connectionTimeout,
     bool reconfigure);
 
 IDeviceFactoryPtr CreateNetlinkDeviceFactory(
     ILoggingServicePtr logging,
-    TDuration timeout,
-    TDuration deadConnectionTimeout,
+    TDuration requestTimeout,
+    TDuration connectionTimeout,
     bool reconfigure);
 
 }   // namespace NCloud::NBlockStore::NBD
