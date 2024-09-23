@@ -53,27 +53,26 @@ void TIndexTabletActor::HandleResolvePath(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_ResolvePath(
+bool TIndexTabletActor::ValidateTx_ResolvePath(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TResolvePath& args)
 {
     // TODO
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
     Y_UNUSED(args);
 
     return true;
 }
 
-void TIndexTabletActor::ExecuteTx_ResolvePath(
+bool TIndexTabletActor::PrepareTx_ResolvePath(
     const TActorContext& ctx,
-    TTransactionContext& tx,
+    IIndexTabletDatabase& db,
     TTxIndexTablet::TResolvePath& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
+    Y_UNUSED(db);
     Y_UNUSED(args);
+    return true;
 }
 
 void TIndexTabletActor::CompleteTx_ResolvePath(

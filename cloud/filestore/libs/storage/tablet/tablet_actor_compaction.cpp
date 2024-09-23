@@ -409,6 +409,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             // Flush blocked since FlushBytes op rewrites some fresh blocks as
             // blobs
             if (!FlushState.Enqueue()) {
+                StartBackgroundBlobIndexOp();
                 CompleteBlobIndexOp();
                 if (!IsBlobIndexOpsQueueEmpty()) {
                     EnqueueBlobIndexOpIfNeeded(ctx);

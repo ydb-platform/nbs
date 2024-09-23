@@ -219,13 +219,14 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_IMPLEMENT_TRANSACTION(name, ns)                              \
+#define FILESTORE_IMPLEMENT_RW_TRANSACTION(name, ns)                           \
     struct T##name                                                             \
     {                                                                          \
         using TArgs = ns::T##name;                                             \
                                                                                \
         static constexpr const char* Name = #name;                             \
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
+        static constexpr bool IsReadOnly = false;                              \
                                                                                \
         template <typename T, typename ...Args>                                \
         static bool PrepareTx(T& target, Args&& ...args)                       \
@@ -242,7 +243,7 @@ protected:
         template <typename T, typename ...Args>                                \
         static void CompleteTx(T& target, Args&& ...args)                      \
         {                                                                      \
-            target.CompleteTx_##name(std::forward<Args>(args)...);             \
+            target.CompleteAndUpdateState(std::forward<Args>(args)...);        \
         }                                                                      \
     };                                                                         \
                                                                                \
@@ -259,6 +260,97 @@ protected:
     void CompleteTx_##name(                                                    \
         const NActors::TActorContext& ctx,                                     \
         ns::T##name& args);                                                    \
-// FILESTORE_IMPLEMENT_TRANSACTION
+                                                                               \
+    void CompleteAndUpdateState(                                               \
+        const NActors::TActorContext& ctx,                                     \
+        ns::T##name& args)                                                     \
+    {                                                                          \
+        UpdateInMemoryIndexState(args);                                        \
+        CompleteTx_##name(ctx, args);                                          \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_RW_TRANSACTION
+
+// For RO transactions we allow to alternatively declare ValidateTx_, PrepareTx_
+// and CompleteTx_, where Validate and PrepareTx are two stages of Prepare (one
+// not using, and one using db). CompleteTx is the same for all other
+// transactions. ValidateTx is expected to return false if Execute is to be
+// executed, and true if it is not.
+//
+// Unlike FILESTORE_IMPLEMENT_RW_TRANSACTION, this macro allows to define
+// operations that can both run atop of the LocalDB and other implementations
+// of the database. Thus, signature of ExecuteTx_ is a bit more lax.
+//
+// This macro also provides TryExecuteTx function that will run the whole
+// transaction and call CompleteTx_ if it was successful.
+#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
+    struct T##name                                                             \
+    {                                                                          \
+        using TArgs = ns::T##name;                                             \
+                                                                               \
+        static constexpr const char* Name = #name;                             \
+        static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
+        static constexpr bool IsReadOnly = true;                               \
+                                                                               \
+        template <typename T, typename ...Args>                                \
+        static bool PrepareTx(                                                 \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
+            Args&& ...args)                                                    \
+        {                                                                      \
+            if (target.ValidateTx_##name(ctx, std::forward<Args>(args)...)) {  \
+                dbType db(tx.DB);                                              \
+                return target.PrepareTx_##name(                                \
+                    ctx, db, std::forward<Args>(args)...);                     \
+            }                                                                  \
+            return true;                                                       \
+        }                                                                      \
+                                                                               \
+        template <typename T, typename ...Args>                                \
+        static void ExecuteTx(                                                 \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
+            Args&& ...args)                                                    \
+        {                                                                      \
+            Y_UNUSED(target, ctx, tx, std::forward<Args>(args)...);            \
+        }                                                                      \
+                                                                               \
+        template <typename T, typename ...Args>                                \
+        static void CompleteTx(                                                \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            Args&& ...args)                                                    \
+        {                                                                      \
+            target.CompleteTx_##name(ctx, std::forward<Args>(args)...);        \
+        }                                                                      \
+    };                                                                         \
+                                                                               \
+    bool ValidateTx_##name(                                                    \
+        const NActors::TActorContext& ctx,                                     \
+        ns::T##name& args);                                                    \
+                                                                               \
+    bool PrepareTx_##name(                                                     \
+        const NActors::TActorContext& ctx,                                     \
+        dbIfaceType& db,                                                       \
+        ns::T##name& args);                                                    \
+                                                                               \
+    void CompleteTx_##name(                                                    \
+        const NActors::TActorContext& ctx,                                     \
+        ns::T##name& args);                                                    \
+                                                                               \
+    bool TryExecuteTx(                                                         \
+        const NActors::TActorContext& ctx,                                     \
+        dbIfaceType& db,                                                       \
+        ns::T##name& args)                                                     \
+    {                                                                          \
+        if (!ValidateTx_##name(ctx, args) || PrepareTx_##name(ctx, db, args)) {\
+            CompleteTx_##name(ctx, args);                                      \
+            return true;                                                       \
+        }                                                                      \
+        args.Clear();                                                          \
+        return false;                                                          \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_RO_TRANSACTION
 
 }   // namespace NCloud::NFileStore::NStorage

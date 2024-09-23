@@ -561,4 +561,17 @@ TNodeIndexCacheStats TIndexTabletState::CalculateNodeIndexCacheStats() const
     return Impl->NodeIndexCache.GetStats();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()
+{
+    return Impl->InMemoryIndexState;
+}
+
+void TIndexTabletState::UpdateInMemoryIndexState(
+    TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
+{
+    Impl->InMemoryIndexState.UpdateState(nodeUpdates);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

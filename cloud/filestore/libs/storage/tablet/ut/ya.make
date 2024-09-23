@@ -9,6 +9,7 @@ SRCS(
     subsessions_ut.cpp
     tablet_database_ut.cpp
     tablet_ut.cpp
+    tablet_ut_cache.cpp
     tablet_ut_channels.cpp
     tablet_ut_checkpoints.cpp
     tablet_ut_data.cpp

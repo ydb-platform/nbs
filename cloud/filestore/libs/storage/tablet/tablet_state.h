@@ -161,7 +161,7 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-    TNodeToSessionCounters NodeToSessionCounters; 
+    TNodeToSessionCounters NodeToSessionCounters;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -1279,6 +1279,10 @@ public:
         const TString& name,
         const NProto::TNodeAttr& result);
     TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
+
+    IIndexTabletDatabase& AccessInMemoryIndexState();
+    void UpdateInMemoryIndexState(
+        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
