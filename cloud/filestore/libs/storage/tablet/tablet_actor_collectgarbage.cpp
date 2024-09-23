@@ -438,6 +438,7 @@ void TIndexTabletActor::HandleCollectGarbage(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto channels = GetChannels(EChannelDataKind::Mixed);
 
