@@ -360,7 +360,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	volumeId := req.VolumeId
 	volumeContext := req.VolumeContext
 
-	endpointDir := filepath.Join(s.socketsDir, podId, volumeId)
+	endpointDir := s.getEndpointDir(podId, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -409,7 +409,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, volumeId, volumeContext)
 
-	endpointDir := filepath.Join(s.socketsDir, stagingDirName, volumeId)
+	endpointDir := s.getEndpointDir(stagingDirName, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -536,7 +536,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	volumeId string,
 	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
 
-	endpointDir := filepath.Join(s.socketsDir, podId, volumeId)
+	endpointDir := s.getEndpointDir(podId, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return nil, err
 	}
@@ -571,7 +571,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.socketsDir, s.getInstanceOrPodId(req), req.VolumeId)
+	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -607,7 +607,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 
 	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, volumeID)
 
-	endpointDir := filepath.Join(s.socketsDir, stagingDirName, volumeID)
+	endpointDir := s.getEndpointDir(stagingDirName, volumeID)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -650,7 +650,7 @@ func (s *nodeService) nodeUnpublishVolume(
 		return err
 	}
 
-	socketDir := filepath.Join(s.socketsDir, podId, req.VolumeId)
+	endpointDir := s.getEndpointDir(podId, req.VolumeId)
 
 	// Trying to stop both NBS and NFS endpoints,
 	// because the endpoint's backend service is unknown here.
@@ -658,7 +658,7 @@ func (s *nodeService) nodeUnpublishVolume(
 
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(socketDir, nbsSocketName),
+			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
@@ -667,25 +667,29 @@ func (s *nodeService) nodeUnpublishVolume(
 
 	if s.nfsClient != nil {
 		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(socketDir, nfsSocketName),
+			SocketPath: filepath.Join(endpointDir, nfsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
 		}
 	}
 
-	if err := os.RemoveAll(socketDir); err != nil {
+	if err := os.RemoveAll(endpointDir); err != nil {
 		return err
 	}
 
 	// remove pod's folder if it's empty
-	ignoreError(os.Remove(filepath.Join(s.socketsDir, podId)))
+	ignoreError(os.Remove(s.getEndpointDir(podId, "")))
 	return nil
+}
+
+func (s *nodeService) getEndpointDir(instanceOrPodId string, volumeId string) string {
+	return filepath.Join(s.socketsDir, instanceOrPodId, volumeId)
 }
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.socketsDir, s.getInstanceOrPodId(req), req.VolumeId)
+	endpointDir := s.getEndpointDir(s.getInstanceOrPodId(req), req.VolumeId)
 
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
@@ -722,7 +726,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 
 	log.Printf("csi.nodeUnstageVhostSocket: %s", volumeID)
 
-	socketDir := filepath.Join(s.socketsDir, stagingDirName, volumeID)
+	endpointDir := s.getEndpointDir(stagingDirName, volumeID)
 
 	// Trying to stop both NBS and NFS endpoints,
 	// because the endpoint's backend service is unknown here.
@@ -730,7 +734,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(socketDir, nbsSocketName),
+			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
@@ -739,19 +743,19 @@ func (s *nodeService) nodeUnstageVhostSocket(
 
 	if s.nfsClient != nil {
 		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(socketDir, nfsSocketName),
+			SocketPath: filepath.Join(endpointDir, nfsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
 		}
 	}
 
-	if err := os.RemoveAll(socketDir); err != nil {
+	if err := os.RemoveAll(endpointDir); err != nil {
 		return err
 	}
 
 	// remove staging folder if it's empty
-	ignoreError(os.Remove(filepath.Join(s.socketsDir, stagingDirName)))
+	ignoreError(os.Remove(s.getEndpointDir(stagingDirName, "")))
 	return nil
 }
 
@@ -1066,7 +1070,7 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	endpointDir := filepath.Join(s.socketsDir, podId, req.VolumeId)
+	endpointDir := s.getEndpointDir(podId, req.VolumeId)
 	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
