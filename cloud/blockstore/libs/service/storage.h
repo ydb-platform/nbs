@@ -57,9 +57,8 @@ public:
         ui32 storageBlockSize,
         bool normalize,   // When true, we use StorageBlockSize when making
                           // requests to the underlying storage
-        ui32 maxRequestSize = 0,
-        TDuration maxRequestDuration = TDuration::Zero(),
-        TDuration shutdownTimeout = TDuration::Zero());
+        TDuration maxRequestDuration,
+        TDuration shutdownTimeout);
 
     ~TStorageAdapter();
 

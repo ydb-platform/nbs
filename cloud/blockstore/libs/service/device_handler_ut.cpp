@@ -123,11 +123,11 @@ public:
                 });
             };
 
-        DeviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(maxBlockCount * BlockSize);
+        DeviceHandler = factory->CreateDeviceHandler(
             std::move(testStorage),
             "testClientId",
             BlockSize,
-            maxBlockCount,
             unalignedRequestsDisabled);
     }
 
@@ -335,11 +335,11 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             clientId,
             blockSize,
-            blocksCountLimit,
             false);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -402,7 +402,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             true);
 
         ui32 startIndex = 42;
@@ -489,7 +488,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             true);
 
         {
@@ -598,11 +596,11 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             clientId,
             blockSize,
-            blocksCountLimit,
             unalignedRequestDisabled);
 
         storage->ZeroBlocksHandler = [&] (
@@ -717,7 +715,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             false);
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -781,7 +778,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             false);
 
         storage->WriteBlocksLocalHandler = [&] (

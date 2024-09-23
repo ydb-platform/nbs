@@ -45,7 +45,7 @@ public:
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount,
+        ui32 maxSubRequestSize,
         ui32 maxUnalignedRequestSize);
 
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
