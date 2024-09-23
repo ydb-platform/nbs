@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     broken_storage.cpp
     compound_storage.cpp
+    file_io_service_provider.cpp
     rdma_protocol.cpp
     service_local.cpp
     storage_aio.cpp
@@ -20,13 +21,13 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/protos
-    
+
     cloud/storage/core/libs/common
-    
+
     library/cpp/aio
     library/cpp/deprecated/atomic
     library/cpp/protobuf/util
-    
+
     contrib/libs/protobuf
 )
 
