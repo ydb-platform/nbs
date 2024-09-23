@@ -2,7 +2,7 @@ DEPENDS(
     cloud/filestore/apps/server
     cloud/filestore/tests/recipes/service-kikimr
 
-    cloud/storage/core/tools/testing/ydb/bin
+    contrib/ydb/apps/ydbd
 )
 
 IF (NFS_RESTART_INTERVAL)

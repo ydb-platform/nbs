@@ -35,7 +35,7 @@ def start(argv):
     parser.add_argument("--storage-config-patch", action="store", default=None)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
+    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = common.build_path("{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path))
 
