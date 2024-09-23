@@ -4,8 +4,6 @@ SRCS(
     client.cpp
     context.h
     executor.cpp
-    #request_data.cpp
-    #request_index.cpp
     request_replay.cpp
     test.cpp
 )
