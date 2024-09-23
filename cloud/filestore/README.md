@@ -13,19 +13,30 @@ usermod -a -G kvm $USER
 # How to build and run
 
 ### 1. Building
-Ensure that necessary binaries are located in `./bin/` directory.
+To build run the following command from the repository root folder:
 
 ```bash
-cd cloud/filestore/nbs
+./ya make -r -D FORCE_STATIC_LINKING=yes -- cloud/filestore/buildall
 ```
 
 ### 2. Configuring
 - prepare bin directory
 ```bash
-SYMLINK_BINARIES=false ./setup.sh
+cd cloud/filestore/bin
+./setup.sh
 ```
 
 ### 3. Running services
+
+- to avoid dynamic link errors (in case you built without `-D FORCE_STATIC_LINKING=yes`) you need to set `LD_LIBRARY_PATH` to include all necessary libraries:
+```bash
+export REPO_ROOT=<path-to-repo-root>
+
+export FILESTORE_APPS_PATH=cloud/filestore/buildall/cloud/filestore/apps
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/client
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/server
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/vhost
+```
 
 - use initctl.sh to format and initialize kikimr service
 ```bash
@@ -35,11 +46,6 @@ SYMLINK_BINARIES=false ./setup.sh
 - then you should create filestore and can start vhost endpoint
 ```bash
 ./initctl.sh create startendpoint
-```
-
-- if you get dynamic link errors you may need to set `LD_LIBRARY_PATH` to include all necessary libraries:
-```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<path-to-repo-root>/cloud/filestore/apps/client
 ```
 
 ### 4. Accessing filestore

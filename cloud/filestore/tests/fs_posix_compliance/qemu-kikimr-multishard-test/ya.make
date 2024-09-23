@@ -1,14 +1,8 @@
 PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
-
-DEPENDS(
-    cloud/storage/core/tools/testing/fio/bin
-)
-
 PEERDIR(
     cloud/filestore/tests/python/lib
-    cloud/storage/core/tools/testing/fio/lib
 )
 
 TEST_SRCS(
@@ -16,7 +10,11 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(FILESTORE_SHARD_COUNT 5)
+
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tools/testing/fs_posix_compliance/fs_posix_compliance.inc)
+
+SET(FILESTORE_SHARD_COUNT 2)
 SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt

@@ -14,6 +14,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+[[maybe_unused]] TString ToString(const NProtoBuf::StringPiece& piece)
+{
+    return piece.ToString();
+}
+
 NProto::TStorageConfig ExecuteGetStorageConfig(
     const TString& fsId,
     TServiceClient& service)
@@ -31,7 +36,7 @@ NProto::TStorageConfig ExecuteGetStorageConfig(
     auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
         &response);
-    UNIT_ASSERT_C(status.ok(), status.message().ToString());
+    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
     return response;
 }
 
@@ -57,7 +62,7 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
         &response);
-    UNIT_ASSERT_C(status.ok(), status.message().ToString());
+    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
 
     return response;
 }
