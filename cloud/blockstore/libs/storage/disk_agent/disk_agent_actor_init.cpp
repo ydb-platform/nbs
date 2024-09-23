@@ -148,6 +148,8 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
+
     Become(&TThis::StateWork);
 
     NCloud::Send(
