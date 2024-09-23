@@ -73,13 +73,16 @@ private:
     const std::shared_ptr<NProto::TMountVolumeResponse> LastMountResponsePtr;
 
 public:
-    TEndpointService(
-            TString diskId,
-            ui32 blockSize,
-            ISessionPtr session)
+    TEndpointService(TString diskId, ui32 blockSize, ISessionPtr session)
         : DiskId(std::move(diskId))
         , BlockSize(blockSize)
-        , StorageAdapter(session, blockSize, true)
+        , StorageAdapter(
+              session,
+              blockSize,
+              true,                // normalize,
+              TDuration::Zero(),   // maxRequestDuration
+              TDuration::Zero()    // shutdownTimeout
+              )
         , Session(std::move(session))
         , LastMountResponsePtr(std::make_shared<NProto::TMountVolumeResponse>())
     {
