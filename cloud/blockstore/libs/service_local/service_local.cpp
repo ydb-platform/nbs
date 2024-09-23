@@ -84,6 +84,20 @@ struct TMountSession
               TDuration::Zero(),   // maxRequestDuration
               storageShutdownTimeout))
     {}
+
+    void UpdateStorage(
+        IStoragePtr storage,
+        ui32 blockSize,
+        TDuration storageShutdownTimeout)
+    {
+        Storage = std::move(storage);
+        StorageAdapter = std::make_unique<TStorageAdapter>(
+            Storage,
+            blockSize,
+            true,                // normalize,
+            TDuration::Zero(),   // maxRequestDuration
+            storageShutdownTimeout);
+    }
 };
 
 using TMountSessionPtr = std::shared_ptr<TMountSession>;
@@ -155,19 +169,21 @@ struct TMountedVolume
             auto volume = Volume;
             volume.SetDiskId(dataPath);
             for (auto& [_, session]: Sessions) {
-                session->Storage = storageProvider
-                                       ->CreateStorage(
-                                           volume,
-                                           session->ClientId,
-                                           session->AccessMode)
-                                       .GetValueSync();
-                session->StorageAdapter = std::make_unique<TStorageAdapter>(
-                    session->Storage,
-                    volume.GetBlockSize(),
-                    true,
-                    0,
-                    TDuration::Zero(),
-                    StorageShutdownTimeout);
+                // nbd-lightweit was implemented for test purposes and
+                // CreateStorage implementation is sync. It is safe to
+                // call CreateStorage under the lock.
+                auto storage = storageProvider
+                                   ->CreateStorage(
+                                       volume,
+                                       session->ClientId,
+                                       session->AccessMode)
+                                   .GetValueSync();
+                if (storage) {
+                    session->UpdateStorage(
+                        std::move(storage),
+                        volume.GetBlockSize(),
+                        StorageShutdownTimeout);
+                }
             }
         }
     }
@@ -260,8 +276,7 @@ public:
         mountedVolume->Resize(
             blocksCount,
             dataPath,
-            StorageProvider,
-            StorageShutdownTimeout);
+            StorageProvider);
     }
 
     void DestroyVolume(const TString& diskId)
@@ -316,10 +331,7 @@ public:
         volume.SetDiskId(dataPath);
         return StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply(
-                [mountedVolume,
-                 clientId,
-                 accessMode,
-                 shutdownTimeout = StorageShutdownTimeout](const auto& future)
+                [mountedVolume, clientId, accessMode](const auto& future)
                 {
                     auto storage = future.GetValue();
                     if (!storage) {
@@ -333,8 +345,7 @@ public:
                     auto session = mountedVolume->CreateSession(
                         clientId,
                         accessMode,
-                        std::move(storage),
-                        shutdownTimeout);
+                        std::move(storage));
 
                     NProto::TMountVolumeResponse response;
                     response.SetSessionId(session->SessionId);
@@ -367,7 +378,9 @@ public:
                 it = MountedVolumes.emplace_direct(
                     ctx,
                     diskId,
-                    std::make_shared<TMountedVolume>(std::move(volume)));
+                    std::make_shared<TMountedVolume>(
+                        std::move(volume),
+                        StorageShutdownTimeout));
             }
             return it->second;
         }
@@ -742,10 +755,6 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
                 << "Out of bounds read request";
         }
 
-        if (!session->StorageAdapter) {
-            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
-        }
-
         return session->StorageAdapter->ReadBlocks(
             Now(),
             std::move(ctx),
@@ -805,10 +814,6 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
                 << "Out of bounds write request";
         }
 
-        if (!session->StorageAdapter) {
-            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
-        }
-
         return session->StorageAdapter->WriteBlocks(
             Now(),
             std::move(ctx),
@@ -858,10 +863,6 @@ TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
         if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
             ythrow TServiceError(E_ARGUMENT)
                 << "Out of bounds write request";
-        }
-
-        if (!session->StorageAdapter) {
-            ythrow TServiceError(E_FAIL) << "Invalid storage adapter";
         }
 
         return session->StorageAdapter->ZeroBlocks(
