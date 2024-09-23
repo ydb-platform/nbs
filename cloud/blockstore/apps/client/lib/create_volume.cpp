@@ -47,6 +47,7 @@ private:
 
     TString StoragePoolName;
     TVector<TString> AgentIds;
+    bool JsonOutput = false;
 
 public:
     TCreateVolumeCommand(IBlockStorePtr client)
@@ -116,6 +117,7 @@ public:
                 "Allowed only for nonreplicated disks")
             .RequiredArgument("STR")
             .AppendTo(&AgentIds);
+        Opts.AddLongOption("json").StoreTrue(&JsonOutput);
     }
 
 protected:
@@ -177,6 +179,20 @@ protected:
         if (Proto) {
             SerializeToTextFormat(result, output);
             return true;
+        }
+
+        if (JsonOutput){
+            // We don't use result.PrintJSON(), because
+            // TError.PrintJSON() writes only code, and
+            // it is more reliable to use formatted error in
+            // tests and scripts.
+            output << '{';
+            if (result.HasError()) {
+                TString errorString = FormatError(result.GetError());
+                output << "\"Error\":" << "\"" << errorString << "\"";
+            }
+            output << '}';
+            return !HasError(result);
         }
 
         if (HasError(result)) {
