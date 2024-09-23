@@ -431,7 +431,8 @@ bool TBootstrap::InitKikimrService()
             }
 
             case NProto::DISK_AGENT_BACKEND_AIO:
-                FileIOService = CreateAIOService();
+                FileIOService =
+                    CreateAIOService(config.GetMaxAIOContextEvents());
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
                 AioStorageProvider = CreateAioStorageProvider(
