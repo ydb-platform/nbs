@@ -233,11 +233,7 @@ func StartAccessService(configPath string) error {
 	http.HandleFunc("/", accessService.HandleCreateAccount)
 	go func() {
 		err := http.ListenAndServe(
-			fmt.Sprintf(
-				"%s:%d",
-				config.Host,
-				config.ControlPort,
-			),
+			fmt.Sprintf("%s:%d", config.Host, config.ControlPort),
 			nil,
 		)
 		if err != nil {
