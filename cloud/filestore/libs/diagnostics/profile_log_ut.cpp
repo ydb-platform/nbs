@@ -197,7 +197,7 @@ struct TRequestInfoBuilder
         ui32 mode,
         ui64 nodeId,
         ui64 handle,
-        ui64 size, 
+        ui64 size,
         ui32 type)
     {
         auto nodeInfo = R.MutableNodeInfo();
