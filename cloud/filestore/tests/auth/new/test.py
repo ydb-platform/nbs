@@ -1,0 +1,79 @@
+from cloud.filestore.tests.auth.lib import TestFixture
+
+
+def test_new_auth_authorization_ok():
+    fixture = TestFixture()
+    token = "test_auth_token"
+    client = fixture.get_client(token)
+    fixture.access_service.create_account(
+        "authorized_user_1",
+        token,
+        is_unknown_subject=False,
+        permissions=[
+            {"permission": "filestore.internal.disks.create", "resource": fixture.folder_id},
+        ],
+    )
+    result = client.create(
+        "test_new_auth_authorization_ok",
+        "some_cloud",
+        fixture.folder_id,
+        return_stdout=False,
+    )
+    assert result.returncode == 0
+
+
+def test_new_auth_unauthorized():
+    fixture = TestFixture()
+    token = "test_auth_token"
+    client = fixture.get_client(token)
+    fixture.access_service.create_account(
+        "test_user",
+        token,
+        is_unknown_subject=False,
+        permissions=[
+            {"permission": "filestore.internal.disks.create", "resource": "some_other_folder"},
+        ],
+    )
+    result = client.create(
+        "test_new_auth_unauthorized",
+        "some_cloud",
+        fixture.folder_id,
+        return_stdout=False,
+    )
+    assert result.returncode != 0
+    assert "E_UNAUTHORIZED" in result.stdout
+
+
+def test_new_auth_unauthenticated():
+    fixture = TestFixture()
+    client = fixture.get_client("some_other_token")
+    result = client.create(
+        "test_new_auth_unauthenticated_fs",
+        "some_cloud",
+        fixture.folder_id,
+        return_stdout=False,
+    )
+    assert result.returncode != 0
+    assert "E_UNAUTHORIZED" in result.stdout
+
+
+def test_new_auth_unknown_subject():
+    fixture = TestFixture()
+    token = "test_token"
+    client = fixture.get_client(token)
+    fixture.access_service.create_account(
+        "test_user",
+        token,
+        is_unknown_subject=True,
+        permissions=[
+            {"permission": "filestore.internal.disks.create", "resource": fixture.folder_id},
+        ],
+    )
+    result = client.create(
+        "test_new_auth_unknown_subject_fs",
+        "some_cloud",
+        fixture.folder_id,
+        return_stdout=False,
+    )
+    assert result.returncode != 0
+    assert "E_UNAUTHORIZED" in result.stdout
