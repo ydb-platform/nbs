@@ -267,6 +267,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        std::atomic<int> fsyncCalledWithDataSync = 0;
+        std::atomic<int> fsyncCalledWithoutDataSync = 0;
+
+        bootstrap.Service->FsyncHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            if (request->GetDataSync()) {
+                fsyncCalledWithDataSync++;
+            } else {
+                fsyncCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncResponse());
+        };
+
         bootstrap.Start();
 
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
@@ -275,6 +290,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, fsyncCalledWithDataSync.load());
+
+        fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithDataSync.load());
     }
 
     Y_UNIT_TEST(ShouldPassSessionId)
@@ -500,6 +527,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        std::atomic<int> fsyncDirCalledWithDataSync = 0;
+        std::atomic<int> fsyncDirCalledWithoutDataSync = 0;
+
+        bootstrap.Service->FsyncDirHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            if (request->GetDataSync()) {
+                fsyncDirCalledWithDataSync++;
+            } else {
+                fsyncDirCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncDirResponse());
+        };
+
         bootstrap.Start();
 
         const ui64 nodeId = 123;
@@ -518,6 +560,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         size = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size, 0);
+
+        auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_EQUAL(0, fsyncDirCalledWithDataSync.load());
+
+        fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithDataSync.load());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));

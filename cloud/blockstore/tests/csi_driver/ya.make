@@ -1,3 +1,5 @@
+IF (BUILD_CSI_DRIVER)
+
 PY3TEST()
 
 SIZE(MEDIUM)
@@ -36,3 +38,5 @@ SET_APPEND(QEMU_ENABLE_KVM True)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 
 END()
+
+ENDIF()

@@ -70,6 +70,7 @@ void TIndexTabletActor::HandleCleanup(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TCleanup>(
         ctx,

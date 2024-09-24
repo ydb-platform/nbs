@@ -398,4 +398,35 @@ void TFileSystem::ReleaseDir(
     ReplyError(*callContext, {}, req, 0);
 }
 
+bool TFileSystem::ValidateDirectoryHandle(
+    TCallContext& callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    uint64_t fh)
+{
+    std::shared_ptr<TDirectoryHandle> handle;
+    with_lock (CacheLock) {
+        auto it = DirectoryHandles.find(fh);
+        if (it == DirectoryHandles.end()) {
+            ReplyError(
+                callContext,
+                ErrorInvalidHandle(fh),
+                req,
+                EBADF);
+            return false;
+        }
+
+        handle = it->second;
+    }
+
+    Y_ABORT_UNLESS(handle);
+
+    if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
+        ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
+        return false;
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NFileStore::NFuse

@@ -31,6 +31,8 @@ struct TActorSystemArgs
     std::function<void(
         NKikimr::TKikimrRunConfig&,
         NKikimr::TServiceInitializersList&)> OnInitialize;
+    std::function<void(
+        NKikimr::TKikimrRunConfig&)> PrepareKikimrRunConfig;
     NKikimr::TBasicKikimrServicesMask ServicesMask;
     std::function<void(IActorSystem&)> OnStart;
 };
