@@ -40,6 +40,7 @@ message TReplaySpec
     double TimeScale = 12;
     bool WriteRandom = 13;
     bool WriteEmpty = 14;
+    bool CreateOnRead = 15;
 }
 
 message TMigrationSpec

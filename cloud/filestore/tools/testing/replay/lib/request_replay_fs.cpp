@@ -4,13 +4,14 @@ TODO:
 create file/dir modes
 create handle modes (now rw)
 compare log and actual result ( S_OK E_FS_NOENT ...)
-
+read/write with multiranges (now only first processed)
 */
 
 #include "request.h"
 
 #include "cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h"
 #include "cloud/filestore/tools/analytics/libs/event-log/dump.h"
+#include "dump.h"
 #include "library/cpp/aio/aio.h"
 #include "library/cpp/eventlog/iterator.h"
 #include "library/cpp/testing/unittest/registar.h"
@@ -170,6 +171,11 @@ public:
         return true;
     }
 
+    bool FailOnError() override
+    {
+        return false;
+    }
+
     TNodeLocal NodeIdMapped(const TNodeLog id)
     {
         if (const auto it = NodesLogToLocal.find(id);
@@ -239,7 +245,6 @@ public:
             for (; EventMessageNumber > 0;) {
                 auto request =
                     EventLogMessagePtr->GetRequests()[--EventMessageNumber];
-                STORAGE_DEBUG("message json=" << request.AsJSON());
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
@@ -265,8 +270,8 @@ public:
                     << EventMessageNumber
                     << " typename=" << request.GetTypeName()
                     << " type=" << request.GetRequestType() << " "
-                    << RequestName(request.GetRequestType()));
-
+                    << " name=" << RequestName(request.GetRequestType())
+                    << " json=" << request.AsJSON());
                 {
                     const auto& action = request.GetRequestType();
                     switch (static_cast<EFileStoreRequest>(action)) {
@@ -286,15 +291,16 @@ public:
                             return DoDestroyHandle(request);
                         case EFileStoreRequest::GetNodeAttr:
                             return DoGetNodeAttr(request);
-                        case EFileStoreRequest::AcquireLock:
-                            return DoAcquireLock();
-                        case EFileStoreRequest::ReleaseLock:
-                            return DoReleaseLock();
-
                         case EFileStoreRequest::AccessNode:
                             return DoAccessNode(request);
                         case EFileStoreRequest::ListNodes:
                             return DoListNodes(request);
+
+                            // TODO:
+                        case EFileStoreRequest::AcquireLock:
+                            return DoAcquireLock();
+                        case EFileStoreRequest::ReleaseLock:
+                            return DoReleaseLock();
 
                         case EFileStoreRequest::ReadBlob:
                         case EFileStoreRequest::WriteBlob:
@@ -395,6 +401,22 @@ private:
         }
     }
 
+    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenModeFlag init = {})
+    {
+        auto systemflags = HandleFlagsToSystem(flags);
+        ui32 value{init};
+
+        if (systemflags & O_RDWR) {
+            value |= EOpenModeFlag::RdWr | EOpenModeFlag::OpenAlways;
+        } else if (systemflags & O_WRONLY) {
+            value |= EOpenModeFlag::WrOnly | EOpenModeFlag::OpenAlways;
+        } else if (systemflags & O_RDONLY) {
+            value |= EOpenModeFlag::RdOnly;
+        }
+
+        return static_cast<EOpenModeFlag>(value);
+    }
+
     TFuture<TCompletedRequest> DoCreateHandle(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
     {
@@ -457,41 +479,55 @@ private:
         STORAGE_DEBUG(
             "open " << relativePathName
                     << " handle=" << r.GetNodeInfo().GetHandle()
-                    << " flags=" << r.GetNodeInfo().GetFlags()
+                    << " flags=" << r.GetNodeInfo().GetFlags() << " "
+                    << HandleFlagsToString(r.GetNodeInfo().GetFlags())
                     << " mode=" << r.GetNodeInfo().GetMode()
                     << " node=" << r.GetNodeInfo().GetNodeId());
 
-        TFile fileHandle(
-            Spec.GetReplayRoot() + relativePathName,
-            OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr));
+        try {
+            TFile fileHandle(
+                Spec.GetReplayRoot() + relativePathName,
+                // OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr)
+                FileOpenFlags(
+                    r.GetNodeInfo().GetFlags(),
+                    Spec.GetNoWrite()        ? OpenExisting
+                    : Spec.GetCreateOnRead() ? OpenAlways
+                                             : OpenExisting));
 
-        if (!fileHandle.IsOpen()) {
+            if (!fileHandle.IsOpen()) {
+                return MakeFuture(TCompletedRequest{
+                    NProto::ACTION_CREATE_HANDLE,
+                    started,
+                    MakeError(E_FAIL, "fail")});
+            }
+            const auto fh = fileHandle.GetHandle();
+            if (!fh) {
+                return MakeFuture(TCompletedRequest{
+                    NProto::ACTION_CREATE_HANDLE,
+                    started,
+                    MakeError(E_FAIL, "no filehandle")});
+            }
+
+            OpenHandles[fh] = std::move(fileHandle);
+            HandlesLogToActual[r.GetNodeInfo().GetHandle()] = fh;
+            const auto inode =
+                TFileStat{Spec.GetReplayRoot() + relativePathName}.INode;
+            if (r.GetNodeInfo().GetNodeId()) {
+                NodesLogToLocal[r.GetNodeInfo().GetNodeId()] = inode;
+
+                NodePath[inode] = relativePathName;
+            }
+            STORAGE_DEBUG(
+                "open " << fh << "<-" << r.GetNodeInfo().GetHandle()
+                        << " inode=" << inode
+                        << " known handles=" << HandlesLogToActual.size()
+                        << " opened=" << OpenHandles.size());
+        } catch (const TFileError& error) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,
                 started,
-                MakeError(E_FAIL, "fail")});
+                MakeError(E_FAIL, error.what())});
         }
-        const auto fh = fileHandle.GetHandle();
-        if (!fh) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_CREATE_HANDLE,
-                started,
-                MakeError(E_FAIL, "no filehandle")});
-        }
-
-        OpenHandles[fh] = std::move(fileHandle);
-        HandlesLogToActual[r.GetNodeInfo().GetHandle()] = fh;
-        const auto inode =
-            TFileStat{Spec.GetReplayRoot() + relativePathName}.INode;
-        if (r.GetNodeInfo().GetNodeId()) {
-            NodesLogToLocal[r.GetNodeInfo().GetNodeId()] = inode;
-
-            NodePath[inode] = relativePathName;
-        }
-        STORAGE_DEBUG(
-            "open " << fh << "<-" << r.GetNodeInfo().GetHandle() << " inode="
-                    << inode << " known handles=" << HandlesLogToActual.size()
-                    << " opened=" << OpenHandles.size());
 
         return MakeFuture(
             TCompletedRequest{NProto::ACTION_CREATE_HANDLE, started, {}});
@@ -752,10 +788,21 @@ private:
 
         auto newFullName = Spec.GetReplayRoot() + PathByNode(newparentnodeid) +
                            r.GetNodeInfo().GetNewNodeName();
+
+        DUMP("prerename", NFs::Exists(fullName), NFs::Exists(newFullName));
+
         const auto renameres = NFs::Rename(fullName, newFullName);
+        DUMP(LastSystemError(), LastSystemErrorText(LastSystemError()));
+
+        DUMP("pstrename", NFs::Exists(fullName), NFs::Exists(newFullName));
+
         STORAGE_DEBUG(
-            "rename " << fullName << " => " << newFullName << " : "
-                      << renameres);
+            "rename " << fullName << " => " << newFullName << " : " << renameres
+                      << (renameres
+                              ? (TStringBuilder{}
+                                 << " errno=" << LastSystemError() << " err="
+                                 << LastSystemErrorText(LastSystemError()))
+                              : TStringBuilder{}));
         return MakeFuture(
             TCompletedRequest{NProto::ACTION_RENAME_NODE, started, {}});
     }
@@ -829,7 +876,7 @@ private:
         OpenHandles.erase(handleid);
         HandlesLogToActual.erase(r.GetNodeInfo().GetHandle());
         STORAGE_DEBUG(
-            "Close " << handleid << " orig=" << r.GetNodeInfo().GetHandle()
+            "Close " << handleid << " <- " << r.GetNodeInfo().GetHandle()
                      << " pos=" << pos << " len=" << len
                      << " open map size=" << OpenHandles.size()
                      << " map size=" << HandlesLogToActual.size());

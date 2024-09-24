@@ -621,11 +621,14 @@ private:
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
                 STORAGE_WARN(
-                    "%s failed request: %s",
+                    "%s failed request %d: %s",
                     MakeTestTag().c_str(),
+                    request->Action,
                     FormatError(request->Error).c_str());
 
-                // TestStats.Success = false;
+                if (RequestGenerator->FailOnError()) {
+                    TestStats.Success = false;
+                }
             }
 
             if (request->Stop) {
