@@ -15,6 +15,7 @@ namespace NCloud {
 
 #define STORAGE_ACTORS(xxx)                                                    \
     xxx(HIVE_PROXY)                                                            \
+    xxx(SS_PROXY)                                                              \
 // STORAGE_ACTORS
 
 ////////////////////////////////////////////////////////////////////////////////

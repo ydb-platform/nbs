@@ -8,10 +8,7 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -24,50 +21,19 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSSProxyActor final
-    : public NActors::TActor<TSSProxyActor>
+    : public NActors::TActorBootstrapped<TSSProxyActor>
 {
-    struct TSchemeShardState
-    {
-        NActors::TActorId ReplyProxy;
-        THashMap<ui64, TDeque<TRequestInfoPtr>> TxToRequests;
-    };
-
 private:
     const TStorageConfigPtr Config;
-    std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
-    THashMap<ui64, TSchemeShardState> SchemeShardStates;
+
+    NActors::TActorId StorageSSProxyActor;
 
 public:
-    TSSProxyActor(TStorageConfigPtr config);
+    explicit TSSProxyActor(TStorageConfigPtr config);
+
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void SendWaitTxRequest(
-        const NActors::TActorContext& ctx,
-        ui64 schemeShard,
-        ui64 txId);
-
-    void OnConnectionError(
-        const NActors::TActorContext& ctx,
-        const NProto::TError& error,
-        ui64 schemeShard);
-
-private:
-    void HandleConnect(
-        NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleDisconnect(
-        NKikimr::TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleTxRegistered(
-        const NKikimr::NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletionRegistered::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleTxResult(
-        const NKikimr::NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletionResult::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     bool HandleRequests(STFUNC_SIG);
 
     FILESTORE_SS_PROXY_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvSSProxy)
