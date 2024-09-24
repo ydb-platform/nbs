@@ -72,8 +72,14 @@ namespace NCloud::NFileStore {
     xxx(AllocateData,                       __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS
 
+#define FILESTORE_LOCAL_DATA_METHODS(xxx, ...)                                 \
+    xxx(Fsync,                              __VA_ARGS__)                       \
+    xxx(FsyncDir,                           __VA_ARGS__)                       \
+// FILESTORE_LOCAL_DATA_METHODS
+
 #define FILESTORE_DATA_SERVICE(xxx, ...)                                       \
     FILESTORE_DATA_METHODS(xxx,            __VA_ARGS__)                        \
+    FILESTORE_LOCAL_DATA_METHODS(xxx,      __VA_ARGS__)                        \
 // FILESTORE_DATA_SERVICE
 
 #define FILESTORE_CONTROL_SERVICE(xxx, ...)                                    \
@@ -83,6 +89,14 @@ namespace NCloud::NFileStore {
 // FILESTORE_CONTROL_SERVICE
 
 #define FILESTORE_SERVICE(xxx, ...)                                            \
+    xxx(Ping,                               __VA_ARGS__)                       \
+    xxx(PingSession,                        __VA_ARGS__)                       \
+    FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
+    FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
+// FILESTORE_SERVICE
+
+#define FILESTORE_REMOTE_SERVICE(xxx, ...)                                     \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
@@ -108,6 +122,7 @@ namespace NCloud::NFileStore {
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
 // FILESTORE_REQUESTS
@@ -119,6 +134,7 @@ namespace NCloud::NFileStore {
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
 // FILESTORE_PROTO_REQUESTS
 

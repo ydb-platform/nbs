@@ -100,7 +100,7 @@ private:
         const ns::TEv##name##Response::TPtr& ev,                               \
         const NActors::TActorContext& ctx);                                    \
 
-    FILESTORE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
     FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvServicePrivate)
 #undef FILESTORE_DECLARE_REQUEST_RESPONSE
 

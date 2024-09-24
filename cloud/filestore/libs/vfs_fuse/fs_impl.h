@@ -364,6 +364,12 @@ private:
         fuse_req_t req,
         fuse_ino_t ino);
 
+    bool ValidateDirectoryHandle(
+        TCallContext& callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        uint64_t fh);
+
     bool UpdateNodesCache(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry);
