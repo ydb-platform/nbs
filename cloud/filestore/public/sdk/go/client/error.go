@@ -38,14 +38,20 @@ func (e *ClientError) Error() string {
 
 func (e *ClientError) IsRetriable() bool {
 	switch e.Code {
-	case E_REJECTED, E_TIMEOUT:
+	case E_REJECTED, E_TIMEOUT, E_FS_OUT_OF_SPACE:
 		// special error code for retries
 		return true
 	}
 
 	switch e.Facility() {
-	case FACILITY_GRPC, FACILITY_SYSTEM:
-		// system/network errors should be retriable
+	case FACILITY_GRPC:
+		if e.Code == E_GRPC_UNIMPLEMENTED {
+			return false
+		}
+		// network errors should be retriable
+		return true
+	case FACILITY_SYSTEM:
+		// system errors should be retriable
 		return true
 	case FACILITY_KIKIMR:
 		switch e.Status() {
