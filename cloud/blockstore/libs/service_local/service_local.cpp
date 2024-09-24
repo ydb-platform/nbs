@@ -171,7 +171,7 @@ struct TMountedVolume
             auto volume = Volume;
             volume.SetDiskId(dataPath);
             for (auto& [_, session]: Sessions) {
-                // nbd-lightweit was implemented for test purposes and
+                // nbsd-lightweight was implemented for test purposes and
                 // CreateStorage implementation is sync. It is safe to
                 // call CreateStorage under the lock.
                 auto storage = storageProvider
