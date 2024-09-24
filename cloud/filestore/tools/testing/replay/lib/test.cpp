@@ -585,7 +585,7 @@ private:
 
         auto self = weak_from_this();
         ++CurrentIoDepth;
-        RequestGenerator->ExecuteNextRequest().Apply(
+        const auto future = RequestGenerator->ExecuteNextRequest().Apply(
             [=](const TFuture<TCompletedRequest>& future)
             {
                 if (auto ptr = self.lock()) {
@@ -594,7 +594,7 @@ private:
             });
 
         if (RequestGenerator->InstantProcessQueue()) {
-            ProcessCompletedRequests();
+            future.GetValueSync();
         }
 
         return true;
