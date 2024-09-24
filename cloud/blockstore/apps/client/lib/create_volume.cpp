@@ -183,10 +183,9 @@ protected:
         }
 
         if (JsonOutput){
-            // We don't use result.PrintJSON(), because
-            // TError.PrintJSON() writes only code, and
-            // it is more reliable to use formatted error in
-            // tests and scripts.
+            // We don't use result.PrintJSON(), because TError.PrintJSON()
+            // writes only code, and it is more reliable to use formatted
+            // error in tests and scripts.
             NJson::TJsonValue resultJson;
             if (HasError(result)){
                 resultJson["Error"] = FormatErrorJson(result.GetError());

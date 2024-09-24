@@ -74,7 +74,11 @@ func (t *accessServiceMock) HandleCreateAccount(
 	w.WriteHeader(http.StatusOK)
 }
 
-func (t *accessServiceMock) Authorize(_ context.Context, request *iamv1.AuthorizeRequest) (*iamv1.AuthorizeResponse, error) {
+func (t *accessServiceMock) Authorize(
+	_ context.Context,
+	request *iamv1.AuthorizeRequest,
+) (*iamv1.AuthorizeResponse, error) {
+
 	results := make(map[int64]*iamv1.AuthorizeResult)
 	for key, value := range request.GetChecks() {
 		token := value.GetIamToken()
@@ -127,7 +131,11 @@ func (t *accessServiceMock) Authorize(_ context.Context, request *iamv1.Authoriz
 	return &iamv1.AuthorizeResponse{Results: results}, nil
 }
 
-func (t *accessServiceMock) Authenticate(_ context.Context, request *iamv1.AuthenticateRequest) (*iamv1.AuthenticateResponse, error) {
+func (t *accessServiceMock) Authenticate(
+	_ context.Context,
+	request *iamv1.AuthenticateRequest,
+) (*iamv1.AuthenticateResponse, error) {
+
 	token := request.GetIamToken()
 	if token == "" {
 		return &iamv1.AuthenticateResponse{
@@ -156,9 +164,15 @@ func (t *accessServiceMock) Authenticate(_ context.Context, request *iamv1.Authe
 	}, nil
 }
 
-func (t *accessServiceMock) checkPermissions(permissions []Permission, value *iamv1.AuthorizeCheck) bool {
+func (t *accessServiceMock) checkPermissions(
+	permissions []Permission,
+	value *iamv1.AuthorizeCheck,
+) bool {
+
 	for _, permission := range permissions {
-		if permission.Permission == value.Permission.Name && permission.Resource == value.GetContainerId() {
+		nameMatches := permission.Permission == value.Permission.Name
+		containerMatches := permission.Resource == value.GetContainerId()
+		if nameMatches && containerMatches {
 			return true
 		}
 	}
@@ -197,11 +211,7 @@ func StartAccessService(configPath string) error {
 	accessService := newAccessServiceMock()
 	listener, err := net.Listen(
 		"tcp",
-		fmt.Sprintf(
-			"%s:%d",
-			config.Host,
-			config.Port,
-		),
+		fmt.Sprintf("%s:%d", config.Host, config.Port),
 	)
 	if err != nil {
 		log.Fatalf("failed to listen on %v: %v", config.Port, err)

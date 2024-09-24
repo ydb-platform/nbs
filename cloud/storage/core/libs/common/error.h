@@ -241,7 +241,7 @@ public:
 
 TString FormatError(const NProto::TError& e);
 TString FormatResultCode(ui32 code);
-NJson::TJsonValue FormatErrorJson(const NProto::TError&e);
+NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
 
 NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
 

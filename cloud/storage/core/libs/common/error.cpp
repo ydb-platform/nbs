@@ -170,20 +170,20 @@ bool IsConnectionError(const NProto::TError& e)
     return e.GetCode() == E_GRPC_UNAVAILABLE;
 }
 
-NJson::TJsonValue FormatErrorJson(const NProto::TError&e)
+NJson::TJsonValue FormatErrorJson(const NProto::TError& e)
 {
     NJson::TJsonValue result;
     if (e.GetCode()) {
         result["Code"] = e.GetCode();
-        TStringStream codeStream;
-        FormatResultCodePretty(codeStream, e.GetCode());
-        result["CodeString"] = codeStream.Str();
+        TStringStream stream;
+        FormatResultCodePretty(stream, e.GetCode());
+        result["CodeString"] = stream.Str();
     }
 
-    TStringStream messageBuffer;
     if (e.GetMessage()){
-        ::google::protobuf::io::PrintJSONString(messageBuffer, e.GetMessage());
-        result["Message"] = messageBuffer.Str();
+        TStringStream stream;
+        ::google::protobuf::io::PrintJSONString(stream, e.GetMessage());
+        result["Message"] = stream.Str();
     }
 
     if (e.GetFlags()){

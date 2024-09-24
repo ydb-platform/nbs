@@ -118,9 +118,6 @@ class _TestFixture:
 
     def run(self, *args, **kwargs):
         args = [self._binary_path, *args, "--config", str(self._client_config_path)]
-        script_input = kwargs.get("input")
-        if script_input is not None:
-            script_input = script_input + "\n"
 
         env = {}
         if self._auth_token is not None:
@@ -131,7 +128,6 @@ class _TestFixture:
             cwd=kwargs.get("cwd"),
             check=False,
             capture_output=True,
-            input=script_input,
             text=True,
             env=env,
         )

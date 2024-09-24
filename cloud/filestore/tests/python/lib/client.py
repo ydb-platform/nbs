@@ -19,7 +19,8 @@ KEYRING_FILE_NAME = "vhost-endpoint-keyring-name.txt"
 
 class NfsCliClient:
     def __init__(
-        self, binary_path,
+        self,
+        binary_path,
         port,
         vhost_port=None,
         verbose=False,

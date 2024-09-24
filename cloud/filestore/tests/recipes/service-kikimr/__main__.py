@@ -104,7 +104,7 @@ def start(argv):
         access_service_port=access_service_port,
         storage_config=storage_config,
         secure=secure,
-        access_service_type= access_service_type,
+        access_service_type=access_service_type,
     )
     nfs_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
