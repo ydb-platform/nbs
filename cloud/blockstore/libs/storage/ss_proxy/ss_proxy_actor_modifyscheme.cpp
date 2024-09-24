@@ -134,10 +134,18 @@ void TModifySchemeActor::HandleStatus(
                 break;
             }
 
+            ui32 errorCode = MAKE_SCHEMESHARD_ERROR(SchemeShardStatus);
+
+            if (SchemeShardStatus == NKikimrScheme::StatusMultipleModifications ||
+                SchemeShardStatus == NKikimrScheme::StatusNotAvailable)
+            {
+                errorCode = E_REJECTED;
+            }
+
             ReplyAndDie(
                 ctx,
                 MakeError(
-                    MAKE_SCHEMESHARD_ERROR(SchemeShardStatus),
+                    errorCode,
                     (TStringBuilder()
                         << NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).data()
                         << " failed with reason: "
@@ -178,8 +186,9 @@ void TModifySchemeActor::HandleStatus(
 
             ReplyAndDie(
                 ctx,
-                MakeError(MAKE_TXPROXY_ERROR(status), TStringBuilder()
-                    << "TxProxy failed: " << status));
+                TranslateTxProxyError(
+                    MakeError(MAKE_TXPROXY_ERROR(status), TStringBuilder()
+                        << "TxProxy failed: " << status)));
             break;
     }
 }

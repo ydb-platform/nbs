@@ -18,6 +18,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const THashSet<ui32> RetriableTxProxyErrors {
+    NKikimr::NTxProxy::TResultStatus::ProxyNotReady,
+    NKikimr::NTxProxy::TResultStatus::ProxyShardNotAvailable,
+    NKikimr::NTxProxy::TResultStatus::ProxyShardTryLater,
+    NKikimr::NTxProxy::TResultStatus::ProxyShardOverloaded,
+    NKikimr::NTxProxy::TResultStatus::ExecTimeout,
+    NKikimr::NTxProxy::TResultStatus::ExecResultUnavailable
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     const TStorageConfig& config)
 {
@@ -155,9 +166,7 @@ NProto::TError GetErrorFromPreconditionFailed(const NProto::TError& error)
     NProto::TError result = error;
     const auto& msg = error.GetMessage();
 
-    if (msg.Contains("Wrong version in VolumeConfig") ||
-        msg.Contains("Wrong version in Assign Volume"))
-    {
+    if (msg.Contains("Wrong version in")) {
         // ConfigVersion is different from current one in SchemeShard
         // return E_ABORTED to client to read
         // updated config (StatVolume) and issue new request
@@ -169,6 +178,20 @@ NProto::TError GetErrorFromPreconditionFailed(const NProto::TError& error)
         result.SetCode(E_REJECTED);
     }
     return result;
+}
+
+NProto::TError TranslateTxProxyError(NProto::TError error)
+{
+    if (FACILITY_FROM_CODE(error.GetCode()) != FACILITY_TXPROXY) {
+        return error;
+    }
+
+    auto status =
+        static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
+    if (RetriableTxProxyErrors.count(status)) {
+        error.SetCode(E_REJECTED);
+    }
+    return error;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

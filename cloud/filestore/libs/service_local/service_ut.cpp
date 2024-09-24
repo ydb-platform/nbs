@@ -636,6 +636,23 @@ struct TTestBootstrap
         return request;
     }
 
+    auto CreateFsyncRequest(ui64 node, ui64 handle, bool dataSync)
+    {
+        auto request = CreateRequest<NProto::TFsyncRequest>();
+        request->SetNodeId(node);
+        request->SetHandle(handle);
+        request->SetDataSync(dataSync);
+        return request;
+    }
+
+    auto CreateFsyncDirRequest(ui64 node, bool dataSync)
+    {
+        auto request = CreateRequest<NProto::TFsyncDirRequest>();
+        request->SetNodeId(node);
+        request->SetDataSync(dataSync);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                         \
     template <typename... Args>                                                    \
     NProto::T##name##Response name(Args&&... args)                                 \
@@ -1578,6 +1595,23 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             const auto& names2 = response.GetNames();
             UNIT_ASSERT_VALUES_EQUAL(names2.size(), 1);
             UNIT_ASSERT_VALUES_EQUAL(names2[0], "d");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFsyncFileAndDir)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        auto fileNodeId = CreateFile(bootstrap, RootNodeId, "file1");
+        auto dirNodeId = CreateDirectory(bootstrap, RootNodeId, "dir1");
+
+        auto fileHandle =
+            bootstrap.CreateHandle(fileNodeId, "", TCreateHandleArgs::RDWR)
+                .GetHandle();
+
+        for (auto dataSync: {true, false}) {
+            bootstrap.Fsync(fileNodeId, fileHandle, dataSync);
+            bootstrap.FsyncDir(dirNodeId, dataSync);
         }
     }
 };

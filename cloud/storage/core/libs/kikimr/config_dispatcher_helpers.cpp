@@ -12,6 +12,10 @@ void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
+    if (!settings.HasAllowList() && !settings.HasDenyList()) {
+        return;
+    }
+
     const auto& names = settings.HasAllowList()
         ? settings.GetAllowList().GetNames()
         : settings.GetDenyList().GetNames();
@@ -33,10 +37,6 @@ void SetupConfigDispatcher(
             << "Failed to parse: ("
             << JoinRange(",", failedItemNames.begin(), failedItemNames.end())
             << ") as NKikimrConsole::TConfigItem::EKind value");
-    }
-
-    if (items.empty()) {
-        return;
     }
 
     auto& rules = config->ItemsServeRules;

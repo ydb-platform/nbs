@@ -47,6 +47,8 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::GenerateBlobIds:
         case EFileStoreRequest::WriteBlob:
         case EFileStoreRequest::AddData:
+        case EFileStoreRequest::Fsync:
+        case EFileStoreRequest::FsyncDir:
             return CreatePermissionList({EPermission::Write});
 
         case EFileStoreRequest::AddClusterNode:

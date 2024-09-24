@@ -36,6 +36,8 @@ void TActorSystem::Init()
     InitializeAppData(runConfig);
     InitializeLogSettings(runConfig);
 
+    Args.PrepareKikimrRunConfig(runConfig);
+
     LogSettings->Append(
         TBlockStoreComponents::START,
         TBlockStoreComponents::END,
