@@ -34,7 +34,21 @@ namespace {
     };                                                                         \
 // FILESTORE_DECLARE_METHOD
 
-FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
+FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD)
+
+#undef FILESTORE_DECLARE_METHOD
+
+#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        static constexpr auto RequestName = TStringBuf(#name);                 \
+                                                                               \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+    };                                                                         \
+// FILESTORE_DECLARE_METHOD
+
+FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
@@ -289,6 +303,32 @@ private:
             std::move(callContext),
             std::move(request),
             std::move(response)));
+    }
+
+    template<>
+    void ExecuteRequest<TFsyncMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TFsyncMethod::TRequest> request,
+        TPromise<TFsyncMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        Y_UNUSED(TFsyncMethod::RequestName);
+
+        response.SetValue(TFsyncMethod::TResponse());
+    }
+
+    template<>
+    void ExecuteRequest<TFsyncDirMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TFsyncDirMethod::TRequest> request,
+        TPromise<TFsyncDirMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        Y_UNUSED(TFsyncDirMethod::RequestName);
+
+        response.SetValue(TFsyncDirMethod::TResponse());
     }
 
     template <typename T>
