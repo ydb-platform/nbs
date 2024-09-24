@@ -38,18 +38,30 @@ class NfsCliClient:
         if auth_token is not None:
             self._env = {"IAM_TOKEN": auth_token}
 
-    def create(self, fs, cloud, folder, blk_size=4096, blk_count=100 * 1024 * 1024 * 1024):
+    def create(
+        self,
+        fs,
+        cloud,
+        folder,
+        blk_size=4096,
+        blk_count=100 * 1024 * 1024 * 1024,
+        return_stdout=True,
+    ):
         cmd = [
-            self.__binary_path, "create",
-            "--filesystem", fs,
-            "--cloud", cloud,
-            "--folder", folder,
-            "--block-size", str(blk_size),
-            "--blocks-count", str(blk_count)
-        ] + self.__cmd_opts()
+                  self.__binary_path, "create",
+                  "--filesystem", fs,
+                  "--cloud", cloud,
+                  "--folder", folder,
+                  "--block-size", str(blk_size),
+                  "--blocks-count", str(blk_count)
+              ] + self.__cmd_opts()
 
         logger.info("creating nfs: " + " ".join(cmd))
-        return common.execute(cmd, env=self._env).stdout
+        result = common.execute(cmd, env=self._env)
+        if return_stdout:
+            return result.stdout
+
+        return result
 
     def destroy(self, fs):
         cmd = [
