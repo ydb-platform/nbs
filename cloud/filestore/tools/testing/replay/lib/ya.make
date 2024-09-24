@@ -4,7 +4,8 @@ SRCS(
     client.cpp
     context.h
     executor.cpp
-    request_replay.cpp
+    request_replay_fs.cpp
+    request_replay_grpc.cpp
     test.cpp
 )
 

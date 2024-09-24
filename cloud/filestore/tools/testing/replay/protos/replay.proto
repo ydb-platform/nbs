@@ -32,7 +32,7 @@ message TReplaySpec
     string FileName = 1;
     //bool ValidationEnabled = 6;
     //bool Sequential = 7;
-    string ReplayRoot = 8;
+    string ReplayRoot = 8; // not used in grpc
     bool NoRead = 9;
     bool NoWrite = 10;
     bool Prepare = 11; // Only write files needed for reading
@@ -62,9 +62,8 @@ message TLoadTest
 
     oneof Specs
     {
-        //TIndexLoadSpec IndexLoadSpec = 4;
-        //TDataLoadSpec DataLoadSpec = 5;
-        TReplaySpec ReplaySpec = 17;
+        TReplaySpec ReplayFsSpec = 17;
+        TReplaySpec ReplayGrpcSpec = 18;
     }
 
     uint32 IODepth = 10;

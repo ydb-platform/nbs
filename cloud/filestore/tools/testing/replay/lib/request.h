@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/client/public.h>
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/tools/testing/replay/protos/replay.pb.h>
+//#include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -56,7 +57,14 @@ struct IRequestGenerator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRequestGeneratorPtr CreateReplayRequestGenerator(
+IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
+    NProto::TReplaySpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString filesystemId,
+    NProto::THeaders headers);
+
+IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,

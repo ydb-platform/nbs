@@ -2,7 +2,6 @@
 
 #include "client.h"
 #include "context.h"
-#include "dump.h"
 #include "request.h"
 
 #include <cloud/filestore/libs/client/config.h>
@@ -261,7 +260,7 @@ private:
     TString SessionId;
 
     ui32 MaxIoDepth = 64;
-    i32 CurrentIoDepth = 0;
+    ui32 CurrentIoDepth = 0;
 
     TDuration MaxDuration;
     TInstant StartTs;
@@ -320,7 +319,7 @@ public:
     {
         if (LoadEnabled && !ShouldStop()) {
             while (SendNextRequest()) {
-                //DUMP("rb", RequestsSent);
+                // DUMP("rb", RequestsSent);
                 ++RequestsSent;
                 STORAGE_DEBUG(
                     "%s request sent: %s %lu %lu",
@@ -329,8 +328,6 @@ public:
                     SeqNo,
                     RequestsSent);
             }
-            DUMP("fin");
-//PrintBackTrace();
         }
     }
 
@@ -455,12 +452,12 @@ public:
             LastReportTs = TInstant::Now();
 
             for (;;) {
-               Event.WaitI();
+                Event.WaitI();
                 bool cont = true;
                 while (auto maybeCmd = Commands.Dequeue()) {
                     auto& cmd = *maybeCmd;
                     if (cont = HandleCommand(cmd); !cont) {
-                       break;
+                        break;
                     }
                 }
                 if (ShouldStop() && !ShutdownFlag) {
@@ -526,13 +523,19 @@ private:
         headers.SetClientId(Config.GetName());
         headers.SetSessionId(SessionId);
 
-        DUMP(Config);
-
         switch (Config.GetSpecsCase()) {
-            case NProto::TLoadTest::kReplaySpec:
-                // DUMP("repl", Config.GetReplaySpec().GetFileName());
-                RequestGenerator = CreateReplayRequestGenerator(
-                    Config.GetReplaySpec(),
+            case NProto::TLoadTest::kReplayFsSpec:
+                RequestGenerator = CreateReplayRequestGeneratorFs(
+                    Config.GetReplayFsSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
+
+            case NProto::TLoadTest::kReplayGrpcSpec:
+                RequestGenerator = CreateReplayRequestGeneratorGRPC(
+                    Config.GetReplayGrpcSpec(),
                     Logging,
                     Session,
                     FileSystemId,
@@ -574,11 +577,9 @@ private:
 
     bool SendNextRequest()
     {
-        if (LimitsReached() || 
-        //(MaxIoDepth && CurrentIoDepth >= MaxIoDepth) ||
+        if (LimitsReached() || (MaxIoDepth && CurrentIoDepth >= MaxIoDepth) ||
             !RequestGenerator->HasNextRequest() || ShouldStop())
         {
-            DUMP("nop");
             return false;
         }
 
@@ -678,7 +679,6 @@ private:
 
     void TeardownTest(TTeardown& cmd)
     {
-        DUMP("teardown", ShutdownFlag, CurrentIoDepth);
         if (ShutdownFlag) {
             if (cmd.Complete.Initialized()) {
                 cmd.Complete.SetValue(true);
@@ -688,11 +688,9 @@ private:
 
         STORAGE_INFO("%s tear down", MakeTestTag().c_str());
         while (CurrentIoDepth > 0) {
-            DUMP("td io", CurrentIoDepth);
             Sleep(TDuration::Seconds(1));
             ProcessCompletedRequests();
         }
-        DUMP("tdok");
         auto ctx = MakeIntrusive<TCallContext>();
 
         auto result = Session->DestroySession();
