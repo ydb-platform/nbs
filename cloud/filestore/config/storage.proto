@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
+import "cloud/storage/core/protos/config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
@@ -416,4 +417,7 @@ message TStorageConfig
     // automatically recover after various races that may happen during index
     // tablet startup due to bugs.
     optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
+
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 393;
 }
