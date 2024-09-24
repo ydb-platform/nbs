@@ -91,7 +91,7 @@ def start(argv):
     domain = kikimr_configurator.domains_txt.Domain[0].Name
 
     access_service_type = AccessService
-    if os.getenv("ACCESS_SERVICE_VERSION") == "new":
+    if os.getenv("ACCESS_SERVICE_TYPE") == "new":
         access_service_type = NewAccessService
     nfs_configurator = NfsServerConfigGenerator(
         binary_path=nfs_binary_path,

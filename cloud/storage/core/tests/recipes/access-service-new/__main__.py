@@ -50,7 +50,7 @@ def start(argv):
         cert_key_file=cert_key_file,
     )
     access_service.start()
-    set_env("ACCESS_SERVICE_VERSION", "new")
+    set_env("ACCESS_SERVICE_TYPE", "new")
     set_env("ACCESS_SERVICE_PORT", str(port))
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_port))
     set_env("ACCESS_SERVICE_PID", str(access_service.pid))
