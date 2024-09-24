@@ -57,16 +57,20 @@ class ClientError(RuntimeError):
         if self.code in [
             EResult.E_REJECTED.value,
             EResult.E_TIMEOUT.value,
+            EResult.E_FS_OUT_OF_SPACE.value,
         ]:
             return True
 
         facility = self.facility
 
-        if facility in [
-            EFacility.FACILITY_GRPC.value,
-            EFacility.FACILITY_SYSTEM.value,
-        ]:
-            # system/network errors should be retriable
+        if facility == EFacility.FACILITY_GRPC.value:
+            if self.code == EResult.E_GRPC_UNIMPLEMENTED.value:
+                return False
+            # network errors should be retriable
+            return True
+
+        if facility == EFacility.FACILITY_SYSTEM.value:
+            # system errors should be retriable
             return True
 
         if facility == EFacility.FACILITY_KIKIMR.value and self.status in [

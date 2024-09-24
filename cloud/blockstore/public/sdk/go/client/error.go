@@ -44,8 +44,14 @@ func (e *ClientError) IsRetriable() bool {
 	}
 
 	switch e.Facility() {
-	case FACILITY_GRPC, FACILITY_SYSTEM:
-		// system/network errors should be retriable
+	case FACILITY_GRPC:
+		if e.Code == E_GRPC_UNIMPLEMENTED {
+			return false
+		}
+		// network errors should be retriable
+		return true
+	case FACILITY_SYSTEM:
+		// system errors should be retriable
 		return true
 	case FACILITY_KIKIMR:
 		switch e.Status() {
@@ -57,6 +63,24 @@ func (e *ClientError) IsRetriable() bool {
 			7,  // NKikimrProto::NOTREADY
 			12, // NKikimrProto::DEADLINE
 			20: // NKikimrProto::NOT_YET
+			return true
+		}
+	case FACILITY_SCHEMESHARD:
+		switch e.Status() {
+		case
+			13, // NKikimrScheme::StatusNotAvailable
+			8:  // NKikimrScheme::StatusMultipleModifications
+			return true
+		}
+	case FACILITY_TXPROXY:
+		switch e.Status() {
+		case
+			16, // NKikimr::NTxProxy::TResultStatus::ProxyNotReady
+			20, // NKikimr::NTxProxy::TResultStatus::ProxyShardNotAvailable
+			21, // NKikimr::NTxProxy::TResultStatus::ProxyShardTryLater
+			22, // NKikimr::NTxProxy::TResultStatus::ProxyShardOverloaded
+			51, // NKikimr::NTxProxy::TResultStatus::ExecTimeout
+			55: // NKikimr::NTxProxy::TResultStatus::ExecResultUnavailable
 			return true
 		}
 	}

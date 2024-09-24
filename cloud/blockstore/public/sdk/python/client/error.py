@@ -65,11 +65,14 @@ class ClientError(RuntimeError):
 
         facility = self.facility
 
-        if facility in [
-            EFacility.FACILITY_GRPC.value,
-            EFacility.FACILITY_SYSTEM.value,
-        ]:
-            # system/network errors should be retriable
+        if facility == EFacility.FACILITY_GRPC.value:
+            if self.code == EResult.E_GRPC_UNIMPLEMENTED.value:
+                return False
+            # network errors should be retriable
+            return True
+
+        if facility == EFacility.FACILITY_SYSTEM.value:
+            # system errors should be retriable
             return True
 
         if facility == EFacility.FACILITY_KIKIMR.value and self.status in [
@@ -80,6 +83,22 @@ class ClientError(RuntimeError):
             7,  # NKikimrProto::NOTREADY
             12,  # NKikimrProto::DEADLINE
             20,  # NKikimrProto::NOT_YET
+        ]:
+            return True
+
+        if facility == EFacility.FACILITY_SCHEMESHARD.value and self.status in [
+            13,  # NKikimrScheme::StatusNotAvailable
+            8,   # NKikimrScheme::StatusMultipleModifications
+        ]:
+            return True
+
+        if facility == EFacility.FACILITY_TXPROXY.value and self.status in [
+            16,  # NKikimr::NTxProxy::TResultStatus::ProxyNotReady
+            20,  # NKikimr::NTxProxy::TResultStatus::ProxyShardNotAvailable
+            21,  # NKikimr::NTxProxy::TResultStatus::ProxyShardTryLater
+            22,  # NKikimr::NTxProxy::TResultStatus::ProxyShardOverloaded
+            51,  # NKikimr::NTxProxy::TResultStatus::ExecTimeout:
+            55,  # NKikimr::NTxProxy::TResultStatus::ExecResultUnavailable:
         ]:
             return True
 
