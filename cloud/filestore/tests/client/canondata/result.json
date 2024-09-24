@@ -11,6 +11,9 @@
     "test.test_describe_sessions": {
         "uri": "file://test.test_describe_sessions/results.txt"
     },
+    "test.test_large_file": {
+        "uri": "file://test.test_large_file/results.txt"
+    },
     "test.test_list_filestores": {
         "uri": "file://test.test_list_filestores/results.txt"
     },
