@@ -45,8 +45,7 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
-    TMaybe<TInFlightRequest> InFlightRequest;
-    TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
+    std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
@@ -144,7 +143,7 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
 
     // RequestType is set in order to properly record the request type
     RequestInfo->CallContext->RequestType = EFileStoreRequest::DescribeData;
-    InFlightRequest.ConstructInPlace(
+    InFlightRequest.emplace(
         TRequestInfo(
             RequestInfo->Sender,
             RequestInfo->Cookie,
@@ -295,17 +294,18 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
 
     RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadBlob;
     ui32 blobPieceId = 0;
-    InFlightBSRequests.reserve(RemainingBlobsToRead);
+
+    InFlightRequest.emplace(
+        TRequestInfo(
+            RequestInfo->Sender,
+            RequestInfo->Cookie,
+            RequestInfo->CallContext),
+        ProfileLog,
+        MediaKind,
+        RequestStats);
+    InFlightRequest->Start(ctx.Now());
+
     for (const auto& blobPiece: DescribeResponse.GetBlobPieces()) {
-        InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
-            TRequestInfo(
-                RequestInfo->Sender,
-                RequestInfo->Cookie,
-                RequestInfo->CallContext),
-            ProfileLog,
-            MediaKind,
-            RequestStats));
-        InFlightBSRequests.back()->Start(ctx.Now());
         NKikimr::TLogoBlobID blobId =
             LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
         LOG_DEBUG(
@@ -387,12 +387,6 @@ void TReadDataActor::HandleReadBlobResponse(
     TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
-    ui64 blobIdx = ev->Cookie;
-    TABLET_VERIFY(
-        blobIdx < InFlightBSRequests.size() && InFlightBSRequests[blobIdx] &&
-        !InFlightBSRequests[blobIdx]->IsCompleted());
-    InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
-
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
         TABLET_VERIFY(i < blobPiece.RangesSize());
 
@@ -467,6 +461,8 @@ void TReadDataActor::HandleReadBlobResponse(
 
     --RemainingBlobsToRead;
     if (RemainingBlobsToRead == 0) {
+        InFlightRequest->Complete(ctx.Now(), {});
+
         RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
         ReplyAndDie(ctx);
     }

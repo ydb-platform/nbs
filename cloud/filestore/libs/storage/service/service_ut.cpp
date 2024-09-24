@@ -2031,9 +2031,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             auto subgroup = counters->FindSubgroup("request", "ReadBlob");
             UNIT_ASSERT(subgroup);
-            // 1MB = 4 blobs of 256KB. Read is performed thrice
+            // Read is performed thrice
             UNIT_ASSERT_VALUES_EQUAL(
-                12,
+                3,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
     }

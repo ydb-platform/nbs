@@ -364,6 +364,7 @@ void TIndexTabletActor::HandleFlush(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AcquireCollectBarrier(commitId);
 
