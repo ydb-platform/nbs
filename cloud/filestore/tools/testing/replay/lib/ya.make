@@ -25,6 +25,7 @@ PEERDIR(
 
     library/cpp/eventlog
     cloud/filestore/libs/diagnostics/events
+    cloud/filestore/libs/service_local
     cloud/filestore/tools/analytics/libs/event-log
     library/cpp/testing/unittest
 

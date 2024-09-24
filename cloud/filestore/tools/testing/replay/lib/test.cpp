@@ -594,7 +594,9 @@ private:
             });
 
         if (RequestGenerator->InstantProcessQueue()) {
-            future.GetValueSync();
+            if (future.HasValue()) {
+                ProcessCompletedRequests();
+            }
         }
 
         return true;
