@@ -21,9 +21,10 @@ namespace NCloud::NFileStore::NLoadTest {
 
 struct TCompletedRequest
 {
-    NProto::EAction Action;
+    NProto::EAction Action{};
     TDuration Elapsed;
     NProto::TError Error;
+    bool Stop{};
 
     TCompletedRequest() = default;
 
@@ -31,6 +32,10 @@ struct TCompletedRequest
         : Action(action)
         , Elapsed(TInstant::Now() - start)
         , Error(std::move(error))
+    {}
+
+    TCompletedRequest(bool stop) noexcept
+        : Stop{stop}
     {}
 };
 
@@ -43,6 +48,16 @@ struct IRequestGenerator
     virtual bool HasNextRequest() = 0;
     virtual TInstant NextRequestAt() = 0;
     virtual NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() = 0;
+
+    virtual bool InstantProcessQueue()
+    {
+        return false;
+    }
+
+    virtual bool FailOnError()
+    {
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +71,20 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
 
 IRequestGeneratorPtr CreateDataRequestGenerator(
     NProto::TDataLoadSpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString filesystemId,
+    NProto::THeaders headers);
+
+IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
+    NProto::TReplaySpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString filesystemId,
+    NProto::THeaders headers);
+
+IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
+    NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,

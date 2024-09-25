@@ -532,6 +532,23 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kReplayFsSpec:
+                RequestGenerator = CreateReplayRequestGeneratorFs(
+                    Config.GetReplayFsSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
+
+            case NProto::TLoadTest::kReplayGrpcSpec:
+                RequestGenerator = CreateReplayRequestGeneratorGRPC(
+                    Config.GetReplayGrpcSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -576,13 +593,16 @@ private:
 
         ++CurrentIoDepth;
         auto self = weak_from_this();
-        RequestGenerator->ExecuteNextRequest().Apply(
-            [=] (const TFuture<TCompletedRequest>& future) {
+        const auto future = RequestGenerator->ExecuteNextRequest().Apply(
                 if (auto ptr = self.lock()) {
                     ptr->SignalCompletion(future.GetValue());
                 }
             });
-
+        if (RequestGenerator->InstantProcessQueue()) {
+            if (future.HasValue()) {
+                ProcessCompletedRequests();
+            }
+        }
         return true;
     }
 
@@ -608,12 +628,18 @@ private:
                     MakeTestTag().c_str(),
                     FormatError(request->Error).c_str());
 
-                TestStats.Success = false;
+                if (RequestGenerator->FailOnError()) {
+                    TestStats.Success = false;
+                }
             }
 
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
             stats.Hist.RecordValue(request->Elapsed);
+
+            if (request->Stop) {
+                TestStats.Success = false;
+            }
         }
     }
 

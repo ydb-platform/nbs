@@ -18,6 +18,8 @@ enum EAction
     ACTION_ACQUIRE_LOCK = 5;
     ACTION_RELEASE_LOCK = 6;
     ACTION_GET_NODE_ATTR = 7;
+    ACTION_ACCESS_NODE = 8;
+    ACTION_LIST_NODES = 9;
 
     // DATA
     ACTION_WRITE = 101;
@@ -54,6 +56,18 @@ message TDataLoadSpec
     repeated TAction Actions = 8;
 }
 
+message TReplaySpec
+{
+    string FileName = 1;
+    string ReplayRoot = 8; // not used in grpc
+    bool NoRead = 9;
+    bool NoWrite = 10;
+    bool Prepare = 11; // Only write files needed for reading
+    double TimeScale = 12;
+    bool WriteRandom = 13;
+    bool WriteEmpty = 14;
+    bool CreateOnRead = 15;
+}
 
 message TMigrationSpec
 {
@@ -78,6 +92,8 @@ message TLoadTest
     {
         TIndexLoadSpec IndexLoadSpec = 4;
         TDataLoadSpec DataLoadSpec = 5;
+        TReplaySpec ReplayFsSpec = 17;
+        TReplaySpec ReplayGrpcSpec = 18;
     }
 
     uint32 IODepth = 10;

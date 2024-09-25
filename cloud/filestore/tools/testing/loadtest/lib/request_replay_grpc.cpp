@@ -4,15 +4,13 @@ TODO:
 create file/dir modes
 create handle modes (now rw)
 compare log and actual result ( S_OK E_FS_NOENT ...)
-read/write with multiranges (now only first processed)
+
 */
 
 #include "request.h"
 
 #include "cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h"
 #include "cloud/filestore/tools/analytics/libs/event-log/dump.h"
-#include "dump.h"
-#include "library/cpp/aio/aio.h"
 #include "library/cpp/eventlog/iterator.h"
 #include "library/cpp/testing/unittest/registar.h"
 #include "util/folder/dirut.h"
@@ -21,7 +19,6 @@ read/write with multiranges (now only first processed)
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
-#include <cloud/filestore/libs/service_local/lowlevel.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -39,7 +36,7 @@ read/write with multiranges (now only first processed)
 
 #include <atomic>
 
-namespace NCloud::NFileStore::NReplay {
+namespace NCloud::NFileStore::NLoadTest {
 
 using namespace NThreading;
 using namespace NCloud::NFileStore::NClient;
@@ -48,9 +45,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReplayRequestGeneratorFs final
+class TReplayRequestGeneratorGRPC final
     : public IRequestGenerator
-    , public std::enable_shared_from_this<TReplayRequestGeneratorFs>
+    , public std::enable_shared_from_this<TReplayRequestGeneratorGRPC>
 {
 private:
     const NProto::TReplaySpec Spec;
@@ -69,6 +66,8 @@ private:
     using THandleLocal = ui64;
     using TNodeLog = ui64;
     using TNodeLocal = ui64;
+
+    ui64 InitialFileSize = 0;
 
     std::atomic<ui64> LastRequestId = 0;
 
@@ -104,14 +103,13 @@ private:
     THashMap<TNodeLog, TNode> KnownLogNodes;
 
     THashMap<THandleLog, THandleLocal> HandlesLogToActual;
-    THashMap<THandleLocal, TFile> OpenHandles;
+    // THashMap<THandleLocal, TFile> OpenHandles;
 
-    NAsyncIO::TAsyncIOService AsyncIO;
     ui64 TimestampMcs{};
     TInstant Started;
 
 public:
-    TReplayRequestGeneratorFs(
+    TReplayRequestGeneratorGRPC(
         NProto::TReplaySpec spec,
         ILoggingServicePtr logging,
         ISessionPtr session,
@@ -124,53 +122,19 @@ public:
     {
         Log = logging->CreateLog(Headers.GetClientId());
 
-        if (Spec.GetReplayRoot().empty()) {
-            ythrow yexception() << "ReplayRoot is not defined";
-        }
-
-        AsyncIO.Start();
-
         NEventLog::TOptions options;
         options.FileName = Spec.GetFileName();
         options.SetForceStrongOrdering(true);   // need this?
         EventlogIterator = CreateIterator(options);
-        TFsPath(Spec.GetReplayRoot()).MkDirs();
     }
 
-    ~TReplayRequestGeneratorFs()
-    {
-        AsyncIO.Stop();
-    }
-
-    template <typename T>
-    std::shared_ptr<T> CreateRequest()
-    {
-        auto request = std::make_shared<T>();
-        request->SetFileSystemId(FileSystemId);
-        request->MutableHeaders()->CopyFrom(Headers);
-
-        return request;
-    }
-
-    template <typename T>
-    void CheckResponse(const T& response)
-    {
-        if (HasError(response)) {
-            throw TServiceError(response.GetError());
-        }
-    }
-
-    TIntrusivePtr<TCallContext> CreateCallContext()
-    {
-        return MakeIntrusive<TCallContext>(
-            LastRequestId.fetch_add(1, std::memory_order_relaxed));
-    }
+    ~TReplayRequestGeneratorGRPC()
+    {}
 
     bool InstantProcessQueue() override
     {
         return true;
     }
-
     bool FailOnError() override
     {
         return false;
@@ -231,6 +195,11 @@ public:
         return !!EventPtr;
     }
 
+    TInstant NextRequestAt() override
+    {
+        return TInstant::Max();
+    }
+
     NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() override
     {
         if (!HasNextRequest()) {
@@ -245,6 +214,7 @@ public:
             for (; EventMessageNumber > 0;) {
                 auto request =
                     EventLogMessagePtr->GetRequests()[--EventMessageNumber];
+                STORAGE_DEBUG("message json=" << request.AsJSON());
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
@@ -270,8 +240,8 @@ public:
                     << EventMessageNumber
                     << " typename=" << request.GetTypeName()
                     << " type=" << request.GetRequestType() << " "
-                    << " name=" << RequestName(request.GetRequestType())
-                    << " json=" << request.AsJSON());
+                    << RequestName(request.GetRequestType()));
+
                 {
                     const auto& action = request.GetRequestType();
                     switch (static_cast<EFileStoreRequest>(action)) {
@@ -291,16 +261,13 @@ public:
                             return DoDestroyHandle(request);
                         case EFileStoreRequest::GetNodeAttr:
                             return DoGetNodeAttr(request);
-                        case EFileStoreRequest::AccessNode:
-                            return DoAccessNode(request);
-                        case EFileStoreRequest::ListNodes:
-                            return DoListNodes(request);
-
-                            // TODO:
                         case EFileStoreRequest::AcquireLock:
                             return DoAcquireLock();
                         case EFileStoreRequest::ReleaseLock:
                             return DoReleaseLock();
+
+                        case EFileStoreRequest::AccessNode:
+                            return DoAccessNode(request);
 
                         case EFileStoreRequest::ReadBlob:
                         case EFileStoreRequest::WriteBlob:
@@ -326,7 +293,8 @@ public:
 
 private:
     TFuture<TCompletedRequest> DoAccessNode(
-        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
+        [[maybe_unused]] const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& r)
     {
         // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
 
@@ -341,80 +309,10 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto node = NodeIdMapped(r.GetNodeInfo().GetNodeId());
-
-        if (!node) {
-            STORAGE_ERROR(
-                "access fail: " << " no node=" << r.GetNodeInfo().GetNodeId());
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_ACCESS_NODE,
-                started,
-                MakeError(E_FAIL, "cancelled")});
-        }
-
-        auto fname = Spec.GetReplayRoot() + "/" + PathByNode(node);
-        int res = access(fname.c_str(), R_OK);
-        STORAGE_DEBUG(
-            "access " << node << " <- " << r.GetNodeInfo().GetNodeId() << " = "
-                      << res);
-        return MakeFuture(
-            TCompletedRequest{NProto::ACTION_ACCESS_NODE, started, {}});
-    }
-
-    // Recursive, no infinity loop check
-    TNodeLocal CreateDirIfMissingByNodeLog(TNodeLog nodeIdLog)
-    {
-        if (const auto& nodeIdLocal = NodeIdMapped(nodeIdLog)) {
-            return nodeIdLocal;
-        }
-
-        const auto& it = KnownLogNodes.find(nodeIdLog);
-        if (it == KnownLogNodes.end()) {
-            return 0;
-        }
-        auto parent = NodeIdMapped(it->second.ParentLog);
-
-        if (!parent && it->second.ParentLog &&
-            nodeIdLog != it->second.ParentLog)
-        {
-            parent = CreateDirIfMissingByNodeLog(it->second.ParentLog);
-        }
-
-        {
-            auto parentPath = PathByNode(NodeIdMapped(it->second.ParentLog));
-            if (parentPath.empty() && parent) {
-                parentPath = PathByNode(parent);
-            }
-            if (parentPath.empty()) {
-                parentPath = "/__lost__/";
-            }
-            const auto name = parentPath +
-                              (it->second.Name.empty() ? ToString(nodeIdLog)
-                                                       : it->second.Name) +
-                              "/";
-            const auto nodeId =
-                MakeDirectoryRecursive(Spec.GetReplayRoot() + name);
-            NodePath[nodeId] = name;
-            NodesLogToLocal[nodeIdLog] = nodeId;
-
-            return nodeId;
-        }
-    }
-
-    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenModeFlag init = {})
-    {
-        auto systemflags = HandleFlagsToSystem(flags);
-        ui32 value{init};
-
-        if (systemflags & O_RDWR) {
-            value |= EOpenModeFlag::RdWr | EOpenModeFlag::OpenAlways;
-        } else if (systemflags & O_WRONLY) {
-            value |= EOpenModeFlag::WrOnly | EOpenModeFlag::OpenAlways;
-        } else if (systemflags & O_RDONLY) {
-            value |= EOpenModeFlag::RdOnly;
-        }
-
-        return static_cast<EOpenModeFlag>(value);
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_ACCESS_NODE,
+            started,
+            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
     }
 
     TFuture<TCompletedRequest> DoCreateHandle(
@@ -429,109 +327,91 @@ private:
         TGuard<TMutex> guard(StateLock);
         auto started = TInstant::Now();
 
-        TString relativePathName;
-        if (r.GetNodeInfo().GetNodeId()) {
-            if (auto path = PathByNode(r.GetNodeInfo().GetNodeId())) {
-                relativePathName = path;
-            }
+        auto request = CreateRequest<NProto::TCreateHandleRequest>();
+        auto name = r.GetNodeInfo().GetNodeName();
+
+        const auto node = NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
+        if (!node) {
+            return MakeFuture(TCompletedRequest{});
         }
+        request->SetNodeId(node);
+        request->SetName(r.GetNodeInfo().GetNodeName());
+        request->SetFlags(r.GetNodeInfo().GetFlags());
+        request->SetMode(r.GetNodeInfo().GetMode());
 
-        if (relativePathName.empty()) {
-            auto parentNode = NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
-            if (!parentNode) {
-                parentNode = NodeIdMapped(
-                    KnownLogNodes[r.GetNodeInfo().GetParentNodeId()].ParentLog);
-            }
+        auto self = weak_from_this();
+        return Session->CreateHandle(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TCreateHandleResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr
+                            ->HandleCreateHandle(future, name, started, r);
+                    }
 
-            if (!parentNode && r.GetNodeInfo().GetParentNodeId() !=
-                                   r.GetNodeInfo().GetNodeId())
-            {
-                parentNode = CreateDirIfMissingByNodeLog(
-                    r.GetNodeInfo().GetParentNodeId());
-            }
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_HANDLE,
+                        started,
+                        MakeError(E_FAIL, "cancelled")});
+                });
+    }
 
-            if (!parentNode) {
-                STORAGE_ERROR(
-                    "create handle fail :"
-                    << r.GetNodeInfo().GetHandle()
-                    << " no parent=" << r.GetNodeInfo().GetParentNodeId());
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_HANDLE,
-                    started,
-                    MakeError(E_FAIL, "cancelled")});
-            }
-
-            auto nodeName = r.GetNodeInfo().GetNodeName();
-            if (nodeName.empty() && r.GetNodeInfo().GetNodeId() !=
-                                        r.GetNodeInfo().GetParentNodeId())
-            {
-                nodeName = KnownLogNodes[r.GetNodeInfo().GetNodeId()].Name;
-            }
-            auto parentpath = PathByNode(parentNode);
-
-            if (nodeName.empty() && IsDir(Spec.GetReplayRoot() + parentpath)) {
-                nodeName =
-                    KnownLogNodes[r.GetNodeInfo().GetParentNodeId()].Name;
-            }
-
-            relativePathName = parentpath + nodeName;
-        }
-        STORAGE_DEBUG(
-            "open " << relativePathName
-                    << " handle=" << r.GetNodeInfo().GetHandle()
-                    << " flags=" << r.GetNodeInfo().GetFlags() << " "
-                    << HandleFlagsToString(r.GetNodeInfo().GetFlags())
-                    << " mode=" << r.GetNodeInfo().GetMode()
-                    << " node=" << r.GetNodeInfo().GetNodeId());
-
+    TFuture<TCompletedRequest> HandleCreateHandle(
+        const TFuture<NProto::TCreateHandleResponse>& future,
+        const TString& name,
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
+    {
         try {
-            TFile fileHandle(
-                Spec.GetReplayRoot() + relativePathName,
-                // OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr)
-                FileOpenFlags(
-                    r.GetNodeInfo().GetFlags(),
-                    Spec.GetNoWrite()        ? OpenExisting
-                    : Spec.GetCreateOnRead() ? OpenAlways
-                                             : OpenExisting));
+            auto response = future.GetValue();
+            CheckResponse(response);
 
-            if (!fileHandle.IsOpen()) {
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_HANDLE,
-                    started,
-                    MakeError(E_FAIL, "fail")});
-            }
-            const auto fh = fileHandle.GetHandle();
-            if (!fh) {
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_HANDLE,
-                    started,
-                    MakeError(E_FAIL, "no filehandle")});
+            auto handle = response.GetHandle();
+            with_lock (StateLock) {
+                HandlesLogToActual[r.GetNodeInfo().GetHandle()] = handle;
             }
 
-            OpenHandles[fh] = std::move(fileHandle);
-            HandlesLogToActual[r.GetNodeInfo().GetHandle()] = fh;
-            const auto inode =
-                TFileStat{Spec.GetReplayRoot() + relativePathName}.INode;
-            if (r.GetNodeInfo().GetNodeId()) {
-                NodesLogToLocal[r.GetNodeInfo().GetNodeId()] = inode;
+            NThreading::TFuture<NProto::TSetNodeAttrResponse> setAttr;
+            if (InitialFileSize) {
+                static const int flags =
+                    ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
 
-                NodePath[inode] = relativePathName;
+                auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
+                request->SetHandle(handle);
+                request->SetNodeId(response.GetNodeAttr().GetId());
+                request->SetFlags(flags);
+                request->MutableUpdate()->SetSize(InitialFileSize);
+
+                setAttr = Session->SetNodeAttr(
+                    CreateCallContext(),
+                    std::move(request));
+            } else {
+                setAttr =
+                    NThreading::MakeFuture(NProto::TSetNodeAttrResponse());
             }
-            STORAGE_DEBUG(
-                "open " << fh << "<-" << r.GetNodeInfo().GetHandle()
-                        << " inode=" << inode
-                        << " known handles=" << HandlesLogToActual.size()
-                        << " opened=" << OpenHandles.size());
-        } catch (const TFileError& error) {
-            return MakeFuture(TCompletedRequest{
+
+            return setAttr.Apply(
+                [=]([[maybe_unused]] const TFuture<
+                    NProto::TSetNodeAttrResponse>& f)
+                {
+                    return MakeFuture(TCompletedRequest{});
+                    // return HandleResizeAfterCreateHandle(f, name, started);
+                });
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "create handle for %s has failed: %s",
+                name.Quote().c_str(),
+                FormatError(error).c_str());
+
+            return NThreading::MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,
                 started,
-                MakeError(E_FAIL, error.what())});
+                error});
         }
-
-        return MakeFuture(
-            TCompletedRequest{NProto::ACTION_CREATE_HANDLE, started, {}});
     }
+
     static constexpr ui32 BlockSize = 4_KB;
     static std::shared_ptr<char> Acalloc(ui64 dataSize)
     {
@@ -558,40 +438,57 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto handle = HandleIdMapped(r.GetRanges(0).GetHandle());
+        auto request = CreateRequest<NProto::TReadDataRequest>();
+        const auto handle = HandleIdMapped(r.GetNodeInfo().GetHandle());
         if (!handle) {
-            STORAGE_WARN(
-                "read: no handle "
-                << r.GetRanges(0).GetHandle()
-                << " ranges size=" << r.GetRanges().size()
-                << " map size=" << HandlesLogToActual.size());
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_READ,
-                started,
-                MakeError(E_FAIL, "cancelled")});
+            return MakeFuture(TCompletedRequest{});
         }
-        auto& fh = OpenHandles[handle];
-        STORAGE_DEBUG(
-            "Read from " << handle << " fh.len=" << fh.GetLength()
-                         << " fh.pos=" << fh.GetPosition());
-        auto buffer = Acalloc(r.GetRanges().cbegin()->GetBytes());
+        request->SetHandle(handle);
+        request->SetOffset(r.GetRanges().cbegin()->GetOffset());
+        request->SetLength(r.GetRanges().cbegin()->GetBytes());
 
-        fh.Reserve(
-            r.GetRanges().cbegin()->GetOffset() +
-            r.GetRanges().cbegin()->GetBytes());
+        auto self = weak_from_this();
+        return Session->ReadData(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TReadDataResponse>& future)
+                {
+                    return TCompletedRequest{
+                        NProto::ACTION_READ,
+                        started,
+                        future.GetValue().GetError()};
+                    /*
+                                        if (auto ptr = self.lock()) {
+                                            return ptr->HandleRead(
+                                                future,
+                                                handleInfo,
+                                                started,
+                                                byteOffset);
+                                        }
+                    */
+                    return TCompletedRequest{
+                        NProto::ACTION_READ,
+                        started,
+                        MakeError(E_FAIL, "cancelled")};
+                });
+    }
 
-        TFileHandle FileHandle{fh.GetHandle()};
+    TCompletedRequest HandleRead(
+        const TFuture<NProto::TReadDataResponse>& future,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
+            return {NProto::ACTION_READ, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "read for %s has failed: ",
+                // handleInfo.Name.Quote().c_str(),
+                FormatError(error).c_str());
 
-        const auto future = AsyncIO.Read(
-            FileHandle,
-            {},
-            r.GetRanges().cbegin()->GetBytes(),
-            r.GetRanges().cbegin()->GetOffset());
-        FileHandle.Release();
-
-        return future.Apply(
-            [started]([[maybe_unused]] const auto& future) mutable
-            { return TCompletedRequest(NProto::ACTION_READ, started, {}); });
+            return {NProto::ACTION_READ, started, error};
+        }
     }
 
     TString MakeBuffer(ui64 bytes, ui64 offset = 0, const TString& start = {})
@@ -618,52 +515,55 @@ private:
         }
         TGuard<TMutex> guard(StateLock);
 
-        const auto logHandle = r.GetRanges(0).GetHandle();
-        const auto handle = HandleIdMapped(logHandle);
+        auto request = CreateRequest<NProto::TWriteDataRequest>();
+        const auto handle = HandleIdMapped(r.GetRanges(0).GetHandle());
+
         if (!handle) {
-            return MakeFuture(TCompletedRequest(
-                NProto::ACTION_WRITE,
-                started,
-                MakeError(
-                    E_CANCELLED,
-                    TStringBuilder{} << "write cancelled: no handle ="
-                                     << logHandle)));   // todo
+            return MakeFuture(TCompletedRequest{});
         }
-        const auto bytes = r.GetRanges(0).GetBytes();
-        const auto offset = r.GetRanges(0).GetOffset();
+        request->SetHandle(handle);
 
-        TString buffer;
+        request->SetOffset(r.GetRanges(0).GetOffset());
+        auto bytes = r.GetRanges(0).GetBytes();
+        auto buffer = NUnitTest::RandomString(bytes);
 
-        if (Spec.GetWriteRandom()) {
-            buffer = NUnitTest::RandomString(bytes, logHandle);
-        } else if (Spec.GetWriteEmpty()) {
-            buffer = TString{bytes, ' '};
-        } else {
-            buffer = MakeBuffer(
-                bytes,
-                offset,
-                TStringBuilder{} << "handle=" << logHandle
-                                 << " node=" << r.GetNodeInfo().GetNodeId()
-                                 << " bytes=" << bytes << " offset=" << offset);
+        *request->MutableBuffer() = std::move(buffer);
+
+        auto self = weak_from_this();
+        return Session->WriteData(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TWriteDataResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleWrite(future, started);
+                    }
+
+                    return TCompletedRequest{
+                        NProto::ACTION_WRITE,
+                        started,
+                        MakeError(E_FAIL, "cancelled")};
+                });
+    }
+
+    TCompletedRequest HandleWrite(
+        const TFuture<NProto::TWriteDataResponse>& future,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
+
+            return {NProto::ACTION_WRITE, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            /*
+                        STORAGE_ERROR(
+                            "write on %s has failed: %s",
+                            handleInfo.Name.Quote().c_str(),
+                            FormatError(error).c_str());
+            */
+            return {NProto::ACTION_WRITE, started, error};
         }
-
-        auto& fh = OpenHandles[handle];
-
-        STORAGE_DEBUG(
-            "Write to " << handle << " fh.length=" << fh.GetLength()
-                        << " fh.pos=" << fh.GetPosition());
-        // TODO TEST USE AFTER FREE on buffer
-        TFileHandle FileHandle{fh.GetHandle()};
-        const auto writeFuture = AsyncIO.Write(
-            // fh,
-            FileHandle,
-            buffer.data(),
-            bytes,
-            offset);
-        FileHandle.Release();
-        return writeFuture.Apply(
-            [started]([[maybe_unused]] const auto& future) mutable
-            { return TCompletedRequest(NProto::ACTION_WRITE, started, {}); });
     }
 
     TString PathByNode(TNodeLocal nodeid)
@@ -698,67 +598,93 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        auto parentNode = NodeIdMapped(r.GetNodeInfo().GetNewParentNodeId());
+        auto request = CreateRequest<NProto::TCreateNodeRequest>();
 
-        parentNode =
-            CreateDirIfMissingByNodeLog(r.GetNodeInfo().GetNewParentNodeId());
+        const auto parentNode =
+            NodeIdMapped(r.GetNodeInfo().GetNewParentNodeId());
+        if (!parentNode) {
+            return MakeFuture(TCompletedRequest{});
+        }
+        request->SetNodeId(parentNode);
+        auto name = r.GetNodeInfo().GetNewNodeName();
+        request->SetName(r.GetNodeInfo().GetNewNodeName());
 
-        auto fullName = Spec.GetReplayRoot() + "/" + PathByNode(parentNode) +
-                        r.GetNodeInfo().GetNewNodeName();
+        // request->SetGid();
+        // request->SetUid();
 
-        ui64 nodeid = 0;
-        bool isDir = false;
         switch (r.GetNodeInfo().GetType()) {
-            case NProto::E_REGULAR_NODE: {
-                // TODO: transform r.GetNodeInfo().GetMode() to correct open
-                // mode
-                TFileHandle fh(
-                    fullName,
-                    OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr));
-                fh.Reserve(r.GetNodeInfo().GetSize());
-                if (fh) {
-                    nodeid = TFileStat{fh}.INode;
-                } else {
-                    nodeid = TFileStat{fullName}.INode;
-                }
-            } break;
-            case NProto::E_DIRECTORY_NODE: {
-                isDir = true;
-                nodeid = MakeDirectoryRecursive(fullName);
-            } break;
+            case NProto::E_REGULAR_NODE:
+                request->MutableFile()->SetMode(r.GetNodeInfo().GetMode());
+                break;
+            case NProto::E_DIRECTORY_NODE:
+                request->MutableDirectory()->SetMode(r.GetNodeInfo().GetMode());
+                break;
             case NProto::E_LINK_NODE:
-                // TODO: NFs::HardLink(const TString &existingPath, const
-                // TString &newPath) NFs::SymLink(const TString &targetPath,
-                // const TString &linkPath)
+                // TODO:
+                //  request->MutableLink()->SetTargetNode(r.GetNodeInfo().Get...);
+                //  request->MutableLink()->SetFollowerNodeName(r.GetNodeInfo().Get...);
+                return MakeFuture(TCompletedRequest{});
+                break;
+            case NProto::E_SYMLINK_NODE:
+                // TODO:
+                //  request->MutableSymlink()->SetTargetPath();
                 break;
             case NProto::E_SOCK_NODE:
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_NODE,
-                    started,
-                    MakeError(E_NOT_IMPLEMENTED, "not implemented")});
-
+                request->MutableSocket()->SetMode(r.GetNodeInfo().GetMode());
+                break;
             case NProto::E_INVALID_NODE:
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_NODE,
-                    started,
-                    MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+                return MakeFuture(
+                    TCompletedRequest(NProto::ACTION_CREATE_NODE, started, {}));
+                // Do not create files with invalid
+                // type - too hard to delete them
+                break;
         }
+        Cerr << "createnoderec" << *request << "\n";
+        auto self = weak_from_this();
+        return Session->CreateNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TCreateNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleCreateNode(future, name, started, r);
+                    }
 
-        if (!nodeid) {
-            nodeid = TFileStat{fullName}.INode;
-        }
-
-        // CreateIfMissing(PathByNode())
-        if (nodeid) {
-            NodesLogToLocal[r.GetNodeInfo().GetNodeId()] = nodeid;
-            NodePath[nodeid] = PathByNode(parentNode) +
-                               r.GetNodeInfo().GetNewNodeName() +
-                               (isDir ? "/" : "");
-        }
-
-        return MakeFuture(
-            TCompletedRequest(NProto::ACTION_CREATE_NODE, started, {}));
+                    return TCompletedRequest{
+                        NProto::ACTION_CREATE_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
+
+    TCompletedRequest HandleCreateNode(
+        const TFuture<NProto::TCreateNodeResponse>& future,
+        const TString& name,
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
+    {
+        TGuard<TMutex> guard(StateLock);
+
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
+            // Nodes[name] = TNode{name, response.GetNode()};
+            if (response.GetNode().GetId()) {
+                NodesLogToLocal[r.GetNodeInfo().GetNodeId()] =
+                    response.GetNode().GetId();
+            }
+
+            return {NProto::ACTION_CREATE_NODE, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "create node %s has failed: %s",
+                name.c_str(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_CREATE_NODE, started, error};
+        }
+    }
+
     TFuture<TCompletedRequest> DoRenameNode(
         // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
         // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
@@ -777,34 +703,61 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto parentnodeid =
-            NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
+        auto request = CreateRequest<NProto::TRenameNodeRequest>();
+        const auto node = NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
+        if (!node) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_RENAME_NODE,
+                started,
+                MakeError(
+                    E_FAIL,
+                    TStringBuilder{} << "Log node "
+                                     << r.GetNodeInfo().GetParentNodeId()
+                                     << "not found in mappiong")});
+        }
+        request->SetNodeId(node);
+        request->SetName(r.GetNodeInfo().GetNodeName());
+        request->SetNewParentId(
+            NodeIdMapped(r.GetNodeInfo().GetNewParentNodeId()));
+        request->SetNewName(r.GetNodeInfo().GetNewNodeName());
+        request->SetFlags(r.GetNodeInfo().GetFlags());
 
-        auto fullName = Spec.GetReplayRoot() + PathByNode(parentnodeid) +
-                        r.GetNodeInfo().GetNodeName();
+        auto self = weak_from_this();
+        return Session->RenameNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=
 
-        const auto newparentnodeid =
-            NodeIdMapped(r.GetNodeInfo().GetNewParentNodeId());
+        ](const TFuture<NProto::TRenameNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleRenameNode(future, started, r);
+                    }
 
-        auto newFullName = Spec.GetReplayRoot() + PathByNode(newparentnodeid) +
-                           r.GetNodeInfo().GetNewNodeName();
+                    return TCompletedRequest{
+                        NProto::ACTION_RENAME_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
+    }
 
-        DUMP("prerename", NFs::Exists(fullName), NFs::Exists(newFullName));
-
-        const auto renameres = NFs::Rename(fullName, newFullName);
-        DUMP(LastSystemError(), LastSystemErrorText(LastSystemError()));
-
-        DUMP("pstrename", NFs::Exists(fullName), NFs::Exists(newFullName));
-
-        STORAGE_DEBUG(
-            "rename " << fullName << " => " << newFullName << " : " << renameres
-                      << (renameres
-                              ? (TStringBuilder{}
-                                 << " errno=" << LastSystemError() << " err="
-                                 << LastSystemErrorText(LastSystemError()))
-                              : TStringBuilder{}));
-        return MakeFuture(
-            TCompletedRequest{NProto::ACTION_RENAME_NODE, started, {}});
+    TCompletedRequest HandleRenameNode(
+        const TFuture<NProto::TRenameNodeResponse>& future,
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
+    {
+        TGuard<TMutex> guard(StateLock);
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
+            return {NProto::ACTION_RENAME_NODE, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "rename node %s has failed: %s",
+                r.GetNodeInfo().GetNodeName().c_str(),
+                FormatError(error).c_str());
+            return {NProto::ACTION_RENAME_NODE, started, error};
+        }
     }
 
     TFuture<TCompletedRequest> DoUnlinkNode(
@@ -823,29 +776,51 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto parentNodeId =
-            NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
-        if (!parentNodeId) {
-            STORAGE_WARN(
-                "unlink : no parent orig="
-                << r.GetNodeInfo().GetParentNodeId());
-            return MakeFuture(TCompletedRequest(
-                NProto::ACTION_REMOVE_NODE,
-                started,
-                MakeError(E_CANCELLED, "cancelled")));
+        auto name = r.GetNodeInfo().GetNodeName();
+        auto request = CreateRequest<NProto::TUnlinkNodeRequest>();
+        request->SetName(name);
+        const auto node = NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
+        if (!node) {
+            return MakeFuture(TCompletedRequest{});
         }
-        const auto fullName = Spec.GetReplayRoot() + "/" +
-                              PathByNode(parentNodeId) +
-                              r.GetNodeInfo().GetNodeName();
-        const auto unlinkres = NFs::Remove(fullName);
-        STORAGE_DEBUG("unlink " << fullName << " = " << unlinkres);
-        // TODO :
-        // NodesLogToActual.erase(...)
-        // NodePath.erase(...)
-        return MakeFuture(
-            TCompletedRequest(NProto::ACTION_REMOVE_NODE, started, {}));
+        request->SetNodeId(node);
+        auto self = weak_from_this();
+        return Session->UnlinkNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TUnlinkNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleUnlinkNode(future, name, started);
+                    }
+
+                    return TCompletedRequest{
+                        NProto::ACTION_REMOVE_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
+    TCompletedRequest HandleUnlinkNode(
+        const TFuture<NProto::TUnlinkNodeResponse>& future,
+        const TString& name,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
+
+            return {NProto::ACTION_REMOVE_NODE, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "unlink for %s has failed: %s",
+                name.c_str(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_REMOVE_NODE, started, error};
+        }
+    }
     TFuture<TCompletedRequest> DoDestroyHandle(
         NCloud::NFileStore::NProto::TProfileLogRequestInfo r)
     {
@@ -854,34 +829,34 @@ private:
         TGuard<TMutex> guard(StateLock);
         auto started = TInstant::Now();
 
-        const auto handleid = HandleIdMapped(r.GetNodeInfo().GetHandle());
+        auto name = r.GetNodeInfo().GetNodeName();
 
-        const auto& it = OpenHandles.find(handleid);
-        if (it == OpenHandles.end()) {
-            return MakeFuture(TCompletedRequest(
-                NProto::ACTION_DESTROY_HANDLE,
-                started,
-                MakeError(
-                    E_CANCELLED,
-                    TStringBuilder{} << "close " << handleid << " <- "
-                                     << r.GetNodeInfo().GetHandle()
-                                     << " fail: not found in "
-                                     << OpenHandles.size())));
+        auto request = CreateRequest<NProto::TDestroyHandleRequest>();
+
+        const auto handle = HandleIdMapped(r.GetNodeInfo().GetHandle());
+        if (!handle) {
+            return MakeFuture(TCompletedRequest{});
         }
 
-        auto& fhandle = it->second;
-        const auto len = fhandle.GetLength();
-        const auto pos = fhandle.GetPosition();
-        fhandle.Close();
-        OpenHandles.erase(handleid);
-        HandlesLogToActual.erase(r.GetNodeInfo().GetHandle());
-        STORAGE_DEBUG(
-            "Close " << handleid << " <- " << r.GetNodeInfo().GetHandle()
-                     << " pos=" << pos << " len=" << len
-                     << " open map size=" << OpenHandles.size()
-                     << " map size=" << HandlesLogToActual.size());
-        return MakeFuture(
-            TCompletedRequest(NProto::ACTION_DESTROY_HANDLE, started, {}));
+        HandlesLogToActual.erase(handle);
+
+        request->SetHandle(handle);
+
+        auto self = weak_from_this();
+        return Session->DestroyHandle(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TDestroyHandleResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleDestroyHandle(name, future, started);
+                    }
+
+                    return TCompletedRequest{
+                        NProto::ACTION_DESTROY_HANDLE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TFuture<TCompletedRequest> DoGetNodeAttr(
@@ -904,32 +879,74 @@ private:
         // nfs     GetNodeAttr     0.006847s       S_OK    {parent_node_id=1,
         // node_name=freeminer, flags=0, mode=509, node_id=2, handle=0, size=0}
 
-        if (r.GetNodeInfo().GetNodeName()) {
-            KnownLogNodes[r.GetNodeInfo().GetNodeId()].Name =
-                r.GetNodeInfo().GetNodeName();
+        auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
+        const auto node = NodeIdMapped(r.GetNodeInfo().GetParentNodeId());
+        if (!node) {
+            return MakeFuture(TCompletedRequest{});
         }
-        if (r.GetNodeInfo().GetParentNodeId() &&
-            r.GetNodeInfo().GetParentNodeId() != r.GetNodeInfo().GetNodeId())
-        {
-            KnownLogNodes[r.GetNodeInfo().GetNodeId()].ParentLog =
-                r.GetNodeInfo().GetParentNodeId();
+        request->SetNodeId(node);
+        auto name = r.GetNodeInfo().GetNodeName();
+        request->SetName(r.GetNodeInfo().GetNodeName());
+        request->SetFlags(r.GetNodeInfo().GetFlags());
+        auto self = weak_from_this();
+        STORAGE_DEBUG("GetNodeAttr client started");
+        return Session->GetNodeAttr(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TGetNodeAttrResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleGetNodeAttr(name, future, started);
+                    }
+
+                    return TCompletedRequest{
+                        NProto::ACTION_GET_NODE_ATTR,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
+    }
+
+    TCompletedRequest HandleGetNodeAttr(
+        const TString& name,
+        const TFuture<NProto::TGetNodeAttrResponse>& future,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            STORAGE_DEBUG("GetNodeAttr client completed");
+            CheckResponse(response);
+            TGuard<TMutex> guard(StateLock);
+            return {NProto::ACTION_GET_NODE_ATTR, started, {}};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "get node attr %s has failed: %s",
+                name.c_str(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_GET_NODE_ATTR, started, {}};
         }
+    }
 
-        // TODO: can create and truncate to size here missing files
+    TCompletedRequest HandleDestroyHandle(
+        const TString& name,
+        const TFuture<NProto::TDestroyHandleResponse>& future,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            CheckResponse(response);
 
-        const auto nodeid = NodeIdMapped(r.GetNodeInfo().GetNodeId());
+            return {NProto::ACTION_DESTROY_HANDLE, started, {}};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "destroy handle %s has failed: %s",
+                name.c_str(),
+                FormatError(error).c_str());
 
-        if (!nodeid) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_GET_NODE_ATTR,
-                started,
-                MakeError(E_CANCELLED, "cancelled")});
+            return {NProto::ACTION_DESTROY_HANDLE, started, error};
         }
-
-        auto fname = Spec.GetReplayRoot() + "/" + PathByNode(nodeid);
-        [[maybe_unused]] const auto stat = TFileStat{fname};
-        return MakeFuture(
-            TCompletedRequest(NProto::ACTION_GET_NODE_ATTR, started, {}));
     }
 
     TFuture<TCompletedRequest> DoAcquireLock()
@@ -1072,47 +1089,28 @@ private:
         }
     }
 
-    TFuture<TCompletedRequest> DoListNodes(
-        NCloud::NFileStore::NProto::TProfileLogRequestInfo& r)
+    template <typename T>
+    std::shared_ptr<T> CreateRequest()
     {
-        // json={"TimestampMcs":1726615510721016,"DurationMcs":3329,"RequestType":30,"ErrorCode":0,"NodeInfo":{"NodeId":164,"Size":10}}
+        auto request = std::make_shared<T>();
+        request->SetFileSystemId(FileSystemId);
+        request->MutableHeaders()->CopyFrom(Headers);
 
-        auto started = TInstant::Now();
-        TGuard<TMutex> guard(StateLock);
+        return request;
+    }
 
-        const auto nodeid = NodeIdMapped(r.GetNodeInfo().GetNodeId());
-        if (!nodeid) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_LIST_NODES,
-                started,
-                MakeError(
-                    E_CANCELLED,
-                    TStringBuilder{} << "Node not found in mapping"
-                                     << nodeid)});
+    template <typename T>
+    void CheckResponse(const T& response)
+    {
+        if (HasError(response)) {
+            throw TServiceError(response.GetError());
         }
+    }
 
-        // if (!Spec.GetNoWrite()) {
-        //    CreateDirIfMissingByNodeLog(r.GetNodeInfo().GetNodeId());
-        // }
-
-        auto path = Spec.GetReplayRoot() + "/" + PathByNode(nodeid);
-        TFileHandle dir{path, RdOnly};
-        if (!dir.IsOpen()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_LIST_NODES,
-                started,
-                MakeError(E_CANCELLED, "cancelled")});
-        }
-        const auto dirs = NLowLevel::ListDirAt(dir, true);
-        if (r.GetNodeInfo().GetSize() != dirs.size()) {
-            STORAGE_DEBUG(
-                "Dir size differs " << path
-                                    << " log=" << r.GetNodeInfo().GetSize()
-                                    << " local=" << dirs.size());
-        }
-
-        return MakeFuture(
-            TCompletedRequest(NProto::ACTION_LIST_NODES, started, {}));
+    TIntrusivePtr<TCallContext> CreateCallContext()
+    {
+        return MakeIntrusive<TCallContext>(
+            LastRequestId.fetch_add(1, std::memory_order_relaxed));
     }
 };
 
@@ -1120,14 +1118,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
+IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers)
 {
-    return std::make_shared<TReplayRequestGeneratorFs>(
+    return std::make_shared<TReplayRequestGeneratorGRPC>(
         std::move(spec),
         std::move(logging),
         std::move(session),
@@ -1135,4 +1133,4 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
         std::move(headers));
 }
 
-}   // namespace NCloud::NFileStore::NReplay
+}   // namespace NCloud::NFileStore::NLoadTest

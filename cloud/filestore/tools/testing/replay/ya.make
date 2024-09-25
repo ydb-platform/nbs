@@ -1,5 +1,0 @@
-RECURSE(
-    bin
-    lib
-    protos
-)
