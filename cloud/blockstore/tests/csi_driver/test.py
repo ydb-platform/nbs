@@ -187,6 +187,13 @@ class NbsCsiDriverRunner:
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
 
+    def stage_volume(self, volume_id: str):
+        return self._node_run(
+            "stagevolume",
+            "--volume-id",
+            volume_id,
+        )
+
     def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
         return self._node_run(
             "publishvolume",
@@ -260,6 +267,7 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
         result = run(
             "destroyvolume",
@@ -303,6 +311,7 @@ def test_nbs_csi_driver_volume_stat():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
         stats1 = env.csi.volumestats(pod_id, volume_name)
 
@@ -404,6 +413,7 @@ def test_node_volume_expand():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
 
         new_volume_size = 2 * volume_size
