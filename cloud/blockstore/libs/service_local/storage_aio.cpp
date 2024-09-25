@@ -1,5 +1,7 @@
 #include "storage_aio.h"
 
+#include "file_io_service_provider.h"
+
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -882,7 +884,7 @@ private:
         const NProto::TError& error,
         ui32 bytes)
     {
-        auto checker = static_cast<TSafeDeallocator*>(completion);
+        auto* checker = static_cast<TSafeDeallocator*>(completion);
         checker->ReadBlockComplete(error, bytes);
     }
 };
@@ -916,18 +918,18 @@ class TAioStorageProvider final
 {
 private:
     ITaskQueuePtr SubmitQueue;
-    IFileIOServicePtr FileIOService;
+    IFileIOServiceProviderPtr FileIOServiceProvider;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
 
 public:
     explicit TAioStorageProvider(
             ITaskQueuePtr submitQueue,
-            IFileIOServicePtr fileIO,
+            IFileIOServiceProviderPtr fileIOProvider,
             INvmeManagerPtr nvmeManager,
             bool directIO)
         : SubmitQueue(std::move(submitQueue))
-        , FileIOService(std::move(fileIO))
+        , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
     {}
@@ -957,7 +959,7 @@ public:
 
         auto storage = std::make_shared<TAioStorage>(
             SubmitQueue,
-            FileIOService,
+            FileIOServiceProvider->CreateFileIOService(filePath),
             NvmeManager,
             blockSize,
             volume.GetStartIndex(),
@@ -974,7 +976,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageProviderPtr CreateAioStorageProvider(
-    IFileIOServicePtr fileIO,
+    IFileIOServiceProviderPtr fileIOProvider,
     INvmeManagerPtr nvmeManager,
     bool directIO,
     EAioSubmitQueueOpt submitQueueOpt)
@@ -986,7 +988,7 @@ IStorageProviderPtr CreateAioStorageProvider(
 
     return std::make_shared<TAioStorageProvider>(
         std::move(submitQueue),
-        std::move(fileIO),
+        std::move(fileIOProvider),
         std::move(nvmeManager),
         directIO);
 }

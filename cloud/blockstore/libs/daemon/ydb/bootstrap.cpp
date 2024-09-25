@@ -32,6 +32,7 @@
 #include <cloud/blockstore/libs/service/service_auth.h>
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -433,23 +434,30 @@ void TBootstrapYdb::InitKikimrService()
 
     InitSpdk();
 
-    FileIOService = CreateAIOService();
-
-    if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
+    if (const auto& config = *Configs->DiskAgentConfig;
+        config.GetEnabled() &&
+        config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
         !AioStorageProvider)
     {
-        Y_ABORT_UNLESS(FileIOService);
-
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
+        auto factory = [events = config.GetMaxAIOContextEvents()] {
+            return CreateAIOService(events);
+        };
+
+        FileIOServiceProvider =
+            config.GetFilePathsPerIOServiceCount()
+                ? CreateFileIOServiceProvider(
+                      config.GetFilePathsPerIOServiceCount(),
+                      factory)
+                : CreateFileIOServiceProviderStub(factory());
+
         AioStorageProvider = CreateAioStorageProvider(
-            FileIOService,
+            FileIOServiceProvider,
             NvmeManager,
-            !Configs->DiskAgentConfig->GetDirectIoFlagDisabled(),
-            EAioSubmitQueueOpt::DontUse
-        );
+            !config.GetDirectIoFlagDisabled(),
+            EAioSubmitQueueOpt::DontUse);
 
         STORAGE_INFO("AioStorageProvider initialized");
     }
@@ -464,8 +472,6 @@ void TBootstrapYdb::InitKikimrService()
 
         STORAGE_INFO("AioStorageProvider (null) initialized");
     }
-
-    Y_ABORT_UNLESS(FileIOService);
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),
@@ -534,7 +540,6 @@ void TBootstrapYdb::InitKikimrService()
     args.DiscoveryService = DiscoveryService;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.FileIOService = FileIOService;
     args.AioStorageProvider = AioStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;

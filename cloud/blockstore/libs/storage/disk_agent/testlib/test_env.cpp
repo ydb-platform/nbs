@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -655,7 +656,7 @@ IStorageProviderPtr CreateTestStorageProvider(
 {
     return std::make_shared<TTestStorageProvider>(
         NServer::CreateAioStorageProvider(
-            std::move(fileIO),
+            NServer::CreateFileIOServiceProviderStub(std::move(fileIO)),
             std::move(nvmeManager),
             false,  // directIO
             NServer::EAioSubmitQueueOpt::DontUse

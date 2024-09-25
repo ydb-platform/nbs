@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
@@ -430,13 +431,22 @@ bool TBootstrap::InitKikimrService()
                 break;
             }
 
-            case NProto::DISK_AGENT_BACKEND_AIO:
-                FileIOService =
-                    CreateAIOService(config.GetMaxAIOContextEvents());
+            case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
+                auto factory = [events = config.GetMaxAIOContextEvents()] {
+                    return CreateAIOService(events);
+                };
+
+                FileIOServiceProvider =
+                    config.GetFilePathsPerIOServiceCount()
+                        ? CreateFileIOServiceProvider(
+                              config.GetFilePathsPerIOServiceCount(),
+                              factory)
+                        : CreateFileIOServiceProviderStub(factory());
+
                 AioStorageProvider = CreateAioStorageProvider(
-                    FileIOService,
+                    FileIOServiceProvider,
                     NvmeManager,
                     !config.GetDirectIoFlagDisabled(),
                     EAioSubmitQueueOpt::Use
@@ -444,6 +454,7 @@ bool TBootstrap::InitKikimrService()
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
+            }
             case NProto::DISK_AGENT_BACKEND_NULL:
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
                 AioStorageProvider = CreateNullStorageProvider();
@@ -489,7 +500,6 @@ bool TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.FileIOService = FileIOService;
     args.AioStorageProvider = AioStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
@@ -606,7 +616,7 @@ void TBootstrap::Start()
     START_COMPONENT(TraceProcessor);
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
-    START_COMPONENT(FileIOService);
+    START_COMPONENT(FileIOServiceProvider);
     START_COMPONENT(ActorSystem);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -644,9 +654,9 @@ void TBootstrap::Stop()
     STOP_COMPONENT(Scheduler);
 
     STOP_COMPONENT(ActorSystem);
-    // stop FileIOService after ActorSystem to ensure that there are no
+    // stop FileIOServiceProvider after ActorSystem to ensure that there are no
     // in-flight I/O requests from TDiskAgentActor
-    STOP_COMPONENT(FileIOService);
+    STOP_COMPONENT(FileIOServiceProvider);
 
     STOP_COMPONENT(Spdk);
     STOP_COMPONENT(RdmaServer);

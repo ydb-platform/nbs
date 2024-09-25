@@ -112,6 +112,7 @@ public:
     bool GetOffloadAllIORequestsParsingEnabled() const;
     bool GetDisableNodeBrokerRegisterationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
+    ui32 GetFilePathsPerIOServiceCount() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
