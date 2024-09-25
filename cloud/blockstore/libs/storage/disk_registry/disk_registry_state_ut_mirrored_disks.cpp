@@ -2102,14 +2102,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         diskInfo = {};
         error = state.GetDiskInfo("disk-1/0", diskInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-        // 2 x state change + 3 x replacement
-        UNIT_ASSERT_VALUES_EQUAL(5, diskInfo.History.size());
+        // 3 x replacement
+        UNIT_ASSERT_VALUES_EQUAL(3, diskInfo.History.size());
 
         diskInfo = {};
         error = state.GetDiskInfo("disk-1/1", diskInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-        // 2 x state change + 3 x replacement
-        UNIT_ASSERT_VALUES_EQUAL(5, diskInfo.History.size());
+        // 3 x replacement
+        UNIT_ASSERT_VALUES_EQUAL(3, diskInfo.History.size());
 
         auto dirtyDevices = state.GetDirtyDevices();
         UNIT_ASSERT_VALUES_EQUAL(6, dirtyDevices.size());

@@ -1149,11 +1149,50 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     bool manual,
     bool* diskStateUpdated)
 {
-    try {
-        if (!diskId) {
-            return MakeError(E_ARGUMENT, "empty disk id");
-        }
+    Y_DEBUG_ABORT_UNLESS(diskStateUpdated);
+    *diskStateUpdated = false;
 
+    if (!diskId) {
+        return MakeError(E_ARGUMENT, "empty disk id");
+    }
+
+    if (!Disks.contains(diskId)) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "unknown disk: " << diskId.Quote());
+    }
+
+    TDiskState& disk = Disks[diskId];
+
+    auto error = ReplaceDevice(
+        db,
+        disk,
+        diskId,
+        deviceId,
+        deviceReplacementId,
+        timestamp,
+        std::move(message),
+        manual);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
+
+    return {};
+}
+
+NProto::TError TDiskRegistryState::ReplaceDevice(
+    TDiskRegistryDatabase& db,
+    TDiskState& disk,
+    const TString& diskId,
+    const TString& deviceId,
+    const TString& deviceReplacementId,
+    TInstant timestamp,
+    TString message,
+    bool manual)
+{
+    try {
         if (!deviceId) {
             return MakeError(E_ARGUMENT, "empty device id");
         }
@@ -1162,13 +1201,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             return MakeError(E_ARGUMENT, TStringBuilder()
                 << "device does not belong to disk " << diskId.Quote());
         }
-
-        if (!Disks.contains(diskId)) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "unknown disk: " << diskId.Quote());
-        }
-
-        TDiskState& disk = Disks[diskId];
 
         auto it = Find(disk.Devices, deviceId);
         if (it == disk.Devices.end()) {
@@ -1208,7 +1240,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             timestamp,
             message);
         if (HasError(error)) {
-            *diskStateUpdated = TryUpdateDiskState(db, diskId, timestamp);
             return error;
         }
 
@@ -1281,8 +1312,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
 
         *it = targetDevice.GetDeviceUUID();
-
-        *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
 
         UpdateAgent(db, *agentPtr);
 
@@ -4777,7 +4806,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
     UpdateAgent(db, agent);
     DeviceList.UpdateDevices(agent, DevicePoolConfigs);
 
-    THashMap<TString, NProto::EDiskState> maybeAffectedDisks;
+    THashSet<TString> diskIds;
 
     for (const auto& d: agent.GetDevices()) {
         const auto& deviceId = d.GetDeviceUUID();
@@ -4789,7 +4818,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
 
         auto& disk = Disks[diskId];
 
-        maybeAffectedDisks.emplace(diskId, disk.State);
+        diskIds.emplace(diskId);
 
         // check if deviceId is target for migration
         if (RestartDeviceMigration(timestamp, db, diskId, disk, deviceId)) {
@@ -4828,10 +4857,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
                     deviceId);
 
                 if (canReplaceDevice) {
-                    bool updated = false;
-
                     auto error = ReplaceDevice(
                         db,
+                        disk,
                         diskId,
                         deviceId,
                         "",     // no replacement device
@@ -4839,8 +4867,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                         MakeMirroredDiskDeviceReplacementMessage(
                             disk.MasterDiskId,
                             "agent unavailable"),
-                        false,  // manual
-                        &updated);
+                        false);  // manual
 
                     if (HasError(error)) {
                         ReportMirroredDiskDeviceReplacementFailure(
@@ -4853,10 +4880,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
     }
 
-    for (auto& [diskId, oldState]: maybeAffectedDisks) {
-        auto& disk = Disks[diskId];
-        TryUpdateDiskState(db, diskId, disk, timestamp);
-        if (oldState != disk.State) {
+    for (const auto& diskId: diskIds) {
+        if (TryUpdateDiskState(db, diskId, timestamp)) {
             affectedDisks.push_back(diskId);
         }
     }
@@ -5753,39 +5778,29 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (device.GetState() == NProto::DEVICE_STATE_ERROR
-            && disk->MasterDiskId)
-    {
+    if (device.GetState() == NProto::DEVICE_STATE_ERROR && disk->MasterDiskId) {
         const bool canReplaceDevice = CheckIfDeviceReplacementIsAllowed(
             now,
             disk->MasterDiskId,
             device.GetDeviceUUID());
 
         if (canReplaceDevice) {
-            bool updated = false;
             auto error = ReplaceDevice(
                 db,
+                *disk,
                 diskId,
                 device.GetDeviceUUID(),
-                "",     // no replacement device
+                "",   // no replacement device
                 now,
                 MakeMirroredDiskDeviceReplacementMessage(
                     disk->MasterDiskId,
                     "device failure"),
-                false,  // manual
-                &updated);
+                false);   // manual
 
             if (HasError(error)) {
-                ReportMirroredDiskDeviceReplacementFailure(
-                    FormatError(error));
-            }
-
-            if (updated) {
-                affectedDisk = diskId;
+                ReportMirroredDiskDeviceReplacementFailure(FormatError(error));
             }
         }
-
-        return;
     }
 
     if (TryUpdateDiskState(db, diskId, *disk, now)) {
