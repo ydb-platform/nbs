@@ -80,8 +80,7 @@ def init(vm_mode: bool = False):
         storage_config_patches=None,
         use_in_memory_pdisks=True,
         with_endpoint_proxy=True,
-        with_netlink=True,
-    )
+        with_netlink=True)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -451,6 +450,41 @@ def test_node_volume_expand():
     finally:
         try:
             env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.unstage_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.delete_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        cleanup_after_test(env)
+
+
+@pytest.mark.skip(reason="disable test as this feature is not implemented yet: \
+                  https://github.com/ydb-platform/nbs/pull/1982")
+def test_publish_volume_twice_on_the_same_node():
+    env, run = init(vm_mode=True)
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_name2 = "example-pod-2"
+        pod_id1 = "deadbeef1"
+        pod_id2 = "deadbeef2"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.publish_volume(pod_id2, volume_name, pod_name2)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        try:
+            env.csi.unpublish_volume(pod_id1, volume_name)
+            env.csi.unpublish_volume(pod_id2, volume_name)
         except subprocess.CalledProcessError as e:
             log_called_process_error(e)
         try:
