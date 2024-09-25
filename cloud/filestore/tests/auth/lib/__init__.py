@@ -14,7 +14,7 @@ from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessSer
 
 class TestFixture:
     def __init__(self):
-        self.port = os.getenv("NFS_SERVER_PORT")
+        self.port = os.getenv("NFS_SERVER_SECURE_PORT")
         self.binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
         self._client_config_path = Path(common.output_path()) / "client-config.txt"
         self.folder_id = os.getenv("TEST_FOLDER_ID")
@@ -31,14 +31,16 @@ class TestFixture:
                 int(access_service_port),
                 int(access_service_control_port),
             )
+        self.create_client_config()
 
     def create_client_config(self):
-        client = TClientAppConfig()
-        client.ClientConfig.CopyFrom(TClientConfig())
-        client.ClientConfig.RootCertsFile = common.source_path(
+        client_config = TClientAppConfig()
+        client_config.ClientConfig.CopyFrom(TClientConfig())
+        client_config.ClientConfig.RootCertsFile = common.source_path(
             "cloud/filestore/tests/certs/server.crt")
-        client.ClientConfig.SecurePort = self.port
-        self._client_config_path.write_text(MessageToString(client))
+        client_config.ClientConfig.SecurePort = int(self.port)
+        client_config.ClientConfig.RetryTimeout = 1
+        self._client_config_path.write_text(MessageToString(client_config))
 
     def get_client(self, auth_token):
         client = NfsCliClient(
@@ -46,5 +48,7 @@ class TestFixture:
             self.port,
             cwd=common.output_path(),
             auth_token=auth_token,
+            config_path=str(self._client_config_path),
+            check_exit_code=False,
         )
         return client

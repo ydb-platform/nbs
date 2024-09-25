@@ -1,5 +1,15 @@
+import logging
+
 from cloud.filestore.tests.auth.lib import TestFixture
 
+
+def log_result(test_name, result):
+    logging.info(
+        "[%s] Filestore create stdout=%s, stderr=%s",
+        test_name,
+        result.stdout,
+        result.stderr,
+    )
 
 def test_new_auth_authorization_ok():
     fixture = TestFixture()
@@ -19,6 +29,7 @@ def test_new_auth_authorization_ok():
         fixture.folder_id,
         return_stdout=False,
     )
+    log_result("test_new_auth_authorization_ok", result)
     assert result.returncode == 0
 
 
@@ -40,6 +51,7 @@ def test_new_auth_unauthorized():
         fixture.folder_id,
         return_stdout=False,
     )
+    log_result("test_new_auth_unauthorized", result)
     assert result.returncode != 0
     assert "E_UNAUTHORIZED" in result.stdout
 
@@ -53,6 +65,7 @@ def test_new_auth_unauthenticated():
         fixture.folder_id,
         return_stdout=False,
     )
+    log_result("test_new_auth_unauthenticated", result)
     assert result.returncode != 0
     assert "E_UNAUTHORIZED" in result.stdout
 
@@ -75,5 +88,6 @@ def test_new_auth_unknown_subject():
         fixture.folder_id,
         return_stdout=False,
     )
+    log_result("test_new_auth_unknown_subject", result)
     assert result.returncode != 0
     assert "E_UNAUTHORIZED" in result.stdout
