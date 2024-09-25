@@ -705,6 +705,17 @@ func (s *nodeService) nodeUnpublishVolume(
 		return err
 	}
 
+	// In VM-mode for volumes that were staged we need just the unmount, so
+	// we could return here. Unfortunately we don't have enough information
+	// to know if this is a staged volume or a legacy one.
+	// Next StopEndpoint calls have no effect for staged volumes because their
+	// endpoints were started in socketsDir/instanceId/volumeId instead of
+	// socketsDir/podId/volumeId.
+	//
+	// When all VM disks are migrated to staged volumes we can enforce non-empty
+	// instanceId for new VM disks and add early return here:
+	// if s.vmMode { return nil }
+
 	// no other way to get podId from NodeUnpublishVolumeRequest
 	podId, err := s.parsePodId(req.TargetPath)
 	if err != nil {
