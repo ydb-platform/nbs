@@ -204,7 +204,6 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 
 			if err != nil {
 				log.Fatal(err)
-				return
 			}
 
 			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -266,7 +265,6 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 
 			if err != nil {
 				log.Fatal(err)
-				return
 			}
 
 			targetPath := fmt.Sprintf(
@@ -364,7 +362,6 @@ func newNodeUnstageVolumeCommand(endpoint *string) *cobra.Command {
 			client, err := newNodeClient(ctx, *endpoint)
 			if err != nil {
 				log.Fatal(err)
-				return
 			}
 
 			response, err := client.NodeUnstageVolume(
