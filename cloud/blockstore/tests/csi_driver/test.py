@@ -34,12 +34,13 @@ class CsiLoadTest(LocalLoadTest):
             sockets_dir: str,
             grpc_unix_socket_path: str,
             sockets_temporary_directory: tempfile.TemporaryDirectory,
+            vm_mode: bool,
             *args,
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
         self.sockets_temporary_directory = sockets_temporary_directory
-        self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path)
+        self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path, vm_mode)
         self.csi.start()
 
     def tear_down(self):
@@ -48,7 +49,7 @@ class CsiLoadTest(LocalLoadTest):
         self.sockets_temporary_directory.cleanup()
 
 
-def init():
+def init(vm_mode: bool = False):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -61,7 +62,7 @@ def init():
     logging.info("Created temporary dir %s", temp_dir.name)
     sockets_dir = Path(temp_dir.name)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
-    server_config_patch.VhostEnabled = False
+    server_config_patch.VhostEnabled = True
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
@@ -73,12 +74,14 @@ def init():
         sockets_dir=str(sockets_dir),
         grpc_unix_socket_path=server_config_patch.UnixSocketPath,
         sockets_temporary_directory=temp_dir,
+        vm_mode=vm_mode,
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
         use_in_memory_pdisks=True,
         with_endpoint_proxy=True,
-        with_netlink=True)
+        with_netlink=True,
+    )
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -109,7 +112,7 @@ def init():
 
 class NbsCsiDriverRunner:
 
-    def __init__(self, sockets_dir: str, grpc_unix_socket_path: str):
+    def __init__(self, sockets_dir: str, grpc_unix_socket_path: str, vm_mode: bool):
         csi_driver_dir = Path(
             common.binary_path("cloud/blockstore/tools/csi_driver/"),
         )
@@ -121,22 +124,27 @@ class NbsCsiDriverRunner:
         self._proc = None
         self._csi_driver_output = os.path.join(common.output_path(), "driver_output.txt")
         self._log_file = None
+        self._vm_mode = vm_mode
 
     def start(self):
         self._log_file = open(self._csi_driver_output, "w")
+        args = [
+            str(self._binary_path),
+            "--name=nbs.csi.nebius.ai",
+            "--version",
+            "v1",
+            "--node-id=localhost",
+            "--nbs-socket", self._grpc_unix_socket_path,
+            f"--sockets-dir={self._sockets_dir}",
+            f"--endpoint={str(self._endpoint)}",
+            "--nfs-vhost-port=0",
+            "--nfs-server-port=0",
+        ]
+        if self._vm_mode:
+            args += "--vm-mode=true"
+
         self._proc = subprocess.Popen(
-            [
-                str(self._binary_path),
-                "--name=nbs.csi.nebius.ai",
-                "--version",
-                "v1",
-                "--node-id=localhost",
-                "--nbs-socket", self._grpc_unix_socket_path,
-                f"--sockets-dir={self._sockets_dir}",
-                f"--endpoint={str(self._endpoint)}",
-                "--nfs-vhost-port=0",
-                "--nfs-server-port=0",
-            ],
+            args,
             stdout=self._log_file,
             stderr=self._log_file,
         )
@@ -346,11 +354,12 @@ def test_nbs_csi_driver_volume_stat():
         cleanup_after_test(env)
 
 
-@pytest.mark.parametrize('mount_path,volume_access_type',
-                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount"),
-                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block")])
-def test_csi_sanity_nbs_backend(mount_path, volume_access_type):
-    env, run = init()
+@pytest.mark.parametrize('mount_path,volume_access_type,vm_mode',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", False),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block", False),
+                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", True)])
+def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
+    env, run = init(vm_mode)
     backend = "nbs"
 
     try:
