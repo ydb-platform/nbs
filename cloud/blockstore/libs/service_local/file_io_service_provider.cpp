@@ -49,8 +49,7 @@ public:
             return FileIOs[p->second];
         }
 
-        if ((PathToFileIOIndex.size() + 1) > PathsPerServices * FileIOs.size())
-        {
+        if (PathToFileIOIndex.size() + 1 > PathsPerServices * FileIOs.size()) {
             auto service = Factory();
             Y_DEBUG_ABORT_UNLESS(service);
             service->Start();

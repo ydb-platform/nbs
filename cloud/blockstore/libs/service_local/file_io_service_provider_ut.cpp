@@ -123,6 +123,8 @@ Y_UNIT_TEST_SUITE(TFileIOServiceProviderTest)
 
     void ShouldCreateOneServicePerOnePathImpl(ui32 pathsToServices)
     {
+        UNIT_ASSERT(pathsToServices <= 1);
+
         TTestProvider upstream;
 
         auto provider = CreateFileIOServiceProvider(
