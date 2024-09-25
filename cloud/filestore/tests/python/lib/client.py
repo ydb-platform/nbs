@@ -261,6 +261,10 @@ class NfsCliClient:
     def write(self, cmd):
         return common.execute(cmd).stdout
 
+    @standard_command("read")
+    def read(self, cmd):
+        return common.execute(cmd).stdout
+
     @standard_command("touch")
     def touch(self, cmd):
         return common.execute(cmd).stdout
