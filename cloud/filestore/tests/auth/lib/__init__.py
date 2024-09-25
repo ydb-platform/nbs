@@ -50,5 +50,6 @@ class TestFixture:
             auth_token=auth_token,
             config_path=str(self.__client_config_path),
             check_exit_code=False,
+            return_json=True,
         )
         return client

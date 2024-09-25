@@ -96,9 +96,17 @@ public:
             if (HasError(response)){
                 resultJson["Error"] = FormatErrorJson(response.GetError());
             }
+
             NJson::WriteJson(&Cout, &resultJson, false, true, true);
-            return !HasError(response);
+
+            if (HasError(response)){
+                ProgramShouldContinue.ShouldStop(1);
+                return false;
+            }
+
+            return true;
         }
+
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());
         }
