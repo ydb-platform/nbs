@@ -31,9 +31,6 @@ class TestFixture:
                 int(access_service_port),
                 int(access_service_control_port),
             )
-        self.__create_client_config()
-
-    def __create_client_config(self):
         client_config = TClientAppConfig()
         client_config.ClientConfig.CopyFrom(TClientConfig())
         client_config.ClientConfig.RootCertsFile = common.source_path(

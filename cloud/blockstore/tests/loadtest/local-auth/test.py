@@ -105,7 +105,7 @@ class TestFixture:
         self.__client_config_path = Path(common.output_path()) / "client-config.txt"
         self.__client_config = create_client_config()
         self.__client_config.ClientConfig.SecurePort = self.__local_load_test.nbs_secure_port
-        self.__flush_config()
+        self.__client_config_path.write_text(MessageToString(self.__client_config))
         self.folder_id = folder_id
         self.__auth_token = None
 
@@ -143,9 +143,6 @@ class TestFixture:
 
     def set_auth_token(self, token: str):
         self.__auth_token = token
-
-    def __flush_config(self):
-        self.__client_config_path.write_text(MessageToString(self.__client_config))
 
 
 def test_auth_unauthorized():
