@@ -594,6 +594,8 @@ private:
         ++CurrentIoDepth;
         auto self = weak_from_this();
         const auto future = RequestGenerator->ExecuteNextRequest().Apply(
+            [=](const TFuture<TCompletedRequest>& future)
+            {
                 if (auto ptr = self.lock()) {
                     ptr->SignalCompletion(future.GetValue());
                 }
