@@ -44,7 +44,7 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         Config->GetSchemeShardDir(),
         CreateTabletPipeClientConfig(*Config)
     );
-    StorageSSProxyActor = ctx.Register(actor.release());
+    StorageSSProxyActor = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
