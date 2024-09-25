@@ -194,6 +194,13 @@ class NbsCsiDriverRunner:
             volume_id,
         )
 
+    def unstage_volume(self, volume_id: str):
+        return self._node_run(
+            "unstagevolume",
+            "--volume-id",
+            volume_id,
+        )
+
     def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
         return self._node_run(
             "publishvolume",
@@ -286,6 +293,10 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         except subprocess.CalledProcessError as e:
             log_called_process_error(e)
         try:
+            env.csi.unstage_volume(volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
             env.csi.delete_volume(volume_name)
         except subprocess.CalledProcessError as e:
             log_called_process_error(e)
@@ -350,6 +361,10 @@ def test_nbs_csi_driver_volume_stat():
 
         try:
             env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.unstage_volume(volume_name)
         except subprocess.CalledProcessError as e:
             log_called_process_error(e)
         try:
@@ -436,6 +451,10 @@ def test_node_volume_expand():
     finally:
         try:
             env.csi.unpublish_volume(pod_id, volume_name)
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+        try:
+            env.csi.unstage_volume(volume_name)
         except subprocess.CalledProcessError as e:
             log_called_process_error(e)
         try:

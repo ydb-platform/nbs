@@ -350,6 +350,58 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	return &cmd
 }
 
+func newNodeUnstageVolumeCommand(endpoint *string) *cobra.Command {
+	var volumeId, stagingTargetPath string
+	cmd := cobra.Command{
+		Use:   "unstagevolume",
+		Short: "Send unstage volume request to the CSI node",
+		Run: func(cmd *cobra.Command, args []string) {
+			ctx, cancelFunc := context.WithTimeout(
+				context.Background(),
+				120*time.Second,
+			)
+			defer cancelFunc()
+			client, err := newNodeClient(ctx, *endpoint)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			response, err := client.NodeUnstageVolume(
+				ctx,
+				&csi.NodeUnstageVolumeRequest{
+					VolumeId:          volumeId,
+					StagingTargetPath: stagingTargetPath,
+				},
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			log.Printf("Response: %v", response)
+		},
+	}
+	cmd.Flags().StringVar(
+		&volumeId,
+		"volume-id",
+		"",
+		"volume id",
+	)
+	cmd.Flags().StringVar(
+		&stagingTargetPath,
+		"staging-target-path",
+		"/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/"+
+			"a/globalmount",
+		"staging target path",
+	)
+	err := cmd.MarkFlagRequired("volume-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &cmd
+}
+
 func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId string
 	cmd := cobra.Command{
@@ -537,6 +589,7 @@ func newCsiNodeCommand(endpoint *string) *cobra.Command {
 		newNodeGetVolumeStatsCommand(endpoint),
 		newNodeExpandVolumeCommand(endpoint),
 		newNodeStageVolumeCommand(endpoint),
+		newNodeUnstageVolumeCommand(endpoint),
 	)
 	return &cmd
 }
