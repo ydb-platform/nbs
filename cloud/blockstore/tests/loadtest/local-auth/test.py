@@ -88,7 +88,7 @@ def create_client_config():
 
 
 class TestFixture:
-    _binary_path = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+    __binary_path = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 
     def __init__(self, access_service_type=AccessService, folder_id="test_folder_id"):
         server = create_server_app_config()
@@ -117,7 +117,7 @@ class TestFixture:
         self.__local_load_test.tear_down()
 
     def run(self, *args, **kwargs):
-        args = [self._binary_path, *args, "--config", str(self.__client_config_path)]
+        args = [self.__binary_path, *args, "--config", str(self.__client_config_path)]
 
         env = {}
         if self.__auth_token is not None:
