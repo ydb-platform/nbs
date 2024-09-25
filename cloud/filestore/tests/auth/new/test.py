@@ -12,6 +12,7 @@ def log_result(test_name, result):
         result.stderr.decode(),
     )
 
+
 def test_new_auth_authorization_ok():
     fixture = TestFixture()
     token = "test_auth_token"
