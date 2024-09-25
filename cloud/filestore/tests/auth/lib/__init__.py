@@ -39,7 +39,6 @@ class TestFixture:
         client_config.ClientConfig.RootCertsFile = common.source_path(
             "cloud/filestore/tests/certs/server.crt")
         client_config.ClientConfig.SecurePort = int(self.__port)
-        client_config.ClientConfig.RetryTimeout = 1
         self.__client_config_path.write_text(MessageToString(client_config))
 
     def get_client(self, auth_token):

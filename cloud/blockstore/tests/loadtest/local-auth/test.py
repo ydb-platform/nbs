@@ -105,7 +105,6 @@ class TestFixture:
         self.__client_config_path = Path(common.output_path()) / "client-config.txt"
         self.__client_config = create_client_config()
         self.__client_config.ClientConfig.SecurePort = self.__local_load_test.nbs_secure_port
-        self.__client_config.ClientConfig.RetryTimeout = 1
         self.__flush_config()
         self.folder_id = folder_id
         self.__auth_token = None
