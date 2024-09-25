@@ -2902,6 +2902,137 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         }
         ASSERT_VECTORS_EQUAL(expectedReplacedDeviceIds, replacedDeviceIds);
     }
+
+    Y_UNIT_TEST(ShouldReportRateLimitExceededCritEventUponDeviceFailure)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto agentConfig1 = AgentConfig(1, {
+            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-2", "uuid-2", "rack-1"),
+            Device("dev-3", "uuid-3", "rack-1"),
+        });
+
+        auto agentConfig2 = AgentConfig(2, {
+            Device("dev-1", "uuid-4", "rack-2"),
+            Device("dev-2", "uuid-5", "rack-2"),
+            Device("dev-3", "uuid-6", "rack-2"),
+        });
+
+        NProto::TStorageServiceConfig storageConfig;
+        storageConfig.SetAllocationUnitNonReplicatedSSD(10);
+        storageConfig.SetMaxAutomaticDeviceReplacementsPerHour(1);
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(CreateStorageConfig(storageConfig))
+            .WithKnownAgents({
+                agentConfig1,
+                agentConfig2,
+            })
+            .Build();
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto criticalEvents = serverGroup->FindCounter(
+            "AppCriticalEvents/MirroredDiskDeviceReplacementRateLimitExceeded");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            TVector<TVector<TDeviceConfig>> replicas;
+            TVector<NProto::TDeviceMigration> migrations;
+            TVector<TString> deviceReplacementIds;
+            auto error = AllocateMirroredDisk(
+                db,
+                state,
+                "disk-1",
+                20_GB,
+                1,
+                devices,
+                replicas,
+                migrations,
+                deviceReplacementIds);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas[0].size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-4", replicas[0][0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-5", replicas[0][1].GetDeviceUUID());
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, deviceReplacementIds);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TString affectedDisk;
+            auto error = state.UpdateDeviceState(
+                db,
+                "uuid-1",
+                NProto::DEVICE_STATE_ERROR,
+                Now(),
+                "test",  // reason
+                affectedDisk);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL("", affectedDisk);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TString affectedDisk;
+            auto error = state.UpdateDeviceState(
+                db,
+                "uuid-2",
+                NProto::DEVICE_STATE_ERROR,
+                Now(),
+                "test",  // reason
+                affectedDisk);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1/0", affectedDisk);
+        });
+
+        TDiskInfo info;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/0", info));
+
+        UNIT_ASSERT_VALUES_UNEQUAL("uuid-1", info.Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2", info.Devices[1].GetDeviceUUID());
+
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ONLINE,
+            info.Devices[0].GetState());
+
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ERROR,
+            info.Devices[1].GetState());
+
+        UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ERROR, info.State);
+
+        info = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/1", info));
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4", info.Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-5", info.Devices[1].GetDeviceUUID());
+
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ONLINE,
+            info.Devices[0].GetState());
+
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ONLINE,
+            info.Devices[1].GetState());
+
+        UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, info.State);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
+    }
 }
 
 bool operator==(const TDiskStateUpdate& l, const TDiskStateUpdate& r)
