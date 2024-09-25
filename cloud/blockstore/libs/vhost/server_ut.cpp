@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -17,6 +16,7 @@
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/system/tempfile.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
 
@@ -560,7 +560,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldCancelRequestsInFlightWhenStopEndpointOrStopServer)
     {
-        TString unixSocketPath = CreateGuidAsString() + ".sock";
+        TString unixSocketPath =
+            MakeTempName(nullptr, CreateGuidAsString().c_str(), "sock");
         const ui32 blockSize = 4096;
         const ui64 startIndex = 3;
         const ui64 blocksCount = 41;

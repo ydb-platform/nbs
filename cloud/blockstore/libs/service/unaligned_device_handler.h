@@ -48,6 +48,8 @@ public:
         ui32 maxSubRequestSize,
         ui32 maxUnalignedRequestSize);
 
+    ~TUnalignedDeviceHandler() override;
+
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
         TCallContextPtr ctx,
         ui64 from,
