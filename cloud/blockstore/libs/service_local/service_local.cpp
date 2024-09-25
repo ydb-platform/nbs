@@ -436,7 +436,7 @@ struct TLocalServiceBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const ui32 kDefaultStorageShutdownTimeoutInMilliseconds = 60000;
+constexpr auto DefaultStorageShutdownTimeout = TDuration::Minutes(1);
 
 class TLocalService final
     : public TLocalServiceBase
@@ -453,10 +453,9 @@ public:
         : DiscoveryService(std::move(discoveryService))
         , VolumeManager(
               config.GetDataDir(),
-              TDuration::MilliSeconds(
-                  config.HasShutdownTimeout()
-                      ? config.GetShutdownTimeout()
-                      : kDefaultStorageShutdownTimeoutInMilliseconds),
+              config.HasShutdownTimeout()
+                  ? TDuration::MilliSeconds(config.GetShutdownTimeout())
+                  : DefaultStorageShutdownTimeout,
               std::move(storageProvider))
     {}
 
