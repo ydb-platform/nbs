@@ -64,12 +64,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileIOServiceProviderStub final
+struct TSingleFileIOServiceProvider final
     : IFileIOServiceProvider
 {
     IFileIOServicePtr FileIO;
 
-    explicit TFileIOServiceProviderStub(
+    explicit TSingleFileIOServiceProvider(
             IFileIOServicePtr fileIO)
         : FileIO{std::move(fileIO)}
     {}
@@ -96,10 +96,10 @@ struct TFileIOServiceProviderStub final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceProviderPtr CreateFileIOServiceProviderStub(
+IFileIOServiceProviderPtr CreateSingleFileIOServiceProvider(
     IFileIOServicePtr fileIO)
 {
-    return std::make_shared<TFileIOServiceProviderStub>(std::move(fileIO));
+    return std::make_shared<TSingleFileIOServiceProvider>(std::move(fileIO));
 }
 
 IFileIOServiceProviderPtr CreateFileIOServiceProvider(

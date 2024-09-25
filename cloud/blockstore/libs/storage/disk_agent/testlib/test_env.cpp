@@ -656,7 +656,7 @@ IStorageProviderPtr CreateTestStorageProvider(
 {
     return std::make_shared<TTestStorageProvider>(
         NServer::CreateAioStorageProvider(
-            NServer::CreateFileIOServiceProviderStub(std::move(fileIO)),
+            NServer::CreateSingleFileIOServiceProvider(std::move(fileIO)),
             std::move(nvmeManager),
             false,  // directIO
             NServer::EAioSubmitQueueOpt::DontUse

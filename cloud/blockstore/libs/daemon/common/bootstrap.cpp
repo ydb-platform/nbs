@@ -741,7 +741,8 @@ void TBootstrapBase::InitLocalService()
         ? *Configs->ServerConfig->GetLocalServiceConfig()
         : NProto::TLocalServiceConfig();
 
-    FileIOServiceProvider = CreateFileIOServiceProviderStub(CreateAIOService());
+    FileIOServiceProvider =
+        CreateSingleFileIOServiceProvider(CreateAIOService());
 
     NvmeManager = CreateNvmeManager(
         Configs->DiskAgentConfig->GetSecureEraseTimeout());

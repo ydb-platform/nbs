@@ -47,7 +47,7 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         fileData.Resize(blockSize * totalBlockCount);
 
         auto fileIOServiceProvider =
-            CreateFileIOServiceProviderStub(CreateAIOService());
+            CreateSingleFileIOServiceProvider(CreateAIOService());
 
         fileIOServiceProvider->Start();
         Y_DEFER { fileIOServiceProvider->Stop(); };

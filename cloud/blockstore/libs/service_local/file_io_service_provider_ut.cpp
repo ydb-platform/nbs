@@ -98,7 +98,7 @@ Y_UNIT_TEST_SUITE(TFileIOServiceProviderTest)
         auto fileIO = std::make_shared<TTestFileIOService>();
         UNIT_ASSERT_VALUES_EQUAL(0, fileIO->Started);
 
-        auto provider = CreateFileIOServiceProviderStub(fileIO);
+        auto provider = CreateSingleFileIOServiceProvider(fileIO);
         provider->Start();
 
         UNIT_ASSERT_VALUES_EQUAL(1, fileIO->Started);

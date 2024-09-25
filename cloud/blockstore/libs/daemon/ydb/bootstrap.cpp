@@ -447,11 +447,11 @@ void TBootstrapYdb::InitKikimrService()
         };
 
         FileIOServiceProvider =
-            config.GetFilePathsPerIOServiceCount()
+            config.GetPathsPerFileIOService()
                 ? CreateFileIOServiceProvider(
-                      config.GetFilePathsPerIOServiceCount(),
+                      config.GetPathsPerFileIOService(),
                       factory)
-                : CreateFileIOServiceProviderStub(factory());
+                : CreateSingleFileIOServiceProvider(factory());
 
         AioStorageProvider = CreateAioStorageProvider(
             FileIOServiceProvider,
