@@ -20,7 +20,7 @@ def test_new_auth_authorization_ok():
         token,
         is_unknown_subject=False,
         permissions=[
-            {"permission": "filestore.internal.disks.create", "resource": fixture.folder_id},
+            {"permission": "nbsInternal.disks.create", "resource": fixture.folder_id},
         ],
     )
     result = client.create(
@@ -42,7 +42,7 @@ def test_new_auth_unauthorized():
         token,
         is_unknown_subject=False,
         permissions=[
-            {"permission": "filestore.internal.disks.create", "resource": "some_other_folder"},
+            {"permission": "nbsInternal.disks.create", "resource": "some_other_folder"},
         ],
     )
     result = client.create(
@@ -79,7 +79,7 @@ def test_new_auth_unknown_subject():
         token,
         is_unknown_subject=True,
         permissions=[
-            {"permission": "filestore.internal.disks.create", "resource": fixture.folder_id},
+            {"permission": "nbsInternal.disks.create", "resource": fixture.folder_id},
         ],
     )
     result = client.create(
