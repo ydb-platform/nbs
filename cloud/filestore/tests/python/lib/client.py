@@ -26,6 +26,7 @@ class NfsCliClient:
         verbose=False,
         cwd=".",
         timeout=60,
+        config_path=None,
         auth_token=None,
     ):
         self.__binary_path = binary_path
@@ -34,6 +35,7 @@ class NfsCliClient:
         self.__verbose = verbose
         self.__cwd = cwd
         self.__timeout = timeout
+        self.__config_path = config_path
         self._env = {}
         if auth_token is not None:
             self._env = {"IAM_TOKEN": auth_token}
@@ -252,7 +254,8 @@ class NfsCliClient:
             "--server-address", "localhost",
             "--server-port", str(self.__port if not vhost else self.__vhost_port),
         ]
-
+        if self.__config_path is not None:
+            opts = ["--config", self.__config_path]
         if self.__verbose:
             opts += ["--verbose", "trace"]
 
