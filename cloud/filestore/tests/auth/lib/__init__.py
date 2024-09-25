@@ -14,9 +14,9 @@ from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessSer
 
 class TestFixture:
     def __init__(self):
-        self.port = os.getenv("NFS_SERVER_SECURE_PORT")
-        self.binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
-        self._client_config_path = Path(common.output_path()) / "client-config.txt"
+        self.__port = os.getenv("NFS_SERVER_SECURE_PORT")
+        self.__binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+        self.__client_config_path = Path(common.output_path()) / "client-config.txt"
         self.folder_id = os.getenv("TEST_FOLDER_ID")
         access_service_port = os.getenv("ACCESS_SERVICE_PORT")
         access_service_control_port = os.getenv("ACCESS_SERVICE_CONTROL_PORT")
@@ -31,24 +31,24 @@ class TestFixture:
                 int(access_service_port),
                 int(access_service_control_port),
             )
-        self.create_client_config()
+        self.__create_client_config()
 
-    def create_client_config(self):
+    def __create_client_config(self):
         client_config = TClientAppConfig()
         client_config.ClientConfig.CopyFrom(TClientConfig())
         client_config.ClientConfig.RootCertsFile = common.source_path(
             "cloud/filestore/tests/certs/server.crt")
-        client_config.ClientConfig.SecurePort = int(self.port)
+        client_config.ClientConfig.SecurePort = int(self.__port)
         client_config.ClientConfig.RetryTimeout = 1
-        self._client_config_path.write_text(MessageToString(client_config))
+        self.__client_config_path.write_text(MessageToString(client_config))
 
     def get_client(self, auth_token):
         client = NfsCliClient(
-            self.binary_path,
-            self.port,
+            self.__binary_path,
+            self.__port,
             cwd=common.output_path(),
             auth_token=auth_token,
-            config_path=str(self._client_config_path),
+            config_path=str(self.__client_config_path),
             check_exit_code=False,
         )
         return client
