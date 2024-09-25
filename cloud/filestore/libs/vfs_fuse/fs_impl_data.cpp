@@ -7,6 +7,7 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
+using namespace NThreading;
 
 namespace {
 
@@ -444,7 +445,8 @@ void TFileSystem::FSync(
         TNodeId{fi ? ino : InvalidNodeId},
         THandle{fi ? fi->fh : InvalidHandle});
 
-    auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
+    std::function<void(const TFuture<NProto::TError>&)>
+    callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {
             auto self = ptr.lock();
             if (!self) {
@@ -464,6 +466,34 @@ void TFileSystem::FSync(
                 self->ReplyError(*callContext, response, req, 0);
             }
         };
+
+    if (fi) {
+        callback = [ptr = weak_from_this(),
+                    callContext,
+                    ino,
+                    datasync,
+                    fh = fi->fh,
+                    callback = std::move(callback)](const auto& future) mutable
+        {
+            auto self = ptr.lock();
+            if (!self) {
+                return;
+            }
+
+            if (HasError(future.GetValue())) {
+                callback(future);
+                return;
+            }
+
+            auto request = StartRequest<NProto::TFsyncRequest>(ino);
+            request->SetHandle(fh);
+            request->SetDataSync(datasync);
+            self->Session->Fsync(callContext, std::move(request))
+                .Apply([](const auto& future)
+                       { return future.GetValue().GetError(); })
+                .Subscribe(std::move(callback));
+        };
+    }
 
     if (fi) {
         if (datasync) {
@@ -491,21 +521,30 @@ void TFileSystem::FSyncDir(
     int datasync,
     fuse_file_info* fi)
 {
+    Y_ABORT_UNLESS(fi);
+
     STORAGE_DEBUG("FSyncDir #" << ino << " @" << fi->fh);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
+    if (!ValidateDirectoryHandle(*callContext, req, ino, fi->fh)) {
+        return;
+    }
+
     const auto reqId = callContext->RequestId;
 
     NProto::TProfileLogRequestInfo requestInfo;
-    InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Fsync, Now());
+    InitProfileLogRequestInfo(
+        requestInfo,
+        EFileStoreFuseRequest::FsyncDir,
+        Now());
     InitNodeInfo(
         requestInfo,
         datasync,
-        TNodeId{fi ? ino : InvalidNodeId},
-        THandle{fi ? fi->fh : InvalidHandle});
+        TNodeId{ino},
+        THandle{fi->fh});
 
     auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {
@@ -528,12 +567,37 @@ void TFileSystem::FSyncDir(
             }
         };
 
+    auto waitCallback =
+        [ptr = weak_from_this(),
+         callContext,
+         ino,
+         datasync,
+         callback = std::move(callback)](const auto& future) mutable
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
+
+        if (HasError(future.GetValue())) {
+            callback(future);
+            return;
+        }
+
+        auto request = StartRequest<NProto::TFsyncDirRequest>(ino);
+        request->SetDataSync(datasync);
+        self->Session->FsyncDir(callContext, std::move(request))
+            .Apply([](const auto& future)
+                   { return future.GetValue().GetError(); })
+            .Subscribe(std::move(callback));
+    };
+
     if (datasync) {
-        FSyncQueue.WaitForDataRequests(reqId)
-            .Subscribe(std::move(callback));
+        FSyncQueue.WaitForDataRequests(reqId).Subscribe(
+            std::move(waitCallback));
     } else {
-        FSyncQueue.WaitForRequests(reqId)
-            .Subscribe(std::move(callback));
+        FSyncQueue.WaitForRequests(reqId).Subscribe(
+            std::move(waitCallback));
     }
 }
 

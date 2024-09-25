@@ -259,3 +259,60 @@ message TTruncateDataResponse
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Fsync request/response
+
+message TFsyncRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // If true only the user data should be flushed, not the meta data.
+    bool DataSync = 5;
+}
+
+message TFsyncResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FsyncDir request/response
+
+message TFsyncDirRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // If true only the user data should be flushed, not the meta data.
+    bool DataSync = 4;
+}
+
+message TFsyncDirResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}

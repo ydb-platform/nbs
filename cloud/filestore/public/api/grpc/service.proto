@@ -346,6 +346,20 @@ service TFileStoreService
         };
     }
 
+    rpc Fsync(TFsyncRequest) returns (TFsyncResponse) {
+        option (google.api.http) = {
+            post: "/fsync"
+            body: "*"
+        };
+    }
+
+    rpc FsyncDir(TFsyncDirRequest) returns (TFsyncDirResponse) {
+        option (google.api.http) = {
+            post: "/fsync_dir"
+            body: "*"
+        };
+    }
+
     //
     // Locking operations.
     //

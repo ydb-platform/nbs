@@ -53,14 +53,14 @@ struct TTestServiceActor final
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
-    FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            FILESTORE_SERVICE(FILESTORE_HANDLE_REQUEST, TEvService)
+            FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST, TEvService)
         }
     }
 };
@@ -69,7 +69,7 @@ struct TTestServiceActor final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TIndexStoreTest)
+Y_UNIT_TEST_SUITE(TKikimrFileStore)
 {
     Y_UNIT_TEST(ShouldHandleRequests)
     {
@@ -97,6 +97,53 @@ Y_UNIT_TEST_SUITE(TIndexStoreTest)
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT(!HasError(response));
+
+        service->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldHandleFsyncRequestsOutsideActorSystem)
+    {
+        auto serviceActor = std::make_unique<TTestServiceActor>();
+
+        auto actorSystem = MakeIntrusive<TTestActorSystem>();
+        actorSystem->RegisterTestService(std::move(serviceActor));
+
+        auto service = CreateKikimrFileStore(actorSystem);
+        service->Start();
+
+        {
+            auto context = MakeIntrusive<TCallContext>();
+            auto request = std::make_shared<NProto::TFsyncRequest>();
+
+            auto future = service->Fsync(
+                std::move(context),
+                std::move(request));
+
+            actorSystem->DispatchEvents(WaitTimeout);
+
+            const auto& response = future.GetValue(WaitTimeout);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        {
+            auto context = MakeIntrusive<TCallContext>();
+            auto request = std::make_shared<NProto::TFsyncDirRequest>();
+
+            auto future = service->FsyncDir(
+                std::move(context),
+                std::move(request));
+
+            actorSystem->DispatchEvents(WaitTimeout);
+
+            const auto& response = future.GetValue(WaitTimeout);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
 
         service->Stop();
     }

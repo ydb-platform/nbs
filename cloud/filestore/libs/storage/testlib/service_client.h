@@ -608,7 +608,7 @@ public:
     }                                                                          \
 // FILESTORE_DECLARE_METHOD
 
-    FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD, TEvService)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD, TEvService)
 
 #undef FILESTORE_DECLARE_METHOD
 
