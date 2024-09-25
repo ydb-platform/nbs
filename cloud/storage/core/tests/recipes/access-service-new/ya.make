@@ -1,4 +1,4 @@
-PY3_PROGRAM(access-service-nebius-recipe)
+PY3_PROGRAM(access-service-new-recipe)
 
 PY_SRCS(__main__.py)
 

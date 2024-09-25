@@ -3,7 +3,5 @@ DEPENDS(
 )
 
 USE_RECIPE(
-    cloud/storage/core/tests/recipes/access-service-new/access-service-recipe
+    cloud/storage/core/tests/recipes/access-service-new/access-service-new-recipe
 )
-ENDIF()
-

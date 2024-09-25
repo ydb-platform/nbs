@@ -22,7 +22,7 @@ PEERDIR(
     cloud/filestore/tests/python/lib
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/access-service.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/access-service-new.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 END()
