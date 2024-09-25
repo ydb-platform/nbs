@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
 
     char filename[100];
     int fds[100000];
-    clock_t startTime, endTime;
+    struct timespec startTime, endTime;
     double openTime, closeTime;
 
     for (int i = 0; i < n; i++) {
@@ -52,25 +52,27 @@ int main(int argc, char *argv[]) {
     }
 
     // Measure opening latency
-    startTime = clock();
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
     for (int i = 0; i < n; i++) {
         snprintf(filename, sizeof(filename), "file%d.txt", i + 1);
         fds[i] = open(filename, O_RDONLY);
     }
-    endTime = clock();
+    clock_gettime(CLOCK_MONOTONIC, &endTime);
 
-    openTime = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
+    openTime = (endTime.tv_sec - startTime.tv_sec) +
+	       (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
     printf("Open %.6f ms\n", openTime * 1000);
     printf("Open avg %.6f ms\n", openTime * 1000 / n);
 
     // Measure closing latency
-    startTime = clock();
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
     for (int i = 0; i < n; i++) {
         close(fds[i]);
     }
-    endTime = clock();
+    clock_gettime(CLOCK_MONOTONIC, &endTime);
 
-    closeTime = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
+    closeTime = (endTime.tv_sec - startTime.tv_sec) +
+	        (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
     printf("Close %.6f ms\n", closeTime * 1000);
     printf("Close avg %.6f ms\n", closeTime * 1000 / n);
 
