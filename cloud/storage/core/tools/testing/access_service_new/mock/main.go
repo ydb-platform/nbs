@@ -79,6 +79,7 @@ func (t *accessServiceMock) Authorize(
 	request *iamv1.AuthorizeRequest,
 ) (*iamv1.AuthorizeResponse, error) {
 
+	log.Printf("Received authorize request %v\n", request)
 	results := make(map[int64]*iamv1.AuthorizeResult)
 	for key, value := range request.GetChecks() {
 		token := value.GetIamToken()
@@ -136,6 +137,7 @@ func (t *accessServiceMock) Authenticate(
 	request *iamv1.AuthenticateRequest,
 ) (*iamv1.AuthenticateResponse, error) {
 
+	log.Printf("Received authenticate request %v\n", request)
 	token := request.GetIamToken()
 	if token == "" {
 		return &iamv1.AuthenticateResponse{
