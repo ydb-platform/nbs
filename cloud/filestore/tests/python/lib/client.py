@@ -29,6 +29,7 @@ class NfsCliClient:
         config_path=None,
         auth_token=None,
         check_exit_code=True,
+        return_json=False,
     ):
         self.__binary_path = binary_path
         self.__port = port
@@ -39,6 +40,7 @@ class NfsCliClient:
         self.__config_path = config_path
         self.__env = {}
         self.__check_exit_code = check_exit_code
+        self.__return_json = return_json
         if auth_token is not None:
             self.__env = {"IAM_TOKEN": auth_token}
 
@@ -260,7 +262,8 @@ class NfsCliClient:
             opts = ["--config", self.__config_path]
         if self.__verbose:
             opts += ["--verbose", "trace"]
-
+        if self.__return_json:
+            opts += ["--json"]
         return opts
 
     def standard_command(input_arg):

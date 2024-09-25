@@ -1,3 +1,5 @@
+import json
+
 from cloud.filestore.tests.auth.lib import TestFixture
 
 
@@ -13,7 +15,7 @@ def test_auth_unauthorized():
         return_stdout=False,
     )
     assert result.returncode != 0
-    assert "E_UNAUTHORIZED" in result.stdout
+    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_auth_wrong_token():
@@ -27,4 +29,4 @@ def test_auth_wrong_token():
         return_stdout=False,
     )
     assert result.returncode != 0
-    assert "E_UNAUTHORIZED" in result.stdout
+    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"

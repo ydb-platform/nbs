@@ -1,3 +1,4 @@
+import json
 import logging
 
 from cloud.filestore.tests.auth.lib import TestFixture
@@ -7,8 +8,8 @@ def log_result(test_name, result):
     logging.info(
         "[%s] Filestore create stdout=%s, stderr=%s",
         test_name,
-        result.stdout,
-        result.stderr,
+        result.stdout.decode(),
+        result.stderr.decode(),
     )
 
 def test_new_auth_authorization_ok():
@@ -53,7 +54,7 @@ def test_new_auth_unauthorized():
     )
     log_result("test_new_auth_unauthorized", result)
     assert result.returncode != 0
-    assert "E_UNAUTHORIZED" in result.stdout
+    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_new_auth_unauthenticated():
@@ -67,7 +68,7 @@ def test_new_auth_unauthenticated():
     )
     log_result("test_new_auth_unauthenticated", result)
     assert result.returncode != 0
-    assert "E_UNAUTHORIZED" in result.stdout
+    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 
 def test_new_auth_unknown_subject():
@@ -90,4 +91,4 @@ def test_new_auth_unknown_subject():
     )
     log_result("test_new_auth_unknown_subject", result)
     assert result.returncode != 0
-    assert "E_UNAUTHORIZED" in result.stdout
+    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
