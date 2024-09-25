@@ -87,13 +87,13 @@ def create_client_config():
     return client
 
 
-class _TestFixture:
+class TestFixture:
     _binary_path = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 
     def __init__(self, access_service_type=AccessService, folder_id="test_folder_id"):
         server = create_server_app_config()
         storage = create_storage_service_config(folder_id)
-        self._local_load_test = LocalLoadTest(
+        self.__local_load_test = LocalLoadTest(
             "",
             server_app_config=server,
             enable_access_service=True,
@@ -102,26 +102,26 @@ class _TestFixture:
             use_in_memory_pdisks=True,
             access_service_type=access_service_type,
         )
-        self._client_config_path = Path(common.output_path()) / "client-config.txt"
-        self._client_config = create_client_config()
-        self._client_config.ClientConfig.SecurePort = self._local_load_test.nbs_secure_port
-        self._client_config.ClientConfig.RetryTimeout = 1
-        self._flush_config()
+        self.__client_config_path = Path(common.output_path()) / "client-config.txt"
+        self.__client_config = create_client_config()
+        self.__client_config.ClientConfig.SecurePort = self.__local_load_test.nbs_secure_port
+        self.__client_config.ClientConfig.RetryTimeout = 1
+        self.__flush_config()
         self.folder_id = folder_id
-        self._auth_token = None
+        self.__auth_token = None
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._local_load_test.tear_down()
+        self.__local_load_test.tear_down()
 
     def run(self, *args, **kwargs):
-        args = [self._binary_path, *args, "--config", str(self._client_config_path)]
+        args = [self._binary_path, *args, "--config", str(self.__client_config_path)]
 
         env = {}
-        if self._auth_token is not None:
-            env['IAM_TOKEN'] = self._auth_token
+        if self.__auth_token is not None:
+            env['IAM_TOKEN'] = self.__auth_token
         logging.info("running command: %s" % args)
         result = subprocess.run(
             args,
@@ -140,17 +140,17 @@ class _TestFixture:
 
     @property
     def access_service(self):
-        return self._local_load_test.access_service
+        return self.__local_load_test.access_service
 
     def set_auth_token(self, token: str):
-        self._auth_token = token
+        self.__auth_token = token
 
-    def _flush_config(self):
-        self._client_config_path.write_text(MessageToString(self._client_config))
+    def __flush_config(self):
+        self.__client_config_path.write_text(MessageToString(self.__client_config))
 
 
 def test_auth_unauthorized():
-    with _TestFixture() as env:
+    with TestFixture() as env:
         token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.authenticate(token)
@@ -160,7 +160,7 @@ def test_auth_unauthorized():
 
 
 def test_auth_empty_token():
-    with _TestFixture() as env:
+    with TestFixture() as env:
         env.set_auth_token("")
         env.access_service.authorize("test_auth_token")
         result = env.create_volume()
@@ -169,7 +169,7 @@ def test_auth_empty_token():
 
 
 def test_new_auth_authorization_ok():
-    with _TestFixture(NewAccessService) as env:
+    with TestFixture(NewAccessService) as env:
         token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.create_account(
@@ -185,7 +185,7 @@ def test_new_auth_authorization_ok():
 
 
 def test_new_auth_unauthorized():
-    with _TestFixture(NewAccessService) as env:
+    with TestFixture(NewAccessService) as env:
         token = "test_auth_token"
         env.set_auth_token(token)
         env.access_service.create_account(
@@ -202,7 +202,7 @@ def test_new_auth_unauthorized():
 
 
 def test_new_auth_unauthenticated():
-    with _TestFixture(NewAccessService) as env:
+    with TestFixture(NewAccessService) as env:
         env.set_auth_token("some_other_token")
         result = env.create_volume()
         assert result.returncode != 0
@@ -210,7 +210,7 @@ def test_new_auth_unauthenticated():
 
 
 def test_new_auth_unknown_subject():
-    with _TestFixture(NewAccessService) as env:
+    with TestFixture(NewAccessService) as env:
         token = "test_token"
         env.set_auth_token(token)
         env.access_service.create_account(
