@@ -189,8 +189,9 @@ void TAioBackend::IoSetup()
         const auto aioMaxNr = TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
 
         STORAGE_WARN(
-            "retrying EAGAIN from io_setup, aio-nr/max: " << aioNr << "/"
-                                                          << aioMaxNr);
+            "retrying EAGAIN from io_setup, BatchSize: "
+            << BatchSize << ", aio-nr/aio-max-nr: " << aioNr << "/"
+            << aioMaxNr);
 
         Sleep(waitTime);
     }
