@@ -19,9 +19,14 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto counter = ev->Get()->RequestCounter;
+    auto * msg = ev->Get();
+    const auto counter = msg->RequestCounter;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
         Y_DEBUG_ABORT_UNLESS(0);
+    }
+
+    if (msg->FollowerGotNonretriableError) {
+        OnMigrationNonRetriableError(ctx);
     }
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
@@ -97,13 +102,12 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        TVector<TActorId>{SrcActorId, DstActorId},
+        TVector<TActorId>{SrcActorId},
+        DstActorId,
         std::move(msg->Record),
         DiskId,
         SelfId(),
-        WriteAndZeroRequestsInProgress.AddWriteRequest(range),
-        false // shouldProcessError
-    );
+        WriteAndZeroRequestsInProgress.AddWriteRequest(range));
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         ChangedRangesMap.MarkChanged(range);

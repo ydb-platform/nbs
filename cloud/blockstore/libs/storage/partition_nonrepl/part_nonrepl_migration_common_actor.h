@@ -212,6 +212,8 @@ private:
     TDuration CalculateMigrationTimeout(TBlockRange64 range) const;
     void DoRegisterTrafficSource(const NActors::TActorContext& ctx);
 
+    void OnMigrationNonRetriableError(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
