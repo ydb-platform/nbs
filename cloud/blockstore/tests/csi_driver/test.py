@@ -140,7 +140,7 @@ class NbsCsiDriverRunner:
             "--nfs-server-port=0",
         ]
         if self._vm_mode:
-            args += "--vm-mode=true"
+            args += ["--vm-mode=true"]
 
         self._proc = subprocess.Popen(
             args,
@@ -392,6 +392,7 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
 
         params_file = Path(os.getcwd()) / "params.yaml"
         params_file.write_text(f"backend: {backend}")
+        params_file.write_text("instanceId: test-instance-id")
 
         skipTests = ["should fail when the node does not exist"]
 

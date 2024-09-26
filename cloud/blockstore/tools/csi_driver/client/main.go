@@ -206,6 +206,9 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 				log.Fatal(err)
 			}
 
+			volumeContext := map[string]string{
+				"instanceId": "example-instance-id",
+			}
 			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 			response, err := client.NodeStageVolume(
 				ctx,
@@ -220,6 +223,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 							Mode: writerCap,
 						},
 					},
+					VolumeContext: volumeContext,
 				},
 			)
 			if err != nil {
@@ -280,6 +284,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"csi.storage.k8s.io/pod.namespace":             "default",
 				"csi.storage.k8s.io/pod.name":                  podName,
 				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
+				"instanceId": "example-instance-id",
 			}
 			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 
