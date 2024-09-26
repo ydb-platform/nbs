@@ -226,6 +226,8 @@ def test_wait_dependent_disks_to_switch_node_timeout():
         agent_id = make_agent_id(0)
         node_id_response = json.loads(client.get_disk_agent_node_id(agent_id))
         assert node_id_response["NodeId"] > 50000
+        assert node_id_response["AgentState"] == "AGENT_STATE_ONLINE"
+        assert node_id_response["Connected"]
 
         # This should return immediately.
         wait_response = client.wait_dependent_disks_to_switch_node(
