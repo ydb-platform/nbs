@@ -60,13 +60,12 @@ def stop(argv):
 
     pid = os.getenv("ACCESS_SERVICE_PID")
 
-    if pid:
-        logger.info("Killing access-service with pid `%s`", pid)
-        try:
-            os.kill(int(pid), signal.SIGTERM)
-        except OSError:
-            logger.exception("While killing pid `%s`", pid)
-            raise
+    logger.info("Killing access-service with pid `%s`", pid)
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+    except OSError:
+        logger.exception("While killing pid `%s`", pid)
+        raise
 
 
 if __name__ == "__main__":
