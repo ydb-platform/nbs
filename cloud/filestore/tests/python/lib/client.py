@@ -54,13 +54,13 @@ class NfsCliClient:
         return_stdout=True,
     ):
         cmd = [
-                  self.__binary_path, "create",
-                  "--filesystem", fs,
-                  "--cloud", cloud,
-                  "--folder", folder,
-                  "--block-size", str(blk_size),
-                  "--blocks-count", str(blk_count)
-              ] + self.__cmd_opts()
+            self.__binary_path, "create",
+            "--filesystem", fs,
+            "--cloud", cloud,
+            "--folder", folder,
+            "--block-size", str(blk_size),
+            "--blocks-count", str(blk_count)
+        ] + self.__cmd_opts()
 
         logger.info("creating nfs: " + " ".join(cmd))
         result = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)
