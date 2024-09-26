@@ -76,9 +76,13 @@ public:
     bool ReadBrokenDisks(TVector<TBrokenDiskInfo>& diskInfos);
     void DeleteBrokenDisk(const TString& diskId);
 
+    // Obsolete!
     void AddDiskToReallocate(const TString& diskId);
-    bool ReadDisksToReallocate(TVector<TString>& diskIds);
     void DeleteDiskToReallocate(const TString& diskId);
+
+    void AddDiskToNotify(const NProto::TDiskNotification& notification);
+    bool ReadDisksToNotify(TVector<NProto::TDiskNotification>& notifications);
+    void DeleteDiskToNotify(const NProto::TDiskNotification& notification);
 
     void AddDiskToCleanup(const TString& diskId);
     bool ReadDisksToCleanup(TVector<TString>& diskIds);

@@ -340,7 +340,7 @@ public:
         TVector<NProto::TDiskConfig> disks,
         TVector<NProto::TPlacementGroupConfig> placementGroups,
         TVector<TBrokenDiskInfo> brokenDisks,
-        TVector<TString> disksToReallocate,
+        TVector<NProto::TDiskNotification> disksToNotify,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDirtyDevice> dirtyDevices,
@@ -549,6 +549,9 @@ public:
 
     const THashMap<TString, ui64>& GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, TString diskId);
+
+    const THashMap<TString, ui64>& GetDisksToChangeNodeId() const;
+    ui64 AddChangeNodeIdRequest(TDiskRegistryDatabase& db, TString diskId);
 
     void DeleteDiskToReallocate(
         TDiskRegistryDatabase& db,

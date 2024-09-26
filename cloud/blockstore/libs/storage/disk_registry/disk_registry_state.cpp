@@ -320,7 +320,7 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<NProto::TDiskConfig> disks,
         TVector<NProto::TPlacementGroupConfig> placementGroups,
         TVector<TBrokenDiskInfo> brokenDisks,
-        TVector<TString> disksToReallocate,
+        TVector<NProto::TDiskNotification> disksToNotify,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDirtyDevice> dirtyDevices,
@@ -353,7 +353,7 @@ TDiskRegistryState::TDiskRegistryState(
         StorageConfig,
         std::move(errorNotifications),
         std::move(userNotifications),
-        std::move(disksToReallocate),
+        std::move(disksToNotify),
         std::move(diskStateUpdates),
         diskStateSeqNo,
         std::move(outdatedVolumeConfigs)
@@ -520,7 +520,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 ? disk.MasterDiskId
                 : diskId;
 
-            ui64 seqNo = NotificationSystem.GetDiskSeqNo(notifiedDiskId);
+            ui64 seqNo = NotificationSystem.GetDiskToReallocateSeqNo(notifiedDiskId);
 
             if (!seqNo) {
                 ReportDiskRegistryNoScheduledNotification(
@@ -984,10 +984,15 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             UpdatePlacementGroup(db, id, disk, "RegisterAgent");
         }
 
+        // HERE SEPARATE LIST WITH SPECIAL MESSAGE TO VOLUME TO CHANGE NODE ID
         if (r.PrevNodeId != agent.GetNodeId()) {
             for (const auto& id: diskIds) {
-                AddReallocateRequest(db, id);
-                disksToReallocate->push_back(id);
+                if (StorageConfig->GetEnableNodeIdChangingNotification()) {
+                    AddChangeNodeIdRequest(db, id);
+                } else {
+                    AddReallocateRequest(db, id);
+                    disksToReallocate->push_back(id);
+                }
             }
         }
 
@@ -4508,6 +4513,26 @@ ui64 TDiskRegistryState::AddReallocateRequest(
 const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const
 {
     return NotificationSystem.GetDisksToReallocate();
+}
+
+const THashMap<TString, ui64>&
+TDiskRegistryState::GetDisksToChangeNodeId() const
+{
+    return NotificationSystem.GetDisksToChangeNodeId();
+}
+
+ui64 TDiskRegistryState::AddChangeNodeIdRequest(
+    TDiskRegistryDatabase& db,
+    TString diskId)
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+
+    if (disk && disk->MasterDiskId) {
+        diskId = disk->MasterDiskId;
+    }
+
+    return NotificationSystem.AddChangeNodeIdRequest(db, diskId);
 }
 
 auto TDiskRegistryState::FindDiskState(const TDiskId& diskId) const

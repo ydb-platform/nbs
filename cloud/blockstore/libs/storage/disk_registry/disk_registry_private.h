@@ -31,13 +31,31 @@ struct TDiskNotification
 {
     TString DiskId;
     ui64 SeqNo = 0;
+    NProto::EDiskNotificationType Type =
+        NProto::DISK_NOTIFICATION_TYPE_REALLOCATION;
 
     TDiskNotification() = default;
 
-    TDiskNotification(TString diskId, ui64 seqNo)
+    TDiskNotification(
+            TString diskId,
+            ui64 seqNo,
+            NProto::EDiskNotificationType type)
         : DiskId(std::move(diskId))
         , SeqNo(seqNo)
+        , Type(type)
     {}
+
+    bool operator<(const TDiskNotification& other) const
+    {
+        auto tie = [](const TDiskNotification& notification)
+        {
+            return std::tie(
+                notification.DiskId,
+                notification.SeqNo,
+                notification.Type);
+        };
+        return tie(*this) < tie(other);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,7 +153,7 @@ struct TDiskRegistryStateSnapshot
     TVector<NProto::TDiskConfig> Disks;
     TVector<NProto::TPlacementGroupConfig> PlacementGroups;
     TVector<TBrokenDiskInfo> BrokenDisks;
-    TVector<TString> DisksToReallocate;
+    TVector<NProto::TDiskNotification> DisksToNotify;
     TVector<TDiskStateUpdate> DiskStateChanges;
     ui64 LastDiskStateSeqNo = 0;
     bool WritableState = false;

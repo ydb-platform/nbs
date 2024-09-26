@@ -171,7 +171,7 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     for (const auto& diskId: args.NotifiedDisks) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] NotifiedDiskID=%s",
+            "[%lu] Reallocated DiskId=%s",
             TabletID(),
             diskId.Quote().c_str());
     }

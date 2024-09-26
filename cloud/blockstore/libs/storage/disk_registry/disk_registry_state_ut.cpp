@@ -10896,9 +10896,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT(db.ReadBrokenDisks(brokenDisks));
             UNIT_ASSERT_VALUES_EQUAL(0, brokenDisks.size());
 
-            TVector<TString> disksToReallocate;
-            UNIT_ASSERT(db.ReadDisksToReallocate(disksToReallocate));
-            UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
+            TVector<NProto::TDiskNotification> notifications;
+            UNIT_ASSERT(db.ReadDisksToNotify(notifications));
+            UNIT_ASSERT_VALUES_EQUAL(1, notifications.size());
 
             TVector<TDiskStateUpdate> diskStateUpdates;
             UNIT_ASSERT(db.ReadDiskStateChanges(diskStateUpdates));

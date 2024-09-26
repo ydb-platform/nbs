@@ -38,9 +38,25 @@ private:
     // notify users
     TUserNotifications UserNotifications;
 
-    // notify volumes (reallocate)
-    THashMap<TDiskId, ui64> DisksToReallocate;
-    ui64 DisksToReallocateSeqNo = 1;
+    // // notify volumes (reallocate)
+    // THashMap<TDiskId, ui64> DisksToReallocate;
+    // ui64 DisksToReallocateSeqNo = 1;
+
+    // // notify volumes (change disk agent node id)
+    // THashMap<TDiskId, ui64> DisksToChangeNodeId;
+    // ui64 DisksToChangeNodeIdSeqNo = 1;
+
+    // struct TDiskNotificationData
+    // {
+    //     THashMap<TDiskId, ui64> DisksToNotify;
+
+    // };
+
+    using TDisksToNotify = THashMap<TDiskId, ui64>;
+    static constexpr size_t NotificationTypeCount =
+        NProto::EDiskNotificationType_ARRAYSIZE;
+    std::array<TDisksToNotify, NotificationTypeCount> DisksToNotify;
+    ui64 DisksToNotifySeqNo = 1;
 
     // notify Compute (write events to Logbroker)
     TVector<TDiskStateUpdate> DiskStateUpdates;
@@ -55,7 +71,7 @@ public:
         TStorageConfigPtr storageConfig,
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
-        TVector<TDiskId> disksToReallocate,
+        TVector<NProto::TDiskNotification> disksToNotify,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes);
@@ -83,12 +99,18 @@ public:
 
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TDiskId& diskId);
     ui64 AddReallocateRequest(const TDiskId& diskId);
-
-    ui64 GetDiskSeqNo(const TDiskId& diskId) const;
-
+    ui64 GetDiskToReallocateSeqNo(const TDiskId& diskId) const;
     auto GetDisksToReallocate() const -> const THashMap<TDiskId, ui64>&;
-
     void DeleteDiskToReallocate(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        ui64 seqNo);
+
+    ui64 AddChangeNodeIdRequest(TDiskRegistryDatabase& db, const TDiskId& diskId);
+    ui64 AddChangeNodeIdRequest(const TDiskId& diskId);
+    ui64 GetChangeNodeIdSeqNo(const TDiskId& diskId) const;
+    auto GetDisksToChangeNodeId() const -> const THashMap<TDiskId, ui64>&;
+    void DeleteDiskToChangeNodeId(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         ui64 seqNo);

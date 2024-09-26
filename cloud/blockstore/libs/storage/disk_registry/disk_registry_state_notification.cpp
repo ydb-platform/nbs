@@ -5,6 +5,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NDiskRegistry {
 
+// using DISK_NOTIFICATION_TYPE_REALLOCATION = NProto::TDiskNotification::DISK_NOTIFICATION_TYPE_REALLOCATION;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -32,7 +34,7 @@ TNotificationSystem::TNotificationSystem(
         TStorageConfigPtr storageConfig,
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
-        TVector<TDiskId> disksToReallocate,
+        TVector<NProto::TDiskNotification> disksToNotify,
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes)
@@ -45,8 +47,19 @@ TNotificationSystem::TNotificationSystem(
         std::move(errorNotifications),
         std::move(userNotifications));
 
-    for (auto& diskId: disksToReallocate) {
-        DisksToReallocate.emplace(std::move(diskId), DisksToReallocateSeqNo++);
+    for (auto& notification: disksToNotify) {
+        TDiskNotificationData& data =
+            DisksNotificationData[NProto::DISK_NOTIFICATION_TYPE_REALLOCATION];
+        if (StorageConfig->GetEnableNodeIdChangingNotification() &&
+            notification.GetType() ==
+                NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE)
+        {
+            data = DisksNotificationData[NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE];
+        }
+
+        data.DisksToNotify.emplace(
+            std::move(*notification.MutableDiskId()),
+            data.DisksToNotifySeqNo++);
     }
 
     for (auto& diskId: outdatedVolumes) {
@@ -104,7 +117,9 @@ void TNotificationSystem::DeleteDisk(
     SupportsNotifications.erase(diskId);
     DeleteUserNotifications(db, diskId);
 
-    DisksToReallocate.erase(diskId);
+    for (auto& data: DisksNotificationData) {
+        data.DisksToNotify.erase(diskId);
+    }
     db.DeleteDiskToReallocate(diskId);
 
     OutdatedVolumeConfigs.erase(diskId);
@@ -232,16 +247,20 @@ ui64 TNotificationSystem::AddReallocateRequest(
 
 ui64 TNotificationSystem::AddReallocateRequest(const TDiskId& diskId)
 {
-    const auto seqNo = DisksToReallocateSeqNo++;
+    auto& disks =
+        DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_REALLOCATION];
 
-    DisksToReallocate[diskId] = seqNo;
+    const auto seqNo = DisksToNotifySeqNo++;
+    disks[diskId] = seqNo;
 
     return seqNo;
 }
 
-ui64 TNotificationSystem::GetDiskSeqNo(const TDiskId& diskId) const
+ui64 TNotificationSystem::GetDiskToReallocateSeqNo(const TDiskId& diskId) const
 {
-    const ui64* seqNo = DisksToReallocate.FindPtr(diskId);
+    const auto& disks =
+        DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_REALLOCATION];
+    const ui64* seqNo = disks.FindPtr(diskId);
 
     return seqNo ? *seqNo : 0;
 }
@@ -249,7 +268,7 @@ ui64 TNotificationSystem::GetDiskSeqNo(const TDiskId& diskId) const
 auto TNotificationSystem::GetDisksToReallocate() const
     -> const THashMap<TDiskId, ui64>&
 {
-    return DisksToReallocate;
+    return DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_REALLOCATION];
 }
 
 void TNotificationSystem::DeleteDiskToReallocate(
@@ -257,9 +276,54 @@ void TNotificationSystem::DeleteDiskToReallocate(
     const TDiskId& diskId,
     ui64 seqNo)
 {
-    auto it = DisksToReallocate.find(diskId);
-    if (it != DisksToReallocate.end() && it->second == seqNo) {
-        DisksToReallocate.erase(it);
+    auto& disks = DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_REALLOCATION];
+    auto it = disks.find(diskId);
+    if (it != disks.end() && it->second == seqNo) {
+        disks.erase(it);
+        db.DeleteDiskToReallocate(diskId);
+    }
+}
+
+ui64 TNotificationSystem::AddChangeNodeIdRequest(TDiskRegistryDatabase& db, const TDiskId& diskId) {
+    NProto::TDiskNotification notification;
+    notification.SetDiskId(diskId);
+    notification.SetType(NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE);
+
+    db.AddDiskToNotify(notification);
+    return AddChangeNodeIdRequest(diskId);
+}
+
+ui64 TNotificationSystem::AddChangeNodeIdRequest(const TDiskId& diskId) {
+    auto& disks = DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE];
+
+    const auto seqNo = DisksToNotifySeqNo++;
+    return disks[diskId] = seqNo;
+}
+
+ui64 TNotificationSystem::GetChangeNodeIdSeqNo(const TDiskId& diskId) const
+{
+    const auto& disks =
+        DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE];
+    const ui64* seqNo = disks.FindPtr(diskId);
+
+    return seqNo ? *seqNo : 0;
+}
+
+auto TNotificationSystem::GetDisksToChangeNodeId() const
+    -> const THashMap<TDiskId, ui64>&
+{
+    return DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE];
+}
+
+void TNotificationSystem::DeleteDiskToChangeNodeId(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    ui64 seqNo)
+{
+    auto& disks = DisksToNotify[NProto::DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE];
+    auto it = disks.find(diskId);
+    if (it != disks.end() && it->second == seqNo) {
+        disks.erase(it);
         db.DeleteDiskToReallocate(diskId);
     }
 }

@@ -167,8 +167,14 @@ struct TDiskRegistrySchema
             : public Column<1, NKikimr::NScheme::NTypeIds::String>
         {};
 
+        struct DiskNotification
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TDiskNotification;
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id>;
+        using TColumns = TableColumns<Id, DiskNotification>;
     };
 
     struct DisksToCleanup
@@ -219,8 +225,19 @@ struct TDiskRegistrySchema
             using Type = NProto::TAgentConfig;
         };
 
+        struct TestDeviceState
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+            using Type = NProto::EDeviceState;
+        };
+
+        struct TestString
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id, Config>;
+        using TColumns = TableColumns<Id, Config, TestDeviceState, TestString>;
     };
 
     struct SuspendedDevices

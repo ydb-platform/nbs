@@ -42,6 +42,17 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EDiskNotificationType
+{
+    // Initial state.
+    DISK_NOTIFICATION_TYPE_REALLOCATION = 0;
+
+    // Disk has switched its node id.
+    DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
@@ -462,6 +473,15 @@ message TUserNotification
     {
         string DiskId = 1;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDiskNotification
+{
+    string DiskId = 1;
+
+    EDiskNotificationType Type = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

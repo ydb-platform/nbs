@@ -508,6 +508,8 @@ TDuration MSeconds(ui32 value)
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
+    xxx(DiskRegistryNotifyDisksTimeout,                 TDuration, Seconds(5)    )\
+    xxx(EnableNodeIdChangingNotification,               bool,      false         )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW

@@ -327,20 +327,67 @@ void TDiskRegistryDatabase::AddDiskToReallocate(const TString& diskId)
         .Update();
 }
 
-bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
+// bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
+// {
+//     using TTable = TDiskRegistrySchema::DisksToNotify;
+
+//     auto it = Table<TTable>()
+//         .Range()
+//         .template Select<typename TTable::TColumns>();
+
+//     if (!it.IsReady()) {
+//         return false;   // not ready
+//     }
+
+//     while (it.IsValid()) {
+//         diskIds.push_back(it.GetValue<TTable::Id>());
+
+//         if (!it.Next()) {
+//             return false;   // not ready
+//         }
+//     }
+
+//     return true;
+// }
+
+void TDiskRegistryDatabase::DeleteDiskToReallocate(const TString& diskId)
+{
+    NProto::TDiskNotification notification;
+    notification.SetDiskId(diskId);
+    notification.SetType(NProto::DISK_NOTIFICATION_TYPE_REALLOCATION);
+    DeleteDiskToNotify(notification);
+}
+
+void TDiskRegistryDatabase::AddDiskToNotify(
+    const NProto::TDiskNotification& notification)
+{
+    using TTable = TDiskRegistrySchema::DisksToNotify;
+    Table<TTable>()
+        .Key(notification.GetDiskId())
+        .Update<TTable::DiskNotification>(notification);
+}
+
+bool TDiskRegistryDatabase::ReadDisksToNotify(
+    TVector<NProto::TDiskNotification>& notifications)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        diskIds.push_back(it.GetValue<TTable::Id>());
+        if (it.HaveValue<TTable::DiskNotification>()) {
+            notifications.push_back(it.GetValue<TTable::DiskNotification>());
+        } else {
+            NProto::TDiskNotification defaultValue;
+            defaultValue.SetDiskId(it.GetKey());
+            defaultValue.SetType(NProto::DISK_NOTIFICATION_TYPE_REALLOCATION);
+            notifications.push_back(defaultValue);
+        }
 
         if (!it.Next()) {
             return false;   // not ready
@@ -350,12 +397,11 @@ bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
     return true;
 }
 
-void TDiskRegistryDatabase::DeleteDiskToReallocate(const TString& diskId)
+void TDiskRegistryDatabase::DeleteDiskToNotify(
+    const NProto::TDiskNotification& notification)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(notification.GetDiskId()).Delete();
 }
 
 void TDiskRegistryDatabase::AddDiskToCleanup(const TString& diskId)

@@ -224,7 +224,10 @@ void TDiskRegistryActor::HandleListDisksToNotify(
 
 void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 {
-    if (DisksNotificationInProgress || State->GetDisksToReallocate().empty()) {
+    if (DisksNotificationInProgress ||
+        (State->GetDisksToReallocate().empty() &&
+         State->GetDisksToChangeNodeId().empty()))
+    {
         return;
     }
 
@@ -232,7 +235,8 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksRequest>();
 
-    auto deadline = Min(DisksNotificationStartTs, ctx.Now()) + TDuration::Seconds(5);
+    auto deadline = Min(DisksNotificationStartTs, ctx.Now()) +
+                    Config->GetDiskRegistryNotifyDisksTimeout();
     if (deadline > ctx.Now()) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Scheduled disks notification, now: %lu, deadline: %lu",
@@ -260,9 +264,23 @@ void TDiskRegistryActor::HandleNotifyDisks(
 
     DisksNotificationStartTs = ctx.Now();
 
-    DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
+    DisksBeingNotified.reserve(
+        State->GetDisksToReallocate().size() +
+        State->GetDisksToChangeNodeId().size());
+    const auto& disksToChangeNodeId = State->GetDisksToChangeNodeId();
     for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
-        DisksBeingNotified.emplace_back(diskId, seqNo);
+
+
+        DisksBeingNotified.emplace_back(
+            diskId,
+            seqNo,
+            NProto::DISK_NOTIFICATION_TYPE_REALLOCATION);
+    }
+
+    Sort(DisksBeingNotified);
+
+    for (const auto& [diskId, seqNo]: State->GetDisksToChangeNodeId()) {
+        // LowerBo
     }
 
     auto actor = NCloud::Register<TNotifyActor>(

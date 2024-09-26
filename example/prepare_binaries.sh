@@ -5,7 +5,7 @@ BLOCKSTORE_CLIENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/client/blockstore-clien
 BLOCKSTORE_VHOST_SERVER_BIN="$BUILD_ROOT/cloud/blockstore/vhost-server/blockstore-vhost-server"
 DISK_AGENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/disk_agent/diskagentd"
 BLOCKSTORE_NBD_BIN="$BUILD_ROOT/cloud/blockstore/tools/nbd/blockstore-nbd"
-QEMU_TAR="$BUILD_ROOT/cloud/storage/core/tools/testing/qemu/bin/qemu-bin.tar.gz"
+# QEMU_TAR="$BUILD_ROOT/cloud/storage/core/tools/testing/qemu/bin/qemu-bin.tar.gz"
 
 for bin in $YDBD_BIN $NBSD_BIN $BLOCKSTORE_CLIENT_BIN $BLOCKSTORE_VHOST_SERVER_BIN $DISK_AGENT_BIN $BLOCKSTORE_NBD_BIN $QEMU_TAR
 do

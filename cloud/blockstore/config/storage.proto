@@ -1035,4 +1035,11 @@ message TStorageServiceConfig
 
     // Node type
     optional string NodeType = 384;
+
+    // Timeout between notify requests to disks.
+    optional uint32 DiskRegistryNotifyDisksTimeout = 385;
+
+    // Whether the DR is allowed to send "DISK_NOTIFICATION_TYPE_NODE_ID_CHANGE"
+    // notifications. When disabled the DR will fallback to regular reallocations.
+    optional bool EnableNodeIdChangingNotification = 386;
 }
