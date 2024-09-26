@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/stream/file.h>
 #include <util/system/sanitizers.h>
 
 #include <libaio.h>
@@ -154,6 +155,8 @@ private:
         TSimpleStats& queueStats);
 
     void CompletionThreadFunc();
+
+    void IoSetup();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,6 +171,32 @@ TAioBackend::TAioBackend(
     Log = Logging->CreateLog("AIO");
 }
 
+void TAioBackend::IoSetup()
+{
+    const auto waitTime = TDuration::MilliSeconds(100);
+    const int maxIterations = 1000;
+
+    int iterations = 0;
+    int error = 0;
+
+    for (; iterations != maxIterations; ++iterations) {
+        error = io_setup(BatchSize, &Io);
+        if (error != -EAGAIN) {
+            break;
+        }
+
+        const auto aioNr = TIFStream("/proc/sys/fs/aio-nr").ReadLine();
+        const auto aioMaxNr = TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
+
+        STORAGE_WARN(
+            "retrying EAGAIN from io_setup, aio-nr/max: " << aioNr << "/"
+                                                          << aioMaxNr);
+
+        Sleep(waitTime);
+    }
+    Y_ABORT_UNLESS(!error, "io_setup: %d, iterations: %d", error, iterations);
+}
+
 vhd_bdev_info TAioBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing AIO backend");
@@ -176,7 +205,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
     }
     BatchSize = options.BatchSize;
 
-    Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
+    IoSetup();
 
     for (ui32 i = 0; i < options.QueueCount; i++) {
         Batches.emplace_back();
