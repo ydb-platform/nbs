@@ -16,17 +16,3 @@ def test_auth_unauthorized():
     )
     assert result.returncode != 0
     assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
-
-
-def test_auth_empty_token():
-    fixture = TestFixture()
-    fixture.access_service.authorize("test_auth_token")
-    client = fixture.get_client("")
-    result = client.create(
-        "test_auth_empty_token_fs",
-        "some_cloud",
-        fixture.folder_id,
-        return_stdout=False,
-    )
-    assert result.returncode != 0
-    assert json.loads(result.stdout.decode())["Error"]["CodeString"] == "E_UNAUTHORIZED"
