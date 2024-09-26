@@ -601,7 +601,16 @@ private:
                 }
             });
         if (RequestGenerator->InstantProcessQueue()) {
-            if (future.HasValue()) {
+            if (future.HasException()) {
+                try {
+                    future.TryRethrow();
+                } catch (const std::exception& ex) {
+                    DUMP(ex.what());
+                }
+                --CurrentIoDepth;
+            }
+
+            if (future.HasValue() || future.HasException()) {
                 ProcessCompletedRequests();
             }
         }
