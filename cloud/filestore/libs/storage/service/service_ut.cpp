@@ -318,8 +318,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 createChannelsCount = 0;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                    case TEvStorageSSProxy::EvModifySchemeRequest: {
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateFileStore)
                         {
@@ -340,8 +340,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 alterChannelsCount = 0;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                    case TEvStorageSSProxy::EvModifySchemeRequest: {
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpAlterFileStore)
                         {
@@ -953,8 +953,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
         runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                    case TEvStorageSSProxy::EvDescribeSchemeRequest: {
+                        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                             error);
                         runtime.Send(
                             new IEventHandle(

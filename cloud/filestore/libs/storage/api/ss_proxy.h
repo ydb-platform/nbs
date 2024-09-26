@@ -20,10 +20,6 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_SS_PROXY_REQUESTS(xxx, ...)                                  \
-    xxx(DescribeScheme,     __VA_ARGS__)                                       \
-    xxx(ModifyScheme,       __VA_ARGS__)                                       \
-    xxx(WaitSchemeTx,       __VA_ARGS__)                                       \
-                                                                               \
     xxx(DescribeFileStore,  __VA_ARGS__)                                       \
     xxx(CreateFileStore,    __VA_ARGS__)                                       \
     xxx(AlterFileStore,     __VA_ARGS__)                                       \
@@ -32,23 +28,12 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TEvStorageSSProxy = ::NCloud::NStorage::TEvSSProxy;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEvSSProxy
 {
-    using TDescribeSchemeRequest =
-        ::NCloud::NStorage::TEvSSProxy::TDescribeSchemeRequest;
-    using TDescribeSchemeResponse =
-        ::NCloud::NStorage::TEvSSProxy::TDescribeSchemeResponse;
-
-    using TModifySchemeRequest =
-        ::NCloud::NStorage::TEvSSProxy::TModifySchemeRequest;
-    using TModifySchemeResponse =
-        ::NCloud::NStorage::TEvSSProxy::TModifySchemeResponse;
-
-    using TWaitSchemeTxRequest =
-        ::NCloud::NStorage::TEvSSProxy::TWaitSchemeTxRequest;
-    using TWaitSchemeTxResponse =
-        ::NCloud::NStorage::TEvSSProxy::TWaitSchemeTxResponse;
-
     //
     // DescribeFileStore
     //
@@ -162,21 +147,6 @@ struct TEvSSProxy
 
     enum EEvents
     {
-        EvDescribeSchemeRequest =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvDescribeSchemeRequest,
-        EvDescribeSchemeResponse =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvDescribeSchemeResponse,
-
-        EvModifySchemeRequest =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvModifySchemeRequest,
-        EvModifySchemeResponse =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvModifySchemeResponse,
-
-        EvWaitSchemeTxRequest =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvWaitSchemeTxRequest,
-        EvWaitSchemeTxResponse =
-            ::NCloud::NStorage::TEvSSProxy::EEvents::EvWaitSchemeTxResponse,
-
         EvBegin = TFileStoreEvents::SS_PROXY_START,
 
         EvDescribeFileStoreRequest = EvBegin + 1,

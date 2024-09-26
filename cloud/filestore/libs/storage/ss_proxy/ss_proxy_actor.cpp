@@ -52,6 +52,9 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 bool TSSProxyActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
+
         FILESTORE_SS_PROXY_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvSSProxy)
 
         default:
@@ -71,21 +74,14 @@ STFUNC(TSSProxyActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TSSProxyActor::HandleDescribeScheme(
-    const TEvSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     ctx.Send(ev->Forward(StorageSSProxyActor));
 }
 
 void TSSProxyActor::HandleModifyScheme(
-    const TEvSSProxy::TEvModifySchemeRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ctx.Send(ev->Forward(StorageSSProxyActor));
-}
-
-void TSSProxyActor::HandleWaitSchemeTx(
-    const TEvSSProxy::TEvWaitSchemeTxRequest::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     ctx.Send(ev->Forward(StorageSSProxyActor));

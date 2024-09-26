@@ -36,6 +36,13 @@ public:
 private:
     bool HandleRequests(STFUNC_SIG);
 
+    void HandleDescribeScheme(
+        const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleModifyScheme(
+        const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     FILESTORE_SS_PROXY_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvSSProxy)
 
     STFUNC(StateWork);
