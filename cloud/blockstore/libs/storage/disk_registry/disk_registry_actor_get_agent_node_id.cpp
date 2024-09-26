@@ -36,7 +36,12 @@ void TDiskRegistryActor::HandleGetAgentNodeId(
         return;
     }
 
+    const auto* info = AgentRegInfo.FindPtr(agent->GetAgentId());
+    const bool connected = info && info->Connected;
+
     response->Record.SetNodeId(agent->GetNodeId());
+    response->Record.SetAgentState(agent->GetState());
+    response->Record.SetConnected(connected);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

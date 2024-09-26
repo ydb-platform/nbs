@@ -95,11 +95,15 @@ void TGetDiskAgentNodeIdActor::HandleGetAgentNodeIdResponse(
         SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
     }
 
-    auto response =
-        std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
+
+    google::protobuf::util::JsonPrintOptions options;
+    options.always_print_primitive_fields = true;
     google::protobuf::util::MessageToJsonString(
         msg->Record,
-        response->Record.MutableOutput());
+        response->Record.MutableOutput(),
+        options);
 
     ReplyAndDie(ctx, std::move(response));
 }
