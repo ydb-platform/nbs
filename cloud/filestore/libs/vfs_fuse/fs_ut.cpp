@@ -1447,9 +1447,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         std::atomic_bool releaseFinished = false;
         std::atomic_uint handlerCalled = 0;
         auto destroyFinished = NewPromise<void>();
+        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                            ->FindSubgroup("request", "DestroyHandle");
         bootstrap.Service->SetHandlerDestroyHandle(
             [&, destroyFinished](auto callContext, auto request) mutable
             {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    counters->GetCounter("InProgress")->GetAtomic());
+
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
@@ -1483,6 +1489,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
