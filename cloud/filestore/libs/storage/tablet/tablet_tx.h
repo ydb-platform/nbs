@@ -170,7 +170,8 @@ struct TIndexStateNodeUpdates
     TVector<TInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 };
 
-struct TProfileAware {
+struct TProfileAware
+{
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
     explicit TProfileAware(EFileStoreSystemRequest requestType) noexcept
@@ -308,6 +309,7 @@ struct TTxIndexTablet
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
         TVector<NProto::TOpLogEntry> OpLog;
         TVector<TDeletionMarker> LargeDeletionMarkers;
+        TVector<ui64> OrphanNodeIds;
 
         NProto::TError Error;
 
@@ -331,6 +333,7 @@ struct TTxIndexTablet
             SessionHistory.clear();
             OpLog.clear();
             LargeDeletionMarkers.clear();
+            OrphanNodeIds.clear();
         }
     };
 
@@ -1778,6 +1781,8 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TByteRange Range;
 
+        NProto::TError Error;
+
         TTruncateRange(
                 TRequestInfoPtr requestInfo,
                 ui64 nodeId,
@@ -1791,6 +1796,7 @@ struct TTxIndexTablet
         void Clear()
         {
             TProfileAware::Clear();
+            Error.Clear();
         }
     };
 
@@ -1826,6 +1832,8 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TByteRange Range;
 
+        NProto::TError Error;
+
         TZeroRange(
                 TRequestInfoPtr requestInfo,
                 ui64 nodeId,
@@ -1839,6 +1847,7 @@ struct TTxIndexTablet
         void Clear()
         {
             TProfileAware::Clear();
+            Error.Clear();
         }
     };
 

@@ -59,6 +59,7 @@ struct TIndexTabletState::TImpl
     TReadAheadCache ReadAheadCache;
     TNodeIndexCache NodeIndexCache;
     TInMemoryIndexState InMemoryIndexState;
+    TSet<ui64> OrphanNodeIds;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;
