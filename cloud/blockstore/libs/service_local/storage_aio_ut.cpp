@@ -106,7 +106,7 @@ TFsPath TryGetRamDrivePath()
 
 auto CreateAndStartAIOServiceProvider()
 {
-    auto provider = CreateFileIOServiceProviderStub(CreateAIOService());
+    auto provider = CreateSingleFileIOServiceProvider(CreateAIOService());
     provider->Start();
 
     return provider;
