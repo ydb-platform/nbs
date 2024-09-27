@@ -2010,6 +2010,8 @@ NProto::TError TDiskRegistryState::AllocateDisk(
     auto& disk = Disks[params.DiskId];
     auto error = ValidateAllocateDiskParams(disk, params);
 
+    auto originalDiskSize = GetDiskSize(params.DiskId);
+
     if (HasError(error)) {
         if (disk.Devices.empty() && !disk.ReplicaCount) {
             Disks.erase(params.DiskId);
@@ -2019,11 +2021,19 @@ NProto::TError TDiskRegistryState::AllocateDisk(
         return error;
     }
 
-    if (params.ReplicaCount) {
-        return AllocateMirroredDisk(now, db, params, disk, result);
+    NProto::TError allocateError =
+        params.ReplicaCount
+            ? AllocateMirroredDisk(now, db, params, disk, result)
+            : AllocateSimpleDisk(now, db, params, {}, disk, result);
+
+    // If disk size changed reallocate checkpoints too.
+    if (!HasError(allocateError) && originalDiskSize &&
+        originalDiskSize != GetDiskSize(params.DiskId))
+    {
+        ReallocateCheckpointByDisk(now, db, params.DiskId);
     }
 
-    return AllocateSimpleDisk(now, db, params, {}, disk, result);
+    return allocateError;
 }
 
 NProto::TError TDiskRegistryState::AllocateCheckpoint(
@@ -2815,6 +2825,24 @@ void TDiskRegistryState::DeleteCheckpointByDisk(
     for (const auto& diskToDelete: disksToDelete) {
         MarkDiskForCleanup(db, diskToDelete);
         DeallocateDisk(db, diskToDelete);
+    }
+}
+
+void TDiskRegistryState::ReallocateCheckpointByDisk(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId)
+{
+    TVector<TCheckpointId> checkpointsToReallocate;
+    for (const auto& [id, checkpointInfo]: Checkpoints) {
+        if (checkpointInfo.SourceDiskId == diskId) {
+            checkpointsToReallocate.push_back(checkpointInfo.CheckpointId);
+        }
+    }
+
+    for (const auto& checkpointId: checkpointsToReallocate) {
+        TAllocateCheckpointResult result;
+        AllocateCheckpoint(now, db, diskId, checkpointId, &result);
     }
 }
 
@@ -7238,6 +7266,16 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     }
 
     return ret;
+}
+
+std::optional<ui64> TDiskRegistryState::GetDiskSize(const TDiskId& diskId) const
+{
+    TDiskInfo diskInfo;
+    auto error = GetDiskInfo(diskId, diskInfo);
+    if (HasError(error)) {
+        return std::nullopt;
+    }
+    return diskInfo.GetBlocksCount();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
