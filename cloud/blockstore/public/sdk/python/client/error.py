@@ -54,11 +54,11 @@ class ClientError(RuntimeError):
     @property
     def is_retriable(self) -> bool:
         # special error code for retries
+        # NOTE: do not add E_TRY_AGAIN here - it is not retriable for a reason
         if self.code in [
             EResult.E_REJECTED.value,
             EResult.E_TIMEOUT.value,
             EResult.E_THROTTLED.value,
-            EResult.E_TRY_AGAIN.value,
             EResult.E_OUT_OF_SPACE.value,
         ]:
             return True
