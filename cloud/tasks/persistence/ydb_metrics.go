@@ -71,10 +71,6 @@ func (m *ydbMetrics) StatCall(
 			errorCounter := errorRegistry.Counter("errors")
 			errorCounter.Inc()
 
-			if errorType == "unknown" {
-				logging.Warn(ctx, "YDB call with name %v got unknown error %v", name, err)
-			}
-
 			if errors.Is(*err, context.DeadlineExceeded) {
 				logging.Error(ctx, "YDB call timed out, name %v, query %v", name, query)
 				timeoutCounter.Inc()
