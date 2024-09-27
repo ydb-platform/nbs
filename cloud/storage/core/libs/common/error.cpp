@@ -51,6 +51,7 @@ EErrorKind GetErrorKind(const NProto::TError& e)
     switch (code) {
         case E_REJECTED:
         case E_TIMEOUT:
+        case E_TRY_AGAIN:
         case E_BS_OUT_OF_SPACE:
         case E_FS_OUT_OF_SPACE:
         case E_BS_THROTTLED:
