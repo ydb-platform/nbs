@@ -222,6 +222,7 @@ def setup_disk_agent_config(
     config.ShutdownTimeout = get_shutdown_agent_interval()
     config.IOParserActorCount = 4
     config.OffloadAllIORequestsParsingEnabled = True
+    config.PathsPerFileIOService = 1
 
     if cached_sessions_path is not None:
         config.CachedSessionsPath = cached_sessions_path
