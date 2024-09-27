@@ -586,9 +586,13 @@ private:
                          << " fh.pos=" << fh.GetPosition());
         auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
 
-        fh.Reserve(
-            logRequest.GetRanges().cbegin()->GetOffset() +
-            logRequest.GetRanges().cbegin()->GetBytes());
+        /*
+                if (!fh.GetLength()) {
+                    // incorrect aligned to read size, should use size from
+           nodeattr fh.Reserve( logRequest.GetRanges().cbegin()->GetOffset() +
+                        logRequest.GetRanges().cbegin()->GetBytes());
+                }
+        */
 
         TFileHandle FileHandle{fh.GetHandle()};
 
@@ -741,11 +745,14 @@ private:
                 TFileHandle fh(
                     fullName,
                     OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr));
-                fh.Reserve(logRequest.GetNodeInfo().GetSize());
                 if (fh) {
                     nodeid = TFileStat{fh}.INode;
                 } else {
                     nodeid = TFileStat{fullName}.INode;
+                }
+
+                if (logRequest.GetNodeInfo().GetSize()) {
+                    fh.Reserve(logRequest.GetNodeInfo().GetSize());
                 }
             } break;
             case NProto::E_DIRECTORY_NODE: {
@@ -915,10 +922,11 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        // TODO: by parent + name        //
+        // TODO: by ParentNodeId + NodeName        //
         // {"TimestampMcs":1726503153650998,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
         // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
         // {"TimestampMcs":240399000,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
+        // {"TimestampMcs":1727464381415468,"DurationMcs":1982,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":2,"NodeName":"libc.so.6","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
         // nfs     GetNodeAttr     0.006847s       S_OK    {parent_node_id=1,
         // node_name=freeminer, flags=0, mode=509, node_id=2, handle=0, size=0}
 
@@ -942,7 +950,11 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
-                MakeError(E_CANCELLED, "cancelled")});
+                MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder{} << "Node not found "
+                                     << logRequest.GetNodeInfo().GetNodeId()
+                                     << " in " << NodesLogToLocal.size())});
         }
 
         auto fname = Spec.GetReplayRoot() + "/" + PathByNode(nodeid);
