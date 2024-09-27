@@ -726,8 +726,6 @@ func (s *nodeService) NodeGetVolumeStats(
 	req *csi.NodeGetVolumeStatsRequest) (
 	*csi.NodeGetVolumeStatsResponse, error) {
 
-	log.Printf("csi.NodeGetVolumeStats: %+v", req)
-
 	if req.VolumeId == "" {
 		return nil, s.statusError(
 			codes.InvalidArgument,
