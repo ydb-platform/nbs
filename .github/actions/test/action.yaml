@@ -187,6 +187,11 @@ runs:
             fi
         )
 
+    - name: copying system files
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        sudo -E -H -u github cp /var/log/kern.log "$LOG_DIR/kern.log"
+
     - name: archive unitest reports (orig)
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
