@@ -23,6 +23,7 @@ message TProfileLogNodeInfo {
     optional string NewNodeName = 4;
     optional uint32 Flags = 5;
     optional uint32 Mode = 6;
+    optional uint32 Type = 10;
 
     // from response
     optional uint64 NodeId = 7;
