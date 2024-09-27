@@ -30,6 +30,7 @@ target_link_libraries(blockstore-libs-service_local PUBLIC
 target_sources(blockstore-libs-service_local PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/broken_storage.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/compound_storage.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/file_io_service_provider.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/rdma_protocol.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/service_local.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/storage_aio.cpp

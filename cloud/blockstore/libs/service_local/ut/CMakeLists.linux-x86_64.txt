@@ -33,6 +33,7 @@ target_link_options(cloud-blockstore-libs-service_local-ut PRIVATE
 )
 target_sources(cloud-blockstore-libs-service_local-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/compound_storage_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/file_io_service_provider_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/storage_aio_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/storage_null_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/service_local/storage_spdk_ut.cpp

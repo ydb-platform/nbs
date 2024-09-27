@@ -251,6 +251,13 @@ message TDiskAgentConfig
 
     // Max. count of concurrently processing operations (io_setup).
     optional uint32 MaxAIOContextEvents = 33;
+
+    // Number of paths per each FileIOService.
+    // 0 means that only one IO service will be created.
+    // 1 means that one IO service per file path will be created.
+    // 2 means that one IO service will be created for every two file paths.
+    // etc.
+    optional uint32 PathsPerFileIOService = 34;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
