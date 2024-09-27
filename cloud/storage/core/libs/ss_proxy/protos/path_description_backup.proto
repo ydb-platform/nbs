@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+import "contrib/ydb/core/protos/flat_scheme_op.proto";
+
+package NCloud.NStorage.NSSProxy.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPathDescriptionBackup
+{
+    // Mapping from path.
+    map<string, NKikimrSchemeOp.TPathDescription> Data = 1;
+}

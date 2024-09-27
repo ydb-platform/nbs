@@ -17,9 +17,10 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define STORAGE_SS_PROXY_REQUESTS(xxx, ...)                                    \
-    xxx(DescribeScheme,     __VA_ARGS__)                                       \
-    xxx(ModifyScheme,       __VA_ARGS__)                                       \
-    xxx(WaitSchemeTx,       __VA_ARGS__)                                       \
+    xxx(DescribeScheme,         __VA_ARGS__)                                   \
+    xxx(ModifyScheme,           __VA_ARGS__)                                   \
+    xxx(WaitSchemeTx,           __VA_ARGS__)                                   \
+    xxx(BackupPathDescriptions, __VA_ARGS__)                                   \
 // STORAGE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,6 +107,18 @@ struct TEvSSProxy
     };
 
     //
+    // BackupPathDescriptions
+    //
+
+    struct TBackupPathDescriptionsRequest
+    {
+    };
+
+    struct TBackupPathDescriptionsResponse
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -121,6 +134,9 @@ struct TEvSSProxy
 
         EvWaitSchemeTxRequest = EvBegin + 5,
         EvWaitSchemeTxResponse = EvBegin + 6,
+
+        EvBackupPathDescriptionsRequest = EvBegin + 7,
+        EvBackupPathDescriptionsResponse = EvBegin + 8,
 
         EvEnd
     };

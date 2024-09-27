@@ -1,9 +1,7 @@
-#include "tablet_boot_info_backup.h"
+#include "path_description_backup.h"
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
-
-#include <contrib/ydb/core/base/tablet.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -29,7 +27,7 @@ constexpr TDuration BackupInterval = TDuration::Seconds(10);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTabletBootInfoBackup::TTabletBootInfoBackup(
+TPathDescriptionBackup::TPathDescriptionBackup(
         int logComponent,
         TString backupFilePath,
         bool readOnlyMode)
@@ -39,7 +37,7 @@ TTabletBootInfoBackup::TTabletBootInfoBackup(
     , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
 {}
 
-void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
+void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
@@ -48,7 +46,7 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
             MergeFromTextFormat(BackupFilePath, BackupProto);
         } catch (...) {
             LOG_WARN_S(ctx, LogComponent,
-                "TabletBootInfoBackup: can't load from file: "
+                "PathDescriptionBackup: can't load from file: "
                 << CurrentExceptionMessage());
         }
     } else {
@@ -56,15 +54,15 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
     }
 
     LOG_INFO_S(ctx, LogComponent,
-        "TabletBootInfoBackup: started with ReadOnlyMode=" << ReadOnlyMode);
+        "PathDescriptionBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
-void TTabletBootInfoBackup::ScheduleBackup(const TActorContext& ctx)
+void TPathDescriptionBackup::ScheduleBackup(const TActorContext& ctx)
 {
     ctx.Schedule(BackupInterval, new TEvents::TEvWakeup());
 }
 
-NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
+NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 {
     NProto::TError error;
 
@@ -78,26 +76,27 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
         } else {
             auto message = TStringBuilder()
                 << "failed to acquire lock on file: " << TmpBackupFilePath;
-            error = MakeError(E_FAIL, std::move(message));
+            error = MakeError(E_IO, std::move(message));
         }
     } catch (...) {
         error = MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
     if (SUCCEEDED(error.GetCode())) {
-        LOG_DEBUG_S(ctx, LogComponent, "TabletBootInfoBackup: backup completed");
+        LOG_DEBUG_S(ctx, LogComponent,
+            "PathDescriptionBackup: backup completed");
     } else {
-        ReportBackupTabletBootInfosFailure();
+        ReportBackupPathDescriptionsFailure();
 
         LOG_ERROR_S(ctx, LogComponent,
-            "TabletBootInfoBackup: backup failed: "
+            "PathDescriptionBackup: backup failed: "
             << error);
 
         try {
             TmpBackupFilePath.DeleteIfExists();
         } catch (...) {
             LOG_WARN_S(ctx, LogComponent,
-                "TabletBootInfoBackup: failed to delete temporary file: "
+                "PathDescriptionBackup: failed to delete temporary file: "
                 << CurrentExceptionMessage());
         }
     }
@@ -107,7 +106,7 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TTabletBootInfoBackup::HandleWakeup(
+void TPathDescriptionBackup::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -117,59 +116,58 @@ void TTabletBootInfoBackup::HandleWakeup(
     ScheduleBackup(ctx);
 }
 
-void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
-    const TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
+    const TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupResponse;
+    using TResponse = TEvSSProxyPrivate::TEvReadPathDescriptionBackupResponse;
 
     auto* msg = ev->Get();
 
+    bool found = false;
+    NKikimrSchemeOp::TPathDescription pathDescription;
+
+    {
+        auto it = BackupProto.GetData().find(msg->Path);
+        if (it != BackupProto.GetData().end()) {
+            found = true;
+            pathDescription = it->second;
+        }
+    }
+
     std::unique_ptr<TResponse> response;
 
-    auto it = BackupProto.GetData().find(msg->TabletId);
-    if (it == BackupProto.GetData().end()) {
+    if (found) {
         LOG_DEBUG_S(ctx, LogComponent,
-            "TabletBootInfoBackup: no data for tablet " << msg->TabletId);
-        response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
+            "PathDescriptionBackup: found data for path " << msg->Path);
+        response = std::make_unique<TResponse>(
+            std::move(msg->Path), std::move(pathDescription));
     } else {
         LOG_DEBUG_S(ctx, LogComponent,
-            "TabletBootInfoBackup: read data for tablet " << msg->TabletId);
-
-        auto storageInfo = it->second.GetStorageInfo();
-        auto suggestedGeneration = it->second.GetSuggestedGeneration();
-        response = std::make_unique<TResponse>(
-            NKikimr::TabletStorageInfoFromProto(std::move(storageInfo)),
-            suggestedGeneration);
+            "PathDescriptionBackup: no data for path " << msg->Path);
+        response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
-    const TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
+    const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    NHiveProxy::NProto::TTabletBootInfo info;
-    NKikimr::TabletStorageInfoToProto(
-        *msg->StorageInfo, info.MutableStorageInfo());
-    info.SetSuggestedGeneration(msg->SuggestedGeneration);
-
     auto& data = *BackupProto.MutableData();
-    data[msg->StorageInfo->TabletID] = info;
+    data[msg->Path] = std::move(msg->PathDescription);
 
     LOG_DEBUG_S(ctx, LogComponent,
-        "TabletBootInfoBackup: updated data for tablet "
-            << msg->StorageInfo->TabletID);
+        "PathDescriptionBackup: updated data for path " << msg->Path);
 }
 
-void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
-    const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
+void TPathDescriptionBackup::HandleBackupPathDescriptions(
+    const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvHiveProxy::TEvBackupTabletBootInfosResponse;
+    using TResponse = TEvSSProxy::TEvBackupPathDescriptionsResponse;
 
     NProto::TError error;
     if (ReadOnlyMode) {
@@ -184,13 +182,14 @@ void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TTabletBootInfoBackup::StateWork)
+STFUNC(TPathDescriptionBackup::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-        HFunc(TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest, HandleReadTabletBootInfoBackup);
-        HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest, HandleUpdateTabletBootInfoBackup);
-        HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
+        HFunc(TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest, HandleReadPathDescriptionBackup);
+        HFunc(TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest, HandleUpdatePathDescriptionBackup);
+        HFunc(TEvSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
+
         default:
             HandleUnexpectedEvent(ev, LogComponent);
             break;

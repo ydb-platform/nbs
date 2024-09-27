@@ -213,6 +213,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+                                                                               \
+    xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
