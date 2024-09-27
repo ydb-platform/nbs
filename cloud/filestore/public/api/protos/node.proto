@@ -29,6 +29,7 @@ enum ENodeType
     E_DIRECTORY_NODE = 2;
     E_LINK_NODE = 3;
     E_SOCK_NODE = 4;
+    E_SYMLINK_NODE = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
