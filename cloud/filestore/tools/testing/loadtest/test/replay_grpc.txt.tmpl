@@ -1,0 +1,17 @@
+Tests {
+    LoadTest {
+        Name: "smoke"
+        KeepFileStore: true
+        CreateFileStoreRequest: {
+            FileSystemId: "${FS}"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 10241024
+            BlockSize: 4096
+        }
+        ReplayGrpcSpec {
+             FileName: "${WORK_DIR}/filestore-server-profile-log.txt"
+        }
+        IODepth: 64
+    }
+}
