@@ -1405,6 +1405,49 @@ bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// OrphanNodes
+
+void TIndexTabletDatabase::WriteOrphanNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Update();
+}
+
+void TIndexTabletDatabase::DeleteOrphanNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadOrphanNodes(TVector<ui64>& nodeIds)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        nodeIds.emplace_back(it.GetValue<TTable::NodeId>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)

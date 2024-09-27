@@ -84,7 +84,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
         args.Range.Length,
         args.ProfileLogRequest);
 
-    ZeroRange(db, args.NodeId, commitId, args.Range);
+    args.Error = ZeroRange(db, args.NodeId, commitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_ZeroRange(
@@ -100,12 +100,15 @@ void TIndexTabletActor::CompleteTx_ZeroRange(
         ProfileLog);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ZeroRange %lu %s completed",
+        "%s ZeroRange %lu %s completed: %s",
         LogTag.c_str(),
         args.NodeId,
-        args.Range.Describe().c_str());
+        args.Range.Describe().c_str(),
+        FormatError(args.Error).Quote().c_str());
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);

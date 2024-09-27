@@ -74,7 +74,7 @@ bool TIndexTabletState::GenerateBlobId(
     return true;
 }
 
-void TIndexTabletState::Truncate(
+NProto::TError TIndexTabletState::Truncate(
     TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
@@ -82,20 +82,20 @@ void TIndexTabletState::Truncate(
     ui64 targetSize)
 {
     if (currentSize <= targetSize) {
-        return;
+        return {};
     }
 
     TByteRange range(targetSize, currentSize - targetSize, GetBlockSize());
 
     if (TruncateBlocksThreshold && range.BlockCount() > TruncateBlocksThreshold) {
         EnqueueTruncateOp(nodeId, range);
-        return;
+        return {};
     }
 
-    TruncateRange(db, nodeId, commitId, range);
+    return TruncateRange(db, nodeId, commitId, range);
 }
 
-void TIndexTabletState::TruncateRange(
+NProto::TError TIndexTabletState::TruncateRange(
     TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
@@ -106,7 +106,10 @@ void TIndexTabletState::TruncateRange(
         AlignUp<ui64>(range.End(), range.BlockSize) - range.Offset,
         range.BlockSize);
 
-    DeleteRange(db, nodeId, commitId, tailAlignedRange);
+    auto e = DeleteRange(db, nodeId, commitId, tailAlignedRange);
+    if (HasError(e)) {
+        return e;
+    }
 
     const TByteRange headBound(
          range.Offset,
@@ -123,15 +126,20 @@ void TIndexTabletState::TruncateRange(
     }
 
     InvalidateReadAheadCache(nodeId);
+
+    return {};
 }
 
-void TIndexTabletState::ZeroRange(
+NProto::TError TIndexTabletState::ZeroRange(
     TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     TByteRange range)
 {
-    DeleteRange(db, nodeId, commitId, range);
+    auto e = DeleteRange(db, nodeId, commitId, range);
+    if (HasError(e)) {
+        return e;
+    }
 
     const TByteRange headBound(
          range.Offset,
@@ -160,9 +168,11 @@ void TIndexTabletState::ZeroRange(
             // FIXME: do not allocate each time
             TString(tailBound.Length, 0));
     }
+
+    return {};
 }
 
-void TIndexTabletState::DeleteRange(
+NProto::TError TIndexTabletState::DeleteRange(
     TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
@@ -180,6 +190,13 @@ void TIndexTabletState::DeleteRange(
         const bool useLargeDeletionMarkers = LargeDeletionMarkersEnabled
             && deletedBlockCount >= LargeDeletionMarkersThreshold;
         if (useLargeDeletionMarkers) {
+            const auto t = LargeDeletionMarkersThresholdForBackpressure;
+            if (GetLargeDeletionMarkersCount() >= t) {
+                return MakeError(E_REJECTED, TStringBuilder()
+                    << "too many large deletion markers: "
+                    << GetLargeDeletionMarkersCount() << " >= " << t);
+            }
+
             SplitRange(
                 range.FirstAlignedBlock(),
                 deletedBlockCount,
@@ -221,6 +238,8 @@ void TIndexTabletState::DeleteRange(
         commitId,
         range.Offset,
         range.Length);
+
+    return {};
 }
 
 void TIndexTabletState::EnqueueTruncateOp(ui64 nodeId, TByteRange range)

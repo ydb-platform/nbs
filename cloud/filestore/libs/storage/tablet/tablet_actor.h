@@ -151,6 +151,8 @@ private:
         std::atomic<i64> NodesOpenForReadingBySingleSession{0};
         std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
 
+        std::atomic<i64> OrphanNodesCount{0};
+
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
@@ -216,7 +218,8 @@ private:
             const TChannelsStats& channelsStats,
             const TReadAheadCacheStats& readAheadStats,
             const TNodeIndexCacheStats& nodeIndexCacheStats,
-            const TNodeToSessionCounters& nodeToSessionCounters);
+            const TNodeToSessionCounters& nodeToSessionCounters,
+            const TMiscNodeStats& miscNodeStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
