@@ -1446,7 +1446,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
-                    counters->GetCounter("InProgress")->GetAtomic());
+                    AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
@@ -1481,7 +1481,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
-        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
