@@ -267,6 +267,7 @@ public:
     ui64 GetLargeDeletionMarkerBlocks() const;
     ui64 GetLargeDeletionMarkersThreshold() const;
     ui64 GetLargeDeletionMarkersCleanupThreshold() const;
+    ui64 GetLargeDeletionMarkersThresholdForBackpressure() const;
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
 

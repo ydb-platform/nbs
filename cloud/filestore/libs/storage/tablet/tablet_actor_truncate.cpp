@@ -316,13 +316,17 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
         return RebootTabletOnCommitOverflow(ctx, "TruncateRange");
     }
 
+    auto e = TruncateRange(db, args.NodeId, commitId, args.Range);
+    if (HasError(e)) {
+        args.Error = std::move(e);
+        return;
+    }
+
     AddRange(
         args.NodeId,
         args.Range.Offset,
         args.Range.Length,
         args.ProfileLogRequest);
-
-    TruncateRange(db, args.NodeId, commitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_TruncateRange(
@@ -343,7 +347,9 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
         args.NodeId,
         args.Range.Describe().c_str());
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);
