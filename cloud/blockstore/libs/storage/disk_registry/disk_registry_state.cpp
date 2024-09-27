@@ -1149,7 +1149,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     bool manual,
     bool* diskStateUpdated)
 {
-    Y_DEBUG_ABORT_UNLESS(diskStateUpdated);
+    Y_ABORT_UNLESS(diskStateUpdated);
     *diskStateUpdated = false;
 
     if (!diskId) {
@@ -1163,7 +1163,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
 
     TDiskState& disk = Disks[diskId];
 
-    auto error = ReplaceDevice(
+    auto error = ReplaceDeviceWithoutDiskStateUpdate(
         db,
         disk,
         diskId,
@@ -1182,7 +1182,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     return {};
 }
 
-NProto::TError TDiskRegistryState::ReplaceDevice(
+NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
     TDiskRegistryDatabase& db,
     TDiskState& disk,
     const TString& diskId,
@@ -4857,7 +4857,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                     deviceId);
 
                 if (canReplaceDevice) {
-                    auto error = ReplaceDevice(
+                    auto error = ReplaceDeviceWithoutDiskStateUpdate(
                         db,
                         disk,
                         diskId,
@@ -5785,7 +5785,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
             device.GetDeviceUUID());
 
         if (canReplaceDevice) {
-            auto error = ReplaceDevice(
+            auto error = ReplaceDeviceWithoutDiskStateUpdate(
                 db,
                 *disk,
                 diskId,

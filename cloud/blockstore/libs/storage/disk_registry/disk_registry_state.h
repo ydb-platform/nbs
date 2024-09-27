@@ -1265,8 +1265,7 @@ private:
 
     std::optional<ui64> GetDiskBlockCount(const TDiskId& diskId) const;
 
-    // Replace disk's device. No disk status update.
-    NProto::TError ReplaceDevice(
+    NProto::TError ReplaceDeviceWithoutDiskStateUpdate(
         TDiskRegistryDatabase& db,
         TDiskState& disk,
         const TString& diskId,
