@@ -7,5 +7,9 @@ IF (TEST_TOKEN)
         cloud/storage/core/tests/recipes/access-service/access-service-recipe
         --token $TEST_TOKEN
     )
+ELSE()
+     USE_RECIPE(
+        cloud/storage/core/tests/recipes/access-service/access-service-recipe
+    )
 ENDIF()
 

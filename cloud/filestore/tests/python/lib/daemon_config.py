@@ -19,6 +19,7 @@ from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 
 from cloud.storage.core.protos.media_pb2 import STORAGE_MEDIA_HDD
+from cloud.storage.core.tools.testing.access_service.lib import AccessService
 
 LOG_WARN = 4
 LOG_NOTICE = 5
@@ -56,6 +57,7 @@ class NfsDaemonConfigGenerator:
         storage_config=None,
         use_secure_registration=False,
         secure=False,
+        access_service_type=AccessService,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -78,6 +80,7 @@ class NfsDaemonConfigGenerator:
         self.__port = self._port_manager.get_port()
         self.__mon_port = self._port_manager.get_port()
         self.__ic_port = self._port_manager.get_port()
+        self.__access_service_type = access_service_type
         self.__access_service_port = access_service_port
 
         self.__use_secure_registration = use_secure_registration
@@ -259,6 +262,7 @@ class NfsDaemonConfigGenerator:
         auth_config.UseBlackBox = False
         auth_config.UseStaff = False
         auth_config.AccessServiceEndpoint = "localhost:{}".format(port)
+        auth_config.AccessServiceType = self.__access_service_type.access_service_type
         return auth_config
 
     def __config_file_path(self, name):
@@ -379,6 +383,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         storage_config=None,
         use_secure_registration=False,
         secure=False,
+        access_service_type=AccessService,
     ):
         super().__init__(
             binary_path,
@@ -396,6 +401,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
             secure=secure,
+            access_service_type=access_service_type,
         )
 
 
