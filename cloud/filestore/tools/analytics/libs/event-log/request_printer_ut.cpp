@@ -55,10 +55,11 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         nodeInfo->SetNodeId(30);
         nodeInfo->SetHandle(40);
         nodeInfo->SetSize(50);
+        nodeInfo->SetType(2);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, new_parent_node_id=20, "
-            "new_node_name=name_2, flags=5, mode=7, node_id=30, handle=40, size=50}",
+            "new_node_name=name_2, flags=5, mode=7, node_id=30, handle=40, size=50, type=2}",
             printer->DumpInfo(Request));
 
         nodeInfo->ClearNewParentNodeId();
@@ -66,7 +67,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}",
+            "handle=40, size=50, type=2}",
             printer->DumpInfo(Request));
 
         auto* lockInfo = Request.MutableLockInfo();
@@ -82,7 +83,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}\t{node_id=100, handle=110, owner=120, offset=130, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, owner=120, offset=130, "
             "length=140, type=E_SHARED, conflicted_owner=220, conflicted_offset=230, "
             "conflicted_length=240}",
             printer->DumpInfo(Request));
@@ -95,7 +96,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}\t{node_id=100, handle=110, offset=130, length=140, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
             "type=E_EXCLUSIVE}",
             printer->DumpInfo(Request));
 
@@ -110,7 +111,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}\t{node_id=100, handle=110, offset=130, length=140, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
             "type=Unknown}\t[{node_id=300, handle=305, offset=310, bytes=315}, "
             "{node_id=301, handle=306, offset=311, bytes=316}]",
             printer->DumpInfo(Request));
@@ -119,7 +120,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}\t{node_id=100, handle=110, offset=130, length=140, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
             "type=Unknown}\t[{node_id=300, handle=305, offset=310, bytes=315}]",
             printer->DumpInfo(Request));
 
@@ -127,7 +128,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50}\t[{node_id=300, handle=305, offset=310, bytes=315}]",
+            "handle=40, size=50, type=2}\t[{node_id=300, handle=305, offset=310, bytes=315}]",
             printer->DumpInfo(Request));
 
         Request.ClearNodeInfo();
