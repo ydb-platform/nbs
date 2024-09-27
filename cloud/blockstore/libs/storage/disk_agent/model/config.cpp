@@ -43,6 +43,7 @@ namespace {
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
     xxx(DisableNodeBrokerRegisterationOnDevicelessAgent, bool,         false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
+    xxx(PathsPerFileIOService,              ui32,       0                     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
