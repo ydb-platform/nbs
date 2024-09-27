@@ -72,7 +72,7 @@ func (m *ydbMetrics) StatCall(
 			errorCounter.Inc()
 
 			if errorType == "unknown" {
-				logging.Error(ctx, "YDB call with name %v has unknown error %v", name, err)
+				logging.Warn(ctx, "YDB call with name %v got unknown error %v", name, err)
 			}
 
 			if errors.Is(*err, context.DeadlineExceeded) {
