@@ -61,6 +61,7 @@ func (m *ydbMetrics) StatCall(
 				errorType = "ratelimiterAcquire"
 			default:
 				errorType = "unknown"
+				logging.Warn(ctx, "YDB call with name %v got unknown error %v", name, err)
 			}
 
 			errorRegistry := subRegistry.WithTags(map[string]string{
