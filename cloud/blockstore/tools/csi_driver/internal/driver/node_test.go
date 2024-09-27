@@ -24,7 +24,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
@@ -378,7 +378,7 @@ func TestStagedPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	groupId := ""
 	currentUser, err := user.Current()
@@ -524,7 +524,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 }
 
 func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
@@ -651,7 +651,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
@@ -662,6 +662,11 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir,
 		"pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+
+	info, err := os.Stat(tempDir)
+	require.NoError(t, err)
+	err = os.MkdirAll(targetPath, info.Mode())
+	require.NoError(t, err)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -713,7 +718,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
@@ -767,7 +772,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 }
 
 func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
