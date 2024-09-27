@@ -190,7 +190,8 @@ runs:
     - name: copying system files
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo -E -H -u github cp /var/log/kern.log "$LOG_DIR/kern.log"
+        sudo cp /var/log/kern.log "$LOG_DIR/kern.log" &&
+        sudo chown -R github:github "$LOG_DIR/kern.log" || true
 
     - name: archive unitest reports (orig)
       shell: bash --noprofile --norc -eo pipefail -x {0}
