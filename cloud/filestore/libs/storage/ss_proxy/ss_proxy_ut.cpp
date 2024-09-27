@@ -138,9 +138,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         ssProxy.SendRequest(
             MakeSSProxyServiceId(),
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
+                std::move(modifyScheme)));
 
-        auto modifyResponse = ssProxy.RecvResponse<TEvSSProxy::TEvModifySchemeResponse>();
+        auto modifyResponse =
+            ssProxy.RecvResponse<TEvStorageSSProxy::TEvModifySchemeResponse>();
 
         UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -200,9 +202,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         ssProxy.SendRequest(
             MakeSSProxyServiceId(),
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
+                std::move(modifyScheme)));
 
-        auto modifyResponse = ssProxy.RecvResponse<TEvSSProxy::TEvModifySchemeResponse>();
+        auto modifyResponse =
+            ssProxy.RecvResponse<TEvStorageSSProxy::TEvModifySchemeResponse>();
 
         UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -225,8 +229,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         auto error = MakeError(E_FAIL, "Error");
         runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                    case TEvStorageSSProxy::EvDescribeSchemeRequest: {
+                        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                                 error);
 
                         runtime.Send(
@@ -295,8 +299,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeSchemeResponse: {
-                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    case TEvStorageSSProxy::EvDescribeSchemeResponse: {
+                        using TEvent = TEvStorageSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
                         auto* msg = ev->template Get<TEvent>();
                         auto& desc =
@@ -329,8 +333,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeSchemeResponse: {
-                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                    case TEvStorageSSProxy::EvDescribeSchemeResponse: {
+                        using TEvent = TEvStorageSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
                         auto* msg = ev->template Get<TEvent>();
                         auto& desc =

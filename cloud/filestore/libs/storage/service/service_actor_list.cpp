@@ -50,7 +50,8 @@ private:
             "Sending describe request for path %s",
             path.Quote().c_str());
 
-        auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
+        auto request =
+            std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
 
         RequestsScheduled++;
 
@@ -73,7 +74,7 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeResponse);
+            HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeResponse);
 
             default:
                 HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
@@ -82,7 +83,7 @@ private:
     }
 
     void HandleDescribeResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx)
     {
         RequestsCompleted++;

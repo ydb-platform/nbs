@@ -4,7 +4,7 @@
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
-namespace NCloud::NFileStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NActors;
 
@@ -41,7 +41,8 @@ class TModifySchemeActor final
     : public TActorBootstrapped<TModifySchemeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    const int LogComponent;
+    const TSSProxyActor::TRequestInfo RequestInfo;
     const TActorId Owner;
     const NKikimrSchemeOp::TModifyScheme ModifyScheme;
 
@@ -52,7 +53,8 @@ private:
 
 public:
     TModifySchemeActor(
-        TRequestInfoPtr requestInfo,
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
         const TActorId& owner,
         NKikimrSchemeOp::TModifyScheme modifyScheme);
 
@@ -77,10 +79,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifySchemeActor::TModifySchemeActor(
-        TRequestInfoPtr requestInfo,
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
         const TActorId& owner,
         NKikimrSchemeOp::TModifyScheme modifyScheme)
-    : RequestInfo(std::move(requestInfo))
+    : LogComponent(logComponent)
+    , RequestInfo(std::move(requestInfo))
     , Owner(owner)
     , ModifyScheme(std::move(modifyScheme))
 {}
@@ -111,7 +115,7 @@ void TModifySchemeActor::HandleStatus(
     auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
-            LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+            LOG_DEBUG(ctx, LogComponent,
                 "Request %s with TxId# %lu completed immediately",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 TxId);
@@ -120,7 +124,7 @@ void TModifySchemeActor::HandleStatus(
             break;
 
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress: {
-            LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+            LOG_DEBUG(ctx, LogComponent,
                 "Request %s with TxId# %lu in progress, waiting for completion",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 TxId);
@@ -134,7 +138,7 @@ void TModifySchemeActor::HandleStatus(
         }
 
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecError:
-            LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+            LOG_DEBUG(ctx, LogComponent,
                 "Request %s with TxId# %lu failed with status %s",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 TxId,
@@ -144,7 +148,7 @@ void TModifySchemeActor::HandleStatus(
                 (record.GetPathCreateTxId() != 0 || record.GetPathDropTxId() != 0))
             {
                 ui64 txId = record.GetPathCreateTxId() != 0 ? record.GetPathCreateTxId() : record.GetPathDropTxId();
-                LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+                LOG_DEBUG(ctx, LogComponent,
                     "Waiting for a different TxId# %lu", txId);
 
                 auto request = std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(
@@ -169,7 +173,7 @@ void TModifySchemeActor::HandleStatus(
 
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ResolveError:
             if (SchemeShardStatus == NKikimrScheme::StatusPathDoesNotExist) {
-                LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+                LOG_DEBUG(ctx, LogComponent,
                     "Request %s failed to resolve parent path",
                     NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str());
 
@@ -189,7 +193,7 @@ void TModifySchemeActor::HandleStatus(
             /* fall through */
 
         default:
-            LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+            LOG_DEBUG(ctx, LogComponent,
                 "Request %s to tx_proxy failed with code %u",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 status);
@@ -208,7 +212,7 @@ void TModifySchemeActor::HandleTxDone(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_DEBUG(ctx, LogComponent,
         "TModifySchemeActor received TEvWaitSchemeTxResponse");
 
     ReplyAndDie(ctx, msg->GetError());
@@ -228,7 +232,7 @@ void TModifySchemeActor::ReplyAndDie(
         SchemeShardStatus,
         SchemeShardReason);
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(ctx, RequestInfo, std::move(response));
     Die(ctx);
 }
 
@@ -239,7 +243,7 @@ STFUNC(TModifySchemeActor::StateWork)
         HFunc(TEvSSProxy::TEvWaitSchemeTxResponse, HandleTxDone);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(ev, LogComponent);
             break;
     }
 }
@@ -254,17 +258,13 @@ void TSSProxyActor::HandleModifyScheme(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
     NCloud::Register(
         ctx,
         std::make_unique<TModifySchemeActor>(
-            std::move(requestInfo),
+            LogComponent,
+            TRequestInfo(ev->Sender, ev->Cookie),
             ctx.SelfID,
             msg->ModifyScheme));
 }
 
-}   // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NStorage
