@@ -9,8 +9,8 @@ namespace NCloud {
 #define STORAGE_CRITICAL_EVENTS(xxx)                                           \
     xxx(CpuWaitCounterReadError)                                               \
     xxx(HiveProxyConcurrentLockError)                                          \
-    xxx(BackupPathDescriptionsFailure)                                         \
     xxx(BackupTabletBootInfosFailure)                                          \
+    xxx(BackupPathDescriptionsFailure)                                         \
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
 // STORAGE_CRITICAL_EVENTS
