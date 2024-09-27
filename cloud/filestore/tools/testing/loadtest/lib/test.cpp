@@ -597,19 +597,14 @@ private:
             [=](const TFuture<TCompletedRequest>& future)
             {
                 if (auto ptr = self.lock()) {
-                    ptr->SignalCompletion(future.GetValue());
+                    if (future.HasException()) {
+                        ptr->SignalCompletion(TCompletedRequest{});
+                    } else {
+                        ptr->SignalCompletion(future.GetValue());
+                    }
                 }
             });
         if (RequestGenerator->InstantProcessQueue()) {
-            if (future.HasException()) {
-                try {
-                    future.TryRethrow();
-                } catch (const std::exception& ex) {
-                    DUMP(ex.what());
-                }
-                --CurrentIoDepth;
-            }
-
             if (future.HasValue() || future.HasException()) {
                 ProcessCompletedRequests();
             }
@@ -635,8 +630,9 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR("%s failing test due to: %s",
+                STORAGE_ERROR("%s failing test %d due to: %s",
                     MakeTestTag().c_str(),
+                    request->Action,
                     FormatError(request->Error).c_str());
 
                 if (RequestGenerator->FailOnError()) {

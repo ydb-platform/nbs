@@ -310,8 +310,6 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
 
-        TGuard<TMutex> guard(StateLock);
-
         return MakeFuture(TCompletedRequest{
             NProto::ACTION_ACCESS_NODE,
             Started,
@@ -455,8 +453,6 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
 
-        TGuard<TMutex> guard(StateLock);
-
         auto request = CreateRequest<NProto::TReadDataRequest>();
         const auto handle =
             HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
@@ -533,8 +529,6 @@ private:
                 started,
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
-
-        TGuard<TMutex> guard(StateLock);
 
         auto request = CreateRequest<NProto::TWriteDataRequest>();
         const auto logHandle = logRequest.GetRanges(0).GetHandle();
@@ -711,13 +705,14 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
     {
         try {
-            TGuard<TMutex> guard(StateLock);
             auto response = future.GetValue();
             CheckResponse(response);
             // Nodes[name] = TNode{name, response.GetNode()};
             if (response.GetNode().GetId()) {
-                NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] =
-                    response.GetNode().GetId();
+                with_lock (StateLock) {
+                    NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] =
+                        response.GetNode().GetId();
+                }
             }
 
             return {NProto::ACTION_CREATE_NODE, started, response.GetError()};
@@ -746,8 +741,6 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
 
-        TGuard<TMutex> guard(StateLock);
-
         auto request = CreateRequest<NProto::TRenameNodeRequest>();
         const auto node =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
@@ -770,23 +763,29 @@ private:
         request->SetFlags(logRequest.GetNodeInfo().GetFlags());
 
         auto self = weak_from_this();
-        return Session->RenameNode(CreateCallContext(), std::move(request))
-            .Apply(
-                [=, started = Started](
-                    const TFuture<NProto::TRenameNodeResponse>& future)
-                {
-                    if (auto ptr = self.lock()) {
-                        return ptr->HandleRenameNode(
-                            future,
-                            started,
-                            logRequest);
-                    }
+        const auto future =
+            Session->RenameNode(CreateCallContext(), std::move(request))
+                .Apply(
+                    [=, started = Started](
+                        const TFuture<NProto::TRenameNodeResponse>& future)
+                    {
+                        if (auto ptr = self.lock()) {
+                            return ptr->HandleRenameNode(
+                                future,
+                                started,
+                                logRequest);
+                        }
 
-                    return TCompletedRequest{
-                        NProto::ACTION_RENAME_NODE,
-                        started,
-                        MakeError(E_CANCELLED, "cancelled")};
-                });
+                        return TCompletedRequest{
+                            NProto::ACTION_RENAME_NODE,
+                            started,
+                            MakeError(E_INVALID_STATE, "invalid ptr")};
+                    });
+        const auto& response = future.GetValueSync();
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_RENAME_NODE,
+            Started,
+            response.Error});
     }
 
     TCompletedRequest HandleRenameNode(
@@ -794,7 +793,6 @@ private:
         TInstant started,
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
     {
-        TGuard<TMutex> guard(StateLock);
         try {
             auto response = future.GetValue();
             CheckResponse(response);
@@ -821,8 +819,6 @@ private:
                 Started,
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
-
-        TGuard<TMutex> guard(StateLock);
 
         auto name = logRequest.GetNodeInfo().GetNodeName();
         auto request = CreateRequest<NProto::TUnlinkNodeRequest>();
@@ -875,7 +871,6 @@ private:
     {
         //  DestroyHandle   0.002475s       S_OK    {node_id=10,
         // handle=61465562388172112}
-        TGuard<TMutex> guard(StateLock);
 
         auto name = logRequest.GetNodeInfo().GetNodeName();
 
@@ -886,8 +881,9 @@ private:
         if (!handle) {
             return MakeFuture(TCompletedRequest{});
         }
-
-        HandlesLogToActual.erase(handle);
+        with_lock (StateLock) {
+            HandlesLogToActual.erase(handle);
+        }
 
         request->SetHandle(handle);
 
@@ -918,8 +914,6 @@ private:
                 started,
                 MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
-
-        TGuard<TMutex> guard(StateLock);
 
         // TODO: by parent + name        //
         // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
@@ -975,7 +969,6 @@ private:
             auto response = future.GetValue();
             STORAGE_DEBUG("GetNodeAttr client completed");
             CheckResponse(response);
-            TGuard<TMutex> guard(StateLock);
             return {NProto::ACTION_GET_NODE_ATTR, started, {}};
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
@@ -984,7 +977,7 @@ private:
                 name.c_str(),
                 FormatError(error).c_str());
 
-            return {NProto::ACTION_GET_NODE_ATTR, started, {}};
+            return {NProto::ACTION_GET_NODE_ATTR, started, error};
         }
     }
 
@@ -1011,6 +1004,12 @@ private:
 
     TFuture<TCompletedRequest> DoAcquireLock()
     {
+        // TODO:
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_ACQUIRE_LOCK,
+            Started,
+            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+
         TGuard<TMutex> guard(StateLock);
         if (Handles.empty()) {
             // return DoCreateHandle();
@@ -1090,6 +1089,11 @@ private:
 
     TFuture<TCompletedRequest> DoReleaseLock()
     {
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_RELEASE_LOCK,
+            Started,
+            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+
         TGuard<TMutex> guard(StateLock);
         if (Locks.empty()) {
             return DoAcquireLock();
