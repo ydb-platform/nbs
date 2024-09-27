@@ -146,6 +146,8 @@ private:
     void SaveCurrentConfig();
 
     void ReportDiskAgentConfigMismatchEvent(const TString& error);
+
+    void LockDevice(const TString& path);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -419,6 +421,13 @@ void TInitializer::ValidateCurrentConfigs()
         << "broken config: " << FormatError(error));
 }
 
+void TInitializer::LockDevice(const TString& path)
+{
+    if (AgentConfig->GetDeviceLockingEnabled() && !Guard.Lock(path)) {
+        ythrow TServiceError(E_ARGUMENT) << "unable to lock file " << path;
+    }
+}
+
 TFuture<void> TInitializer::Initialize()
 {
     ScanFileDevices();
@@ -457,20 +466,14 @@ TFuture<void> TInitializer::Initialize()
         try {
             SetBlocksCount(device, Configs[i]);
 
-            if (AgentConfig->GetDeviceLockingEnabled() &&
-                !Guard.Lock(Configs[i].GetDeviceName()))
-            {
-                ythrow TServiceError(E_ARGUMENT)
-                    << "unable to lock file "
-                    << Configs[i].GetDeviceName();
-            }
+            LockDevice(Configs[i].GetDeviceName());
 
             auto result = CreateFileStorage(
                 device.GetPath(),
                 device.GetOffset() / device.GetBlockSize(),
                 Configs[i],
                 Stats[i]
-            ).Subscribe([=] (const auto& future) {
+            ).Subscribe([=, this] (const auto& future) {
                     try {
                         Devices[i] = future.GetValue();
                     } catch (...) {
@@ -498,7 +501,7 @@ TFuture<void> TInitializer::Initialize()
 
         try {
             auto result = CreateMemoryStorage(Configs[i], Stats[i])
-                .Subscribe([=] (const auto& future) {
+                .Subscribe([=, this] (const auto& future) {
                     try {
                         Devices[i] = future.GetValue();
                     } catch (...) {
