@@ -316,17 +316,13 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
         return RebootTabletOnCommitOverflow(ctx, "TruncateRange");
     }
 
-    auto e = TruncateRange(db, args.NodeId, commitId, args.Range);
-    if (HasError(e)) {
-        args.Error = std::move(e);
-        return;
-    }
-
     AddRange(
         args.NodeId,
         args.Range.Offset,
         args.Range.Length,
         args.ProfileLogRequest);
+
+    args.Error = TruncateRange(db, args.NodeId, commitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_TruncateRange(
@@ -338,7 +334,7 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
         std::move(args.ProfileLogRequest),
         ctx.Now(),
         GetFileSystemId(),
-        {},
+        args.Error,
         ProfileLog);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,

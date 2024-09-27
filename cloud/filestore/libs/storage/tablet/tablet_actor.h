@@ -526,6 +526,7 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
+    bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
