@@ -92,7 +92,6 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
 void TNonreplicatedPartitionMigrationActor::OnMigrationError(
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,

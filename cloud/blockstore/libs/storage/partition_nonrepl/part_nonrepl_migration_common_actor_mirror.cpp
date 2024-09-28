@@ -25,7 +25,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
         Y_DEBUG_ABORT_UNLESS(0);
     }
 
-    if (msg->FollowerGotNonretriableError) {
+    if (msg->FollowerGotNonRetriableError) {
         OnMigrationNonRetriableError(ctx);
     }
 

@@ -391,7 +391,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
 
-    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonretriableError)
+    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonRetriableError)
     {
         TTestBasicRuntime runtime;
 
@@ -429,7 +429,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT(followerPartition);
 
         // Now we will fail requests to the follower partition with an
-        // nonretriable error. Expect that the client's requests will be
+        // non-retriable error. Expect that the client's requests will be
         // executed successfully, since the leader partition response S_OK, but
         // the migration will be stopped due to errors of follower partition.
         size_t failedPartitionRequestCount = 0;

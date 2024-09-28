@@ -21,6 +21,17 @@ void ProcessMirrorActorError(NProto::TError& error);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The TMirrorRequestActor class is used for two tasks:
+// 1. To write to N replicas for the mirror disk. In this mode, it should
+// process all errors from replicas into E_REJECT. Because sooner or later the
+// disk agent will return to work, or the replica will be replaced. All replicas
+// are equivalent and are placed in the LeaderPartitions.
+// 2. To migrate a new device, in this case it has two replicas, one is leader
+// and the second is follower. If we receive a fatal error from the follower
+// partition, we do not respond to the client with an error, but at the same
+// time stop the migration. And if we receive a non-fatal error, response it to the
+// client. The client will retry the request.
+
 template <typename TMethod>
 class TMirrorRequestActor final
     : public NActors::TActorBootstrapped<TMirrorRequestActor<TMethod>>
@@ -61,6 +72,7 @@ private:
     void UpdateResponse(
         const NActors::TActorId& sender,
         TResponseProto&& response);
+    bool HasFollower() const;
 
 private:
     STFUNC(StateWork);
@@ -145,7 +157,7 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
     for (const auto& actorId: LeaderPartitions) {
         sendRequest(actorId);
     }
-    if (FollowerPartition) {
+    if (HasFollower()) {
         sendRequest(FollowerPartition);
     }
 }
@@ -153,9 +165,8 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
 {
-    const bool hasFollower = FollowerPartition != NActors::TActorId();
     const bool isFollowerResponseError =
-        hasFollower && HasError(FollowerResponse);
+        HasFollower() && HasError(FollowerResponse);
     const bool isFollowerResponseFatal =
         isFollowerResponseError &&
         GetErrorKind(FollowerResponse.GetError()) == EErrorKind::ErrorFatal;
@@ -193,8 +204,7 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
 template <typename TMethod>
 size_t TMirrorRequestActor<TMethod>::GetTotalPartitionCount() const
 {
-    const bool hasFollower = FollowerPartition != NActors::TActorId();
-    return LeaderPartitions.size() + (hasFollower ? 1 : 0);
+    return LeaderPartitions.size() + (HasFollower() ? 1 : 0);
 }
 
 template <typename TMethod>
@@ -207,15 +217,19 @@ void TMirrorRequestActor<TMethod>::UpdateResponse(
         return;
     }
 
-    const bool hasFollower = FollowerPartition != NActors::TActorId();
-
-    if (!hasFollower) {
+    if (!HasFollower()) {
         ProcessMirrorActorError(*response.MutableError());
     }
 
     if (!HasError(LeadersCollectiveResponse)) {
         LeadersCollectiveResponse = std::move(response);
     }
+}
+
+template <typename TMethod>
+bool TMirrorRequestActor<TMethod>::HasFollower() const
+{
+    return FollowerPartition != NActors::TActorId();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
