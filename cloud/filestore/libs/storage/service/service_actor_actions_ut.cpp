@@ -1,4 +1,6 @@
 #include "service.h"
+#include "cloud/filestore/private/api/protos/tablet.pb.h"
+#include "google/protobuf/util/json_util.h"
 
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -83,7 +85,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        auto response = service.AssertExecuteActionFailed("NonExistingAction", "{}");
+        auto response =
+            service.AssertExecuteActionFailed("NonExistingAction", "{}");
 
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
     }
@@ -178,6 +181,117 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 response.GetMultiTabletForwardingEnabled(),
                 true);
         }
+    }
+
+    Y_UNIT_TEST(ShouldPerformUnsafeNodeManipulations)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env{{}, config};
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession("test", "client");
+
+        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"));
+        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"));
+
+        ui64 id1 = 0;
+        ui64 id2 = 0;
+        ui64 id3 = 0;
+
+        {
+            auto r = service.ListNodes(headers, fsId, RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetNodes(0).GetSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetNodes(1).GetSize());
+
+            id1 = r.GetNodes(0).GetId();
+            id2 = r.GetNodes(1).GetId();
+
+            UNIT_ASSERT_VALUES_UNEQUAL(0, id1);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, id2);
+        }
+
+        id3 = Max(id1, id2) + 1;
+
+        {
+            NProtoPrivate::TUnsafeUpdateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(id3);
+            node->SetSize(333);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeUpdateNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeGetNodeRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetId(id3);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto r = service.ExecuteAction("UnsafeGetNode", buf)->Record;
+
+            NProtoPrivate::TUnsafeGetNodeResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                r.GetOutput(),
+                &response).ok());
+
+            UNIT_ASSERT_VALUES_EQUAL(id3, response.GetNode().GetId());
+            UNIT_ASSERT_VALUES_EQUAL(333, response.GetNode().GetSize());
+        }
+
+        {
+            NProtoPrivate::TUnsafeUpdateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(id2);
+            node->SetSize(222);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeUpdateNode", buf);
+        }
+
+        {
+            auto r = service.ListNodes(headers, fsId, RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetNodes(0).GetSize());
+            UNIT_ASSERT_VALUES_EQUAL(222, r.GetNodes(1).GetSize());
+        }
+
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetId(id3);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeDeleteNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeGetNodeRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetId(id3);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto r = service.ExecuteAction("UnsafeGetNode", buf)->Record;
+
+            NProtoPrivate::TUnsafeGetNodeResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                r.GetOutput(),
+                &response).ok());
+
+            UNIT_ASSERT(!response.HasNode());
+        }
+
+        service.DestroySession(headers);
     }
 }
 

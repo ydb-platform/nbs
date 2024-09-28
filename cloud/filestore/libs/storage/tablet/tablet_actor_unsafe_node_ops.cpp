@@ -145,10 +145,14 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
         return RebootTabletOnCommitOverflow(ctx, "UnsafeUpdateNode");
     }
 
+    NProto::TNode prevNode;
     NProto::TNode node;
+    ui64 nodeCommitId = commitId;
 
     if (args.Node) {
+        prevNode = args.Node->Attrs;
         node = args.Node->Attrs;
+        nodeCommitId = args.Node->MinCommitId;
     } else {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
             "%s UnsafeUpdateNode: %s - node not found, creating",
@@ -163,10 +167,10 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
     UpdateNode(
         db,
         args.Request.GetNode().GetId(),
-        args.Node->MinCommitId,
+        nodeCommitId,
         commitId,
         node,
-        args.Node->Attrs);
+        prevNode);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
