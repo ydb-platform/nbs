@@ -14,6 +14,15 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func shouldPanic(t *testing.T, f func()) {
+	t.Helper()
+	defer func() { _ = recover() }()
+	f()
+	t.Errorf("Should have panicked")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestOptimizeBaseDisksTask(t *testing.T) {
 	ctx := newContext()
 	scheduler := tasks_mocks.NewSchedulerMock()
@@ -149,4 +158,30 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	mock.AssertExpectationsForObjects(t, scheduler, storage, execCtx)
+}
+
+func TestOptimizeBaseDisksTaskDetectsWrongConfig(t *testing.T) {
+	ctx := newContext()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	storage := storage_mocks.NewStorageMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	minPoolAge, err := time.ParseDuration("12h")
+	require.NoError(t, err)
+
+	// optimizeBaseDisksTask should panic because of incorrect config
+	// convertToImageSizedBaseDisksThreshold should be lower than convertToDefaultSizedBaseDisksThreshold
+
+	task := &optimizeBaseDisksTask{
+		scheduler:                               scheduler,
+		storage:                                 storage,
+		convertToImageSizedBaseDisksThreshold:   15,
+		convertToDefaultSizedBaseDisksThreshold: 5,
+		minPoolAge:                              minPoolAge,
+	}
+
+	err = task.Load(nil, nil)
+	require.NoError(t, err)
+
+	shouldPanic(t, func() { task.Run(ctx, execCtx) })
 }
