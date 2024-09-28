@@ -54,9 +54,7 @@ private:
         }
     }
 
-    void HandleResponse(
-        const TResponse::TPtr& ev,
-        const TActorContext& ctx);
+    void HandleResponse(const TResponse::TPtr& ev, const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +87,6 @@ void TTabletActionActor<TRequest, TResponse>::Bootstrap(
     }
 
     auto requestToTablet = std::make_unique<TRequest>();
-
     requestToTablet->Record = std::move(request);
 
     NCloud::Send(
