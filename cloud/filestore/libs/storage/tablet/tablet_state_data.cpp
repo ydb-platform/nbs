@@ -180,13 +180,6 @@ NProto::TError TIndexTabletState::DeleteRange(
 {
     const ui64 deletedBlockCount = range.AlignedBlockCount();
     if (deletedBlockCount) {
-        MarkFreshBlocksDeleted(
-            db,
-            nodeId,
-            commitId,
-            range.FirstAlignedBlock(),
-            deletedBlockCount);
-
         const bool useLargeDeletionMarkers = LargeDeletionMarkersEnabled
             && deletedBlockCount >= LargeDeletionMarkersThreshold;
         if (useLargeDeletionMarkers) {
@@ -230,6 +223,13 @@ NProto::TError TIndexTabletState::DeleteRange(
                         blocksCount);
                 });
         }
+
+        MarkFreshBlocksDeleted(
+            db,
+            nodeId,
+            commitId,
+            range.FirstAlignedBlock(),
+            deletedBlockCount);
     }
 
     WriteFreshBytesDeletionMarker(
