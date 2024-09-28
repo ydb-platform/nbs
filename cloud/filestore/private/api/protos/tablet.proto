@@ -639,6 +639,5 @@ message TUnsafeGetNodeResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
     NProto.TNodeAttr Node = 2;
 }

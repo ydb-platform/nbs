@@ -2036,6 +2036,7 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeGetNodeRequest Request;
+
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TUnsafeGetNode(
