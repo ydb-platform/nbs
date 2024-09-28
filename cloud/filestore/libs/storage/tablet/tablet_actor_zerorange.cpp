@@ -69,8 +69,6 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
     TTransactionContext& tx,
     TTxIndexTablet::TZeroRange& args)
 {
-    Y_UNUSED(ctx);
-
     TIndexTabletDatabase db(tx.DB);
 
     ui64 commitId = GenerateCommitId();
@@ -96,7 +94,7 @@ void TIndexTabletActor::CompleteTx_ZeroRange(
         std::move(args.ProfileLogRequest),
         ctx.Now(),
         GetFileSystemId(),
-        {},
+        args.Error,
         ProfileLog);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,

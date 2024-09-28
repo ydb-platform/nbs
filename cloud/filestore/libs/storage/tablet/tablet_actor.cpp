@@ -509,10 +509,19 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
     bool isPriority = false;
 
-    if (auto priorityRange = NextPriorityRangeForCleanup()) {
-        cleanupRangeId = priorityRange->RangeId;
-        cleanupScore = Max<ui32>();
-        isPriority = true;
+    TString dummy;
+    // if we are close to our write backpressure thresholds, it's better to
+    // clean up normal deletion markers first in order not to freeze write
+    // requests
+    //
+    // large deletion marker cleanup is a slower process and having too many
+    // large deletion markers affects a much smaller percentage of workloads
+    if (!IsCloseToBackpressureThresholds(&dummy)) {
+        if (auto priorityRange = NextPriorityRangeForCleanup()) {
+            cleanupRangeId = priorityRange->RangeId;
+            cleanupScore = Max<ui32>();
+            isPriority = true;
+        }
     }
 
     return {
@@ -530,6 +539,17 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             || Config->GetNewCleanupEnabled()
             && cleanupScore && shouldCleanup
             || isPriority};
+}
+
+bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
+{
+    auto bpThresholds = BuildBackpressureThresholds();
+    const double scale =
+        Config->GetBackpressurePercentageForFairBlobIndexOpsPriority()
+        / 100.;
+    bpThresholds.CompactionScore *= scale;
+    bpThresholds.CleanupScore *= scale;
+    return !IsWriteAllowed(bpThresholds, GetBackpressureValues(), message);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
