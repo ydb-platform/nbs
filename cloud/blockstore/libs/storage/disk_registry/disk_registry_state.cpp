@@ -2010,7 +2010,7 @@ NProto::TError TDiskRegistryState::AllocateDisk(
     auto& disk = Disks[params.DiskId];
     auto error = ValidateAllocateDiskParams(disk, params);
 
-    auto originalDiskSize = GetDiskSize(params.DiskId);
+    auto originalBlockCount = GetDiskBlockCount(params.DiskId);
 
     if (HasError(error)) {
         if (disk.Devices.empty() && !disk.ReplicaCount) {
@@ -2027,8 +2027,8 @@ NProto::TError TDiskRegistryState::AllocateDisk(
             : AllocateSimpleDisk(now, db, params, {}, disk, result);
 
     // If disk size changed reallocate checkpoints too.
-    if (!HasError(allocateError) && originalDiskSize &&
-        originalDiskSize != GetDiskSize(params.DiskId))
+    if (!HasError(allocateError) && originalBlockCount &&
+        originalBlockCount != GetDiskBlockCount(params.DiskId))
     {
         ReallocateCheckpointByDisk(now, db, params.DiskId);
     }
@@ -7268,7 +7268,8 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     return ret;
 }
 
-std::optional<ui64> TDiskRegistryState::GetDiskSize(const TDiskId& diskId) const
+std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(
+    const TDiskId& diskId) const
 {
     TDiskInfo diskInfo;
     auto error = GetDiskInfo(diskId, diskInfo);

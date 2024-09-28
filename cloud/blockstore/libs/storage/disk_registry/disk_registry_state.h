@@ -1263,7 +1263,7 @@ private:
     TResultOrError<TConfigUpdateEffect> CalcConfigUpdateEffect(
         const NProto::TDiskRegistryConfig& newConfig) const;
 
-    std::optional<ui64> GetDiskSize(const TDiskId& diskId) const;
+    std::optional<ui64> GetDiskBlockCount(const TDiskId& diskId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
