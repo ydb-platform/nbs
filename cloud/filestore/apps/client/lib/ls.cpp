@@ -1,4 +1,3 @@
-#include "cloud/filestore/public/api/protos/node.pb.h"
 #include "command.h"
 #include "text_table.h"
 
