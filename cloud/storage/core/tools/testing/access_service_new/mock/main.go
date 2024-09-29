@@ -27,7 +27,7 @@ type Permission struct {
 
 type AccountConfig struct {
 	Permissions      []Permission `json:"permissions,omitempty"`
-	Id               string       `json:"id,omitempty"`
+	ID               string       `json:"id,omitempty"`
 	IsUnknownSubject bool         `json:"is_unknown_subject,omitempty"`
 	Token            string       `json:"token,omitempty"`
 }
@@ -103,7 +103,7 @@ func (t *accessServiceMock) Authorize(
 		account := &iamv1.Account{
 			Type: &iamv1.Account_UserAccount_{
 				UserAccount: &iamv1.Account_UserAccount{
-					Id: accountConfig.Id,
+					Id: accountConfig.ID,
 				},
 			},
 		}
@@ -159,7 +159,7 @@ func (t *accessServiceMock) Authenticate(
 		Account: &iamv1.Account{
 			Type: &iamv1.Account_UserAccount_{
 				UserAccount: &iamv1.Account_UserAccount{
-					Id: accountConfig.Id,
+					Id: accountConfig.ID,
 				},
 			},
 		},
