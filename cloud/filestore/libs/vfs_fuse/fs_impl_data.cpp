@@ -5,6 +5,8 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
 
+#include <cloud/storage/core/libs/common/aligned_string.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
@@ -44,7 +46,7 @@ void TFileSystem::Create(
     mode_t mode,
     fuse_file_info* fi)
 {
-    const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
+    auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
     STORAGE_DEBUG("Create #" << parent
         << " " << name.Quote()
         << " flags: " << HandleFlagsToString(flags)
@@ -58,6 +60,9 @@ void TFileSystem::Create(
     auto request = StartRequest<NProto::TCreateHandleRequest>(parent);
     request->SetName(std::move(name));
     request->SetMode(mode & ~(S_IFMT));
+    if (!Config->GetDirectIoEnabled()) {
+        flags = RemoveFlag(flags, NProto::TCreateHandleRequest::E_DIRECT);
+    }
     request->SetFlags(flags);
     if (HasFlag(flags, NProto::TCreateHandleRequest::E_CREATE)) {
         SetUserNGroup(*request, fuse_req_ctx(req));
@@ -219,12 +224,13 @@ void TFileSystem::Read(
             const auto& response = future.GetValue();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
                 const auto& buffer = response.GetBuffer();
+                auto alignOffset = response.GetAlignOffset();
                 self->ReplyBuf(
                     *callContext,
                     response.GetError(),
                     req,
-                    buffer.data(),
-                    buffer.size());
+                    buffer.data() + alignOffset,
+                    buffer.size() - alignOffset);
             }
         });
 }
@@ -248,10 +254,19 @@ void TFileSystem::Write(
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(buffer.size(), Config->GetBlockSize());
 
+    auto [dataBuffer, alignOffset] = AlignedString(
+        buffer.size(),
+        Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0);
+    memcpy(
+        (void*)(dataBuffer.data() + alignOffset),
+        (void*)buffer.data(),
+        buffer.size());
+
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBuffer(buffer.data(), buffer.size());
+    request->SetBuffer(std::move(dataBuffer));
+    request->SetAlignOffset(alignOffset);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -291,10 +306,12 @@ void TFileSystem::WriteBuf(
         return;
     }
 
-    auto buffer = TString::Uninitialized(size);
+    auto [buffer, alignOffset] = AlignedString(
+        size,
+        Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0);
 
     fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
-    dst.buf[0].mem = (void*)buffer.data();
+    dst.buf[0].mem = (void*)(buffer.data() + alignOffset);
 
     ssize_t res = fuse_buf_copy(
         &dst, bufv
@@ -315,6 +332,7 @@ void TFileSystem::WriteBuf(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
     request->SetBuffer(std::move(buffer));
+    request->SetAlignOffset(alignOffset);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;

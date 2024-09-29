@@ -50,6 +50,11 @@ constexpr bool HasFlag(ui32 flags, ui32 value)
     return flags & ProtoFlag(value);
 }
 
+constexpr ui32 RemoveFlag(ui32 flags, ui32 value)
+{
+    return flags &= ~ProtoFlag(value);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 std::pair<ui32, int> SystemFlagsToHandle(int flags);

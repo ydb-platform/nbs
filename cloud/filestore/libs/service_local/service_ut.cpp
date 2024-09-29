@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/aligned_string.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -229,6 +230,9 @@ struct TCreateHandleArgs
         = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
         | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+
+    static constexpr ui32 DIRECT
+        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -289,12 +293,18 @@ struct TTestBootstrap
     TTestBootstrap(
             const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>(),
             ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100)
+            ui32 maxHandlePerSessionCount = 100,
+            bool directIoEnabled = false,
+            ui32 directIoAlign = 4096)
         : Cwd(cwd)
     {
         AIOService->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(maxNodeCount, maxHandlePerSessionCount),
+            CreateConfig(
+                maxNodeCount,
+                maxHandlePerSessionCount,
+                directIoEnabled,
+                directIoAlign),
             Timer,
             Scheduler,
             Logging,
@@ -308,12 +318,18 @@ struct TTestBootstrap
             const TString& client = "client",
             const TString& session = {},
             ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100)
+            ui32 maxHandlePerSessionCount = 100,
+            bool directIoEnabled = false,
+            ui32 directIoAlign = 4096)
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(maxNodeCount, maxHandlePerSessionCount),
+            CreateConfig(
+                maxNodeCount,
+                maxHandlePerSessionCount,
+                directIoEnabled,
+                directIoAlign),
             Timer,
             Scheduler,
             Logging,
@@ -373,13 +389,17 @@ struct TTestBootstrap
 
     TLocalFileStoreConfigPtr CreateConfig(
         ui32 maxNodeCount,
-        ui32 maxHandlePerSessionCount)
+        ui32 maxHandlePerSessionCount,
+        bool directIoEnabled,
+        ui32 directIoAlign)
     {
         NProto::TLocalServiceConfig config;
         config.SetRootPath(Cwd->GetName());
         config.SetStatePath(Cwd->GetName());
         config.SetMaxNodeCount(maxNodeCount);
         config.SetMaxHandlePerSessionCount(maxHandlePerSessionCount);
+        config.SetDirectIoEnabled(directIoEnabled);
+        config.SetDirectIoAlign(directIoAlign);
 
         return std::make_shared<TLocalFileStoreConfig>(config);
     }
@@ -746,6 +766,47 @@ struct TTestBootstrap
     FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+    NProto::TReadDataResponse ReadDataAligned(ui64 handle, ui64 offset, ui32 len, ui32 align)
+    {
+        auto request = CreateReadDataRequest(handle, offset, len);
+        auto dbg = request->ShortDebugString();
+        auto response = Store->ReadData(Ctx, std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(response.GetError().GetCode()),
+            response.GetError().GetMessage() + "@" + dbg);
+
+        uintptr_t alignedBuffer = reinterpret_cast<uintptr_t>(
+            response.GetBuffer().data() + response.GetAlignOffset());
+        UNIT_ASSERT_C(
+            alignedBuffer % align == 0,
+            "Read not aligned buffer: " << alignedBuffer);
+
+        response.MutableBuffer()->erase(0, response.GetAlignOffset());
+        return response;
+    }
+
+    NProto::TWriteDataResponse WriteDataAligned(ui64 handle, ui64 offset, const TString& buffer)
+    {
+        auto request = CreateRequest<NProto::TWriteDataRequest>();
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+
+        auto [alignedBuffer, alignOffset] = AlignedString(buffer.size(), 512);
+        memcpy((void*)(alignedBuffer.data() + alignOffset), (void*)buffer.data(), buffer.size());
+        request->SetBuffer(std::move(alignedBuffer));
+        request->SetAlignOffset(alignOffset);
+
+        auto dbg = request->ShortDebugString();
+        auto response = Store->WriteData(Ctx, std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(response.GetError().GetCode()),
+            DumpMessage(response.GetError()) + "@" + dbg);
+
+        return response;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1939,6 +2000,74 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             bootstrap.FsyncDir(dirNodeId, dataSync);
         }
     }
+
+    void CheckReadAndWriteDataWithDirectIo(ui32 directIoAlign)
+    {
+        TTestBootstrap bootstrap(
+            "fs",
+            "client",
+            {},
+            1000,
+            1000,
+            true /* direct io enabled */,
+            directIoAlign);
+
+        ui64 handle =
+            bootstrap
+                .CreateHandle(
+                    RootNodeId,
+                    "file",
+                    TCreateHandleArgs::CREATE | TCreateHandleArgs::DIRECT)
+                .GetHandle();
+        auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+
+        data = "aaaabbbbcccccdddddeeee";
+        const auto response = bootstrap.AssertWriteDataFailed(handle, 0, data);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_INVAL),
+            STATUS_FROM_CODE(error.GetCode()));
+
+        data.append(directIoAlign-data.size(), 'x');
+        data.append(directIoAlign, 'y');
+        bootstrap.WriteDataAligned(handle, 0, data);
+
+        // read [0, 2*align]
+        auto buffer =
+            bootstrap.ReadDataAligned(handle, 0, data.size(), directIoAlign)
+                .GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+
+        // read [0, align]
+        buffer =
+            bootstrap.ReadDataAligned(handle, 0, directIoAlign, directIoAlign)
+                .GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(0, directIoAlign));
+
+        // read [align, align]
+        buffer = bootstrap
+                     .ReadDataAligned(
+                         handle,
+                         directIoAlign,
+                         directIoAlign,
+                         directIoAlign)
+                     .GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(
+            buffer,
+            data.substr(directIoAlign, directIoAlign));
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo512)
+    {
+        CheckReadAndWriteDataWithDirectIo(512);
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo4096)
+    {
+        CheckReadAndWriteDataWithDirectIo(4096);
+    }
+
 };
 
 }   // namespace NCloud::NFileStore

@@ -17,6 +17,8 @@ namespace {
     xxx(StatePath,                   TString,       "./"                      )\
     xxx(MaxNodeCount,                ui32,          1000000                   )\
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
+    xxx(DirectIoEnabled,             bool,          false                     )\
+    xxx(DirectIoAlign,               ui32,          4096                      )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
