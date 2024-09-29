@@ -75,6 +75,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
     xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+                                                                               \
+    xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -131,6 +133,9 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
     xxx(CommitNodeCreationInFollower,       __VA_ARGS__)                       \
+                                                                               \
+    xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
+    xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -1965,7 +1970,7 @@ struct TTxIndexTablet
         NProto::TCreateNodeResponse Response;
         const ui64 EntryId;
 
-        explicit TCommitNodeCreationInFollower(
+        TCommitNodeCreationInFollower(
                 TString sessionId,
                 ui64 requestId,
                 NProto::TCreateNodeResponse response,
@@ -1978,6 +1983,72 @@ struct TTxIndexTablet
 
         void Clear()
         {
+        }
+    };
+
+    //
+    // UnsafeNodeOps
+    //
+
+    struct TUnsafeDeleteNode: TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeDeleteNodeRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+        NProto::TError Error;
+
+        TUnsafeDeleteNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeDeleteNodeRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            Node.Clear();
+            Error.Clear();
+        }
+    };
+
+    struct TUnsafeUpdateNode: TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeUpdateNodeRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TUnsafeUpdateNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeUpdateNodeRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            Node.Clear();
+        }
+    };
+
+    struct TUnsafeGetNode
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeGetNodeRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TUnsafeGetNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeGetNodeRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            Node.Clear();
         }
     };
 };

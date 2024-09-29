@@ -64,7 +64,8 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum ECopyAttrsMode {
+enum ECopyAttrsMode
+{
     E_CM_CTIME = 1,     // CTime
 
     E_CM_MTIME = 2,     // MTime
@@ -84,7 +85,12 @@ NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid);
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 
-void ConvertNodeFromAttrs(NProto::TNodeAttr& dst, ui64 id, const NProto::TNode& src);
+void ConvertNodeFromAttrs(
+    NProto::TNodeAttr& dst,
+    ui64 id,
+    const NProto::TNode& src);
+
+void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst);
 
 ////////////////////////////////////////////////////////////////////////////////
 
