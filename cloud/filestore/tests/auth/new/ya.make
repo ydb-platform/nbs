@@ -10,6 +10,7 @@ TEST_SRCS(
 DEPENDS(
     cloud/filestore/apps/client
     cloud/storage/core/tools/testing/access_service_new/mock
+    cloud/storage/core/tools/testing/access_service/mock
 )
 
 DATA(
