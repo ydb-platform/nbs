@@ -33,15 +33,15 @@ class NewAccessService:
     access_service_type = "Nebius_v1"
 
     def __init__(
-            self,
-            host: str,
-            port: int,
-            control_port: int,
-            working_dir: str | None=None,
-            binary_path: str | None=None,
-            cert_file: str="",
-            cert_key_file: str="",
-        ):
+        self,
+        host: str,
+        port: int,
+        control_port: int,
+        working_dir: str | None = None,
+        binary_path: str | None = None,
+        cert_file: str = "",
+        cert_key_file: str = "",
+    ):
         if working_dir is None:
             working_dir = get_unique_path_for_current_test(
                 output_path=yatest_common.output_path(),

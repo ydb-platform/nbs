@@ -4,6 +4,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    auth
     build_arcadia_test
     client
     config_dispatcher
