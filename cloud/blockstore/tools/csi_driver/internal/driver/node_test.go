@@ -716,10 +716,6 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
 
-	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, 0755)
-	require.NoError(t, err)
-
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
