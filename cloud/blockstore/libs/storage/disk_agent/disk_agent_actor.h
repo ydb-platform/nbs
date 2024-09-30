@@ -58,6 +58,7 @@ private:
     const IStorageProviderPtr StorageProvider;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const ITaskQueuePtr BackgroundTaskQueue;
 
     ILoggingServicePtr Logging;
     NRdma::IServerPtr RdmaServer;
@@ -99,6 +100,7 @@ public:
         IStorageProviderPtr storageProvider,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        ITaskQueuePtr backgroundTaskQueue,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager);

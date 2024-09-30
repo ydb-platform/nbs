@@ -37,6 +37,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -419,6 +421,16 @@ bool TBootstrap::InitKikimrService()
         STORAGE_INFO("AsyncLogger initialized");
     }
 
+    if (Configs->DiskAgentConfig->GetBackgroundThreadPoolSize()) {
+        BackgroundThreadPool = CreateThreadPool(
+            "Background",
+            Configs->DiskAgentConfig->GetBackgroundThreadPoolSize());
+    } else {
+        BackgroundThreadPool = CreateTaskQueueStub();
+    }
+
+    STORAGE_INFO("BackgroundThreadPool initialized");
+
     if (auto& config = *Configs->DiskAgentConfig; config.GetEnabled()) {
         switch (config.GetBackend()) {
             case NProto::DISK_AGENT_BACKEND_SPDK: {
@@ -503,6 +515,7 @@ bool TBootstrap::InitKikimrService()
     args.AioStorageProvider = AioStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
+    args.BackgroundThreadPool = BackgroundThreadPool;
     args.RdmaServer = RdmaServer;
     args.Logging = logging;
     args.NvmeManager = NvmeManager;
@@ -616,6 +629,7 @@ void TBootstrap::Start()
     START_COMPONENT(TraceProcessor);
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
+    START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(FileIOServiceProvider);
     START_COMPONENT(ActorSystem);
 
@@ -658,6 +672,7 @@ void TBootstrap::Stop()
     // in-flight I/O requests from TDiskAgentActor
     STOP_COMPONENT(FileIOServiceProvider);
 
+    STOP_COMPONENT(BackgroundThreadPool);
     STOP_COMPONENT(Spdk);
     STOP_COMPONENT(RdmaServer);
     STOP_COMPONENT(TraceProcessor);

@@ -31,6 +31,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         StorageProvider,
         ProfileLog,
         BlockDigestGenerator,
+        BackgroundTaskQueue,
         Logging,
         RdmaServer,
         NvmeManager);

@@ -303,6 +303,7 @@ def generate_disk_agent_txt(
     config.IOParserActorCount = 4
     config.OffloadAllIORequestsParsingEnabled = True
     config.PathsPerFileIOService = 1
+    config.BackgroundThreadPoolSize = 1
 
     if device_erase_method is not None:
         config.DeviceEraseMethod = EDeviceEraseMethod.Value(device_erase_method)

@@ -33,6 +33,7 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
@@ -286,6 +287,7 @@ public:
                 Args.AioStorageProvider,
                 Args.ProfileLog,
                 Args.BlockDigestGenerator,
+                CreateTaskQueueStub(),
                 Args.Logging,
                 Args.RdmaServer,
                 Args.NvmeManager);

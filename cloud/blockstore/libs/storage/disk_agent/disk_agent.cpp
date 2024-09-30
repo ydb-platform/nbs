@@ -17,6 +17,7 @@ IActorPtr CreateDiskAgent(
     IStorageProviderPtr storageProvider,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
+    ITaskQueuePtr backgroundTaskQueue,
     ILoggingServicePtr logging,
     NRdma::IServerPtr rdmaServer,
     NNvme::INvmeManagerPtr nvmeManager)
@@ -30,6 +31,7 @@ IActorPtr CreateDiskAgent(
         std::move(storageProvider),
         std::move(profileLog),
         std::move(blockDigestGenerator),
+        std::move(backgroundTaskQueue),
         std::move(logging),
         std::move(rdmaServer),
         std::move(nvmeManager));

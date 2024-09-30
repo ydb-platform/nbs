@@ -258,6 +258,10 @@ message TDiskAgentConfig
     // 2 means that one IO service will be created for every two file paths.
     // etc.
     optional uint32 PathsPerFileIOService = 34;
+
+    // Number of threads for the background thread pool.
+    // 0 means that the thread pool will not be used.
+    optional uint32 BackgroundThreadPoolSize = 35;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
