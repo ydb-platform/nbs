@@ -70,8 +70,11 @@ def setup_cms_configs(ydb_client):
     update_cms_config(ydb_client, 'StorageServiceConfig', storage, '')
 
 
-def prepare(ydb, kikimr_ssl, blockstore_ssl, node_type):
-    nbs_configurator = NbsConfigurator(ydb, ssl_registration=blockstore_ssl)
+def prepare(ydb, kikimr_ssl, blockstore_ssl, node_type, ic_port=None):
+    nbs_configurator = NbsConfigurator(
+        ydb,
+        ssl_registration=blockstore_ssl,
+        ic_port=ic_port)
     nbs_configurator.generate_default_nbs_configs()
 
     if blockstore_ssl and kikimr_ssl:
@@ -117,6 +120,43 @@ def setup_and_run_test_for_da(kikimr_ssl, blockstore_ssl):
     return True
 
 
+def setup_and_run_registration_migration_server():
+    ydb = start_ydb(grpc_ssl_enable=True)
+    setup_cms_configs(ydb.client)
+
+    ic_port = None
+    for setting in (False, True, False):
+        configurator = prepare(ydb, setting, setting, 'nbs', ic_port)
+        nbs = start_nbs(configurator)
+        if ic_port is not None:
+            assert configurator.ic_port == ic_port
+        else:
+            ic_port = configurator.ic_port
+
+        nbs.kill()
+
+
+def setup_and_run_registration_migration_da():
+    ydb = start_ydb(grpc_ssl_enable=True)
+    setup_cms_configs(ydb.client)
+
+    nbs = start_nbs(prepare(ydb, False, False, 'nbs_control'))
+
+    ic_port = None
+    for setting in (False, True, False):
+        configurator = prepare(ydb, setting, setting, 'disk-agent', ic_port)
+        configurator.files["disk-agent"] = generate_disk_agent_txt(agent_id='')
+        da = start_disk_agent(configurator)
+        if ic_port is not None:
+            assert configurator.ic_port == ic_port
+        else:
+            ic_port = configurator.ic_port
+
+        da.kill()
+
+    nbs.kill()
+
+
 TestCase = namedtuple('TestCase', 'SecureKikimr SecureBlockstore Result')
 Scenarios = [
     TestCase(SecureKikimr=False, SecureBlockstore=False, Result=True),
@@ -137,3 +177,11 @@ def test_server_registration(kikimr_ssl, blockstore_ssl, result):
 @pytest.mark.parametrize('kikimr_ssl, blockstore_ssl, result', Scenarios)
 def test_da_registration(kikimr_ssl, blockstore_ssl, result):
     assert setup_and_run_test_for_da(kikimr_ssl, blockstore_ssl) == result
+
+
+def test_server_registration_migration():
+    setup_and_run_registration_migration_server()
+
+
+def test_da_registration_migration():
+    setup_and_run_registration_migration_da()

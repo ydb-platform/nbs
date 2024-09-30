@@ -1,5 +1,8 @@
 import pytest
 from collections import namedtuple
+import logging
+import os
+import signal
 
 from cloud.filestore.tests.python.lib.client import NfsCliClient
 from cloud.filestore.config.server_pb2 import TServerAppConfig
@@ -21,6 +24,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 
 import yatest.common as yatest_common
 
+logger = logging.getLogger(__name__)
 
 CFG_PREFIX = 'Cloud.Filestore.'
 
@@ -82,6 +86,21 @@ def setup_cms_configs(kikimr_client):
     update_cms_config(kikimr_client, 'StorageConfig', storage, '')
 
 
+def wait_for_process(wait_function, process, port, check_function):
+    try:
+        wait_function(process, port)
+    except RuntimeError:
+        return False
+
+    result = True
+    if check_function is not None:
+        result = check_function(process, port)
+
+    process.stop()
+
+    return result
+
+
 def setup_kikimr(is_secure_kikimr):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
@@ -98,7 +117,15 @@ def setup_kikimr(is_secure_kikimr):
     return configurator
 
 
-def setup_filestore(configurator, kikimr_cluster, secure_kikimr, secure_filestore, node_type, binary_path, configurator_type):
+def setup_filestore(
+        configurator,
+        kikimr_cluster,
+        secure_kikimr,
+        secure_filestore,
+        node_type,
+        binary_path,
+        configurator_type,
+        ic_port=None):
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
     kikimr_ssl_port = list(kikimr_cluster.nodes.values())[0].grpc_ssl_port
 
@@ -125,21 +152,53 @@ def setup_filestore(configurator, kikimr_cluster, secure_kikimr, secure_filestor
         kikimr_port=port,
         domain=domain,
         storage_config=storage_config,
-        use_secure_registration=secure_filestore
+        use_secure_registration=secure_filestore,
+        ic_port=ic_port
     )
 
     return nfs_configurator
 
 
-def check_filestore(server, nfs_configurator):
+def check_filestore_server(server, port):
     nfs_client_binary_path = yatest_common.binary_path("cloud/filestore/apps/client/filestore-client")
 
-    client = NfsCliClient(nfs_client_binary_path, nfs_configurator.port)
-    assert client.get_storage_service_config().get("NodeIndexCacheMaxNodes") == 100
+    client = NfsCliClient(nfs_client_binary_path, port)
+    result = client.get_storage_service_config().get("NodeIndexCacheMaxNodes") == 100
 
-    server.stop()
+    return result
 
-    return True
+
+def run_filestore(
+        binary_path,
+        is_secure_kikimr,
+        is_secure_filestore,
+        kikimr_configurator,
+        kikimr_cluster,
+        config_generator,
+        ping_process_fn,
+        check_process_fn,
+        ic_port=None):
+
+    nfs_configurator = setup_filestore(
+        kikimr_configurator,
+        kikimr_cluster,
+        is_secure_kikimr,
+        is_secure_filestore,
+        "filestore_server",
+        binary_path,
+        config_generator,
+        ic_port)
+
+    nfs_configurator.generate_configs(
+        kikimr_configurator.domains_txt,
+        kikimr_configurator.names_txt)
+
+    nfs_server = NfsServer(configurator=nfs_configurator)
+    nfs_server.start()
+
+    ic_port = nfs_configurator.ic_port
+
+    return wait_for_process(ping_process_fn, nfs_server, nfs_configurator.port, check_process_fn), ic_port
 
 
 def setup_and_run_test_for_server(is_secure_kikimr, is_secure_filestore):
@@ -148,31 +207,20 @@ def setup_and_run_test_for_server(is_secure_kikimr, is_secure_filestore):
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
     kikimr_cluster.start()
 
-    nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
-    nfs_configurator = setup_filestore(
-        kikimr_configurator,
-        kikimr_cluster,
-        is_secure_kikimr,
-        is_secure_filestore,
-        "filestore_server",
-        nfs_binary_path,
-        NfsServerConfigGenerator)
-
-    nfs_configurator.generate_configs(
-        kikimr_configurator.domains_txt,
-        kikimr_configurator.names_txt)
-
     setup_cms_configs(kikimr_cluster.client)
 
-    nfs_server = NfsServer(configurator=nfs_configurator)
-    nfs_server.start()
+    nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
 
-    try:
-        wait_for_nfs_server(nfs_server, nfs_configurator.port)
-    except RuntimeError:
-        return False
-
-    return check_filestore(nfs_server, nfs_configurator)
+    result = run_filestore(
+        nfs_binary_path,
+        is_secure_kikimr,
+        is_secure_filestore,
+        kikimr_configurator,
+        kikimr_cluster,
+        NfsServerConfigGenerator,
+        wait_for_nfs_server,
+        check_filestore_server)
+    return result[0]
 
 
 def setup_and_run_test_for_vhost(is_secure_kikimr, is_secure_filestore):
@@ -181,29 +229,53 @@ def setup_and_run_test_for_vhost(is_secure_kikimr, is_secure_filestore):
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
     kikimr_cluster.start()
 
+    setup_cms_configs(kikimr_cluster.client)
+
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
-    nfs_configurator = setup_filestore(
-        kikimr_configurator,
-        kikimr_cluster,
+
+    result = run_filestore(
+        nfs_binary_path,
         is_secure_kikimr,
         is_secure_filestore,
-        "filestore_vhost",
-        nfs_binary_path,
-        NfsVhostConfigGenerator)
+        kikimr_configurator,
+        kikimr_cluster,
+        NfsVhostConfigGenerator,
+        wait_for_filestore_vhost,
+        None)
+    return result[0]
 
-    nfs_configurator.generate_configs(
-        kikimr_configurator.domains_txt,
-        kikimr_configurator.names_txt)
+
+def setup_and_run_registration_migration(
+        binary_path,
+        config_generator,
+        wait_process,
+        check_process):
+    kikimr_configurator = setup_kikimr(True)
+
+    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
+    kikimr_cluster.start()
 
     setup_cms_configs(kikimr_cluster.client)
 
-    nfs_server = NfsServer(configurator=nfs_configurator)
-    nfs_server.start()
+    ic_port = None
+    for setting in (False, True, False):
+        result = run_filestore(
+            binary_path,
+            setting,
+            setting,
+            kikimr_configurator,
+            kikimr_cluster,
+            config_generator,
+            wait_process,
+            check_process,
+            ic_port)
+        if result[0] is False:
+            return result[0]
 
-    try:
-        wait_for_filestore_vhost(nfs_server, nfs_configurator.port)
-    except RuntimeError:
-        return False
+        if ic_port is None:
+            ic_port = result[1]
+        else:
+            assert ic_port == result[1]
 
     return True
 
@@ -224,3 +296,21 @@ def test_server_registration(secure_kikimr, secure_filestore, result):
 @pytest.mark.parametrize("secure_kikimr, secure_filestore, result", Scenarios)
 def test_vhost_registration(secure_kikimr, secure_filestore, result):
     assert setup_and_run_test_for_vhost(secure_kikimr, secure_filestore) == result
+
+
+def test_server_registration_migration():
+    result = setup_and_run_registration_migration(
+        yatest_common.binary_path("cloud/filestore/apps/server/filestore-server"),
+        NfsServerConfigGenerator,
+        wait_for_nfs_server,
+        check_filestore_server)
+    assert result is True
+
+
+def test_vhost_registration_migration():
+    result = setup_and_run_registration_migration(
+        yatest_common.binary_path("cloud/filestore/apps/vhost/filestore-vhost"),
+        NfsVhostConfigGenerator,
+        wait_for_filestore_vhost,
+        None)
+    assert result is True
