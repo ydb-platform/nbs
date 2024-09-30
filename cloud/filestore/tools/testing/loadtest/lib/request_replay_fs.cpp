@@ -475,7 +475,7 @@ private:
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
-            auto parentpath = PathByNode(parentNode);
+            const auto parentpath = PathByNode(parentNode);
 
             if (nodeName.empty() && IsDir(Spec.GetReplayRoot() + parentpath)) {
                 nodeName =
@@ -523,7 +523,6 @@ private:
                 TFileStat{Spec.GetReplayRoot() + relativePathName}.INode;
             if (logRequest.GetNodeInfo().GetNodeId()) {
                 NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = inode;
-
                 NodePath[inode] = relativePathName;
             }
             STORAGE_DEBUG(
@@ -759,22 +758,33 @@ private:
                 isDir = true;
                 nodeid = MakeDirectoryRecursive(fullName);
             } break;
-            case NProto::E_LINK_NODE:
-                // TODO: NFs::HardLink(const TString &existingPath, const
-                // TString &newPath) NFs::SymLink(const TString &targetPath,
-                // const TString &linkPath)
-                break;
+            case NProto::E_LINK_NODE: {
+                // {"TimestampMcs":1727703903595285,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"pack-ebe666445578da0c6157f4172ad581cd731742ec.idx","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
+
+                const auto targetNode =
+                    NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+                const auto targetFullName =
+                    Spec.GetReplayRoot() + "/" + PathByNode(targetNode);
+                NFs::HardLink(targetFullName, fullName);
+            } break;
+            case NProto::E_SYMLINK_NODE: {
+                const auto targetNode =
+                    NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+                const auto targetFullName =
+                    Spec.GetReplayRoot() + "/" + PathByNode(targetNode);
+                NFs::SymLink(targetFullName, fullName);
+            } break;
             case NProto::E_SOCK_NODE:
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     Started,
-                    MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+                    MakeError(E_NOT_IMPLEMENTED, "sock not implemented")});
 
             case NProto::E_INVALID_NODE:
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     Started,
-                    MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+                    MakeError(E_NOT_IMPLEMENTED, "invalid not implemented")});
         }
 
         if (!nodeid) {
