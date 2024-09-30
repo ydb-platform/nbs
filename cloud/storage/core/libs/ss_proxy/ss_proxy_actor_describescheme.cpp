@@ -1,12 +1,10 @@
 #include "ss_proxy_actor.h"
 
-#include <cloud/filestore/libs/storage/core/config.h>
-
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-namespace NCloud::NFileStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NActors;
 
@@ -21,15 +19,17 @@ class TDescribeSchemeActor final
     : public TActorBootstrapped<TDescribeSchemeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    const int LogComponent;
+    const TSSProxyActor::TRequestInfo RequestInfo;
 
-    const TStorageConfigPtr Config;
+    const TString SchemeShardDir;
     const TString Path;
 
 public:
     TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
+        TString schemeShardDir,
         TString path);
 
     void Bootstrap(const TActorContext& ctx);
@@ -54,11 +54,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
+        TString schemeShardDir,
         TString path)
-    : RequestInfo(std::move(requestInfo))
-    , Config(std::move(config))
+    : LogComponent(logComponent)
+    , RequestInfo(std::move(requestInfo))
+    , SchemeShardDir(std::move(schemeShardDir))
     , Path(std::move(path))
 {}
 
@@ -72,7 +74,7 @@ void TDescribeSchemeActor::DescribeScheme(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvTxUserProxy::TEvNavigate>();
     request->Record.MutableDescribePath()->SetPath(Path);
-    request->Record.SetDatabaseName(Config->GetSchemeShardDir());
+    request->Record.SetDatabaseName(SchemeShardDir);
 
     NCloud::Send(ctx, MakeTxProxyID(), std::move(request));
 }
@@ -94,7 +96,7 @@ void TDescribeSchemeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvSSProxy::TEvDescribeSchemeResponse> response)
 {
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(ctx, RequestInfo, std::move(response));
     Die(ctx);
 }
 
@@ -124,7 +126,7 @@ STFUNC(TDescribeSchemeActor::StateWork)
         HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(ev, LogComponent);
             break;
     }
 }
@@ -139,17 +141,13 @@ void TSSProxyActor::HandleDescribeScheme(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
     NCloud::Register(
         ctx,
         std::make_unique<TDescribeSchemeActor>(
-            std::move(requestInfo),
-            Config,
+            LogComponent,
+            TRequestInfo(ev->Sender, ev->Cookie),
+            SchemeShardDir,
             msg->Path));
 }
 
-}   // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NStorage

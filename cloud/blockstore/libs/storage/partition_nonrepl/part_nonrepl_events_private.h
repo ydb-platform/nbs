@@ -83,12 +83,15 @@ struct TEvNonreplPartitionPrivate
     {
         ui64 RequestCounter;
         ui64 TotalCycles;
+        bool FollowerGotNonRetriableError;
 
         TWriteOrZeroCompleted(
                 ui64 requestCounter,
-                ui64 totalCycles)
+                ui64 totalCycles,
+                bool followerGotNonRetriableError)
             : RequestCounter(requestCounter)
             , TotalCycles(totalCycles)
+            , FollowerGotNonRetriableError(followerGotNonRetriableError)
         {
         }
     };

@@ -37,9 +37,10 @@ def wait_for_block_device_to_appear(
     disk_id: str,
     module_factory,
     ssh_key_path: str | None = None,
-) -> str:
-    device_to_id_mapper = VirtualDevicesToIdMapper(ip, module_factory, ssh_key_path)
-    return device_to_id_mapper.wait_for_disk_to_appear(disk_id)
+):
+    device_name = f'/dev/disk/by-id/virtio-{disk_id}'
+    helpers = module_factory.make_helpers(False)
+    helpers.wait_for_block_device_to_appear(ip, device_name, ssh_key_path=ssh_key_path)
 
 
 class VirtualDevicesToIdMapper:

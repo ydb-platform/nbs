@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &endTime);
 
     openTime = (endTime.tv_sec - startTime.tv_sec) +
-	       (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
+               (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
     printf("Open %.6f ms\n", openTime * 1000);
     printf("Open avg %.6f ms\n", openTime * 1000 / n);
 
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &endTime);
 
     closeTime = (endTime.tv_sec - startTime.tv_sec) +
-	        (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
+                (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
     printf("Close %.6f ms\n", closeTime * 1000);
     printf("Close avg %.6f ms\n", closeTime * 1000 / n);
 

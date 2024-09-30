@@ -63,12 +63,12 @@ public:
 
     auto CreateDescribeSchemeRequest(const TString& path)
     {
-        return std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
+        return std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
     }
 
     auto CreateModifySchemeRequest(const NKikimrSchemeOp::TModifyScheme& modifyScheme)
     {
-        return std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(modifyScheme);
+        return std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(modifyScheme);
     }
 
     auto CreateDescribeFileStoreRequest(const TString& path)
@@ -130,6 +130,8 @@ public:
     }                                                                          \
 // FILESTORE_DECLARE_METHOD
 
+    FILESTORE_DECLARE_METHOD(DescribeScheme, TEvStorageSSProxy)
+    FILESTORE_DECLARE_METHOD(ModifyScheme, TEvStorageSSProxy)
     FILESTORE_SS_PROXY_REQUESTS(FILESTORE_DECLARE_METHOD, TEvSSProxy)
 
 #undef FILESTORE_DECLARE_METHOD

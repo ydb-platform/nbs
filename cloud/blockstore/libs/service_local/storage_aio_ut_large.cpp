@@ -1,5 +1,7 @@
 #include "storage_aio.h"
 
+#include "file_io_service_provider.h"
+
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -44,12 +46,14 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * totalBlockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider =
+            CreateSingleFileIOServiceProvider(CreateAIOService());
+
+        fileIOServiceProvider->Start();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             true,   // directIO
             EAioSubmitQueueOpt::DontUse

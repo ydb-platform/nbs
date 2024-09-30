@@ -309,12 +309,16 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     } else if (args.FollowerId.Empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
-        Truncate(
+        auto e = Truncate(
             db,
             args.TargetNodeId,
             args.WriteCommitId,
             args.TargetNode->Attrs.GetSize(),
             0);
+        if (HasError(e)) {
+            args.Error = std::move(e);
+            return;
+        }
 
         auto attrs = CopyAttrs(args.TargetNode->Attrs, E_CM_CMTIME);
         attrs.SetSize(0);

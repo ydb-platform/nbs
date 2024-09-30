@@ -1,5 +1,7 @@
 #include "storage_aio.h"
 
+#include "file_io_service_provider.h"
+
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -102,6 +104,14 @@ TFsPath TryGetRamDrivePath()
         : p;
 }
 
+auto CreateAndStartAIOServiceProvider()
+{
+    auto provider = CreateSingleFileIOServiceProvider(CreateAIOService());
+    provider->Start();
+
+    return provider;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,12 +129,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * (blockCount + startIndex));
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             false,  // directIO
             submitQueueOpt
@@ -236,12 +245,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
             fileData.Flush();
         }
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             false,  // directIO
             submitQueueOpt
@@ -337,12 +345,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             false,  // directIO
             EAioSubmitQueueOpt::DontUse
@@ -471,12 +478,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             true,  // directIO
             EAioSubmitQueueOpt::DontUse
@@ -536,12 +542,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(false /* not ssd */),
             true,  // directIO
             EAioSubmitQueueOpt::DontUse
@@ -599,12 +604,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(),
             false,  // directIO
             EAioSubmitQueueOpt::DontUse
@@ -662,13 +666,13 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
 
-        auto service = CreateAIOService();
-        service->Start();
-        Y_DEFER { service->Stop(); };
+        auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
+        Y_DEFER { fileIOServiceProvider->Stop(); };
 
         auto deallocateHistory = std::make_shared<TNvmeDeallocateHistory>();
+
         auto provider = CreateAioStorageProvider(
-            service,
+            fileIOServiceProvider,
             CreateNvmeManagerStub(true, deallocateHistory),
             true,   // directIO
             EAioSubmitQueueOpt::DontUse);

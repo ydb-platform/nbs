@@ -56,7 +56,9 @@ class LocalNbs(Daemon):
             rack="the_rack",
             use_ic_version_check=False,
             use_secure_registration=False,
-            grpc_ssl_port=None):
+            grpc_ssl_port=None,
+            access_service_type=AccessService,
+    ):
 
         if dynamic_storage_pools is not None:
             assert len(dynamic_storage_pools) >= 2
@@ -149,7 +151,8 @@ class LocalNbs(Daemon):
             host = "localhost"
             port = self.__port_manager.get_port()
             control_server_port = self.__port_manager.get_port()
-            self.__access_service = AccessService(host, port, control_server_port)
+            self._access_service_type = access_service_type
+            self.__access_service = self._access_service_type(host, port, control_server_port)
             self.__proto_configs["auth.txt"] = self.__generate_auth_txt(port)
 
         self.__load_configs_from_cms = load_configs_from_cms
@@ -410,6 +413,7 @@ ModifyScheme {
         auth_config.UseBlackBox = False
         auth_config.UseStaff = False
         auth_config.AccessServiceEndpoint = "localhost:{}".format(port)
+        auth_config.AccessServiceType = self.__access_service.access_service_type
         return auth_config
 
     def __generate_dr_proxy_txt(self):

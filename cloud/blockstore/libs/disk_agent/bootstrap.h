@@ -64,7 +64,7 @@ private:
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
-    IFileIOServicePtr FileIOService;
+    IFileIOServiceProviderPtr FileIOServiceProvider;
     NSpdk::ISpdkEnvPtr Spdk;
     std::function<void(TLog& log)> SpdkLogInitializer;
     ICachingAllocatorPtr Allocator;

@@ -1125,6 +1125,10 @@ private:
     void DeleteCheckpointByDisk(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
+    void ReallocateCheckpointByDisk(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId);
 
     void ForgetDevices(
         TDiskRegistryDatabase& db,
@@ -1258,6 +1262,8 @@ private:
     struct TConfigUpdateEffect;
     TResultOrError<TConfigUpdateEffect> CalcConfigUpdateEffect(
         const NProto::TDiskRegistryConfig& newConfig) const;
+
+    std::optional<ui64> GetDiskBlockCount(const TDiskId& diskId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

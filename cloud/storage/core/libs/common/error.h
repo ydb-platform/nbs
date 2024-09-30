@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/protos/error.pb.h>
 
+#include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
@@ -240,6 +241,7 @@ public:
 
 TString FormatError(const NProto::TError& e);
 TString FormatResultCode(ui32 code);
+NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
 
 NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
 

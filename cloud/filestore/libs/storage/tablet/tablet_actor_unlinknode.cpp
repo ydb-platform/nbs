@@ -383,13 +383,18 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
-        UnlinkNode(
+        auto e = UnlinkNode(
             db,
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
             args.ChildRef->MinCommitId,
             args.CommitId);
+
+        if (HasError(e)) {
+            args.Error = std::move(e);
+            return;
+        }
     }
 
     auto* session = FindSession(args.SessionId);

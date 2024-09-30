@@ -322,13 +322,22 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             }
 
             // remove target ref and unlink target node
-            UnlinkNode(
+            auto e = UnlinkNode(
                 db,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 *args.NewChildNode,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
+
+            if (HasError(e)) {
+                const auto nodeId = args.NewChildNode->NodeId;
+                WriteOrphanNode(db, TStringBuilder()
+                    << "RenameNode: " << args.SessionId
+                    << ", ParentNodeId: " << args.NewParentNode->NodeId
+                    << ", NodeId: " << nodeId
+                    << ", Error: " << FormatError(e), nodeId);
+            }
         } else {
             // remove target ref
             UnlinkExternalNode(

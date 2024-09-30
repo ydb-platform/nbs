@@ -50,11 +50,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
                                                                                \
-    xxx(MaxFileBlocks,                          ui32,   300_GB / 4_KB         )\
-    xxx(LargeDeletionMarkersEnabled,            bool,   false                 )\
-    xxx(LargeDeletionMarkerBlocks,              ui64,   1_GB / 4_KB           )\
-    xxx(LargeDeletionMarkersThreshold,          ui64,   128_GB / 4_KB         )\
-    xxx(LargeDeletionMarkersCleanupThreshold,   ui64,   1_TB / 4_KB           )\
+    xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
+    xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
+    xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\
+    xxx(LargeDeletionMarkersThreshold,                  ui64,   128_GB / 4_KB )\
+    xxx(LargeDeletionMarkersCleanupThreshold,           ui64,   1_TB / 4_KB   )\
+    xxx(LargeDeletionMarkersThresholdForBackpressure,   ui64,   10_TB / 4_KB  )\
                                                                                \
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
     xxx(BlobIndexOpsPriority,                                                  \
