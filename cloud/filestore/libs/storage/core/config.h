@@ -272,6 +272,8 @@ public:
     bool GetMultipleStageRequestThrottlingEnabled() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
+
+    TString GetPathDescriptionBackupFilePath() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

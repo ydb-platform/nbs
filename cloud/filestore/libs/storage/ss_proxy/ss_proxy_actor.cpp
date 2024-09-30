@@ -11,24 +11,6 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NSchemeShard;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-NTabletPipe::TClientConfig CreateTabletPipeClientConfig(
-    const TStorageConfig& config)
-{
-    NTabletPipe::TClientConfig clientConfig;
-    clientConfig.RetryPolicy = {
-        .RetryLimitCount = config.GetPipeClientRetryCount(),
-        .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
-    return clientConfig;
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
@@ -39,11 +21,14 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    auto actor = std::make_unique<::NCloud::NStorage::TSSProxyActor>(
-        TFileStoreComponents::SS_PROXY,
-        Config->GetSchemeShardDir(),
-        CreateTabletPipeClientConfig(*Config)
-    );
+    auto actor = ::NCloud::NStorage::CreateSSProxy({
+        .LogComponent = TFileStoreComponents::SS_PROXY,
+        .PipeClientRetryCount = Config->GetPipeClientRetryCount(),
+        .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
+        .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
+        .SchemeShardDir = Config->GetSchemeShardDir(),
+        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+    });
     StorageSSProxyActor = NCloud::Register(ctx, std::move(actor));
 }
 

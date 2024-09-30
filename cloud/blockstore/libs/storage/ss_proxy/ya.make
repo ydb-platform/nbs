@@ -25,7 +25,6 @@ PEERDIR(
     contrib/ydb/core/tx/tx_proxy
 
     contrib/ydb/library/actors/core
-    library/cpp/aio
 )
 
 END()
