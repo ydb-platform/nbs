@@ -171,7 +171,7 @@ def test_multiple_endpoints(nbs):
             try:
                 process_name = os.path.basename(process.exe())
                 process_parent = process.parent()
-            except psutil.AccessDenied:
+            except psutil.Error:
                 continue
 
             if process_parent is None:
