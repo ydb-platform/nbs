@@ -78,12 +78,11 @@ void TMirrorPartitionActor::MirrorRequest(
         ctx,
         std::move(requestInfo),
         State.GetReplicaActors(),
+        TActorId{},
         std::move(msg->Record),
         State.GetReplicaInfos()[0].Config->GetName(),
         SelfId(),
-        requestIdentityKey,
-        true // shouldProcessError
-    );
+        requestIdentityKey);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
