@@ -7,6 +7,8 @@ PEERDIR(
     cloud/filestore/public/sdk/python/protos
 
     cloud/storage/core/protos
+    cloud/storage/core/tools/testing/access_service/lib
+    cloud/storage/core/tools/testing/access_service_new/lib
 
     contrib/python/requests/py3
     contrib/python/retrying

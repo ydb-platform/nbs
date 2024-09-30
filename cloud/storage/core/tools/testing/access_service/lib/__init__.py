@@ -4,13 +4,15 @@ import time
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.storage.core.tools.common.python.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 logger = logging.getLogger(__name__)
 
 
-class AccessService(Daemon):
+class AccessService:
+    # See: https://github.com/ydb-platform/nbs/blob/main/contrib/ydb/core/protos/auth.proto#L52
+    access_service_type = "Yandex_v2"
 
     def __init__(self, host, port, control_server_port):
         self.__host = host
@@ -32,7 +34,11 @@ class AccessService(Daemon):
             "--port", str(self.__port),
             "--control-server-port", str(self.__control_server_port)
         ]
-        self.__daemon = Daemon(command=command, cwd=self.__cwd, timeout=180)
+        self.__daemon = Daemon(
+            commands=[command],
+            cwd=self.__cwd,
+            service_name="access_service",
+        )
 
     def start(self):
         try:
@@ -63,7 +69,7 @@ class AccessService(Daemon):
         self.__daemon.stop()
 
     def __get_pid(self):
-        return self.__daemon.daemon.process.pid
+        return self.__daemon.pid
 
     def __url(self, path):
         return "{}/{}".format(self.__control_url, path)

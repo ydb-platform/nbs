@@ -8,6 +8,7 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import create_file_de
     setup_disk_registry_proxy_config, setup_disk_agent_config
 
 from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
+from cloud.storage.core.tools.testing.access_service.lib import AccessService
 
 from .nbs_runner import LocalNbs
 from .endpoint_proxy import EndpointProxy
@@ -51,6 +52,7 @@ class LocalLoadTest:
             kikimr_binary_path=None,
             with_endpoint_proxy=False,
             with_netlink=False,
+            access_service_type=AccessService,
             load_configs_from_cms=True,
     ):
 
@@ -113,7 +115,9 @@ class LocalLoadTest:
             load_configs_from_cms=load_configs_from_cms,
             features_config_patch=features_config_patch,
             grpc_trace=grpc_trace,
-            rack=rack)
+            rack=rack,
+            access_service_type=access_service_type,
+        )
 
         self.endpoint_proxy = None
         if with_endpoint_proxy:

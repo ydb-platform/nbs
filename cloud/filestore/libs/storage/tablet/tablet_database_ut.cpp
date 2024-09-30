@@ -511,6 +511,41 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(toString(entries), toString(markers));
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreOrphanNodes)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema(false);
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteOrphanNode(111);
+            db.WriteOrphanNode(222);
+            db.WriteOrphanNode(333);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<ui64> nodeIds;
+            UNIT_ASSERT(db.ReadOrphanNodes(nodeIds));
+            UNIT_ASSERT_VALUES_EQUAL(3, nodeIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(111, nodeIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(222, nodeIds[1]);
+            UNIT_ASSERT_VALUES_EQUAL(333, nodeIds[2]);
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteOrphanNode(222);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<ui64> nodeIds;
+            UNIT_ASSERT(db.ReadOrphanNodes(nodeIds));
+            UNIT_ASSERT_VALUES_EQUAL(2, nodeIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(111, nodeIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(333, nodeIds[1]);
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -21,7 +21,7 @@ struct IFileIOServiceProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceProviderPtr CreateFileIOServiceProviderStub(
+IFileIOServiceProviderPtr CreateSingleFileIOServiceProvider(
     IFileIOServicePtr fileIO);
 
 IFileIOServiceProviderPtr CreateFileIOServiceProvider(

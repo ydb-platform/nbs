@@ -42,6 +42,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/deprecated/atomic
+    library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace
     library/cpp/protobuf/util

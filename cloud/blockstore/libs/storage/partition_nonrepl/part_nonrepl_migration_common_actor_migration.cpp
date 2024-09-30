@@ -253,9 +253,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
             FormatError(msg->GetError()).c_str());
 
         if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
-            MigrationOwner->OnMigrationError(ctx);
-            MigrationEnabled = false;
+            OnMigrationNonRetriableError(ctx);
             return;
         }
 
@@ -354,12 +352,21 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
         new TEvents::TEvWakeup(WR_REGISTER_TRAFFIC_SOURCE));
 }
 
+void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
+    const NActors::TActorContext& ctx)
+{
+    ReportMigrationFailed();
+    MigrationOwner->OnMigrationError(ctx);
+    MigrationEnabled = false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     const TActorContext& ctx)
 {
-    if (RangeMigrationScheduled || IsIoDepthLimitReached()) {
+    if (!MigrationEnabled || RangeMigrationScheduled || IsIoDepthLimitReached())
+    {
         return;
     }
 

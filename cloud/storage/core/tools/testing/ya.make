@@ -1,5 +1,6 @@
 RECURSE(
     access_service
+    access_service_new
     fio
     pssh-mock
     qemu

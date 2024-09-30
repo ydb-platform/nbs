@@ -6086,6 +6086,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
         storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
         storageConfig.SetLargeDeletionMarkersCleanupThreshold(3_TB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            10_TB / block);
         const auto blobSize = 2 * block;
         storageConfig.SetWriteBlobThreshold(blobSize);
 
@@ -6214,6 +6216,112 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // 2 new blobs + 1 garbage blob
             UNIT_ASSERT_VALUES_EQUAL(3 * blobSize, stats.GetGarbageQueueSize());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+        }
+    }
+
+    TABLET_TEST(ShouldRejectLargeFileTruncationIfLargeDeletionMarkerCountIsTooHigh)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxFileBlocks(5_TB / block);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
+        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
+        storageConfig.SetLargeDeletionMarkersCleanupThreshold(20_TB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            4_TB / block);
+        const auto blobSize = 2 * block;
+        storageConfig.SetWriteBlobThreshold(blobSize);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.BlockCount = 10_TB / block;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        for (const auto id: {id1, id2}) {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(5_TB);
+            tablet.SetNodeAttr(args);
+            UNIT_ASSERT_VALUES_EQUAL(5_TB, GetNodeAttrs(tablet, id).GetSize());
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(RootNodeId, "test1", false);
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(RootNodeId, "test2", false);
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                5_TB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedNodesCount());
+        }
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        auto registry = env.GetRegistry();
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OrphanNodesCount"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        tablet.RenameNode(RootNodeId, "test3", RootNodeId, "test2");
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OrphanNodesCount"}, {"filesystem", "test"}}, 1},
+            });
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                5_TB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedNodesCount());
         }
     }
 

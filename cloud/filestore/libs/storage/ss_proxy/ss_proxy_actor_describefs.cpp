@@ -42,7 +42,7 @@ private:
 
     void DescribeScheme(const TActorContext& ctx);
     void HandleDescribeSchemeResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
     void HandleWakeup(
         const TActorContext& ctx);
@@ -81,12 +81,12 @@ void TDescribeFileStoreActor::DescribeScheme(const TActorContext& ctx)
         Config->GetSchemeShardDir(),
         FileSystemId);
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
+    auto request = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
 void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
-    const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -164,7 +164,7 @@ void TDescribeFileStoreActor::ReplyAndDie(
 STFUNC(TDescribeFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
 
         CFunc(TEvents::TSystem::Wakeup, HandleWakeup)
 

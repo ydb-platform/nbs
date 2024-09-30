@@ -308,11 +308,18 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            RemoveNode(
+            auto e = RemoveNode(
                 db,
                 *it,
                 it->MinCommitId,
                 commitId);
+
+            if (HasError(e)) {
+                WriteOrphanNode(db, TStringBuilder()
+                    << "DestroySession: " << args.SessionId
+                    << ", RemoveNode: " << nodeId
+                    << ", Error: " << FormatError(e), nodeId);
+            }
         }
     }
 
