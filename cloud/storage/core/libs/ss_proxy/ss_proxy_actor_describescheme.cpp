@@ -1,5 +1,7 @@
 #include "ss_proxy_actor.h"
 
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
+
 #include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
@@ -24,13 +26,15 @@ private:
 
     const TString SchemeShardDir;
     const TString Path;
+    TActorId PathDescriptionBackup;
 
 public:
     TDescribeSchemeActor(
         int logComponent,
         TSSProxyActor::TRequestInfo requestInfo,
         TString schemeShardDir,
-        TString path);
+        TString path,
+        TActorId pathDescriptionBackup);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,11 +61,13 @@ TDescribeSchemeActor::TDescribeSchemeActor(
         int logComponent,
         TSSProxyActor::TRequestInfo requestInfo,
         TString schemeShardDir,
-        TString path)
+        TString path,
+        TActorId pathDescriptionBackup)
     : LogComponent(logComponent)
     , RequestInfo(std::move(requestInfo))
     , SchemeShardDir(std::move(schemeShardDir))
     , Path(std::move(path))
+    , PathDescriptionBackup(std::move(pathDescriptionBackup))
 {}
 
 void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
@@ -113,6 +119,15 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
         return;
     }
 
+    if (PathDescriptionBackup) {
+        auto updateRequest =
+            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
+                record.GetPath(),
+                record.GetPathDescription()
+            );
+        NCloud::Send(ctx, PathDescriptionBackup, std::move(updateRequest));
+    }
+
     auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
         record.GetPath(),
         record.GetPathDescription());
@@ -141,13 +156,13 @@ void TSSProxyActor::HandleDescribeScheme(
 {
     const auto* msg = ev->Get();
 
-    NCloud::Register(
+    NCloud::Register<TDescribeSchemeActor>(
         ctx,
-        std::make_unique<TDescribeSchemeActor>(
-            LogComponent,
-            TRequestInfo(ev->Sender, ev->Cookie),
-            SchemeShardDir,
-            msg->Path));
+        Config.LogComponent,
+        TRequestInfo(ev->Sender, ev->Cookie),
+        Config.SchemeShardDir,
+        msg->Path,
+        PathDescriptionBackup);
 }
 
 }   // namespace NCloud::NStorage

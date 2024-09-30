@@ -423,4 +423,7 @@ message TStorageConfig
     // If the number of blocks marked for deletion via large deletion markers
     // exceeds this threshold, large truncate-like operations will be rejected.
     optional uint64 LargeDeletionMarkersThresholdForBackpressure = 394;
+
+    // Enables persistent backup for tablet path descriptions.
+    optional string PathDescriptionBackupFilePath = 395;
 }

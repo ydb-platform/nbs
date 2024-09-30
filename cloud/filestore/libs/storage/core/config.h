@@ -269,6 +269,8 @@ public:
     ui64 GetLargeDeletionMarkersThresholdForBackpressure() const;
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
+
+    TString GetPathDescriptionBackupFilePath() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

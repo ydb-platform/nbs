@@ -1,5 +1,7 @@
 #include "ss_proxy_actor.h"
 
+#include "path_description_backup.h"
+
 namespace NCloud::NStorage {
 
 using namespace NActors;
@@ -7,17 +9,45 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NSchemeShard;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-TSSProxyActor::TSSProxyActor(
-        int logComponent,
-        TString schemeShardDir,
-        NKikimr::NTabletPipe::TClientConfig pipeClientConfig)
-    : TActor(&TThis::StateWork)
-    , LogComponent(logComponent)
-    , SchemeShardDir(schemeShardDir)
-    , ClientCache(NTabletPipe::CreateUnboundedClientCache(pipeClientConfig))
+auto CreateTabletPipeClientCache(const TSSProxyConfig& config)
+{
+    NTabletPipe::TClientConfig clientConfig;
+    clientConfig.RetryPolicy = {
+        .RetryLimitCount = config.PipeClientRetryCount,
+        .MinRetryTime = config.PipeClientMinRetryTime,
+        .MaxRetryTime = config.PipeClientMaxRetryTime
+    };
+    return NTabletPipe::CreateUnboundedClientCache(clientConfig);
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TSSProxyActor::TSSProxyActor(TSSProxyConfig config)
+    : Config(std::move(config))
+    , ClientCache(CreateTabletPipeClientCache(Config))
 {}
+
+void TSSProxyActor::Bootstrap(const TActorContext& ctx)
+{
+    TThis::Become(&TThis::StateWork);
+
+    if (Config.PathDescriptionBackupFilePath) {
+        auto cache = std::make_unique<TPathDescriptionBackup>(
+            Config.LogComponent,
+            Config.PathDescriptionBackupFilePath,
+            false); // readOnlyMode
+        PathDescriptionBackup = ctx.Register(
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,10 +121,33 @@ STFUNC(TSSProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, LogComponent);
+                HandleUnexpectedEvent(ev, Config.LogComponent);
             }
             break;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TSSProxyActor::HandleBackupPathDescriptions(
+    const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (PathDescriptionBackup) {
+        ctx.Send(ev->Forward(PathDescriptionBackup));
+    } else {
+        auto response =
+            std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
+                MakeError(S_FALSE));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+IActorPtr CreateSSProxy(TSSProxyConfig config)
+{
+    return std::make_unique<TSSProxyActor>(std::move(config));
 }
 
 }   // namespace NCloud::NStorage

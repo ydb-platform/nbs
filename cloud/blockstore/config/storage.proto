@@ -638,7 +638,7 @@ message TStorageServiceConfig
     optional string TabletBootInfoBackupFilePath = 244;
     // In fallback mode, all requests to Hive are served from backup.
     optional bool HiveProxyFallbackMode = 245;
-    // Enables persistent backup for volume path descriptions.
+    // Enables persistent backup for tablet path descriptions.
     optional string PathDescriptionBackupFilePath = 246;
     // In fallback mode, all requests to SchemeShard are served from backup.
     optional bool SSProxyFallbackMode = 247;

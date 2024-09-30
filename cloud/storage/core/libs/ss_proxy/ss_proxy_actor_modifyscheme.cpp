@@ -261,7 +261,7 @@ void TSSProxyActor::HandleModifyScheme(
     NCloud::Register(
         ctx,
         std::make_unique<TModifySchemeActor>(
-            LogComponent,
+            Config.LogComponent,
             TRequestInfo(ev->Sender, ev->Cookie),
             ctx.SelfID,
             msg->ModifyScheme));
