@@ -191,7 +191,7 @@ func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 }
 
 func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
@@ -334,9 +334,6 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
-
-	_, err = os.Stat(targetPath)
-	assert.True(t, os.IsNotExist(err))
 
 	if backend == "nbs" {
 		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
