@@ -25,6 +25,7 @@ target_link_options(cloud-filestore-libs-vfs_fuse-ut PRIVATE
   CoreFoundation
 )
 target_sources(cloud-filestore-libs-vfs_fuse-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/file_ring_buffer_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/vfs_fuse/fs_ut.cpp
 )
 set_property(
