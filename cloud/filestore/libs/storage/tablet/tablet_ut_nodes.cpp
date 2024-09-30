@@ -1733,11 +1733,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             [&](auto& runtime, auto& event)
             {
                 Y_UNUSED(runtime);
-                Cerr << event->GetTypeName() << " " << event->Sender << Endl;
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPut:
                         if (!putEvent) {
-                            Cerr << "Dropping put event" << Endl;
                             putEvent = std::move(event);
                             return true;
                         }
@@ -1775,7 +1773,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.AssertGetNodeAttrNoResponse();
 
         runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
-        Cerr << "Sending put event" << Endl;
 
         runtime.Send(putEvent.Release(), nodeIdx);
         {
@@ -1793,6 +1790,106 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             response->GetStatus());
 
         UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetUid());
+    }
+
+    Y_UNIT_TEST(DataObservedByROTxUponCompletionShouldNeverBeStale)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(RootNodeId).SetUid(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            tablet.GetNodeAttr(RootNodeId)->Record.GetNode().GetUid());
+
+        TAutoPtr<IEventHandle> putEvent;
+        auto& runtime = env.GetRuntime();
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut:
+                        putEvent = std::move(event);
+                        return true;
+                }
+                return false;
+            });
+
+        // Write(2)
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return putEvent != nullptr;
+            }});
+        // Write should hang
+
+        // Read
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        tablet.SendGetNodeAttrRequest(RootNodeId);
+        // Read should hang
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(10));
+        tablet.AssertSetNodeAttrNoResponse();
+        tablet.AssertGetNodeAttrNoResponse();
+
+        // Write(3)
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(3));
+
+        TString observedOrder = "";
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvSetNodeAttrResponse: {
+                        using TResponse = TEvService::TEvSetNodeAttrResponse;
+                        auto* msg = event->template Get<TResponse>();
+                        observedOrder +=
+                            "W" + ToString(msg->Record.GetNode().GetUid());
+                        return false;
+                    }
+                    case TEvService::EvGetNodeAttrResponse: {
+                        using TResponse = TEvService::TEvGetNodeAttrResponse;
+                        auto* msg = event->template Get<TResponse>();
+                        observedOrder +=
+                            "R" + ToString(msg->Record.GetNode().GetUid());
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        runtime.Send(putEvent.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+        }
+        {
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                2,
+                response->Record.GetNode().GetUid(),
+                response->Record.DebugString());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("W2R2W3", observedOrder);
     }
 }
 
