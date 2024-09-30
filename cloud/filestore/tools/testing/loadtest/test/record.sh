@@ -12,7 +12,7 @@ mkdir -p ${WORK_DIR}
 
 re_create_mount
 
-df -h
+df -h ||:
 mount | grep ${HOME} ||:
 
 pushd ${MOUNT_POINT}
@@ -31,5 +31,4 @@ sleep 15
 ls -la ${LOGS_DIR}/filestore-server-profile-log.txt
 cp ${LOGS_DIR}/filestore-server-profile-log.txt ${WORK_DIR}
 
-
-umount ${MOUNT_POINT} ||:
+[ -z "${KEEP_MOUNT}" ] && umount ${MOUNT_POINT} ||:

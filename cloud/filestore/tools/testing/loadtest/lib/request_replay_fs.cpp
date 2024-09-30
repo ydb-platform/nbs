@@ -519,17 +519,19 @@ private:
 
             OpenHandles[fh] = std::move(fileHandle);
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
-            const auto inode =
-                TFileStat{Spec.GetReplayRoot() + relativePathName}.INode;
+            const auto stat =
+                TFileStat{Spec.GetReplayRoot() + relativePathName};
+            const auto inode = stat.INode;
             if (logRequest.GetNodeInfo().GetNodeId()) {
                 NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = inode;
                 NodePath[inode] = relativePathName;
             }
             STORAGE_DEBUG(
-                "open " << fh << "<-" << logRequest.GetNodeInfo().GetHandle()
+                "Open " << fh << " <- " << logRequest.GetNodeInfo().GetHandle()
                         << " inode=" << inode
                         << " known handles=" << HandlesLogToActual.size()
-                        << " opened=" << OpenHandles.size());
+                        << " opened=" << OpenHandles.size()
+                        << " size=" << stat.Size);
         } catch (const TFileError& error) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,

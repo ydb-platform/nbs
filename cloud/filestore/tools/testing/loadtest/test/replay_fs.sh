@@ -31,8 +31,6 @@ tmpl ${CUR_DIR}/replay_fs.txt
 LOADTEST_VERBOSE=${LT_VERBOSE=debug}
 env LD_LIBRARY_PATH=${ROOT_DIR}/cloud/filestore/tools/testing/loadtest/bin ${GDB} ${ROOT_DIR}/cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest --verbose ${LOADTEST_VERBOSE} --tests-config ${CUR_DIR}/replay_fs.txt 2>&1 | tee ${WORK_DIR}/log_fs.log
 
-#popd
-
 pushd ${REPLAY_ROOT}
 find . -type f -iname "*" -printf "%h/%f %s \n" | sort | tee ${WORK_DIR}/replay_fs_list.txt
 popd
