@@ -464,8 +464,6 @@ def test_node_volume_expand():
         cleanup_after_test(env)
 
 
-@pytest.mark.skip(reason="disable test as this feature is not implemented yet: \
-                  https://github.com/ydb-platform/nbs/pull/1982")
 def test_publish_volume_twice_on_the_same_node():
     env, run = init(vm_mode=True)
     try:
