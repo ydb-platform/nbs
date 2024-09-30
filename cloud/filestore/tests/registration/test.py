@@ -1,8 +1,6 @@
 import pytest
 from collections import namedtuple
 import logging
-import os
-import signal
 
 from cloud.filestore.tests.python.lib.client import NfsCliClient
 from cloud.filestore.config.server_pb2 import TServerAppConfig
