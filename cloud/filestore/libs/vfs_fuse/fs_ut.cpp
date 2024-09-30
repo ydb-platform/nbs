@@ -1435,10 +1435,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -1446,11 +1444,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId2 = 11;
         std::atomic_bool releaseFinished = false;
         std::atomic_uint handlerCalled = 0;
-        auto destroyFinished = NewPromise<void>();
         auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
                             ->FindSubgroup("request", "DestroyHandle");
+        auto responsePromise1 = NewPromise<NProto::TDestroyHandleResponse>();
+        auto responsePromise2 = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
-            [&, destroyFinished](auto callContext, auto request) mutable
+            [&,
+             responsePromise1,
+             responsePromise2](auto callContext, auto request) mutable
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
@@ -1464,18 +1465,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT(releaseFinished);
                     UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
-                } else if (handlerCalled == 2) {
+                    return responsePromise1;
+                }
+                if (handlerCalled == 2) {
                     UNIT_ASSERT(releaseFinished);
                     UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
-                    destroyFinished.TrySetValue();
-                } else {
-                    UNIT_ASSERT_C(
-                        false,
-                        "Handler should not be called more than two times");
+                    return responsePromise2;
                 }
 
-                return MakeFuture(NProto::TDestroyHandleResponse{});
+                UNIT_ASSERT_C(
+                    false,
+                    "Handler should not be called more than two times");
+                return NewPromise<NProto::TDestroyHandleResponse>();
             });
 
         bootstrap.Start();
@@ -1487,7 +1489,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         releaseFinished = true;
 
-        destroyFinished.GetFuture().Wait(WaitTimeout);
+        scheduler->RunAllScheduledTasks();
+        responsePromise1.SetValue(NProto::TDestroyHandleResponse{});
+
+        scheduler->RunAllScheduledTasks();
+        responsePromise2.SetValue(NProto::TDestroyHandleResponse{});
+
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
