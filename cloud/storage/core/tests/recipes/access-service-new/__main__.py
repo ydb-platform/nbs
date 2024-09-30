@@ -55,6 +55,7 @@ def start(argv):
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_port))
     set_env("ACCESS_SERVICE_PID", str(access_service.pid))
 
+
 def stop(argv):
     logger.info("Shutdown new access-service")
 
