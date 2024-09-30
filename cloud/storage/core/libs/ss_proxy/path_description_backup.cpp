@@ -43,8 +43,13 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 
     if (ReadOnlyMode) {
         try {
-            MergeFromTextFormat(BackupFilePath, BackupProto);
+            TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+            TUnbufferedFileInput input(file);
+            MergeFromTextFormat(input, BackupProto);
+            LOG_INFO_S(ctx, LogComponent,
+                "PathDescriptionBackup: loaded " << file.GetLength() << " bytes");
         } catch (...) {
+            ReportLoadPathDescriptionBackupFailure();
             LOG_WARN_S(ctx, LogComponent,
                 "PathDescriptionBackup: can't load from file: "
                 << CurrentExceptionMessage());
