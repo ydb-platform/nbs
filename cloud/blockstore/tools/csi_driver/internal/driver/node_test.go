@@ -335,12 +335,8 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	})
 	require.NoError(t, err)
 
-	// TODO: enable check that target directory is deleted after fixing https://github.com/ydb-platform/nbs/issues/2120
-	// mock mounter should remove targetPath but if it does then TestGetVolumeStatCapabilitiesWithoutVmMode
-	// fails because it relies on other tests leaving target directory (it fails if launched alone)
-	//
-	//_, err = os.Stat(targetPath)
-	//assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(targetPath)
+	assert.True(t, os.IsNotExist(err))
 
 	if backend == "nbs" {
 		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
