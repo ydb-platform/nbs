@@ -14,15 +14,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func shouldPanic(t *testing.T, f func()) {
-	t.Helper()
-	defer func() { _ = recover() }()
-	f()
-	t.Errorf("Should have panicked")
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestOptimizeBaseDisksTask(t *testing.T) {
 	ctx := newContext()
 	scheduler := tasks_mocks.NewSchedulerMock()
@@ -160,7 +151,13 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, scheduler, storage, execCtx)
 }
 
-func TestOptimizeBaseDisksTaskDetectsWrongConfig(t *testing.T) {
+func TestOptimizeBaseDisksTaskPanicsOnIncorrectConfig(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Should have panicked")
+		}
+	}()
+
 	ctx := newContext()
 	scheduler := tasks_mocks.NewSchedulerMock()
 	storage := storage_mocks.NewStorageMock()
@@ -169,8 +166,8 @@ func TestOptimizeBaseDisksTaskDetectsWrongConfig(t *testing.T) {
 	minPoolAge, err := time.ParseDuration("12h")
 	require.NoError(t, err)
 
-	// optimizeBaseDisksTask should panic because of incorrect config
-	// convertToImageSizedBaseDisksThreshold should be lower than convertToDefaultSizedBaseDisksThreshold
+	// OptimizeBaseDisksTask should panic because of incorrect config.
+	// ConvertToImageSizedBaseDisksThreshold should be lower than convertToDefaultSizedBaseDisksThreshold.
 
 	task := &optimizeBaseDisksTask{
 		scheduler:                               scheduler,
@@ -183,5 +180,5 @@ func TestOptimizeBaseDisksTaskDetectsWrongConfig(t *testing.T) {
 	err = task.Load(nil, nil)
 	require.NoError(t, err)
 
-	shouldPanic(t, func() { task.Run(ctx, execCtx) })
+	task.Run(ctx, execCtx)
 }

@@ -41,7 +41,6 @@ func (t *optimizeBaseDisksTask) Run(
 
 	t1 := t.convertToDefaultSizedBaseDisksThreshold
 	t2 := t.convertToImageSizedBaseDisksThreshold
-
 	common.Assert(t1 > t2, "There should be gap between tresholds")
 
 	if t1 == 0 && t2 == 0 {
