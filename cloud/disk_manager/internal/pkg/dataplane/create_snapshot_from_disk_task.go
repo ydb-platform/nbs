@@ -124,6 +124,7 @@ func (t *createSnapshotFromDiskTask) saveProgress(
 func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	client nbs_client.Client,
 	snapshotMeta storage.SnapshotMeta,
 ) (string, string, error) {
 
@@ -148,6 +149,29 @@ func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 			t.request.SrcDisk.DiskId,
 		)
 		// TODO: enable incremental snapshots for such disks.
+		baseSnapshotID = ""
+		baseCheckpointID = ""
+	}
+
+	_, err = client.GetCheckpointStatus(ctx, t.request.SrcDisk.DiskId, baseCheckpointID)
+	if nbs_client.IsNotFoundError(err) {
+		err = t.storage.DeleteSnapshotFromIncremental(
+			ctx,
+			t.request.SrcDisk.ZoneId,
+			t.request.SrcDisk.DiskId,
+			baseSnapshotID,
+		)
+		if err != nil {
+			return "", "", err
+		}
+
+		logging.Error(
+			ctx,
+			"Performing full snapshot %v of disk %v because base checkpoint %v is not found",
+			snapshotMeta.ID,
+			t.request.SrcDisk.DiskId,
+			baseCheckpointID,
+		)
 		baseSnapshotID = ""
 		baseCheckpointID = ""
 	}
@@ -248,17 +272,22 @@ func (t *createSnapshotFromDiskTask) run(
 		return nil
 	}
 
-	baseSnapshotID, baseCheckpointID, err := t.lockBaseSnapshot(ctx, execCtx, *snapshotMeta)
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	baseSnapshotID, baseCheckpointID, err := t.lockBaseSnapshot(
+		ctx,
+		execCtx,
+		client,
+		*snapshotMeta,
+	)
 	if err != nil {
 		return err
 	}
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
-
-	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
-	if err != nil {
-		return err
-	}
 
 	proxyOverlayDiskID, err := t.createProxyOverlayDiskIfNeeded(
 		ctx,

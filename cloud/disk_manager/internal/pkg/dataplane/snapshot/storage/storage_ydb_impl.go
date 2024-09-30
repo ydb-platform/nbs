@@ -177,6 +177,57 @@ func (s *storageYDB) createSnapshot(
 	return state.toSnapshotMeta(), nil
 }
 
+func (s *storageYDB) deleteSnapshotFromIncrementalTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	zoneID string,
+	diskID string,
+	snapshotID string,
+) error {
+
+	_, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $zone_id as Utf8;
+		declare $disk_id as Utf8;
+		declare $snapshot_id as Utf8;
+
+		delete from incremental
+		where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $snapshot_id;
+	`, s.tablesPath),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *storageYDB) deleteSnapshotFromIncremental(
+	ctx context.Context,
+	session *persistence.Session,
+	zoneID string,
+	diskID string,
+	snapshotID string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	err = s.deleteSnapshotFromIncrementalTx(ctx, tx, zoneID, diskID, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (s *storageYDB) deleteDiskFromIncremental(
 	ctx context.Context,
 	session *persistence.Session,
@@ -488,20 +539,7 @@ func (s *storageYDB) deletingSnapshot(
 		return nil, err
 	}
 
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $zone_id as Utf8;
-		declare $disk_id as Utf8;
-		declare $snapshot_id as Utf8;
-
-		delete from incremental
-		where zone_id = $zone_id and disk_id = $disk_id and snapshot_id = $snapshot_id
-	`, s.tablesPath),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(state.zoneID)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(state.diskID)),
-		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-	)
+	err = s.deleteSnapshotFromIncrementalTx(ctx, tx, state.zoneID, state.diskID, snapshotID)
 	if err != nil {
 		return nil, err
 	}

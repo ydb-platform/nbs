@@ -120,6 +120,13 @@ type Storage interface {
 
 	GetTotalSnapshotStorageSize(ctx context.Context) (storageSize uint64, err error)
 
+	DeleteSnapshotFromIncremental(
+		ctx context.Context,
+		zoneID string,
+		diskID string,
+		snapshotID string,
+	) error
+
 	DeleteDiskFromIncremental(
 		ctx context.Context,
 		zoneID string,

@@ -168,6 +168,27 @@ func (s *storageYDB) ReadChunkMap(
 	return entries, errors
 }
 
+func (s *storageYDB) DeleteSnapshotFromIncremental(
+	ctx context.Context,
+	zoneID string,
+	diskID string,
+	snapshotID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.deleteSnapshotFromIncremental(
+				ctx,
+				session,
+				zoneID,
+				diskID,
+				snapshotID,
+			)
+		},
+	)
+}
+
 func (s *storageYDB) DeleteDiskFromIncremental(
 	ctx context.Context,
 	zoneID string,

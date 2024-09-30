@@ -243,6 +243,16 @@ func (s *legacyStorage) GetTotalSnapshotStorageSize(ctx context.Context) (storag
 	return 0, task_errors.NewNonRetriableErrorf("not implemented")
 }
 
+func (s *legacyStorage) DeleteSnapshotFromIncremental(
+	ctx context.Context,
+	zoneID string,
+	diskID string,
+	snapshotID string,
+) error {
+
+	return task_errors.NewNonRetriableErrorf("not implemented")
+}
+
 func (s *legacyStorage) DeleteDiskFromIncremental(
 	ctx context.Context,
 	zoneID string,
