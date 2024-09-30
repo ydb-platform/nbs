@@ -766,10 +766,6 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
 
-	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, 0755)
-	require.NoError(t, err)
-
 	ctx := context.Background()
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
@@ -793,7 +789,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		mounter,
 	)
 
-	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: "testStagingTargetPath",
 		VolumeCapability:  &csi.VolumeCapability{},
