@@ -152,16 +152,13 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 }
 
 func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Should have panicked")
-		}
-	}()
-
 	ctx := newContext()
 	scheduler := tasks_mocks.NewSchedulerMock()
 	storage := storage_mocks.NewStorageMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	storage.On("GetReadyPoolInfos", ctx).Return([]pools_storage.PoolInfo{}, nil)
+	execCtx.On("SaveState", mock.Anything).Return(nil)
 
 	minPoolAge, err := time.ParseDuration("12h")
 	require.NoError(t, err)
@@ -180,5 +177,5 @@ func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
 	err = task.Load(nil, nil)
 	require.NoError(t, err)
 
-	task.Run(ctx, execCtx)
+	require.Panics(t, func() { task.Run(ctx, execCtx) }, "This task should panic")
 }
