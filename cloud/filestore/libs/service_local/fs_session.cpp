@@ -57,15 +57,19 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Index,
         Logging);
 
-    session->Init(request.GetRestoreClientSession(), Config->GetMaxHandlePerSessionCount());
+    session->Init(
+        request.GetRestoreClientSession(),
+        Config->GetMaxHandlePerSessionCount());
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
 
-    auto [_, inserted1] = SessionsByClient.emplace(clientId, SessionsList.begin());
+    auto [_, inserted1] =
+        SessionsByClient.emplace(clientId, SessionsList.begin());
     Y_ABORT_UNLESS(inserted1);
 
-    auto [dummyIt, inserted2] = SessionsById.emplace(session->SessionId, SessionsList.begin());
+    auto [dummyIt, inserted2] =
+        SessionsById.emplace(session->SessionId, SessionsList.begin());
     Y_ABORT_UNLESS(inserted2);
 
     NProto::TCreateSessionResponse response;

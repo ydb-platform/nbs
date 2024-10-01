@@ -34,7 +34,7 @@ private:
     struct THandle
     {
         TFileHandle FileHandle;
-        ui64 RecordIndex;
+        ui64 RecordIndex = -1;
     };
 
     struct THandleTableHeader
@@ -43,16 +43,16 @@ private:
 
     struct THandleTableRecord
     {
-        ui64 HandleId;
-        ui64 NodeId;
-        int Flags;
+        ui64 HandleId = 0;
+        ui64 NodeId = 0;
+        int Flags = 0;
     };
 
     using THandleTable = TPersistentTable<THandleTableHeader, THandleTableRecord>;
 
     THashMap<TString, TString> Attrs;
     THashMap<ui64, THandle> Handles;
-    std::unique_ptr<THandleTable> HandlesTable;
+    std::unique_ptr<THandleTable> HandleTable;
     std::atomic<ui64> nextHandleId = 0;
     TString FuseState;
     TRWMutex Lock;
@@ -106,12 +106,12 @@ public:
                 ", MaxHandlesPerSessionCount=" << maxHandlesPerSessionCount);
         }
 
-        HandlesTable = std::make_unique<THandleTable>(
+        HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
             maxHandlesPerSessionCount);
 
         ui64 maxHandleId = 0;
-        for (auto it = HandlesTable->begin(); it != HandlesTable->end(); it++) {
+        for (auto it = HandleTable->begin(); it != HandleTable->end(); it++) {
             maxHandleId = std::max(maxHandleId, it->HandleId);
 
             STORAGE_TRACE(
@@ -123,7 +123,7 @@ public:
                 STORAGE_ERROR(
                     "Handle with missing node, HandleId=" << it->HandleId <<
                     ", NodeId" << it->NodeId);
-                HandlesTable->DeleteRecord(it.GetIndex());
+                HandleTable->DeleteRecord(it.GetIndex());
                 continue;
             }
 
@@ -137,7 +137,7 @@ public:
                     "Failed to open Handle, HandleId=" << it->HandleId <<
                     ", NodeId" << it->NodeId <<
                     ", Exception=" << CurrentExceptionMessage());
-                HandlesTable->DeleteRecord(it.GetIndex());
+                HandleTable->DeleteRecord(it.GetIndex());
                 continue;
             }
         }
@@ -152,12 +152,12 @@ public:
 
         const auto handleId = nextHandleId++;
 
-        const auto recordIndex = HandlesTable->AllocRecord();
+        const auto recordIndex = HandleTable->AllocRecord();
         if (recordIndex == THandleTable::InvalidIndex) {
             return {};
         }
 
-        auto* state = HandlesTable->RecordData(recordIndex);
+        auto* state = HandleTable->RecordData(recordIndex);
         state->HandleId = handleId;
         state->NodeId = nodeId;
         state->Flags = flags;
@@ -166,7 +166,7 @@ public:
             Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         Y_ABORT_UNLESS(inserted, "dup file handle for: %lu", handleId);
 
-        HandlesTable->CommitRecord(recordIndex);
+        HandleTable->CommitRecord(recordIndex);
         return handleId;
     }
 
@@ -188,7 +188,7 @@ public:
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            HandlesTable->DeleteRecord(it->second.RecordIndex);
+            HandleTable->DeleteRecord(it->second.RecordIndex);
             Handles.erase(it);
         }
     }
@@ -237,7 +237,7 @@ public:
         TWriteGuard guard(Lock);
 
         for (auto& [_, handle]: Handles) {
-            HandlesTable->DeleteRecord(handle.RecordIndex);
+            HandleTable->DeleteRecord(handle.RecordIndex);
         }
 
         Handles.clear();
@@ -275,7 +275,6 @@ public:
     }
 
 private:
-
     TString ReadStateFile(const TString &fileName)
     {
         TFile file(

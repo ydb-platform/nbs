@@ -27,7 +27,7 @@ public:
     TDuration GetIdleSessionTimeout() const;
     ui32 GetNumThreads() const;
     TString GetStatePath() const;
-    ui32 GetMaxInodeCount() const;
+    ui32 GetMaxNodeCount() const;
     ui32 GetMaxHandlePerSessionCount() const;
 
     void Dump(IOutputStream& out) const;
