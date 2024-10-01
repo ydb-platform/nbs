@@ -72,6 +72,18 @@ void TStorageServiceActor::HandleExecuteAction(
             "writecompactionmap",
             &TStorageServiceActor::CreateWriteCompactionMapActionActor
         },
+        {
+            "unsafedeletenode",
+            &TStorageServiceActor::CreateUnsafeDeleteNodeActionActor
+        },
+        {
+            "unsafeupdatenode",
+            &TStorageServiceActor::CreateUnsafeUpdateNodeActionActor
+        },
+        {
+            "unsafegetnode",
+            &TStorageServiceActor::CreateUnsafeGetNodeActionActor
+        },
     };
 
     auto it = actions.find(action);

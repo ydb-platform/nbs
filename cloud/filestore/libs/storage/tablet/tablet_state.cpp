@@ -83,6 +83,7 @@ void TIndexTabletState::LoadState(
     const NProto::TFileSystemStats& fileSystemStats,
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
+    const TVector<ui64>& orphanNodeIds,
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
@@ -102,6 +103,8 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersThreshold = config.GetLargeDeletionMarkersThreshold();
     LargeDeletionMarkersCleanupThreshold =
         config.GetLargeDeletionMarkersCleanupThreshold();
+    LargeDeletionMarkersThresholdForBackpressure =
+        config.GetLargeDeletionMarkersThresholdForBackpressure();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
@@ -130,6 +133,8 @@ void TIndexTabletState::LoadState(
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
     }
+
+    Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -168,6 +173,13 @@ void TIndexTabletState::DumpStats(IOutputStream& os) const
         os,
         config
     );
+}
+
+TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
+{
+    return {
+        .OrphanNodesCount = static_cast<i64>(Impl->OrphanNodeIds.size()),
+    };
 }
 
 }   // namespace NCloud::NFileStore::NStorage

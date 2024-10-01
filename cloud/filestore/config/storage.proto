@@ -416,4 +416,11 @@ message TStorageConfig
     // automatically recover after various races that may happen during index
     // tablet startup due to bugs.
     optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
+
+    // settings for ydb config dispatcher service.
+    // optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 393;
+
+    // If the number of blocks marked for deletion via large deletion markers
+    // exceeds this threshold, large truncate-like operations will be rejected.
+    optional uint64 LargeDeletionMarkersThresholdForBackpressure = 394;
 }

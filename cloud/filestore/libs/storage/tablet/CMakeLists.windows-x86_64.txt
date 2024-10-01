@@ -117,6 +117,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_throttling.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_truncate.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_unlinknode.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_unsafe_node_ops.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_updateconfig.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_waitready.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_writebatch.cpp

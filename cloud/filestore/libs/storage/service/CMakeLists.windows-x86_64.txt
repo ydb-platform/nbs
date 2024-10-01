@@ -40,6 +40,7 @@ target_sources(filestore-libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config_fields.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_reassign_tablet.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_unsafe_node_ops.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_write_compaction_map.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_alterfs.cpp
