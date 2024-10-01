@@ -11,6 +11,7 @@
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/monlib/encode/json/json.h>
+#include <library/cpp/monlib/encode/prometheus/prometheus.h>
 #include <library/cpp/monlib/encode/spack/spack_v1.h>
 #include <library/cpp/monlib/encode/text/text.h>
 
@@ -54,6 +55,11 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
             [this] (IOutputStream& out) {
                 return OutputSpackPage(out);
             }));
+        mon->Register(new TMonPageWrapper(
+            Path + "/user_stats/prometheus",
+            [this] (IOutputStream& out) {
+                return OutputPrometheusPage(out);
+            }));
     }
 }
 
@@ -96,6 +102,23 @@ void TUserStatsActor::OutputSpackPage(IOutputStream& out) const
         &out,
         NMonitoring::ETimePrecision::SECONDS,
         NMonitoring::ECompression::IDENTITY);
+
+    encoder->OnStreamBegin();
+    {
+        TReadGuard g{Lock};
+
+        for (auto&& provider : Providers) {
+            provider->Append(TInstant::Now(), encoder.Get());
+        }
+    }
+    encoder->OnStreamEnd();
+}
+
+void TUserStatsActor::OutputPrometheusPage(IOutputStream& out) const
+{
+    out << NMonitoring::HTTPOKPROMETHEUS;
+
+    auto encoder = NMonitoring::EncoderPrometheus(&out);
 
     encoder->OnStreamBegin();
     {
