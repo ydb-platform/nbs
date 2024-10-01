@@ -100,19 +100,19 @@ void TSSProxyActor::SendWaitTxRequest(
 {
     auto& state = SchemeShardStates[schemeShard];
     if (!state.ReplyProxy) {
-        LOG_DEBUG(ctx, LogComponent,
+        LOG_DEBUG(ctx, Config.LogComponent,
             "Creating reply proxy actor for schemeshard %lu",
             schemeShard);
 
         state.ReplyProxy = NCloud::Register(
             ctx,
             std::make_unique<TReplyProxyActor>(
-                LogComponent,
+                Config.LogComponent,
                 ctx.SelfID,
                 schemeShard));
     }
 
-    LOG_DEBUG(ctx, LogComponent,
+    LOG_DEBUG(ctx, Config.LogComponent,
         "Sending NotifyTxCompletion to %lu for txId# %lu",
         schemeShard,
         txId);
@@ -133,7 +133,7 @@ void TSSProxyActor::HandleTxRegistered(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, LogComponent,
+    LOG_DEBUG(ctx, Config.LogComponent,
         "Received NotifyTxCompletionRegistered from %lu for txId# %lu",
         schemeShard,
         txId);
@@ -149,7 +149,7 @@ void TSSProxyActor::HandleTxResult(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, LogComponent,
+    LOG_DEBUG(ctx, Config.LogComponent,
         "Received NotifyTxCompletionResult from %lu for txId# %lu",
         schemeShard,
         txId);

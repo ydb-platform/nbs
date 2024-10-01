@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -21,7 +21,7 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSSProxyActor final
-    : public NActors::TActor<TSSProxyActor>
+    : public NActors::TActorBootstrapped<TSSProxyActor>
 {
 public:
     struct TRequestInfo
@@ -47,17 +47,17 @@ private:
     };
 
 private:
-    const int LogComponent;
-    const TString SchemeShardDir;
+    const TSSProxyConfig Config;
+
+    NActors::TActorId PathDescriptionBackup;
 
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     THashMap<ui64, TSchemeShardState> SchemeShardStates;
 
 public:
-    TSSProxyActor(
-        int logComponent,
-        TString schemeShardDir,
-        NKikimr::NTabletPipe::TClientConfig pipeClientConfig);
+    explicit TSSProxyActor(TSSProxyConfig config);
+
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     void SendWaitTxRequest(
@@ -93,5 +93,9 @@ private:
 
     STFUNC(StateWork);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+NActors::IActorPtr CreateSSProxy(TSSProxyConfig config);
 
 }   // namespace NCloud::NStorage

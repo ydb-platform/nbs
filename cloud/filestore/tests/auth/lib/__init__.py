@@ -20,16 +20,17 @@ class TestFixture:
         self.folder_id = os.getenv("TEST_FOLDER_ID")
         access_service_port = os.getenv("ACCESS_SERVICE_PORT")
         access_service_control_port = os.getenv("ACCESS_SERVICE_CONTROL_PORT")
-        self.access_service = AccessService(
-            "localhost",
-            access_service_port,
-            access_service_control_port,
-        )
         if os.getenv("ACCESS_SERVICE_TYPE") == "new":
             self.access_service = NewAccessService(
                 "localhost",
                 int(access_service_port),
                 int(access_service_control_port),
+            )
+        else:
+            self.access_service = AccessService(
+                "localhost",
+                access_service_port,
+                access_service_control_port,
             )
         client_config = TClientAppConfig()
         client_config.ClientConfig.CopyFrom(TClientConfig())

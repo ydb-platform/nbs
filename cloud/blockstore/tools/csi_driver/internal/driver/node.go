@@ -1163,8 +1163,9 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
-		UnixSocketPath: unixSocketPath,
+	_, err = s.nbsClient.ResizeDevice(ctx, &nbsapi.TResizeDeviceRequest{
+		UnixSocketPath:    unixSocketPath,
+		DeviceSizeInBytes: newBlocksCount * uint64(resp.Volume.BlockSize),
 	})
 
 	if err != nil {

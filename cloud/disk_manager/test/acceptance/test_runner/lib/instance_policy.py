@@ -74,7 +74,7 @@ class YcpNewInstancePolicy:
                 self._ycp.delete_instance(self._instance)
 
     @contextmanager
-    def attach_disk(self, disk: Ycp.Disk):
+    def attach_disk(self, disk: Ycp.Disk) -> str:
         # Temprorary disable autodetach to debug acceptance test failure
         with self._ycp.attach_disk(self._instance, disk, None, False):
             yield wait_for_block_device_to_appear(
