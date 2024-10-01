@@ -134,7 +134,15 @@ void TFileSystem::Release(
     if (Config->GetAsyncDestroyHandleEnabled()) {
         STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
         with_lock(HandleOpsQueueLock) {
-            HandleOpsQueue.AddDestroyRequest(ino, fi->fh);
+            if (!HandleOpsQueue->AddDestroyRequest(ino, fi->fh)) {
+                // TODO: delay request
+                STORAGE_ERROR("Failed to add destroy handle request to queue");
+                ReplyError(
+                    *callContext,
+                    MakeError(E_FAIL, "HandleOpsQueue overflow"),
+                    req,
+                    0);
+            }
         }
         ReplyError(*callContext, {}, req, 0);
         return;
