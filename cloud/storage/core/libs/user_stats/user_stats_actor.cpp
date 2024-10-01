@@ -118,7 +118,7 @@ void TUserStatsActor::OutputPrometheusPage(IOutputStream& out) const
 {
     out << NMonitoring::HTTPOKPROMETHEUS;
 
-    auto encoder = NMonitoring::EncoderPrometheus(&out);
+    auto encoder = NMonitoring::EncoderPrometheus(&out, "name");
 
     encoder->OnStreamBegin();
     {
