@@ -24,8 +24,10 @@
 #include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
+#include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
+#include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
 #include <util/system/thread.h>
@@ -759,6 +761,29 @@ private:
                 Log,
                 StorageMediaKind);
             auto filestoreConfig = MakeFileSystemConfig(filestore);
+            std::unique_ptr<THandleOpsQueue> handleOpsQueue;
+
+            if (filestoreConfig->GetAsyncDestroyHandleEnabled()) {
+                TString path = TFsPath(filestoreConfig->GetHandleOperationQueuePath())
+                            / filestoreConfig->GetFileSystemId()
+                            / response.GetSession().GetSessionId();
+                if (!NFs::MakeDirectoryRecursive(path))
+                {
+                    STORAGE_ERROR(
+                        "[f:%s][c:%s] failed to create directory "
+                        "for handle ops queue: %s",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str(),
+                        path.c_str()
+                    );
+                } else {
+                    auto file = TFsPath(path) / "HandleOpsQueue";
+                    file.Touch();
+                    handleOpsQueue = CreateHandleOpsQueue(
+                        file.GetPath(),
+                        filestoreConfig->GetHandleOperationQueueSize());
+                }
+            }
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -767,7 +792,8 @@ private:
                 filestoreConfig,
                 Session,
                 RequestStats,
-                CompletionQueue);
+                CompletionQueue,
+                std::move(handleOpsQueue));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -843,6 +869,10 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
+        config.SetHandleOperationQueuePath(
+            features.GetHandleOperationQueuePath());
+        config.SetHandleOperationQueueSize(
+            features.GetHandleOperationQueueSize());
         return std::make_shared<TFileSystemConfig>(config);
     }
 

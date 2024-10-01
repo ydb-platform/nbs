@@ -35,6 +35,7 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
@@ -59,6 +60,8 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 static const TString FileSystemId = "fs1";
+
+static const TTempDir TempDir;
 
 TString CreateBuffer(size_t len, char fill = 0)
 {
@@ -1427,6 +1430,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetHandleOperationQueuePath(TempDir.Path());
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -1497,6 +1501,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetHandleOperationQueuePath(TempDir.Path());
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
@@ -1538,6 +1543,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetHandleOperationQueuePath(TempDir.Path());
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -1574,6 +1580,55 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+    }
+
+    Y_UNIT_TEST(ShouldFailDestroyHandleRequestIfHandleOpsQueueOverflows)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetHandleOperationQueuePath(TempDir.Path());
+        features.SetHandleOperationQueueSize(20);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 handle1 = 2;
+        const ui64 nodeId1 = 10;
+        const ui64 handle2 = 5;
+        const ui64 nodeId2 = 11;
+        std::atomic_uint handlerCalled = 0;
+        auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, responsePromise](auto callContext, auto request) mutable
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+
+                if (++handlerCalled == 1) {
+                    return responsePromise;
+                }
+
+                UNIT_ASSERT_C(false, "Handler should not be called 2nd time");
+                return NewPromise<NProto::TDestroyHandleResponse>();
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        responsePromise.SetValue(NProto::TDestroyHandleResponse{});
+
+        scheduler->RunAllScheduledTasks();
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "DestroyHandle");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
     }
 }
 

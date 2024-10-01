@@ -32,7 +32,8 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        ICompletionQueuePtr queue)
+        ICompletionQueuePtr queue,
+        THandleOpsQueuePtr handleOpsQueue)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -46,6 +47,7 @@ TFileSystem::TFileSystem(
         Timer,
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
+    , HandleOpsQueue(std::move(handleOpsQueue))
 {
     Log = Logging->CreateLog("NFS_FUSE");
 }
@@ -57,7 +59,6 @@ TFileSystem::~TFileSystem()
 
 void TFileSystem::Init()
 {
-    // TODO(#1541): initialize queue from file
     STORAGE_INFO("scheduling destroy handle queue processing");
     ScheduleProcessHandleOpsQueue();
 }
@@ -257,12 +258,12 @@ void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
 void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
-    if (HandleOpsQueue.Empty()) {
+    if (HandleOpsQueue->Empty()) {
         ScheduleProcessHandleOpsQueue();
         return;
     }
 
-    const auto& entry = HandleOpsQueue.Front();
+    const auto& entry = HandleOpsQueue->Front();
     if (entry.HasDestroyHandleRequest()) {
         const auto& requestInfo = entry.GetDestroyHandleRequest();
         auto request = std::make_shared<NProto::TDestroyHandleRequest>(
@@ -295,12 +296,13 @@ void TFileSystem::ProcessHandleOpsQueue()
                         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
                             ReportAsyncDestroyHandleFailed();
                             with_lock(HandleOpsQueueLock) {
-                                HandleOpsQueue.Pop();
+                                HandleOpsQueue->Pop();
                             }
                         }
                     } else {
                         with_lock(HandleOpsQueueLock) {
-                            HandleOpsQueue.Pop();
+                            HandleOpsQueue->Pop();
+                            // TODO: try to process delayed requests
                         }
                     }
                     ScheduleProcessHandleOpsQueue();

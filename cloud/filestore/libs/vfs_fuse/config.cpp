@@ -29,6 +29,8 @@ namespace {
                                                                                \
     xxx(AsyncDestroyHandleEnabled,  bool,       false                         )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
+    xxx(HandleOperationQueuePath,   TString,    ""                            )\
+    xxx(HandleOperationQueueSize,   ui32,       1_GB                          )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

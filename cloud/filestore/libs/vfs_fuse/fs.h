@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "fuse.h"
+#include "handle_ops_queue.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -473,6 +474,7 @@ IFileSystemPtr CreateFileSystem(
     TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
-    ICompletionQueuePtr queue);
+    ICompletionQueuePtr queue,
+    THandleOpsQueuePtr handleOpsQueue);
 
 }   // namespace NCloud::NFileStore::NFuse
