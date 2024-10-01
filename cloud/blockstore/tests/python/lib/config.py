@@ -23,14 +23,14 @@ from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
 
 class NbsConfigurator:
 
-    def __init__(self, ydb, node_type=None, pm=None, ssl_registration=False):
+    def __init__(self, ydb, node_type=None, pm=None, ssl_registration=False, ic_port=None):
         assert ydb.config
 
         self.__pm = PortManager() if pm is None else pm
         self.__ydb = ydb
         self.__node_type = node_type
 
-        self.ic_port = None
+        self.ic_port = ic_port
         self.mon_port = None
         self.server_port = None
         self.data_port = None
@@ -63,7 +63,8 @@ class NbsConfigurator:
     def generate_default_nbs_configs(self):
         self.node_broker_addr = f"localhost:{self.ydb_port}"
 
-        self.ic_port = self.__pm.get_port()
+        if self.ic_port is None:
+            self.ic_port = self.__pm.get_port()
         self.mon_port = self.__pm.get_port()
         self.server_port = self.__pm.get_port()
         self.data_port = self.__pm.get_port()
