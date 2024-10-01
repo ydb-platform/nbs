@@ -125,7 +125,7 @@ void TUserStatsActor::OutputPrometheusPage(IOutputStream& out) const
         TReadGuard g{Lock};
 
         for (auto&& provider : Providers) {
-            provider->Append(TInstant::Now(), encoder.Get());
+            provider->Append(TInstant::Zero(), encoder.Get());
         }
     }
     encoder->OnStreamEnd();
