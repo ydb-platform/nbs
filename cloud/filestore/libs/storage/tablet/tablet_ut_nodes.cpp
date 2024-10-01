@@ -1705,6 +1705,74 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetNode().GetId());
         }
     }
+
+    Y_UNIT_TEST(ShouldIdentifyStaleHandlesInDupCache)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
+            auto request = tablet.CreateCreateHandleRequest(
+                nodeId, TCreateHandleArgs::RDWR);
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
+        const TString name = "file";
+
+        const auto nodeId = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name))->Record.GetNode().GetId();
+
+        const ui64 requestId = 100500;
+        ui64 handle = 0;
+
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId,
+                response->Record.GetNodeAttr().GetId());
+
+            handle = response->Record.GetHandle();
+            tablet.DescribeData(handle, 0, 1_KB);
+            tablet.DestroyHandle(handle);
+        }
+
+        // opening the same file again using the same requestId
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        {
+            // DupCache shouldn't be used this time
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId,
+                response->Record.GetNodeAttr().GetId());
+
+            const auto handle2 = response->Record.GetHandle();
+            UNIT_ASSERT_VALUES_UNEQUAL(handle, handle2);
+
+            // DescribeData should succeed
+            tablet.DescribeData(handle2, 0, 1_KB);
+            tablet.DestroyHandle(handle2);
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -73,6 +73,13 @@ void TIndexTabletActor::HandleCreateHandle(
                 << ": " << response->Record.GetNodeAttr().GetId()
                 << " != " << msg->Record.GetNodeId());
             session->DropDupEntry(requestId);
+        } else if (!FindHandle(response->Record.GetHandle())) {
+            ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
+                << " with stale handle found for RequestId=" << requestId
+                << ": ResponseNodeId=" << response->Record.GetNodeAttr().GetId()
+                << " NodeId=" << msg->Record.GetNodeId()
+                << " HandleId=" << response->Record.GetHandle());
+            session->DropDupEntry(requestId);
         } else {
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
