@@ -28,7 +28,7 @@ struct TRegisterDynamicNodeOptions
     ui32 InterconnectPort = 0;
 
     TString DataCenter;
-    TString Rack = 0;
+    TString Rack;
     ui64 Body = 0;
 
     bool LoadCmsConfigs = false;
