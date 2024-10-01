@@ -151,7 +151,7 @@ func TestOptimizeBaseDisksTask(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, scheduler, storage, execCtx)
 }
 
-func TestOptimizeBaseDisksTaskPanicsOnIncorrectConfig(t *testing.T) {
+func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Errorf("Should have panicked")
