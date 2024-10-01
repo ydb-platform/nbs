@@ -8,22 +8,20 @@ read/write with multiranges (now only first processed)
 
 #include "request.h"
 
-#include "cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h"
-#include "cloud/filestore/tools/analytics/libs/event-log/dump.h"
-#include "library/cpp/aio/aio.h"
-#include "library/cpp/eventlog/iterator.h"
-#include "library/cpp/testing/unittest/registar.h"
-#include "util/folder/dirut.h"
-#include "util/folder/path.h"
-#include "util/system/fs.h"
+#include "request_replay.h"
 
 #include <cloud/filestore/libs/client/session.h>
+#include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service_local/lowlevel.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/aio/aio.h>
+#include <library/cpp/testing/unittest/registar.h>
+
+#include <util/folder/dirut.h>
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
@@ -32,10 +30,12 @@ read/write with multiranges (now only first processed)
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
+#include <util/system/fs.h>
 #include <util/system/fstat.h>
 #include <util/system/mutex.h>
 
 #include <atomic>
+#include <utility>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -47,50 +47,30 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TReplayRequestGeneratorFs final
-    : public IRequestGenerator
+    : public IReplayRequestGenerator
     , public std::enable_shared_from_this<TReplayRequestGeneratorFs>
 {
 private:
-    const NProto::TReplaySpec Spec;
-    TString FileSystemId;
-    const NProto::THeaders Headers;
-
-    TLog Log;
-
-    ISessionPtr Session;
-
     TVector<std::pair<ui64, NProto::EAction>> Actions;
-
     TMutex StateLock;
 
     using THandleLog = ui64;
     using THandleLocal = ui64;
+
     using TNodeLog = ui64;
     using TNodeLocal = ui64;
 
     std::atomic<ui64> LastRequestId = 0;
 
-    THolder<NEventLog::IIterator> EventlogIterator;
-    TConstEventPtr EventPtr;
-    int EventMessageNumber = 0;
-    NProto::TProfileLogRecord* EventLogMessagePtr{};
-
-    static constexpr ui32 LockLength = 4096;
-
-    const ui64 OwnerId = RandomNumber(100500u);
-
     struct TNode
     {
         TString Name;
-        NProto::TNodeAttr Attrs;
-
         TNodeLog ParentLog = 0;
     };
 
     struct THandle
     {
         TString Path;
-        ui64 Handle = 0;
     };
 
     THashMap<ui64, THandle> Handles;
@@ -105,8 +85,6 @@ private:
     THashMap<THandleLocal, TFile> OpenHandles;
 
     NAsyncIO::TAsyncIOService AsyncIO;
-    ui64 TimestampMcs{};
-    TInstant Started;
 
 public:
     TReplayRequestGeneratorFs(
@@ -115,63 +93,23 @@ public:
         ISessionPtr session,
         TString filesystemId,
         NProto::THeaders headers)
-        : Spec(std::move(spec))
-        , FileSystemId(std::move(filesystemId))
-        , Headers(std::move(headers))
-        , Session(std::move(session))
+        : IReplayRequestGenerator(
+              std::move(spec),
+              std::move(logging),
+              std::move(session),
+              std::move(filesystemId),
+              std::move(headers))
     {
-        Log = logging->CreateLog(Headers.GetClientId());
-
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
         }
 
         AsyncIO.Start();
-
-        NEventLog::TOptions options;
-        options.FileName = Spec.GetFileName();
-        options.SetForceStrongOrdering(true);   // need this?
-        EventlogIterator = CreateIterator(options);
-        TFsPath(Spec.GetReplayRoot()).MkDirs();
     }
 
     ~TReplayRequestGeneratorFs()
     {
         AsyncIO.Stop();
-    }
-
-    template <typename T>
-    std::shared_ptr<T> CreateRequest()
-    {
-        auto request = std::make_shared<T>();
-        request->SetFileSystemId(FileSystemId);
-        request->MutableHeaders()->CopyFrom(Headers);
-
-        return request;
-    }
-
-    template <typename T>
-    void CheckResponse(const T& response)
-    {
-        if (HasError(response)) {
-            throw TServiceError(response.GetError());
-        }
-    }
-
-    TIntrusivePtr<TCallContext> CreateCallContext()
-    {
-        return MakeIntrusive<TCallContext>(
-            LastRequestId.fetch_add(1, std::memory_order_relaxed));
-    }
-
-    bool InstantProcessQueue() override
-    {
-        return true;
-    }
-
-    bool FailOnError() override
-    {
-        return false;
     }
 
     TNodeLocal NodeIdMapped(const TNodeLog id)
@@ -200,139 +138,10 @@ public:
         return 0;
     }
 
-    void Advance()
-    {
-        EventPtr = EventlogIterator->Next();
-        if (!EventPtr) {
-            return;
-        }
-
-        EventLogMessagePtr = const_cast<NProto::TProfileLogRecord*>(
-            dynamic_cast<const NProto::TProfileLogRecord*>(
-                EventPtr->GetProto()));
-        if (!EventLogMessagePtr) {
-            return;
-        }
-
-        if (FileSystemId.empty()) {
-            FileSystemId = TString{EventLogMessagePtr->GetFileSystemId()};
-        }
-
-        EventMessageNumber = EventLogMessagePtr->GetRequests().size();
-    }
-
-    bool HasNextRequest() override
-    {
-        if (!EventPtr) {
-            Advance();
-        }
-        return !!EventPtr;
-    }
-
-    TInstant NextRequestAt() override
-    {
-        return TInstant::Max();
-    }
-
-    NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() override
-    {
-        if (!HasNextRequest()) {
-            return MakeFuture(TCompletedRequest(true));
-        }
-
-        for (; EventPtr; Advance()) {
-            if (!EventLogMessagePtr) {
-                continue;
-            }
-
-            for (; EventMessageNumber > 0;) {
-                auto request =
-                    EventLogMessagePtr->GetRequests()[--EventMessageNumber];
-
-                {
-                    auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
-                                    Spec.GetTimeScale();
-                    TimestampMcs = request.GetTimestampMcs();
-                    if (timediff > 1000000) {
-                        timediff = 0;
-                    }
-                    const auto current = TInstant::Now();
-                    auto diff = current - Started;
-
-                    if (timediff > diff.MicroSeconds()) {
-                        auto slp = TDuration::MicroSeconds(
-                            timediff - diff.MicroSeconds());
-                        STORAGE_DEBUG(
-                            "sleep=" << slp << " timediff=" << timediff
-                                     << " diff=" << diff);
-
-                        Sleep(slp);
-                    }
-                    Started = current;
-                }
-
-                STORAGE_DEBUG(
-                    "Processing message "
-                    << EventMessageNumber
-                    << " typename=" << request.GetTypeName()
-                    << " type=" << request.GetRequestType() << " "
-                    << " name=" << RequestName(request.GetRequestType())
-                    << " json=" << request.AsJSON());
-                {
-                    const auto& action = request.GetRequestType();
-                    switch (static_cast<EFileStoreRequest>(action)) {
-                        case EFileStoreRequest::ReadData:
-                            return DoReadData(request);
-                        case EFileStoreRequest::WriteData:
-                            return DoWrite(request);
-                        case EFileStoreRequest::CreateNode:
-                            return DoCreateNode(request);
-                        case EFileStoreRequest::RenameNode:
-                            return DoRenameNode(request);
-                        case EFileStoreRequest::UnlinkNode:
-                            return DoUnlinkNode(request);
-                        case EFileStoreRequest::CreateHandle:
-                            return DoCreateHandle(request);
-                        case EFileStoreRequest::DestroyHandle:
-                            return DoDestroyHandle(request);
-                        case EFileStoreRequest::GetNodeAttr:
-                            return DoGetNodeAttr(request);
-                        case EFileStoreRequest::AccessNode:
-                            return DoAccessNode(request);
-                        case EFileStoreRequest::ListNodes:
-                            return DoListNodes(request);
-
-                            // TODO:
-                        case EFileStoreRequest::AcquireLock:
-                            return DoAcquireLock();
-                        case EFileStoreRequest::ReleaseLock:
-                            return DoReleaseLock();
-
-                        case EFileStoreRequest::ReadBlob:
-                        case EFileStoreRequest::WriteBlob:
-                        case EFileStoreRequest::GenerateBlobIds:
-                        case EFileStoreRequest::PingSession:
-                        case EFileStoreRequest::Ping:
-                            continue;
-                        default:
-                            STORAGE_INFO(
-                                "Uninmplemented action="
-                                << action << " "
-                                << RequestName(request.GetRequestType()));
-                            continue;
-                    }
-                }
-            }
-        }
-        STORAGE_INFO(
-            "Log finished n=" << EventMessageNumber << " ptr=" << !!EventPtr);
-
-        return MakeFuture(TCompletedRequest(true));
-    }
-
 private:
     TFuture<TCompletedRequest> DoAccessNode(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
 
@@ -424,6 +233,7 @@ private:
 
     TFuture<TCompletedRequest> DoCreateHandle(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // json={"TimestampMcs":1726503808715698,"DurationMcs":2622,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,"NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":436,"NodeId":15553,"Handle":46923415058768564,"Size":0}}
         // {"TimestampMcs":1725895168384258,"DurationMcs":2561,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":12527,"NodeName":"index.lock","Flags":15,"Mode":436,"NodeId":12584,"Handle":65382484937735195,"Size":0}}
@@ -517,7 +327,7 @@ private:
                     MakeError(E_FAIL, "no filehandle")});
             }
 
-            OpenHandles[fh] = std::move(fileHandle);
+            OpenHandles[fh] = fileHandle;
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
             const auto stat =
                 TFileStat{Spec.GetReplayRoot() + relativePathName};
@@ -558,7 +368,8 @@ private:
     }
 
     TFuture<TCompletedRequest> DoReadData(
-        NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         if (Spec.GetNoRead()) {
             return MakeFuture(TCompletedRequest{
@@ -595,14 +406,14 @@ private:
                 }
         */
 
-        TFileHandle FileHandle{fh.GetHandle()};
+        TFileHandle fileHandle{fh.GetHandle()};
 
         const auto future = AsyncIO.Read(
-            FileHandle,
+            fileHandle,
             {},
             logRequest.GetRanges().cbegin()->GetBytes(),
             logRequest.GetRanges().cbegin()->GetOffset());
-        FileHandle.Release();
+        fileHandle.Release();
 
         return future.Apply(
             [started = Started]([[maybe_unused]] const auto& future) mutable
@@ -630,6 +441,7 @@ private:
 
     TFuture<TCompletedRequest> DoWrite(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
 
@@ -675,7 +487,7 @@ private:
         STORAGE_DEBUG(
             "Write to " << handle << " fh.length=" << fh.GetLength()
                         << " fh.pos=" << fh.GetPosition());
-        // TODO TEST USE AFTER FREE on buffer
+        // TODO(proller): TEST USE AFTER FREE on buffer
         TFileHandle FileHandle{fh.GetHandle()};
         const auto writeFuture = AsyncIO.Write(
             // fh,
@@ -714,6 +526,7 @@ private:
 
     TFuture<TCompletedRequest> DoCreateNode(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // {"TimestampMcs":1725895166478218,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
         // nfs     CreateNode      0.006404s       S_OK {new_parent_node_id=1,
@@ -741,8 +554,8 @@ private:
         bool isDir = false;
         switch (logRequest.GetNodeInfo().GetType()) {
             case NProto::E_REGULAR_NODE: {
-                // TODO: transform r.GetNodeInfo().GetMode() to correct open
-                // mode
+                // TODO(proller): transform r.GetNodeInfo().GetMode() to correct
+                // open mode
                 TFileHandle fh(
                     fullName,
                     OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr));
@@ -806,6 +619,7 @@ private:
     }
     TFuture<TCompletedRequest> DoRenameNode(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
         // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
@@ -847,6 +661,7 @@ private:
 
     TFuture<TCompletedRequest> DoUnlinkNode(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // UnlinkNode      0.002605s       S_OK    {parent_node_id=3,
         // node_name=tfrgYZ1}
@@ -876,7 +691,7 @@ private:
                               logRequest.GetNodeInfo().GetNodeName();
         const auto unlinkres = NFs::Remove(fullName);
         STORAGE_DEBUG("unlink " << fullName << " = " << unlinkres);
-        // TODO :
+        // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)
         return MakeFuture(
@@ -885,6 +700,7 @@ private:
 
     TFuture<TCompletedRequest> DoDestroyHandle(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         //  DestroyHandle   0.002475s       S_OK    {node_id=10,
         // handle=61465562388172112}
@@ -924,6 +740,7 @@ private:
 
     TFuture<TCompletedRequest> DoGetNodeAttr(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         if (Spec.GetNoRead()) {
             return MakeFuture(TCompletedRequest{
@@ -934,7 +751,7 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        // TODO: by ParentNodeId + NodeName        //
+        // TODO(proller): by ParentNodeId + NodeName
         // {"TimestampMcs":1726503153650998,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
         // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
         // {"TimestampMcs":240399000,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
@@ -954,7 +771,7 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO: can create and truncate to size here missing files
+        // TODO(proller): can create and truncate to size here missing files
 
         const auto nodeid = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
 
@@ -975,148 +792,29 @@ private:
             TCompletedRequest(NProto::ACTION_GET_NODE_ATTR, Started, {}));
     }
 
-    TFuture<TCompletedRequest> DoAcquireLock()
+    TFuture<TCompletedRequest> DoAcquireLock(
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*logRequest*/) override
     {
-        TGuard<TMutex> guard(StateLock);
-        if (Handles.empty()) {
-            // return DoCreateHandle();
-        }
-
-        auto it = Handles.begin();
-        while (it != Handles.end() &&
-               (Locks.contains(it->first) || StagedLocks.contains(it->first)))
-        {
-            ++it;
-        }
-
-        if (it == Handles.end()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_ACQUIRE_LOCK,
-                Started,
-                MakeError(E_CANCELLED, "cancelled")});
-        }
-
-        auto handle = it->first;
-        Y_ABORT_UNLESS(StagedLocks.insert(handle).second);
-
-        auto request = CreateRequest<NProto::TAcquireLockRequest>();
-        request->SetHandle(handle);
-        request->SetOwner(OwnerId);
-        request->SetLength(LockLength);
-
-        auto self = weak_from_this();
-        return Session->AcquireLock(CreateCallContext(), std::move(request))
-            .Apply(
-                [=, started = Started](
-                    const TFuture<NProto::TAcquireLockResponse>& future)
-                {
-                    if (auto ptr = self.lock()) {
-                        return ptr->HandleAcquireLock(handle, future, started);
-                    }
-
-                    return TCompletedRequest{
-                        NProto::ACTION_ACQUIRE_LOCK,
-                        started,
-                        MakeError(E_CANCELLED, "cancelled")};
-                });
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_RELEASE_LOCK,
+            Started,
+            MakeError(E_NOT_IMPLEMENTED, "invalid not implemented")});
     }
 
-    TCompletedRequest HandleAcquireLock(
-        ui64 handle,
-        const TFuture<NProto::TAcquireLockResponse>& future,
-        TInstant started)
+    TFuture<TCompletedRequest> DoReleaseLock(
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*logRequest*/) override
     {
-        TGuard<TMutex> guard(StateLock);
-
-        auto it = StagedLocks.find(handle);
-        if (it == StagedLocks.end()) {
-            // nothing todo, file was removed
-            Y_ABORT_UNLESS(!Locks.contains(handle));
-            return {NProto::ACTION_ACQUIRE_LOCK, started, {}};
-        }
-
-        StagedLocks.erase(it);
-
-        try {
-            const auto& response = future.GetValue();
-            CheckResponse(response);
-
-            Locks.insert(handle);
-            return {NProto::ACTION_ACQUIRE_LOCK, started, {}};
-        } catch (const TServiceError& e) {
-            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR(
-                "acquire lock on %lu has failed: %s",
-                handle,
-                FormatError(error).c_str());
-
-            return {NProto::ACTION_ACQUIRE_LOCK, started, error};
-        }
-    }
-
-    TFuture<TCompletedRequest> DoReleaseLock()
-    {
-        TGuard<TMutex> guard(StateLock);
-        if (Locks.empty()) {
-            return DoAcquireLock();
-        }
-
-        auto it = Locks.begin();
-        auto handle = *it;
-
-        Y_ABORT_UNLESS(StagedLocks.insert(handle).second);
-        Locks.erase(it);
-
-        auto request = CreateRequest<NProto::TReleaseLockRequest>();
-        request->SetHandle(handle);
-        request->SetOwner(OwnerId);
-        request->SetLength(LockLength);
-
-        auto self = weak_from_this();
-        return Session->ReleaseLock(CreateCallContext(), std::move(request))
-            .Apply(
-                [=, started = Started](
-                    const TFuture<NProto::TReleaseLockResponse>& future)
-                {
-                    if (auto ptr = self.lock()) {
-                        return ptr->HandleReleaseLock(handle, future, started);
-                    }
-
-                    return TCompletedRequest{
-                        NProto::ACTION_RELEASE_LOCK,
-                        started,
-                        MakeError(E_CANCELLED, "cancelled")};
-                });
-    }
-
-    TCompletedRequest HandleReleaseLock(
-        ui64 handle,
-        const TFuture<NProto::TReleaseLockResponse>& future,
-        TInstant started)
-    {
-        TGuard<TMutex> guard(StateLock);
-
-        auto it = StagedLocks.find(handle);
-        if (it != StagedLocks.end()) {
-            StagedLocks.erase(it);
-        }
-
-        try {
-            CheckResponse(future.GetValue());
-            return {NProto::ACTION_RELEASE_LOCK, started, {}};
-        } catch (const TServiceError& e) {
-            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR(
-                "release lock on %lu has failed: %s",
-                handle,
-                FormatError(error).c_str());
-
-            return {NProto::ACTION_RELEASE_LOCK, started, error};
-        }
+        return MakeFuture(TCompletedRequest{
+            NProto::ACTION_RELEASE_LOCK,
+            Started,
+            MakeError(E_NOT_IMPLEMENTED, "invalid not implemented")});
     }
 
     TFuture<TCompletedRequest> DoListNodes(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // json={"TimestampMcs":1726615510721016,"DurationMcs":3329,"RequestType":30,"ErrorCode":0,"NodeInfo":{"NodeId":164,"Size":10}}
 

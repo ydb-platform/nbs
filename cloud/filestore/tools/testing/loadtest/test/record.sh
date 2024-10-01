@@ -17,9 +17,9 @@ mount | grep ${HOME} ||:
 
 pushd ${MOUNT_POINT}
 
-# ${CUR_DIR}/load1.sh
-# ${CUR_DIR}/load2.sh
- ${CUR_DIR}/load3.sh
+# ${CUR_DIR}/load1.sh ||:
+# ${CUR_DIR}/load2.sh ||:
+ ${CUR_DIR}/load3.sh ||:
 
 find .  -type f -iname "*" -printf "%h/%f %s \n" | sort | tee ${WORK_DIR}/record_list.txt
 
