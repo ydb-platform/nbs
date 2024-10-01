@@ -25,8 +25,7 @@ class TIndexNode
 private:
     const ui64 NodeId;
     const TFileHandle NodeFd;
-    ui64 RecordIndex;
-    ui64 TableIndex;
+    ui64 RecordIndex = -1;
 
 public:
     TIndexNode(ui64 nodeId, TFileHandle node)
@@ -124,8 +123,8 @@ private:
 
     struct TNodeTableRecord
     {
-        ui64 NodeId;
-        ui64 ParentNodeId;
+        ui64 NodeId = 0;
+        ui64 ParentNodeId = 0;
         char Name[NAME_MAX + 1];
     };
 
@@ -135,7 +134,7 @@ private:
     using TNodeTable = TPersistentTable<TNodeTableHeader, TNodeTableRecord>;
 
     TNodeMap Nodes;
-    std::unique_ptr<TNodeTable> NodesTable;
+    std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
     const TLog& Log;
 
@@ -143,11 +142,11 @@ public:
     TLocalIndex(
             const TFsPath& root,
             const TFsPath& statePath,
-            ui32 maxInodeCount,
+            ui32 maxNodeCount,
             const TLog& log)
         : Log(log)
     {
-        Init(root, statePath, maxInodeCount);
+        Init(root, statePath, maxNodeCount);
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -172,12 +171,12 @@ public:
             return true;
         }
 
-        auto recordIndex = NodesTable->AllocRecord();
+        auto recordIndex = NodeTable->AllocRecord();
         if (recordIndex == TNodeTable::InvalidIndex) {
             return false;
         }
 
-        auto* record = NodesTable->RecordData(recordIndex);
+        auto* record = NodeTable->RecordData(recordIndex);
 
         record->NodeId = node->GetNodeId();
         record->ParentNodeId = parentNodeId;
@@ -185,7 +184,7 @@ public:
         std::strncpy(record->Name, name.c_str(), NAME_MAX);
         record->Name[NAME_MAX] = 0;
 
-        NodesTable->CommitRecord(recordIndex);
+        NodeTable->CommitRecord(recordIndex);
 
         node->SetRecordIndex(recordIndex);
         Nodes.emplace(std::move(node));
@@ -201,7 +200,7 @@ public:
         auto it = Nodes.find(nodeId);
         if (it != Nodes.end()) {
             node = *it;
-            NodesTable->DeleteRecord(node->GetRecordIndex());
+            NodeTable->DeleteRecord(node->GetRecordIndex());
             Nodes.erase(it);
         }
 
@@ -209,68 +208,91 @@ public:
     }
 
 private:
-    void Init(const TFsPath& root, const TFsPath& statePath, ui32 maxInodeCount)
+    void Init(const TFsPath& root, const TFsPath& statePath, ui32 maxNodeCount)
     {
         STORAGE_INFO(
             "Init index, Root=" << root <<
             ", StatePath=" << statePath
-            << ", MaxInodeCount=" << maxInodeCount);
+            << ", MaxNodeCount=" << maxNodeCount);
 
         Nodes.insert(TIndexNode::CreateRoot(root));
 
-        NodesTable = std::make_unique<TNodeTable>(
+        NodeTable = std::make_unique<TNodeTable>(
             (statePath / "nodes").GetPath(),
-            maxInodeCount);
+            maxNodeCount);
 
+        RecoverNodesFromPersistentTable();
+
+    }
+
+    void RecoverNodesFromPersistentTable()
+    {
+        // enties are ordered by NodeId in TMap but this doesn't mean that
+        // a/b/c/d has order a, b, c, d usually inode number increased but
+        // directories can move so directory a which was created later can
+        // contain directory b which was created before so  and NodeId(a) >
+        // NodeId(b) for a/b
         TMap<ui64, ui64> unresolvedRecords;
-        for (auto it = NodesTable->begin(); it != NodesTable->end(); it++) {
+        for (auto it = NodeTable->begin(); it != NodeTable->end(); it++) {
             unresolvedRecords[it->NodeId] = it.GetIndex();
             STORAGE_TRACE(
-                "Unresolved record, NodeId=" << it->NodeId <<
-                ", ParentNodeId=" << it->ParentNodeId <<
-                ", Name=" << it->Name);
+                "Unresolved record, NodeId=" << it->NodeId << ", ParentNodeId="
+                                             << it->ParentNodeId
+                                             << ", Name=" << it->Name);
         }
 
         while (!unresolvedRecords.empty()) {
             TStack<ui64> unresolvedPath;
             unresolvedPath.push(unresolvedRecords.begin()->second);
 
+            // For entry /a we can resolve immideatly and create TIndexNode
+            // but for entry d in /a/b/c/d path we must resolve the whole path
+            // recursively
             while (!unresolvedPath.empty()) {
                 auto pathElemIndex = unresolvedPath.top();
-                auto pathElemRecord = NodesTable->RecordData(pathElemIndex);
+                auto pathElemRecord = NodeTable->RecordData(pathElemIndex);
 
                 STORAGE_TRACE(
                     "Resolve node start, NodeId=" << pathElemRecord->NodeId);
 
                 auto parentNodeIt = Nodes.find(pathElemRecord->ParentNodeId);
                 if (parentNodeIt == Nodes.end()) {
+                    // parent is not resloved
+
                     STORAGE_TRACE(
                         "Need to resolve parent NodeId="
                         << pathElemRecord->ParentNodeId);
                     auto parentRecordIt =
                         unresolvedRecords.find(pathElemRecord->ParentNodeId);
                     if (parentRecordIt == unresolvedRecords.end()) {
+                        // parent was not saved in persistent table so we can't
+                        // resolve it in cased of d in path /a/b/c/d if we
+                        // discover that b can't be resolved we need to discard
+                        // b, c, d inodes
                         STORAGE_ERROR(
                             "Parent node is missing in table, NodeId="
                             << pathElemRecord->ParentNodeId);
                         while (!unresolvedPath.empty()) {
                             auto discardedIndex = unresolvedPath.top();
                             auto* discardedRecord =
-                                NodesTable->RecordData(discardedIndex);
+                                NodeTable->RecordData(discardedIndex);
                             STORAGE_WARN(
                                 "Discarding NodeId="
                                 << discardedRecord->NodeId);
                             unresolvedRecords.erase(discardedRecord->NodeId);
-                            NodesTable->DeleteRecord(discardedIndex);
+                            NodeTable->DeleteRecord(discardedIndex);
                             unresolvedPath.pop();
                         }
                         continue;
                     }
 
+                    // add to unresolvedPath and solve recursively
                     unresolvedPath.push(parentRecordIt->second);
                     continue;
                 }
 
+                // parent already resolved so we can create node and resolve
+                // this entry
                 auto node =
                     TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                 node->SetRecordIndex(pathElemIndex);
@@ -296,7 +318,6 @@ private:
     {
         return value;
     }
-
 };
 
 }   // namespace NCloud::NFileStore

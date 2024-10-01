@@ -15,7 +15,7 @@ namespace {
     xxx(IdleSessionTimeout,          TDuration,     TDuration::Seconds(30)    )\
     xxx(NumThreads,                  ui32,          4                         )\
     xxx(StatePath,                   TString,       "./"                      )\
-    xxx(MaxInodeCount,               ui32,          1000000                   )\
+    xxx(MaxNodeCount,                ui32,          1000000                   )\
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
 // FILESTORE_SERVICE_CONFIG
 

@@ -27,7 +27,7 @@ TLocalFileSystem::TLocalFileSystem(
     Index = std::make_shared<TLocalIndex>(
         Root,
         StatePath,
-        Config->GetMaxInodeCount(),
+        Config->GetMaxNodeCount(),
         Log);
 
     ScheduleCleanupSessions();

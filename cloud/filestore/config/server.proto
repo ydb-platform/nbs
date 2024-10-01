@@ -77,7 +77,7 @@ message TLocalServiceConfig
     optional string StatePath = 6;
 
     // Maximum number of inodes which can be created by all sessions
-    optional uint32 MaxInodeCount = 7;
+    optional uint32 MaxNodeCount = 7;
 
     // Maximum number of file handles which can be opened by single session
     optional uint32 MaxHandlePerSessionCount = 8;
