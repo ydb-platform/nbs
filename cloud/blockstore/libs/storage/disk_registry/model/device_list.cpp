@@ -805,6 +805,12 @@ TVector<NProto::TSuspendedDevice> TDeviceList::GetSuspendedDevices() const
     return devices;
 }
 
+const NProto::TSuspendedDevice* TDeviceList::GetSuspendedDevice(
+    const TDeviceId& id) const
+{
+    return SuspendedDevices.FindPtr(id);
+}
+
 ui64 TDeviceList::GetDeviceByteCount(const TDeviceId& id) const
 {
     const auto* device = FindDevice(id);
