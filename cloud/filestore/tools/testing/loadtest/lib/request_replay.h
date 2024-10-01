@@ -81,7 +81,6 @@ public:
         }
 
         EventMessageNumber = EventLogMessagePtr->GetRequests().size();
-        // DUMP(EventMessageNumber);
     }
 
     bool HasNextRequest() override
@@ -89,7 +88,6 @@ public:
         if (!EventPtr) {
             Advance();
         }
-        // DUMP(!!EventPtr);
         return !!EventPtr;
     }
 
@@ -100,7 +98,6 @@ public:
 
     TFuture<TCompletedRequest> ExecuteNextRequest() override
     {
-        // DUMP("ex");
         if (!HasNextRequest()) {
             return MakeFuture(TCompletedRequest(true));
         }
