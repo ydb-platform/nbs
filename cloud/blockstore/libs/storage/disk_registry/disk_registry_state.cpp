@@ -714,8 +714,7 @@ void TDiskRegistryState::ProcessDisksToCleanup(TVector<TString> disksToCleanup)
 void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 {
     for (auto&& [uuid, diskId]: dirtyDevices) {
-        const auto* suspendedDevice = DeviceList.GetSuspendedDevice(uuid);
-        if (!suspendedDevice || suspendedDevice->GetResumeAfterErase()) {
+        if (!diskId.empty()) {
             PendingCleanup.Insert(diskId, std::move(uuid));
         }
     }

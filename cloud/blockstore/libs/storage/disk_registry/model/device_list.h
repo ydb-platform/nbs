@@ -154,8 +154,6 @@ public:
     void ResumeAfterErase(const TDeviceId& id);
     [[nodiscard]] bool IsSuspendedDevice(const TDeviceId& id) const;
     [[nodiscard]] TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
-    [[nodiscard]] const NProto::TSuspendedDevice* GetSuspendedDevice(
-        const TDeviceId& id) const;
 
     [[nodiscard]] ui64 GetDeviceByteCount(const TDeviceId& id) const;
 
