@@ -60,7 +60,6 @@ namespace NCloud::NBlockStore {
     xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
-    xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
@@ -88,6 +87,7 @@ namespace NCloud::NBlockStore {
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
+    xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
