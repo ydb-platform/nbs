@@ -60,20 +60,37 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
+        const bool isShard = GetFileSystem().GetShardNo() > 0;
         auto response = std::make_unique<TResponse>();
-        // sometimes bugged clients send us duplicate request ids
+
+        // sometimes we may receive duplicate request ids - either due to
+        // client-side bugs or due to our own bugs (e.g. not doing ResetSession
+        // upon unmount) or ungraceful client reboots (without actual unmounts)
         // see #2033
         if (!GetDupCacheEntry(e, response->Record)) {
+            // invalid entry type - it's certainly a request id collision
             session->DropDupEntry(requestId);
         } else if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
                 != response->Record.GetNodeAttr().GetId())
         {
+            // this handle relates to a different node id => it's certainly a
+            // request id collision as well
             ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
                 << " for different NodeId found for RequestId=" << requestId
                 << ": " << response->Record.GetNodeAttr().GetId()
                 << " != " << msg->Record.GetNodeId());
             session->DropDupEntry(requestId);
-        } else if (!FindHandle(response->Record.GetHandle())) {
+        } else if (isShard
+                && !HasError(response->Record.GetError())
+                && !FindHandle(response->Record.GetHandle()))
+        {
+            // there is no open handle associated with this CreateHandleResponse
+            // even though it may be an actual retry attempt of some old request
+            // it's still safer to disregard this DupCache entry and try to
+            // rerun this request
+            //
+            // the isShard check is needed since leaders don't store any handles
+            // so the !FindHandle check will always be true for the leader
             ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
                 << " with stale handle found for RequestId=" << requestId
                 << ": ResponseNodeId=" << response->Record.GetNodeAttr().GetId()
