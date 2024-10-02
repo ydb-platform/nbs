@@ -200,7 +200,8 @@ private:
                 parentPath = PathByNode(parent);
             }
             if (parentPath.empty()) {
-                parentPath = "/__lost__/";
+                static int LostNum = 0;
+                parentPath = "/__lost__/" + ToString(LostNum++) + "/";
             }
             const auto name = parentPath +
                               (it->second.Name.empty() ? ToString(nodeIdLog)
@@ -831,11 +832,20 @@ private:
                                      << nodeid)});
         }
 
-        // if (!Spec.GetNoWrite()) {
-        //    CreateDirIfMissingByNodeLog(r.GetNodeInfo().GetNodeId());
-        // }
+        if (!Spec.GetNoWrite()) {
+            CreateDirIfMissingByNodeLog(logRequest.GetNodeInfo().GetNodeId());
+        }
 
         auto path = Spec.GetReplayRoot() + "/" + PathByNode(nodeid);
+        if (NFs::Exists(path)) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_LIST_NODES,
+                Started,
+                MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder{} << "Local dir not found " << path)});
+        }
+        // try {
         TFileHandle dir{path, RdOnly};
         if (!dir.IsOpen()) {
             return MakeFuture(TCompletedRequest{
