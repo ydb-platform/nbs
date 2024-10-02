@@ -1223,8 +1223,11 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	endpointDir := s.getEndpointDir(podId, req.VolumeId)
-	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
+	endpointDirOld := s.getEndpointDir(podId, req.VolumeId)
+	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
+
+	endpointDirNew := s.getEndpointDir(s.nodeID, req.VolumeId)
+	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
 		ctx, &nbsapi.TListEndpointsRequest{},
@@ -1235,9 +1238,17 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	nbdDevicePath := ""
+	unixSocketPath := ""
 	for _, endpoint := range listEndpointsResp.Endpoints {
-		if endpoint.UnixSocketPath == unixSocketPath {
+		if endpoint.UnixSocketPath == unixSocketPathOld {
 			nbdDevicePath = endpoint.GetNbdDeviceFile()
+			unixSocketPath = unixSocketPathOld
+			break
+		}
+
+		if endpoint.UnixSocketPath == unixSocketPathNew {
+			nbdDevicePath = endpoint.GetNbdDeviceFile()
+			unixSocketPath = unixSocketPathNew
 			break
 		}
 	}
