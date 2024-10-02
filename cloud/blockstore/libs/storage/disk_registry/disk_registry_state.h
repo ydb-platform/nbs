@@ -1268,9 +1268,9 @@ private:
         TDiskId& affectedDisk,
         TDuration& timeout);
 
-    NProto::TError CheckDestructiveConfigurationChange(
+    bool IsChangeDestructive(
         const NProto::TDeviceConfig& device,
-        const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
+        const NProto::TDeviceConfig& oldConfig) const;
 
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
 
