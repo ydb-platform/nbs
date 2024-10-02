@@ -6219,6 +6219,105 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldFlushBytesWithLargeDeletionMarkers)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxFileBlocks(2_TB / block);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
+        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
+        // disabling Cleanup
+        storageConfig.SetLargeDeletionMarkersCleanupThreshold(1_PB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            1_PB / block);
+        // disabling FlushBytes
+        storageConfig.SetFlushBytesThreshold(1_PB);
+        storageConfig.SetFlushBytesThresholdForBackpressure(1_PB);
+
+        const auto blobSize = 2 * block;
+        storageConfig.SetWriteBlobThreshold(blobSize);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.BlockCount = 10_TB / block;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // increasing file size to 1TiB
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(1_TB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(1_TB, GetNodeAttrs(tablet, id).GetSize());
+
+        // decreasing the size to 1GiB to generate LargeDeletionMarkers
+        args.SetSize(1_GB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, GetNodeAttrs(tablet, id).GetSize());
+
+        // resize is needed to disable the fresh bytes to fresh block
+        // rounding optimization on the next write
+        args.SetSize(10_GB + block);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10_GB + block,
+            GetNodeAttrs(tablet, id).GetSize());
+        // adding some fresh bytes to make FlushBytes actually do some work
+        // offset should be >= 2^32 for this test
+        tablet.WriteData(handle, 10_GB, 1_KB, '1');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (1_TB - 1_GB) / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(1_KB, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1_TB - 1_GB,
+                stats.GetDeletedFreshBytesCount());
+        }
+
+        // just checking that FlushBytes succeeds
+        tablet.FlushBytes();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (1_TB - 1_GB) / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+        }
+
+        {
+            TString expected;
+            expected.ReserveAndResize(block);
+            memset(expected.begin(), '1', 1_KB);
+            auto response = tablet.ReadData(handle, 10_GB, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldRejectLargeFileTruncationIfLargeDeletionMarkerCountIsTooHigh)
     {
         const auto block = tabletConfig.BlockSize;
