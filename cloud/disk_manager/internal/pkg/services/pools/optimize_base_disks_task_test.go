@@ -160,11 +160,7 @@ func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
 	storage.On("GetReadyPoolInfos", ctx).Return([]pools_storage.PoolInfo{}, nil)
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 
-	minPoolAge, err := time.ParseDuration("12h")
-	require.NoError(t, err)
-
-	// OptimizeBaseDisksTask should panic because of incorrect config.
-	// ConvertToImageSizedBaseDisksThreshold should be lower than convertToDefaultSizedBaseDisksThreshold.
+	minPoolAge := time.Hour * 12
 
 	task := &optimizeBaseDisksTask{
 		scheduler:                               scheduler,
@@ -174,7 +170,7 @@ func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
 		minPoolAge:                              minPoolAge,
 	}
 
-	err = task.Load(nil, nil)
+	err := task.Load(nil, nil)
 	require.NoError(t, err)
 
 	require.Panics(t, func() { task.Run(ctx, execCtx) }, "This task should panic")
