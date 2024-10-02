@@ -38,6 +38,7 @@ private:
 
     void OutputJsonPage(IOutputStream& out) const;
     void OutputSpackPage(IOutputStream& out) const;
+    void OutputPrometheusPage(IOutputStream& out) const;
 
 private:
     STFUNC(StateWork);
