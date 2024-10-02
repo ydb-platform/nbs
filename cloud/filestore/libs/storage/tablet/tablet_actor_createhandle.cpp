@@ -60,7 +60,8 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool isShard = GetFileSystem().GetShardNo() > 0;
+        const bool shouldStoreHandles = GetFileSystem().GetShardNo() > 0
+            || GetFileSystem().GetFollowerFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
@@ -80,7 +81,7 @@ void TIndexTabletActor::HandleCreateHandle(
                 << ": " << response->Record.GetNodeAttr().GetId()
                 << " != " << msg->Record.GetNodeId());
             session->DropDupEntry(requestId);
-        } else if (isShard
+        } else if (shouldStoreHandles
                 && !HasError(response->Record.GetError())
                 && !FindHandle(response->Record.GetHandle()))
         {
@@ -88,9 +89,6 @@ void TIndexTabletActor::HandleCreateHandle(
             // even though it may be an actual retry attempt of some old request
             // it's still safer to disregard this DupCache entry and try to
             // rerun this request
-            //
-            // the isShard check is needed since leaders don't store any handles
-            // so the !FindHandle check will always be true for the leader
             ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
                 << " with stale handle found for RequestId=" << requestId
                 << ": ResponseNodeId=" << response->Record.GetNodeAttr().GetId()
