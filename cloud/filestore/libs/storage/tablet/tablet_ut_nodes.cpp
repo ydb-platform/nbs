@@ -1705,7 +1705,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetNode().GetId());
         }
     }
-  
+
     Y_UNIT_TEST(ShouldIdentifyStaleHandlesInDupCache)
     {
         TTestEnv env;
@@ -1716,7 +1716,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
-      
+
         auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
             auto request = tablet.CreateCreateHandleRequest(
                 nodeId, TCreateHandleArgs::RDWR);
@@ -1771,7 +1771,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             // DescribeData should succeed
             tablet.DescribeData(handle2, 0, 1_KB);
             tablet.DestroyHandle(handle2);
-        }      
+        }
     }
 
     // This test enforces the fact that if some data has been modified by a RW
