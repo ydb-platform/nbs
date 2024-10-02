@@ -201,7 +201,6 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
-
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -209,7 +208,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			volumeContext := map[string]string{
 				"instanceId": "example-instance-id",
 			}
-			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 			response, err := client.NodeStageVolume(
 				ctx,
 				&csi.NodeStageVolumeRequest{
@@ -220,7 +219,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 							Mount: nil,
 						},
 						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: writerCap,
+							Mode: accessMode,
 						},
 					},
 					VolumeContext: volumeContext,
@@ -266,7 +265,6 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
-
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -286,7 +284,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
 				"instanceId": "example-instance-id",
 			}
-			writerCap := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 
 			response, err := client.NodePublishVolume(
 				ctx,
@@ -300,7 +298,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 							Mount: nil,
 						},
 						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: writerCap,
+							Mode: accessMode,
 						},
 					},
 					Readonly:      false,
