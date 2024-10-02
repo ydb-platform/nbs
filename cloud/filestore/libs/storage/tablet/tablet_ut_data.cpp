@@ -6309,6 +6309,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             TString expected;
             expected.ReserveAndResize(block);
+            memset(expected.begin(), 0, block);
             memset(expected.begin(), '1', 1_KB);
             auto response = tablet.ReadData(handle, 10_GB, block);
             const auto& buffer = response->Record.GetBuffer();
