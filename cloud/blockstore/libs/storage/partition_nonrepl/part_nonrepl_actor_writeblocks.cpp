@@ -310,7 +310,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         ui32 errorCode,
         TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+        auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(

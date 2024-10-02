@@ -413,6 +413,94 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReallocateShadowDiskOnSourceDiskReallocation)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-4", "rack-1", 10_GB),
+                Device("dev-2", "uuid-5", "rack-1", 10_GB),
+            });
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        // Allocate disk.
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 10_GB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        TString shadowDiskId;
+        // Create checkpoint
+        {
+            auto response =
+                diskRegistry.AllocateCheckpoint("disk-1", "checkpoint-1");
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+
+            shadowDiskId = response->Record.GetShadowDiskId();
+        }
+
+        // Check the size of the shadow disk
+        {
+            auto response = diskRegistry.DescribeDisk(shadowDiskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+
+            auto checkpointSize = response->Record.GetBlocksCount() *
+                                  response->Record.GetBlockSize();
+            UNIT_ASSERT_VALUES_EQUAL(10_GB, checkpointSize);
+        }
+
+        // Reallocate disk
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        // Check that the size of the shadow disk has also changed
+        {
+            auto response = diskRegistry.DescribeDisk(shadowDiskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+
+            auto checkpointSize = response->Record.GetBlocksCount() *
+                                  response->Record.GetBlockSize();
+            UNIT_ASSERT_VALUES_EQUAL(20_GB, checkpointSize);
+        }
+    }
+
     Y_UNIT_TEST(ShouldChangeStateForCheckpoint)
     {
         const auto agent1 = CreateAgentConfig(

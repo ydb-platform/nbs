@@ -390,6 +390,292 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
+
+    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonRetriableError)
+    {
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState);
+
+        // Find the ActorIDs of the leader and follower partitions.
+        TActorId leaderPartition;
+        TActorId followerPartition;
+        auto findLeaderAndFollower = [&](TTestActorRuntimeBase& runtime,
+                                         TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
+                leaderPartition = event->Recipient;
+            }
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                followerPartition = event->Recipient;
+            }
+            return false;
+        };
+        runtime.SetEventFilter(findLeaderAndFollower);
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, 3);
+        UNIT_ASSERT(leaderPartition);
+        UNIT_ASSERT(followerPartition);
+
+        // Now we will fail requests to the follower partition with a
+        // non-retriable error. Expect that the client's requests will be
+        // executed successfully, since the leader partition responds S_OK, but
+        // the migration will be stopped due to errors of follower partition.
+        size_t failedPartitionRequestCount = 0;
+        bool failLeaderRequest = false;
+
+        TAutoPtr<IEventHandle> leaderWriteRequest;
+        TAutoPtr<IEventHandle> followerWriteRequest;
+        TAutoPtr<IEventHandle> followerZeroRequest;
+
+        auto failFollowerRequests = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                if (failLeaderRequest && event->Recipient == leaderPartition) {
+                    leaderWriteRequest = event;
+                    ++failedPartitionRequestCount;
+                    return true;
+                }
+
+                if (event->Recipient == followerPartition) {
+                    followerWriteRequest = event;
+                    ++failedPartitionRequestCount;
+                    return true;
+                }
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvZeroBlocksRequest) {
+                if (event->Recipient == followerPartition) {
+                    followerZeroRequest = event;
+                    ++failedPartitionRequestCount;
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        runtime.SetEventFilter(failFollowerRequests);
+
+        auto replyToLeaderWrite = [&] () {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(leaderWriteRequest);
+
+            runtime.Send(new IEventHandle(
+                leaderWriteRequest->Sender,
+                leaderWriteRequest->Recipient,
+                new TEvService::TEvWriteBlocksResponse(MakeError(E_REJECTED)),
+                0,
+                leaderWriteRequest->Cookie,
+                nullptr));
+
+            leaderWriteRequest.Reset();
+        };
+
+        auto replyToFollowerWrite = [&] () {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(followerWriteRequest);
+
+            runtime.Send(new IEventHandle(
+                followerWriteRequest->Sender,
+                followerWriteRequest->Recipient,
+                new TEvService::TEvWriteBlocksResponse(MakeError(E_ARGUMENT)),
+                0,
+                followerWriteRequest->Cookie,
+                nullptr));
+
+            followerWriteRequest.Reset();
+        };
+
+        auto replyToFollowerZero = [&] () {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(followerZeroRequest);
+
+            runtime.Send(new IEventHandle(
+                followerZeroRequest->Sender,
+                followerZeroRequest->Recipient,
+                new TEvService::TEvZeroBlocksResponse(MakeError(E_IO)),
+                0,
+                followerZeroRequest->Cookie,
+                nullptr));
+
+            followerZeroRequest.Reset();
+        };
+
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            // Executed successfully
+            client.SendZeroBlocksRequest(TBlockRange64::MakeOneBlock(0));
+            replyToFollowerZero();
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(1, failedPartitionRequestCount);
+            failedPartitionRequestCount = 0;
+        }
+        {
+            // Executed successfully
+            client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(0), 'A');
+            replyToFollowerWrite();
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(1, failedPartitionRequestCount);
+            failedPartitionRequestCount = 0;
+        }
+        {
+            // Fail with error from leader partition
+            failLeaderRequest = true;
+            client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(0), 'A');
+            replyToLeaderWrite();
+            replyToFollowerWrite();
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(2, failedPartitionRequestCount);
+            failedPartitionRequestCount = 0;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFailRequestOnFollowerRetriableError)
+    {
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState);
+
+        // Find the ActorIDs of the leader and follower partitions.
+        TActorId leaderPartition;
+        TActorId followerPartition;
+        auto findLeaderAndFollower = [&](TTestActorRuntimeBase& runtime,
+                                         TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
+                leaderPartition = event->Recipient;
+            }
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                followerPartition = event->Recipient;
+            }
+            return false;
+        };
+        runtime.SetEventFilter(findLeaderAndFollower);
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, 3);
+        UNIT_ASSERT(leaderPartition);
+        UNIT_ASSERT(followerPartition);
+
+        // Now we will fail requests to the follower partition with an
+        // retriable error. We expect that client requests will fail, since we
+        // do not want to stop the migration.
+        size_t failedPartitionRequestCount = 0;
+        TAutoPtr<IEventHandle> writeRequest;
+        TAutoPtr<IEventHandle> zeroRequest;
+        auto failFollowerRequests = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                if (event->Recipient == followerPartition) {
+                    writeRequest = event;
+                    ++failedPartitionRequestCount;
+                    return true;
+                }
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvZeroBlocksRequest) {
+                if (event->Recipient == followerPartition) {
+                    zeroRequest = event;
+                    ++failedPartitionRequestCount;
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        runtime.SetEventFilter(failFollowerRequests);
+
+        auto replyToWrite = [&] () {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(writeRequest);
+
+            runtime.Send(new IEventHandle(
+                writeRequest->Sender,
+                writeRequest->Recipient,
+                new TEvService::TEvWriteBlocksResponse(MakeError(E_REJECTED)),
+                0,
+                writeRequest->Cookie,
+                nullptr));
+
+            writeRequest.Reset();
+        };
+
+        auto replyToZero = [&] () {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(zeroRequest);
+
+            runtime.Send(new IEventHandle(
+                zeroRequest->Sender,
+                zeroRequest->Recipient,
+                new TEvService::TEvZeroBlocksResponse(MakeError(E_TIMEOUT)),
+                0,
+                zeroRequest->Cookie,
+                nullptr));
+
+            zeroRequest.Reset();
+        };
+
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            client.SendZeroBlocksRequest(TBlockRange64::MakeOneBlock(0));
+            replyToZero();
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TIMEOUT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+        {
+            client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(0), 'A');
+            replyToWrite();
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, failedPartitionRequestCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
