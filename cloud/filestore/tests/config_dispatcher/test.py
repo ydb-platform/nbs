@@ -52,15 +52,26 @@ def setup_filestore(configurator, kikimr_cluster, binary_path, configurator_type
     )
 
 
-def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
-    def query_monitoring(url, text):
+def check_log_config(nfs_configurator):
+    def query_monitoring(url):
         r = requests.get(url, timeout=10)
         r.raise_for_status()
-        return r.text.find(text) != -1
+        return r.text
 
-    assert query_monitoring(
-        f'http://localhost:{mon_port}/actors/logger?c=2049',
-        'Sampling rate: 0')
+    logger_page = query_monitoring(f'http://localhost:{nfs_configurator.mon_port}/actors/logger')
+
+    log_config = nfs_configurator.log_config
+
+    level_to_name = {4: 'WARN', 5: 'NOTICE', 6: 'INFO', 7: 'DEBUG', 8: 'TRACE'}
+
+    for e in log_config.Entry:
+        assert e.Level in level_to_name
+        pattern = f'{e.Component.decode()}</a></td><td>{level_to_name[e.Level]}</td>'
+        assert logger_page.find(pattern) != -1
+
+
+def check_configs(nfs_configurator, kikimr_configurator, kikimr_cluster):
+    check_log_config(nfs_configurator)
 
     app_config = config_pb2.TAppConfig()
 
@@ -89,19 +100,20 @@ def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
     app_config.NameserviceConfig.MergeFrom(naming_config)
     kikimr_cluster.client.add_config_item(app_config)
 
+    def query_monitoring(url, text):
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        return r.text.find(text) != -1
+
     # wait for nameservice config update
     while True:
-        if query_monitoring(f'http://localhost:{mon_port}/actors/dnameserver', 'somewhere'):
+        if query_monitoring(f'http://localhost:{nfs_configurator.mon_port}/actors/dnameserver', 'somewhere'):
             break
         else:
             time.sleep(10)
 
     # check that logging config was not changed
-    result = query_monitoring(
-        f'http://localhost:{mon_port}/actors/logger?c=2049',
-        'Sampling rate: 0')
-
-    return result
+    check_log_config(nfs_configurator)
 
 
 def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_filestore_process):
@@ -125,20 +137,21 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
     try:
         wait_filestore_process(filestore_process, filestore_configurator.port)
     except RuntimeError:
-        return False
+        assert False, 'unable to start filestore process'
 
-    result = check_configs(filestore_configurator.mon_port, kikimr_configurator, kikimr_cluster)
+    check_configs(
+        filestore_configurator,
+        kikimr_configurator,
+        kikimr_cluster)
 
     filestore_process.stop()
 
-    return result
-
 
 def test_server():
-    filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
-    assert setup_and_run_test(filestore_binary_path, NfsServerConfigGenerator, wait_for_nfs_server)
+    filestore_binary_path = yatest_common.binary_path('cloud/filestore/apps/server/filestore-server')
+    setup_and_run_test(filestore_binary_path, NfsServerConfigGenerator, wait_for_nfs_server)
 
 
 def test_vhost():
-    filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
-    assert setup_and_run_test(filestore_binary_path, NfsVhostConfigGenerator, wait_for_filestore_vhost)
+    filestore_binary_path = yatest_common.binary_path('cloud/filestore/apps/vhost/filestore-vhost')
+    setup_and_run_test(filestore_binary_path, NfsVhostConfigGenerator, wait_for_filestore_vhost)
