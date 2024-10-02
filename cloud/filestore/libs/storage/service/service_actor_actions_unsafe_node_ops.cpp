@@ -40,7 +40,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const TResponse::ProtoRecordType& responseRecord);
+        const typename TResponse::ProtoRecordType& responseRecord);
 
 private:
     STFUNC(StateWork)
@@ -54,7 +54,9 @@ private:
         }
     }
 
-    void HandleResponse(const TResponse::TPtr& ev, const TActorContext& ctx);
+    void HandleResponse(
+        const typename TResponse::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,7 +102,7 @@ void TTabletActionActor<TRequest, TResponse>::Bootstrap(
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::ReplyAndDie(
     const TActorContext& ctx,
-    const TResponse::ProtoRecordType& response)
+    const typename TResponse::ProtoRecordType& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
@@ -117,7 +119,7 @@ void TTabletActionActor<TRequest, TResponse>::ReplyAndDie(
 
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::HandleResponse(
-    const TResponse::TPtr& ev,
+    const typename TResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
