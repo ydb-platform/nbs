@@ -1274,6 +1274,14 @@ private:
         TInstant timestamp,
         TString message,
         bool manual);
+
+    void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+        TDiskRegistryDatabase& db,
+        TDiskState& disk,
+        const TString& diskId,
+        const TString& deviceId,
+        TInstant timestamp,
+        TString reason);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

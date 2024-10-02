@@ -970,6 +970,17 @@ NProto::TError TDiskRegistryState::RegisterAgent(
 
             if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
                 auto& disk = Disks[diskId];
+
+                if (disk.MasterDiskId) {
+                    TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+                        db,
+                        disk,
+                        diskId,
+                        d.GetDeviceUUID(),
+                        timestamp,
+                        "device failure");
+                }
+
                 if (!RestartDeviceMigration(timestamp, db, diskId, disk, uuid)) {
                     CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
                 }
@@ -1182,6 +1193,39 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
 
     return {};
+}
+
+void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+    TDiskRegistryDatabase& db,
+    TDiskState& disk,
+    const TString& diskId,
+    const TString& deviceId,
+    TInstant timestamp,
+    TString reason)
+{
+    if (!CheckIfDeviceReplacementIsAllowed(
+            timestamp,
+            disk.MasterDiskId,
+            deviceId))
+    {
+        return;
+    }
+
+    auto error = ReplaceDeviceWithoutDiskStateUpdate(
+        db,
+        disk,
+        diskId,
+        deviceId,
+        "",     // no replacement device
+        timestamp,
+        MakeMirroredDiskDeviceReplacementMessage(
+            disk.MasterDiskId,
+            std::move(reason)),
+        false);  // manual
+
+    if (HasError(error)) {
+        ReportMirroredDiskDeviceReplacementFailure(FormatError(error));
+    }
 }
 
 NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
@@ -4855,29 +4899,13 @@ void TDiskRegistryState::ApplyAgentStateChange(
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
             {
-                const bool canReplaceDevice = CheckIfDeviceReplacementIsAllowed(
+                TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+                    db,
+                    disk,
+                    diskId,
+                    deviceId,
                     timestamp,
-                    disk.MasterDiskId,
-                    deviceId);
-
-                if (canReplaceDevice) {
-                    auto error = ReplaceDeviceWithoutDiskStateUpdate(
-                        db,
-                        disk,
-                        diskId,
-                        deviceId,
-                        "",     // no replacement device
-                        timestamp,
-                        MakeMirroredDiskDeviceReplacementMessage(
-                            disk.MasterDiskId,
-                            "agent unavailable"),
-                        false);  // manual
-
-                    if (HasError(error)) {
-                        ReportMirroredDiskDeviceReplacementFailure(
-                            FormatError(error));
-                    }
-                }
+                    "agent unavailable");
             }
 
             CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
@@ -5783,28 +5811,13 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR && disk->MasterDiskId) {
-        const bool canReplaceDevice = CheckIfDeviceReplacementIsAllowed(
+        TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+            db,
+            *disk,
+            diskId,
+            device.GetDeviceUUID(),
             now,
-            disk->MasterDiskId,
-            device.GetDeviceUUID());
-
-        if (canReplaceDevice) {
-            auto error = ReplaceDeviceWithoutDiskStateUpdate(
-                db,
-                *disk,
-                diskId,
-                device.GetDeviceUUID(),
-                "",   // no replacement device
-                now,
-                MakeMirroredDiskDeviceReplacementMessage(
-                    disk->MasterDiskId,
-                    "device failure"),
-                false);   // manual
-
-            if (HasError(error)) {
-                ReportMirroredDiskDeviceReplacementFailure(FormatError(error));
-            }
-        }
+            "device failure");
     }
 
     if (TryUpdateDiskState(db, diskId, *disk, now)) {
