@@ -538,9 +538,81 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	return s.createDummyImgFile(endpointDir)
 }
 
+func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
+	if err != nil {
+		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+	}
+
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+
+	mnt := req.VolumeCapability.GetMount()
+
+	fsType := req.VolumeContext["fsType"]
+	if mnt != nil && mnt.FsType != "" {
+		fsType = mnt.FsType
+	}
+	if fsType == "" {
+		fsType = "ext4"
+	}
+
+	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	if err != nil {
+		return err
+	}
+
+	targetPerm := os.FileMode(0775)
+	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
+		return fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	mountOptions := []string{}
+	if mnt != nil {
+		for _, flag := range mnt.MountFlags {
+			mountOptions = append(mountOptions, flag)
+		}
+	}
+
+	err = s.mountIfNeeded(
+		req.VolumeId,
+		resp.NbdDeviceFile,
+		req.TargetPath,
+		fsType,
+		mountOptions)
+	if err != nil {
+		return err
+	}
+
+	if mnt != nil && mnt.VolumeMountGroup != "" {
+		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
+				mnt.VolumeMountGroup, req.TargetPath, err, out)
+		}
+	}
+
+	if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
+		return fmt.Errorf("failed to chmod target path: %w", err)
+	}
+
+	return nil
+}
+
 func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
+
+	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
+	if !mounted {
+		return s.nodePublishDiskAsFilesystemDeprecated(ctx, req)
+	}
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -651,9 +723,31 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.StagingTargetPath)
 }
 
+func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
+	if err != nil {
+		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+	}
+
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath)
+}
+
 func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
+
+	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
+	if !mounted {
+		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
+	}
 
 	mountOptions := []string{"bind"}
 	mnt := req.VolumeCapability.GetMount()
