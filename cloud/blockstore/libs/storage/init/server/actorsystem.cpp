@@ -487,6 +487,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             SetupConfigDispatcher(
                 sArgs.StorageConfig->GetConfigDispatcherSettings(),
                 &runConfig.ConfigsDispatcherInitInfo);
+            runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }
     };
     auto onInitialize = [&] (
