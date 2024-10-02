@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
 
-#include <cloud/storage/core/libs/common/aligned_string.h>
+#include <cloud/storage/core/libs/common/aligned_buffer.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -99,7 +99,7 @@ void TFileSystem::Open(
     fuse_ino_t ino,
     fuse_file_info* fi)
 {
-    const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
+    auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
     STORAGE_DEBUG("Open #" << ino
         << " flags: " << HandleFlagsToString(flags)
         << " unsupported flags: " << unsupported);
@@ -109,6 +109,9 @@ void TFileSystem::Open(
     }
 
     auto request = StartRequest<NProto::TCreateHandleRequest>(ino);
+    if (!Config->GetDirectIoEnabled()) {
+        flags = RemoveFlag(flags, NProto::TCreateHandleRequest::E_DIRECT);
+    }
     request->SetFlags(flags);
 
     Session->CreateHandle(callContext, std::move(request))
@@ -223,14 +226,16 @@ void TFileSystem::Read(
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                const auto& buffer = response.GetBuffer();
-                auto alignOffset = response.GetAlignOffset();
+                auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
+                auto [alignedData, size] = TAlignedBuffer::ExtractAlignedData(
+                    response.GetBuffer(),
+                    align);
                 self->ReplyBuf(
                     *callContext,
                     response.GetError(),
                     req,
-                    buffer.data() + alignOffset,
-                    buffer.size() - alignOffset);
+                    alignedData,
+                    size);
             }
         });
 }
@@ -254,19 +259,17 @@ void TFileSystem::Write(
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(buffer.size(), Config->GetBlockSize());
 
-    auto [dataBuffer, alignOffset] = AlignedString(
-        buffer.size(),
-        Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0);
+    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
+    TAlignedBuffer alignedBuffer(buffer.size(), align);
     memcpy(
-        (void*)(dataBuffer.data() + alignOffset),
+        (void*)(alignedBuffer.Begin()),
         (void*)buffer.data(),
         buffer.size());
 
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBuffer(std::move(dataBuffer));
-    request->SetAlignOffset(alignOffset);
+    request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -306,12 +309,11 @@ void TFileSystem::WriteBuf(
         return;
     }
 
-    auto [buffer, alignOffset] = AlignedString(
-        size,
-        Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0);
+    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
+    TAlignedBuffer alignedBuffer(size, align);
 
     fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
-    dst.buf[0].mem = (void*)(buffer.data() + alignOffset);
+    dst.buf[0].mem = (void*)(alignedBuffer.Begin());
 
     ssize_t res = fuse_buf_copy(
         &dst, bufv
@@ -326,13 +328,12 @@ void TFileSystem::WriteBuf(
     Y_ABORT_UNLESS((size_t)res == size);
 
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(buffer.size(), Config->GetBlockSize());
+        || !IsAligned(size, Config->GetBlockSize());
 
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBuffer(std::move(buffer));
-    request->SetAlignOffset(alignOffset);
+    request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;

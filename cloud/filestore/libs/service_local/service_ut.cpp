@@ -6,7 +6,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
-#include <cloud/storage/core/libs/common/aligned_string.h>
+#include <cloud/storage/core/libs/common/aligned_buffer.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -767,7 +767,8 @@ struct TTestBootstrap
 
 #undef FILESTORE_DECLARE_METHOD
 
-    NProto::TReadDataResponse ReadDataAligned(ui64 handle, ui64 offset, ui32 len, ui32 align)
+    NProto::TReadDataResponse
+    ReadDataAligned(ui64 handle, ui64 offset, ui32 len, ui32 align)
     {
         auto request = CreateReadDataRequest(handle, offset, len);
         auto dbg = request->ShortDebugString();
@@ -777,33 +778,65 @@ struct TTestBootstrap
             SUCCEEDED(response.GetError().GetCode()),
             response.GetError().GetMessage() + "@" + dbg);
 
-        uintptr_t alignedBuffer = reinterpret_cast<uintptr_t>(
-            response.GetBuffer().data() + response.GetAlignOffset());
-        UNIT_ASSERT_C(
-            alignedBuffer % align == 0,
-            "Read not aligned buffer: " << alignedBuffer);
-
-        response.MutableBuffer()->erase(0, response.GetAlignOffset());
+        TAlignedBuffer alignedBuffer(
+            std::move(*response.MutableBuffer()),
+            align);
+        response.SetBuffer(alignedBuffer.Begin(), alignedBuffer.Size());
         return response;
     }
 
-    NProto::TWriteDataResponse WriteDataAligned(ui64 handle, ui64 offset, const TString& buffer)
+    NProto::TWriteDataResponse WriteDataAligned(
+        ui64 handle,
+        ui64 offset,
+        const TString& buffer,
+        ui32 align)
     {
         auto request = CreateRequest<NProto::TWriteDataRequest>();
         request->SetHandle(handle);
         request->SetOffset(offset);
 
-        auto [alignedBuffer, alignOffset] = AlignedString(buffer.size(), 512);
-        memcpy((void*)(alignedBuffer.data() + alignOffset), (void*)buffer.data(), buffer.size());
-        request->SetBuffer(std::move(alignedBuffer));
-        request->SetAlignOffset(alignOffset);
+        TAlignedBuffer alignedBuffer(buffer.size(), align);
+        memcpy(
+            (void*)(alignedBuffer.Begin()),
+            (void*)buffer.data(),
+            buffer.size());
+        request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
 
         auto dbg = request->ShortDebugString();
-        auto response = Store->WriteData(Ctx, std::move(request)).GetValueSync();
+        auto response =
+            Store->WriteData(Ctx, std::move(request)).GetValueSync();
 
         UNIT_ASSERT_C(
             SUCCEEDED(response.GetError().GetCode()),
             DumpMessage(response.GetError()) + "@" + dbg);
+
+        return response;
+    }
+
+    NProto::TWriteDataResponse AssertWriteDataAlignedFailed(
+        ui64 handle,
+        ui64 offset,
+        const TString& buffer,
+        ui32 align)
+    {
+        auto request = CreateRequest<NProto::TWriteDataRequest>();
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+
+        TAlignedBuffer alignedBuffer(buffer.size(), align);
+        memcpy(
+            (void*)(alignedBuffer.Begin()),
+            (void*)buffer.data(),
+            buffer.size());
+        request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
+
+        auto dbg = request->ShortDebugString();
+        auto response =
+            Store->WriteData(Ctx, std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_C(
+            FAILED(response.GetError().GetCode()),
+            "WriteDataAligned has not failed as expected " + dbg);
 
         return response;
     }
@@ -2023,7 +2056,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
 
         data = "aaaabbbbcccccdddddeeee";
-        const auto response = bootstrap.AssertWriteDataFailed(handle, 0, data);
+        const auto response = bootstrap.AssertWriteDataAlignedFailed(
+            handle,
+            0,
+            data,
+            directIoAlign);
         const auto& error = response.GetError();
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::E_FS_INVAL),
@@ -2031,7 +2068,7 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
         data.append(directIoAlign-data.size(), 'x');
         data.append(directIoAlign, 'y');
-        bootstrap.WriteDataAligned(handle, 0, data);
+        bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
 
         // read [0, 2*align]
         auto buffer =

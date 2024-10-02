@@ -145,9 +145,6 @@ message TReadDataResponse
     // Buffer with bytes read.
     bytes Buffer = 2;
 
-    // Offset in buffer where aligned data starts
-    uint32 AlignOffset = 3;
-
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -174,9 +171,6 @@ message TWriteDataRequest
 
     // Buffer with bytes to write.
     bytes Buffer = 6;
-
-    // Offset in buffer where aligned data starts
-    uint32 AlignOffset = 7;
 }
 
 message TWriteDataResponse
