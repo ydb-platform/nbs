@@ -24,6 +24,7 @@ SRCS(
     file_io_service_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
+    persistent_table_ut.cpp
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp
