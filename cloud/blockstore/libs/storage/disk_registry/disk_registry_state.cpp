@@ -269,6 +269,26 @@ auto CollectAllocatedDevices(const TVector<NProto::TDiskConfig>& disks)
     return r;
 }
 
+bool IsChangeDestructive(
+    const NProto::TDeviceConfig& newConfig,
+    const NProto::TDeviceConfig& oldConfig)
+{
+    auto key = [] (const NProto::TDeviceConfig& device) {
+        return std::make_tuple(
+            device.GetBlockSize(),
+            device.GetBlocksCount(),
+            device.GetUnadjustedBlockCount(),
+            TStringBuf {device.GetDeviceName()}
+        );
+    };
+
+    return key(oldConfig) != key(newConfig) ||
+           (oldConfig.GetSerialNumber() &&
+            oldConfig.GetSerialNumber() != newConfig.GetSerialNumber()) ||
+           (oldConfig.GetPhysicalOffset() &&
+            oldConfig.GetPhysicalOffset() != newConfig.GetPhysicalOffset());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -944,7 +964,7 @@ auto TDiskRegistryState::RegisterAgent(
             const auto diskId = FindDisk(uuid);
 
             if (diskId && oldConfig && IsChangeDestructive(d, *oldConfig)) {
-                auto message =
+                TString message =
                     TStringBuilder()
                     << "Device configuration has changed: " << *oldConfig
                     << " -> " << d << ". Affected disk: " << diskId;
@@ -1048,26 +1068,6 @@ auto TDiskRegistryState::RegisterAgent(
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate = std::move(disksToReallocate)};
-}
-
-bool TDiskRegistryState::IsChangeDestructive(
-    const NProto::TDeviceConfig& newConfig,
-    const NProto::TDeviceConfig& oldConfig) const
-{
-    auto key = [] (const NProto::TDeviceConfig& device) {
-        return std::make_tuple(
-            device.GetBlockSize(),
-            device.GetBlocksCount(),
-            device.GetUnadjustedBlockCount(),
-            TStringBuf {device.GetDeviceName()}
-        );
-    };
-
-    return key(oldConfig) != key(newConfig) ||
-           (oldConfig.GetSerialNumber() &&
-            oldConfig.GetSerialNumber() != newConfig.GetSerialNumber()) ||
-           (oldConfig.GetPhysicalOffset() &&
-            oldConfig.GetPhysicalOffset() != newConfig.GetPhysicalOffset());
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(
