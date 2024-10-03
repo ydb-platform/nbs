@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import os
 import pytest
@@ -266,6 +267,14 @@ def log_called_process_error(exc):
     )
 
 
+@contextlib.contextmanager
+def called_process_error_logged():
+    try:
+        yield
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+
+
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
     env, run = init()
     try:
@@ -288,18 +297,12 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         if result.returncode != 1:
             raise AssertionError("Destroyvolume must return exit code 1")
         assert "E_REJECTED" in result.stdout
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.unstage_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
@@ -359,18 +362,12 @@ def test_nbs_csi_driver_volume_stat():
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
 
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.unstage_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
@@ -454,18 +451,12 @@ def test_node_volume_expand():
         log_called_process_error(e)
         raise
     finally:
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.unstage_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
         cleanup_after_test(env)
 
 
@@ -486,17 +477,12 @@ def test_publish_volume_twice_on_the_same_node():
         log_called_process_error(e)
         raise
     finally:
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id1, volume_name)
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id2, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.unstage_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
         cleanup_after_test(env)
