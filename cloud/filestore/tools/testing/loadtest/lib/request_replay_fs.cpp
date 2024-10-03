@@ -200,13 +200,14 @@ private:
                 parentPath = PathByNode(parent);
             }
             if (parentPath.empty()) {
-                static int LostNum = 0;
-                parentPath = "/__lost__/" + ToString(LostNum++) + "/";
+                parentPath =
+                    "/__lost__/" + ToString(it->second.ParentLog) + "/";
             }
-            const auto name = parentPath +
-                              (it->second.Name.empty() ? ToString(nodeIdLog)
-                                                       : it->second.Name) +
-                              "/";
+            const auto name =
+                parentPath +
+                (it->second.Name.empty() ? "_nodeid_" + ToString(nodeIdLog)
+                                         : it->second.Name) +
+                "/";
             const auto nodeId =
                 MakeDirectoryRecursive(Spec.GetReplayRoot() + name);
             NodePath[nodeId] = name;
