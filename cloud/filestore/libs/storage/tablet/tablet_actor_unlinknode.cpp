@@ -148,15 +148,21 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
             return;
         }
 
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node unlinking failed for %s, %s with error %s"
+        const auto message = Sprintf(
+            "Follower node unlinking failed for %s, %s with error %s"
             ", will not retry",
-            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        ReportReceivedNodeOpErrorFromFollower(message);
 
         ReplyAndDie(ctx, msg->GetError());
         return;
