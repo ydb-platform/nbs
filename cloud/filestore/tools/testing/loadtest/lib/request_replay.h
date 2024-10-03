@@ -3,10 +3,8 @@
 #include "request.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
-#include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/eventlog/eventlog.h>
 #include <library/cpp/eventlog/iterator.h>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -14,23 +12,25 @@ namespace NCloud::NFileStore::NLoadTest {
 using namespace NThreading;
 using namespace NCloud::NFileStore::NClient;
 
+////////////////////////////////////////////////////////////////////////////////
+
 class IReplayRequestGenerator: public IRequestGenerator
 {
 protected:
-    const NProto::TReplaySpec Spec;
+    const ::NCloud::NFileStore::NProto::TReplaySpec Spec;
     TLog Log;
     TString FileSystemId;
-    const NProto::THeaders Headers;
+    const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
 
     ui64 TimestampMcs{};
     TInstant Started;
 
 private:
-    THolder<NEventLog::IIterator> EventlogIterator;
+    THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
-    int EventMessageNumber = 0;
-    NProto::TProfileLogRecord* EventLogMessagePtr{};
+    ui64 EventMessageNumber = 0;
+    const NProto::TProfileLogRecord* MessagePtr{};
 
 public:
     IReplayRequestGenerator(
@@ -38,159 +38,19 @@ public:
         ILoggingServicePtr logging,
         NClient::ISessionPtr session,
         TString filesystemId,
-        NProto::THeaders headers)
-        : Spec(std::move(spec))
-        , FileSystemId(std::move(filesystemId))
-        , Headers(std::move(headers))
-        , Session(std::move(session))
-    {
-        Log = logging->CreateLog(Headers.GetClientId());
+        NProto::THeaders headers);
 
-        NEventLog::TOptions options;
-        options.FileName = Spec.GetFileName();
-        options.SetForceStrongOrdering(true);   // need this?
-        EventlogIterator = CreateIterator(options);
-    }
+    bool ShouldInstantProcessQueue() override;
 
-    bool InstantProcessQueue() override
-    {
-        return true;
-    }
+    bool ShouldFailOnError() override;
 
-    bool FailOnError() override
-    {
-        return false;
-    }
+    void Advance();
 
-    void Advance()
-    {
-        EventPtr = EventlogIterator->Next();
-        if (!EventPtr) {
-            return;
-        }
+    bool HasNextRequest() override;
 
-        EventLogMessagePtr = const_cast<NProto::TProfileLogRecord*>(
-            dynamic_cast<const NProto::TProfileLogRecord*>(
-                EventPtr->GetProto()));
-        if (!EventLogMessagePtr) {
-            return;
-        }
+    TInstant NextRequestAt() override;
 
-        if (FileSystemId.empty()) {
-            FileSystemId = TString{EventLogMessagePtr->GetFileSystemId()};
-        }
-
-        EventMessageNumber = EventLogMessagePtr->GetRequests().size();
-    }
-
-    bool HasNextRequest() override
-    {
-        if (!EventPtr) {
-            Advance();
-        }
-        return !!EventPtr;
-    }
-
-    TInstant NextRequestAt() override
-    {
-        return TInstant::Max();
-    }
-
-    TFuture<TCompletedRequest> ExecuteNextRequest() override
-    {
-        if (!HasNextRequest()) {
-            return MakeFuture(TCompletedRequest(true));
-        }
-
-        for (; EventPtr; Advance()) {
-            if (!EventLogMessagePtr) {
-                continue;
-            }
-
-            for (; EventMessageNumber > 0;) {
-                auto request =
-                    EventLogMessagePtr->GetRequests()[--EventMessageNumber];
-
-                {
-                    auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
-                                    Spec.GetTimeScale();
-                    TimestampMcs = request.GetTimestampMcs();
-                    if (timediff > 1000000) {
-                        timediff = 0;
-                    }
-                    const auto current = TInstant::Now();
-                    auto diff = current - Started;
-
-                    if (timediff > diff.MicroSeconds()) {
-                        auto slp = TDuration::MicroSeconds(
-                            timediff - diff.MicroSeconds());
-                        STORAGE_DEBUG(
-                            "sleep=" << slp << " timediff=" << timediff
-                                     << " diff=" << diff);
-
-                        Sleep(slp);
-                    }
-                    Started = current;
-                }
-
-                STORAGE_DEBUG(
-                    "Processing message "
-                    << EventMessageNumber
-                    << " typename=" << request.GetTypeName()
-                    << " type=" << request.GetRequestType() << " "
-                    << " name=" << RequestName(request.GetRequestType())
-                    << " json=" << request.AsJSON());
-                {
-                    const auto& action = request.GetRequestType();
-                    switch (static_cast<EFileStoreRequest>(action)) {
-                        case EFileStoreRequest::ReadData:
-                            return DoReadData(request);
-                        case EFileStoreRequest::WriteData:
-                            return DoWrite(request);
-                        case EFileStoreRequest::CreateNode:
-                            return DoCreateNode(request);
-                        case EFileStoreRequest::RenameNode:
-                            return DoRenameNode(request);
-                        case EFileStoreRequest::UnlinkNode:
-                            return DoUnlinkNode(request);
-                        case EFileStoreRequest::CreateHandle:
-                            return DoCreateHandle(request);
-                        case EFileStoreRequest::DestroyHandle:
-                            return DoDestroyHandle(request);
-                        case EFileStoreRequest::GetNodeAttr:
-                            return DoGetNodeAttr(request);
-                        case EFileStoreRequest::AccessNode:
-                            return DoAccessNode(request);
-                        case EFileStoreRequest::ListNodes:
-                            return DoListNodes(request);
-
-                        case EFileStoreRequest::AcquireLock:
-                            return DoAcquireLock(request);
-                        case EFileStoreRequest::ReleaseLock:
-                            return DoReleaseLock(request);
-
-                        case EFileStoreRequest::ReadBlob:
-                        case EFileStoreRequest::WriteBlob:
-                        case EFileStoreRequest::GenerateBlobIds:
-                        case EFileStoreRequest::PingSession:
-                        case EFileStoreRequest::Ping:
-                            continue;
-                        default:
-                            STORAGE_INFO(
-                                "Uninmplemented action="
-                                << action << " "
-                                << RequestName(request.GetRequestType()));
-                            continue;
-                    }
-                }
-            }
-        }
-        STORAGE_INFO(
-            "Eventlog finished n=" << EventMessageNumber
-                                   << " ptr=" << !!EventPtr);
-
-        return MakeFuture(TCompletedRequest(true));
-    }
+    TFuture<TCompletedRequest> ExecuteNextRequest() override;
 
     virtual TFuture<TCompletedRequest> DoReadData(
         const NCloud::NFileStore::NProto::

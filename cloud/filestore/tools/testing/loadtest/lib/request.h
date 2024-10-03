@@ -49,12 +49,12 @@ struct IRequestGenerator
     virtual TInstant NextRequestAt() = 0;
     virtual NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() = 0;
 
-    virtual bool InstantProcessQueue()
+    virtual bool ShouldInstantProcessQueue()
     {
         return false;
     }
 
-    virtual bool FailOnError()
+    virtual bool ShouldFailOnError()
     {
         return true;
     }

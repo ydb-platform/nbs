@@ -6,36 +6,23 @@ compare log and actual result ( S_OK E_FS_NOENT ...)
 read/write with multiranges (now only first processed)
 */
 
-#include "request.h"
-
 #include "request_replay.h"
 
-#include <cloud/filestore/libs/client/session.h>
-#include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
-#include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/request_i.h>
 #include <cloud/filestore/libs/service_local/lowlevel.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
+#include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/aio/aio.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/dirut.h>
-#include <util/generic/guid.h>
-#include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
-#include <util/generic/size_literals.h>
-#include <util/generic/utility.h>
-#include <util/generic/vector.h>
-#include <util/random/random.h>
 #include <util/string/builder.h>
-#include <util/system/fs.h>
 #include <util/system/fstat.h>
-#include <util/system/mutex.h>
-
-#include <atomic>
-#include <utility>
 
 namespace NCloud::NFileStore::NLoadTest {
 

@@ -595,7 +595,8 @@ private:
                     }
                 }
             });
-        if (RequestGenerator->InstantProcessQueue()) {
+
+        if (RequestGenerator->ShouldInstantProcessQueue()) {
             if (future.HasValue() || future.HasException()) {
                 ProcessCompletedRequests();
             }
@@ -626,7 +627,7 @@ private:
                     request->Action,
                     FormatError(request->Error).c_str());
 
-                if (RequestGenerator->FailOnError()) {
+                if (RequestGenerator->ShouldFailOnError()) {
                     TestStats.Success = false;
                 }
             }
