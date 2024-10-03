@@ -391,13 +391,13 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
         mount_dir = Path(mount_path)
         mount_dir.parent.mkdir(parents=True, exist_ok=True)
 
-        volume_context = {
-            "backend": backend,
-            "instanceId": "test-instance-id",
-        }
-        params_file = Path(os.getcwd()) / "params.yaml"
-        with open(params_file, 'w') as f:
-            yaml.safe_dump(volume_context, f)
+        params_file = Path("params.yaml")
+        params_file.write_text(yaml.safe_dump(
+            {
+                "backend": backend,
+                "instanceId": "test-instance-id",
+            }
+        ))
 
         skipTests = ["should fail when the node does not exist"]
 
