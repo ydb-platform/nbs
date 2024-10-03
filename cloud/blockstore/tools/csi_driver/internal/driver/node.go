@@ -614,29 +614,20 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return s.nodePublishDiskAsFilesystemDeprecated(ctx, req)
 	}
 
-	mnt := req.VolumeCapability.GetMount()
-
-	fsType := req.VolumeContext["fsType"]
-	if mnt != nil && mnt.FsType != "" {
-		fsType = mnt.FsType
-	}
-	if fsType == "" {
-		fsType = "ext4"
-	}
-
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
 	mountOptions := []string{"bind"}
+	mnt := req.VolumeCapability.GetMount()
 	if mnt != nil {
 		for _, flag := range mnt.MountFlags {
 			mountOptions = append(mountOptions, flag)
 		}
 	}
 
-	return s.mounter.Mount(req.StagingTargetPath, req.TargetPath, fsType, mountOptions)
+	return s.mounter.Mount(req.StagingTargetPath, req.TargetPath, "", mountOptions)
 }
 
 func (s *nodeService) nodeStageDiskAsFilesystem(
