@@ -33,10 +33,21 @@ func (m *ydbMetrics) StatCall(
 			"call": name,
 		})
 
+		errorTypes := []string{"TLI", "scheme", "transport", "overloaded",
+			"unavailable", "ratelimiterAcquire", "unknown"}
+
 		// Should initialize all counters before using them, to avoid 'no data'.
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
+		errorCounters := make(map[string]metrics.Counter)
+
+		for _, errorType := range errorTypes {
+			registry := subRegistry.WithTags(map[string]string{
+				"type": errorType,
+			})
+			errorCounters[errorType] = registry.Counter("errors")
+		}
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(ctx, "YDB call hanging, name %v, query %v", name, query)
@@ -44,33 +55,24 @@ func (m *ydbMetrics) StatCall(
 		}
 
 		if *err != nil {
-			var errorType string
 
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
-				errorType = "TLI"
+				errorCounters["TLI"].Inc()
 			case ydb.IsOperationErrorSchemeError(*err):
-				errorType = "scheme"
+				errorCounters["scheme"].Inc()
 			case ydb.IsTransportError(*err):
-				errorType = "transport"
+				errorCounters["transport"].Inc()
 			case ydb.IsOperationErrorOverloaded(*err):
-				errorType = "overloaded"
+				errorCounters["overloaded"].Inc()
 			case ydb.IsOperationErrorUnavailable(*err):
-				errorType = "unavailable"
+				errorCounters["unavailable"].Inc()
 			case ydb.IsRatelimiterAcquireError(*err):
-				errorType = "ratelimiterAcquire"
+				errorCounters["ratelimiterAcquire"].Inc()
 			default:
-				errorType = "unknown"
+				errorCounters["unknown"].Inc()
 				logging.Warn(ctx, "YDB call with name %v got unknown error %v", name, *err)
 			}
-
-			errorRegistry := subRegistry.WithTags(map[string]string{
-				"type": errorType,
-			})
-
-			// Should initialize all counters before using them, to avoid 'no data'.
-			errorCounter := errorRegistry.Counter("errors")
-			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
 				logging.Error(ctx, "YDB call timed out, name %v, query %v", name, query)
