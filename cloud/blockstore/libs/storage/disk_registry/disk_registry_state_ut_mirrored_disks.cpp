@@ -3033,6 +3033,150 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
     }
+
+    Y_UNIT_TEST(ShouldReplaceDeviceOnAgentRegistration)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TVector agents {
+            AgentConfig(1, {
+                Device("dev-1", "uuid-1.1", "rack-1"),
+                Device("dev-2", "uuid-1.2", "rack-1"),
+                Device("dev-3", "uuid-1.3", "rack-1"),
+            }),
+            AgentConfig(2, {
+                Device("dev-1", "uuid-2.1", "rack-2"),
+                Device("dev-2", "uuid-2.2", "rack-2"),
+                Device("dev-3", "uuid-2.3", "rack-2"),
+            }),
+            AgentConfig(3, {
+                Device("dev-1", "uuid-3.1", "rack-3"),
+                Device("dev-2", "uuid-3.2", "rack-3"),
+                Device("dev-3", "uuid-3.3", "rack-3"),
+            })
+        };
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents(agents)
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            TVector<TVector<TDeviceConfig>> replicas;
+            TVector<NProto::TDeviceMigration> migrations;
+            TVector<TString> deviceReplacementIds;
+            UNIT_ASSERT_SUCCESS(AllocateMirroredDisk(
+                db,
+                state,
+                "disk-1",
+                20_GB,
+                1,  // replicaCount
+                devices,
+                replicas,
+                migrations,
+                deviceReplacementIds));
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.2", devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas[0].size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", replicas[0][0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.2", replicas[0][1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(0, deviceReplacementIds.size());
+        });
+
+        TDiskInfo diskInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
+
+        TDiskInfo replicaInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/0", replicaInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
+
+        replicaInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/1", replicaInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
+
+        const auto changeStateTs = Now();
+
+        // break uuid-1.1 & uuid-1.2
+        agents[0].MutableDevices(0)->SetBlocksCount(1);
+        agents[0].MutableDevices(1)->SetBlocksCount(1);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agents[0],
+                changeStateTs,
+                &affectedDisks,
+                &disksToReallocate));
+        });
+
+        diskInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(diskInfo.State));
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-1.3", "uuid-3.1"}),
+            diskInfo.DeviceReplacementIds);
+
+        replicaInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/0", replicaInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
+
+        replicaInfo = {};
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1/1", replicaInfo));
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
+            NProto::EDiskState_Name(replicaInfo.State));
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDeviceConfig> devices;
+            TVector<TVector<TDeviceConfig>> replicas;
+            TVector<NProto::TDeviceMigration> migrations;
+            TVector<TString> deviceReplacementIds;
+            UNIT_ASSERT_SUCCESS(AllocateMirroredDisk(
+                db,
+                state,
+                "disk-1",
+                20_GB,
+                1,  // replicaCount
+                devices,
+                replicas,
+                migrations,
+                deviceReplacementIds));
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            // uuid-1.1 was automatically replaced by uuid-1.3
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.3", devices[0].GetDeviceUUID());
+            // uuid-1.2 was automatically replaced by uuid-3.1
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3.1", devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas[0].size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", replicas[0][0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2.2", replicas[0][1].GetDeviceUUID());
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>({"uuid-1.3", "uuid-3.1"}),
+                deviceReplacementIds);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            state.DeallocateDisk(db, "disk-1");
+        });
+    }
 }
 
 bool operator==(const TDiskStateUpdate& l, const TDiskStateUpdate& r)
