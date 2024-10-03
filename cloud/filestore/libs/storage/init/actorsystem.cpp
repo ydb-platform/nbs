@@ -320,6 +320,7 @@ void TActorSystem::Init()
         SetupConfigDispatcher(
             Args.StorageConfig->GetConfigDispatcherSettings(),
             &runConfig.ConfigsDispatcherInitInfo);
+        runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
     }
 
     LogSettings->Append(

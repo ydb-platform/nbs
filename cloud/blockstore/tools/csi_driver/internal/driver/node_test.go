@@ -24,7 +24,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
@@ -191,7 +191,7 @@ func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 }
 
 func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
@@ -335,13 +335,6 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	})
 	require.NoError(t, err)
 
-	// TODO: enable check that target directory is deleted after fixing https://github.com/ydb-platform/nbs/issues/2120
-	// mock mounter should remove targetPath but if it does then TestGetVolumeStatCapabilitiesWithoutVmMode
-	// fails because it relies on other tests leaving target directory (it fails if launched alone)
-	//
-	//_, err = os.Stat(targetPath)
-	//assert.True(t, os.IsNotExist(err))
-
 	if backend == "nbs" {
 		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 			UnixSocketPath: nbsSocketPath,
@@ -378,7 +371,7 @@ func TestStagedPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	groupId := ""
 	currentUser, err := user.Current()
@@ -524,7 +517,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 }
 
 func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
@@ -651,7 +644,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
@@ -662,6 +655,11 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir,
 		"pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+
+	info, err := os.Stat(tempDir)
+	require.NoError(t, err)
+	err = os.MkdirAll(targetPath, info.Mode())
+	require.NoError(t, err)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -713,14 +711,10 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
-
-	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, 0755)
-	require.NoError(t, err)
 
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
@@ -767,14 +761,10 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 }
 
 func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
-	tempDir := os.TempDir()
+	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
-
-	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, 0755)
-	require.NoError(t, err)
 
 	ctx := context.Background()
 	clientID := "testClientId"
@@ -799,7 +789,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		mounter,
 	)
 
-	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: "testStagingTargetPath",
 		VolumeCapability:  &csi.VolumeCapability{},

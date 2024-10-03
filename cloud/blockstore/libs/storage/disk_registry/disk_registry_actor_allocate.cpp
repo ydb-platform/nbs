@@ -271,8 +271,8 @@ void TDiskRegistryActor::HandleDeallocateDisk(
 
     if (msg->Record.GetSync() && State->HasPendingCleanup(diskId)) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Postpone DeallocateDisk response",
-            TabletID());
+            "[%lu] Postpone DeallocateDisk response. DiskId=%s",
+            TabletID(), diskId.c_str());
 
         AddPendingDeallocation(ctx, diskId, std::move(requestInfo));
 
