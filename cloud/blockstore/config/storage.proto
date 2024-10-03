@@ -1039,4 +1039,11 @@ message TStorageServiceConfig
 
     // settings for ydb config dispatcher service.
     optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 385;
+
+    // The volume actor will compare meta before and after reallocation and
+    // decide whether a lite reallocation is possible.
+    optional bool AllowLiteDiskReallocations = 386;
+
+    // Timeout between disks reallocations.
+    optional uint32 DiskRegistryDisksNotificationTimeout = 387;
 }

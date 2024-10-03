@@ -596,6 +596,9 @@ public:
     TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefixes() const;
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
+    TDuration GetDiskRegistryDisksNotificationTimeout() const;
+
+    bool GetAllowLiteDiskReallocations() const;
 
     TString GetNodeRegistrationToken() const;
     ui32 GetNodeRegistrationMaxAttempts() const;
