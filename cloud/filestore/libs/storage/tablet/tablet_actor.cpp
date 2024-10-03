@@ -1066,4 +1066,11 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
     return delta;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::IsShard() const
+{
+    return GetFileSystem().GetShardNo() > 0;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

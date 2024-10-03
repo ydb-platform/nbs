@@ -855,6 +855,90 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
+
+    Y_UNIT_TEST(ShardShouldNotCheckSessionUponCreateNodeAndUnlinkNode)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui64 requestId = 111;
+        const ui32 shardNo = 222;
+        tablet.ConfigureAsFollower(shardNo);
+
+        {
+            tablet.SendCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "file1"),
+                requestId);
+
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            tablet.SendCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "file1"),
+                requestId);
+
+            auto response = tablet.RecvCreateNodeResponse();
+            // DupCache shouldn't be used
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            tablet.InitSession("client", "session");
+            auto response = tablet.ListNodes(RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, response.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file1", response.GetNames(0));
+            tablet.DestroySession();
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(
+                RootNodeId,
+                "file1",
+                false, // unlinkDirectory
+                requestId);
+
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(
+                RootNodeId,
+                "file1",
+                false, // unlinkDirectory
+                requestId);
+
+            auto response = tablet.RecvUnlinkNodeResponse();
+            // DupCache shouldn't be used
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            tablet.InitSession("client", "session");
+            auto response = tablet.ListNodes(RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(0, response.NamesSize());
+            tablet.DestroySession();
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

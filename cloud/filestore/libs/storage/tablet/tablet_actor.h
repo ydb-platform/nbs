@@ -491,6 +491,8 @@ private:
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
 
+    bool IsShard() const;
+
 private:
     template <typename TMethod>
     TSession* AcceptRequest(

@@ -239,20 +239,24 @@ void TIndexTabletActor::HandleUnlinkNode(
         return;
     }
 
-    auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
-    if (!session) {
-        return;
-    }
-
     auto* msg = ev->Get();
-    const auto requestId = GetRequestId(msg->Record);
-    if (const auto* e = session->LookupDupEntry(requestId)) {
-        auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        if (GetDupCacheEntry(e, response->Record)) {
-            return NCloud::Reply(ctx, *ev, std::move(response));
+
+    // DupCache isn't needed for Create/UnlinkNode requests in shards
+    if (!IsShard()) {
+        auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
+        if (!session) {
+            return;
         }
 
-        session->DropDupEntry(requestId);
+        const auto requestId = GetRequestId(msg->Record);
+        if (const auto* e = session->LookupDupEntry(requestId)) {
+            auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+            if (GetDupCacheEntry(e, response->Record)) {
+                return NCloud::Reply(ctx, *ev, std::move(response));
+            }
+
+            session->DropDupEntry(requestId);
+        }
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -277,7 +281,9 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 {
     Y_UNUSED(ctx);
 
-    FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
+    if (!IsShard()) {
+        FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
+    }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
@@ -397,20 +403,22 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         }
     }
 
-    auto* session = FindSession(args.SessionId);
-    if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
-            << "UnlinkNode: " << args.Request.ShortDebugString());
-        args.Error = MakeError(E_INVALID_STATE, std::move(message));
-        return;
-    }
+    if (!IsShard()) {
+        auto* session = FindSession(args.SessionId);
+        if (!session) {
+            auto message = ReportSessionNotFoundInTx(TStringBuilder()
+                << "UnlinkNode: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
 
-    AddDupCacheEntry(
-        db,
-        session,
-        args.RequestId,
-        NProto::TUnlinkNodeResponse{},
-        Config->GetDupCacheEntryCount());
+        AddDupCacheEntry(
+            db,
+            session,
+            args.RequestId,
+            NProto::TUnlinkNodeResponse{},
+            Config->GetDupCacheEntryCount());
+    }
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -450,7 +458,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             return;
         }
 
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
+        if (!IsShard()) {
+            CommitDupCacheEntry(args.SessionId, args.RequestId);
+        }
 
         // TODO(#1350): support session events for external nodes
         NProto::TSessionEvent sessionEvent;
