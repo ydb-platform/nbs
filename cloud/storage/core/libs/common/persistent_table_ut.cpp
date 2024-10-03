@@ -64,7 +64,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
                 auto* record = table.RecordData(index);
                 record->Val = val;
                 record->Index = index;
-                table.StoreRecord(index);
+                table.CommitRecord(index);
             }
         }
 
@@ -113,7 +113,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             for (auto& data: recordValues) {
                 auto index = table.AllocRecord();
                 table.RecordData(index)->Val = data;
-                table.StoreRecord(index);
+                table.CommitRecord(index);
             }
 
             table.DeleteRecord(1);
@@ -142,7 +142,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
                 auto index = table.AllocRecord();
                 table.RecordData(index)->Index = index;
                 table.RecordData(index)->Val = data;
-                table.StoreRecord(index);
+                table.CommitRecord(index);
             }
 
             TVector<ui64> newRecordData;

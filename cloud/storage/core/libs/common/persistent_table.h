@@ -17,11 +17,11 @@ template <typename H, typename R>
 class TPersistentTable
 {
 private:
-    struct Header
+    struct THeader
     {
-        size_t HeaderSize;
-        size_t RecordSize;
-        size_t RecordCount;
+        size_t HeaderSize = 0;
+        size_t RecordSize = 0;
+        size_t RecordCount = 0;
         H Data;
     };
 
@@ -32,20 +32,20 @@ private:
         Stored,
     };
 
-    struct Record
+    struct TRecord
     {
         R Data;
-        ERecordState State;
+        ERecordState State = ERecordState::Free;
     };
 
     TString FileName;
-    size_t RecordCount;
-    size_t NextFreeRecord;
+    size_t RecordCount = 0;
+    size_t NextFreeRecord = 0;
 
     std::unique_ptr<TFileMap> FileMap;
     TList<ui64> FreeRecords;
-    Header* HeaderPtr = nullptr;
-    Record* RecordsPtr = nullptr;
+    THeader* HeaderPtr = nullptr;
+    TRecord* RecordsPtr = nullptr;
 
 public:
     static constexpr ui64 InvalidIndex = -1;
@@ -143,23 +143,23 @@ public:
         file.Close();
 
         FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
-        FileMap->Map(0, sizeof(Header));
+        FileMap->Map(0, sizeof(THeader));
 
-        auto* header = static_cast<Header*>(FileMap->Ptr());
+        auto* header = static_cast<THeader*>(FileMap->Ptr());
         if (header->RecordCount == 0) {
             header->RecordCount = RecordCount;
-            header->HeaderSize = sizeof(Header);
-            header->RecordSize = sizeof(Record);
+            header->HeaderSize = sizeof(THeader);
+            header->RecordSize = sizeof(TRecord);
         }
 
-        Y_ABORT_UNLESS(header->HeaderSize == sizeof(Header));
-        Y_ABORT_UNLESS(header->RecordSize == sizeof(Record));
+        Y_ABORT_UNLESS(header->HeaderSize == sizeof(THeader));
+        Y_ABORT_UNLESS(header->RecordSize == sizeof(TRecord));
 
         RecordCount = header->RecordCount;
 
         FileMap->ResizeAndRemap(0, CalcFileSize(RecordCount));
-        HeaderPtr = static_cast<Header*>(FileMap->Ptr());
-        RecordsPtr = static_cast<Record*>((void*)(HeaderPtr + 1));
+        HeaderPtr = static_cast<THeader*>(FileMap->Ptr());
+        RecordsPtr = static_cast<TRecord*>((void*)(HeaderPtr + 1));
 
         CompactRecords();
     }
@@ -192,7 +192,7 @@ public:
         return index;
     }
 
-    void StoreRecord(ui64 index)
+    void CommitRecord(ui64 index)
     {
         Y_ABORT_UNLESS(index < RecordCount);
         RecordsPtr[index].State = ERecordState::Stored;
@@ -217,7 +217,7 @@ public:
 private:
     size_t CalcFileSize(size_t recordCount)
     {
-        return sizeof(Header) + recordCount * sizeof(Record);
+        return sizeof(THeader) + recordCount * sizeof(TRecord);
     }
 
     void CompactRecords()
@@ -235,7 +235,7 @@ private:
                 std::memcpy(
                     &RecordsPtr[writeRecordIndex],
                     &RecordsPtr[readRecordIndex],
-                    sizeof(Record));
+                    sizeof(TRecord));
                 RecordsPtr[readRecordIndex].State = ERecordState::Free;
             }
             writeRecordIndex++;
