@@ -195,6 +195,25 @@ void TStorageServiceActor::HandleDestroyFileStore(
         cookie,
         msg->CallContext);
 
+    if (Count(
+            StorageConfig->GetDestroyFilestoreDenyList(),
+            (msg->Record.GetFileSystemId())))
+    {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "FileStore %s is in deny list",
+            msg->Record.GetFileSystemId().c_str());
+        auto response =
+            std::make_unique<TEvService::TEvDestroyFileStoreResponse>(MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "FileStore %s is in deny list",
+                    msg->Record.GetFileSystemId().c_str())));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     bool forceDestroy = msg->Record.GetForceDestroy() &&
                         StorageConfig->GetAllowFileStoreForceDestroy();
     auto actor = std::make_unique<TDestroyFileStoreActor>(

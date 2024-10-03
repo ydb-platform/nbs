@@ -208,6 +208,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
     xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+                                                                               \
+    xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -242,6 +244,12 @@ bool IsEmpty(const TAliases& value)
     return value.GetEntries().empty();
 }
 
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
@@ -258,6 +266,13 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    return TVector<TString>(value.begin(), value.end());
 }
 
 IOutputStream& operator <<(
@@ -298,6 +313,17 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
         os << x.GetAlias() << ": " << x.GetFsId() << ", ";
     }
     os << " }";
+}
+
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
 }
 
 }   // namespace

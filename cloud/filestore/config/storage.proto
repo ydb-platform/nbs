@@ -416,4 +416,8 @@ message TStorageConfig
     // automatically recover after various races that may happen during index
     // tablet startup due to bugs.
     optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
+
+    // Server will reject all requests to destroy filestores in the provided
+    // list
+    repeated string DestroyFilestoreDenyList = 393;
 }

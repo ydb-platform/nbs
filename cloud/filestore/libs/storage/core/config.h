@@ -269,6 +269,7 @@ public:
     ui64 GetLargeDeletionMarkersCleanupThreshold() const;
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
+    TVector<TString> GetDestroyFilestoreDenyList() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
