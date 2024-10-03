@@ -64,7 +64,7 @@ def init(vm_mode: bool = False):
     logging.info("Created temporary dir %s", temp_dir.name)
     sockets_dir = Path(temp_dir.name)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
-    server_config_patch.VhostEnabled = False
+    server_config_patch.VhostEnabled = True
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
