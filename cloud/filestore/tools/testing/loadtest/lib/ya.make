@@ -7,7 +7,6 @@ SRCS(
     request_data.cpp
     request_index.cpp
     request_replay_fs.cpp
-    request_replay_grpc.cpp
     test.cpp
 )
 
