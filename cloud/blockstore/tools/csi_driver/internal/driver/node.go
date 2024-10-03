@@ -862,6 +862,11 @@ func (s *nodeService) nodeUnstageVolume(
 	ctx context.Context,
 	req *csi.NodeUnstageVolumeRequest) error {
 
+	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
+	if !mounted {
+		return nil
+	}
+
 	if err := s.mounter.CleanupMountPoint(req.StagingTargetPath); err != nil {
 		return err
 	}
