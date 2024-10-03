@@ -55,7 +55,6 @@ func (m *ydbMetrics) StatCall(
 		}
 
 		if *err != nil {
-
 			switch {
 			case ydb.IsOperationErrorTransactionLocksInvalidated(*err):
 				errorCounters["TLI"].Inc()
