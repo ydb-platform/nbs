@@ -7,26 +7,18 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
-export LOGS_DIR=$BIN_DIR/data
+LOGS_DIR=$BIN_DIR/data
 
-export SERVER_PORT=${SERVER_PORT:-9021}
-export VHOST_PORT=${VHOST_PORT:-9022}
+SERVER_PORT=${SERVER_PORT:-9021}
+VHOST_PORT=${VHOST_PORT:-9022}
 
-export FS=${FS:-"nfs"}
-export SHARD_COUNT=${SHARD_COUNT:-0}
-export BLOCK_SIZE=${BLOCK_SIZE:-4096}
-export MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
-export VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
+FS=${FS:-"nfs"}
+SHARD_COUNT=${SHARD_COUNT:-0}
+BLOCK_SIZE=${BLOCK_SIZE:-4096}
+MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
+VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
 
-export PID_FILE=$BIN_DIR/pids.txt
-
-if [ -z "$FILESTORE_APPS_PATH" ]; then
-    REPO_ROOT=$BIN_DIR/../../..
-    FILESTORE_APPS_PATH=cloud/filestore/buildall/cloud/filestore/apps
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/client
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/server
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/vhost
-fi
+PID_FILE=$BIN_DIR/pids.txt
 
 ################################################################################
 # STOP/KILL
