@@ -21,8 +21,8 @@ NProto::TError TPendingCleanup::Insert(
 
     for (auto& uuid: uuids) {
         Y_DEBUG_ABORT_UNLESS(!uuid.empty());
-        auto [it, success] = DeviceToDisk.emplace(std::move(uuid), diskId);
-        Y_DEBUG_ABORT_UNLESS(success || it->second == diskId);
+        auto [_, success] = DeviceToDisk.emplace(std::move(uuid), diskId);
+        Y_DEBUG_ABORT_UNLESS(success);
     }
 
     return {};
@@ -56,7 +56,7 @@ NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid)
         }
 
         const auto* foundDiskId = DeviceToDisk.FindPtr(uuid);
-        if (foundDiskId && *foundDiskId != diskId) {
+        if (foundDiskId) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "Could not insert device: " << uuid

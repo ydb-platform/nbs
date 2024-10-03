@@ -1370,6 +1370,9 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         UpdatePlacementGroup(db, diskId, disk, "ReplaceDevice");
         UpdateAndReallocateDisk(db, diskId, disk);
 
+        if (PendingCleanup.FindDiskId(targetDevice.GetDeviceUUID()) == diskId) {
+            PendingCleanup.EraseDevice(targetDevice.GetDeviceUUID());
+        }
         error = PendingCleanup.Insert(diskId, deviceId);
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
