@@ -94,8 +94,4 @@ private:
     STFUNC(StateWork);
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-NActors::IActorPtr CreateSSProxy(TSSProxyConfig config);
-
 }   // namespace NCloud::NStorage

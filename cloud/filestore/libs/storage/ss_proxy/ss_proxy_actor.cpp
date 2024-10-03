@@ -2,14 +2,13 @@
 
 #include <cloud/filestore/libs/storage/core/config.h>
 
-#include <cloud/storage/core/libs/ss_proxy/ss_proxy_actor.h>
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
-using namespace NKikimr::NSchemeShard;
 
 ////////////////////////////////////////////////////////////////////////////////
 
