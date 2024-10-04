@@ -7,6 +7,7 @@ SRCS(
     ss_proxy_actor_describescheme.cpp
     ss_proxy_actor_modifyscheme.cpp
     ss_proxy_actor_waitschemetx.cpp
+    ss_proxy_fallback_actor.cpp
 )
 
 PEERDIR(
