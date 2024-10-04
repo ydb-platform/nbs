@@ -75,6 +75,11 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
     args.Error = std::move(result.Error);
     args.AffectedDisks = std::move(result.AffectedDisks);
     args.Timeout = result.Timeout;
+    // Round up to seconds because TActionResult::Timeout is specified in
+    // seconds
+    if (args.Timeout) {
+        args.Timeout = Max(args.Timeout, TDuration::Seconds(1));
+    }
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
