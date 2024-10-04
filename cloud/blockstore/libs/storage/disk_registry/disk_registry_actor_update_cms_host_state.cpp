@@ -70,6 +70,12 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         args.DryRun,
         args.AffectedDisks,
         args.Timeout);
+
+    // Round up to seconds because TActionResult::Timeout is specified in
+    // seconds
+    if (args.Timeout) {
+        args.Timeout = Max(args.Timeout, TDuration::Seconds(1));
+    }
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostState(
