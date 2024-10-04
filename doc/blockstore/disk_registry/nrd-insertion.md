@@ -47,6 +47,7 @@ Symbols and terms:
 
 1. `Infra` sends `REMOVE_HOST`, which puts the `DA` in the `WARNING` state (from the point of view of `DR`), forcing devices to migrate from this `DA`
 1. After waiting for the migration of all the devices from the host, `Infra` shuts down the host
+1. Move out the all broken devices (Device that in error state) to another 'fake' host.
 1. When the host is ready, `Infra` boots the `DA` as a part of host startup
 1. When booted, `DA` performs `Discovery`, finding a new disk on the host and then registers it in `DR`
 1. All this time, `infra` sends `ADD_HOST` requests from `DR` once in a while, until at some point it returns success
