@@ -17,7 +17,7 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         TString filesystemId,
         NProto::THeaders headers)
     : Spec(std::move(spec))
-    , FileSystemId(std::move(filesystemId))
+    , FileSystemIdRequest(std::move(filesystemId))
     , Headers(std::move(headers))
     , Session(std::move(session))
 {
@@ -54,23 +54,33 @@ bool IReplayRequestGenerator::ShouldFailOnError()
 
 void IReplayRequestGenerator::Advance()
 {
-    EventPtr = CurrentEvent->Next();
-    if (!EventPtr) {
+    for (EventPtr = CurrentEvent->Next(); EventPtr;
+         EventPtr = CurrentEvent->Next())
+    {
+        MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
+            EventPtr->GetProto());
+
+        if (!MessagePtr) {
+            return;
+        }
+
+        const auto FileSystemId = TString{MessagePtr->GetFileSystemId()};
+        if (!Spec.GetFileSystemIdFilter().empty() &&
+            FileSystemId != Spec.GetFileSystemIdFilter())
+        {
+            STORAGE_DEBUG("Skipped event with FileSystemId=" << FileSystemId);
+            continue;
+        }
+
+        if (FileSystemIdRequest.empty() && !FileSystemId.empty()) {
+            FileSystemIdRequest = FileSystemId;
+            STORAGE_INFO(
+                "Using FileSystemId from profile log " << FileSystemIdRequest);
+        }
+
+        EventMessageNumber = MessagePtr->GetRequests().size();
         return;
     }
-
-    MessagePtr =
-        dynamic_cast<const NProto::TProfileLogRecord*>(EventPtr->GetProto());
-
-    if (!MessagePtr) {
-        return;
-    }
-
-    if (FileSystemId.empty()) {
-        FileSystemId = TString{MessagePtr->GetFileSystemId()};
-    }
-
-    EventMessageNumber = MessagePtr->GetRequests().size();
 }
 
 NThreading::TFuture<TCompletedRequest>
@@ -87,14 +97,15 @@ IReplayRequestGenerator::ExecuteNextRequest()
 
         for (; EventMessageNumber > 0;) {
             auto request = MessagePtr->GetRequests()[--EventMessageNumber];
-
             {
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
+
                 if (timediff > 1000000) {
                     timediff = 0;
                 }
+
                 const auto current = TInstant::Now();
                 auto diff = current - Started;
 
@@ -107,6 +118,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
 
                     Sleep(slp);
                 }
+
                 Started = current;
             }
 
@@ -139,7 +151,6 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         return DoAccessNode(request);
                     case EFileStoreRequest::ListNodes:
                         return DoListNodes(request);
-
                     case EFileStoreRequest::AcquireLock:
                         return DoAcquireLock(request);
                     case EFileStoreRequest::ReleaseLock:
@@ -151,6 +162,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     case EFileStoreRequest::PingSession:
                     case EFileStoreRequest::Ping:
                         continue;
+
                     default:
                         STORAGE_INFO(
                             "Uninmplemented action="
@@ -161,6 +173,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
         }
     }
+
     STORAGE_INFO(
         "Profile log finished n=" << EventMessageNumber
                                   << " ptr=" << !!EventPtr);

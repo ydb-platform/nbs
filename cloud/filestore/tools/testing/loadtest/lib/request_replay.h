@@ -19,7 +19,8 @@ class IReplayRequestGenerator: public IRequestGenerator
 protected:
     const ::NCloud::NFileStore::NProto::TReplaySpec Spec;
     TLog Log;
-    TString FileSystemId;
+    TString FileSystemIdRequest; // Only for GRPC
+    TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
 
