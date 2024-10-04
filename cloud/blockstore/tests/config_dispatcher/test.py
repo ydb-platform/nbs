@@ -20,6 +20,24 @@ from contrib.ydb.core.protos.config_pb2 import TLogConfig
 import yatest.common as yatest_common
 
 
+def check_log_config(nbs):
+    def query_monitoring(url):
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        return r.text
+
+    logger_page = query_monitoring(f'http://localhost:{nbs.mon_port}/actors/logger')
+
+    log_config = nbs.log_config
+
+    level_to_name = {4: 'WARN', 5: 'NOTICE', 6: 'INFO', 7: 'DEBUG', 8: 'TRACE'}
+
+    for e in log_config.Entry:
+        assert e.Level in level_to_name
+        pattern = f'{e.Component.decode()}</a></td><td>{level_to_name[e.Level]}</td>'
+        assert logger_page.find(pattern) != -1
+
+
 def test_config_dispatcher():
     kikimr_binary_path = yatest_common.binary_path('contrib/ydb/apps/ydbd/ydbd')
     configurator = KikimrConfigGenerator(
@@ -71,6 +89,8 @@ def test_config_dispatcher():
     nbs.start()
     wait_for_nbs_server(nbs.nbs_port)
 
+    check_log_config(nbs)
+
     def query_monitoring(url, text):
         r = requests.get(url, timeout=10)
         r.raise_for_status()
@@ -107,11 +127,6 @@ def test_config_dispatcher():
     app_config.NameserviceConfig.MergeFrom(naming_config)
     kikimr_cluster.client.add_config_item(app_config)
 
-    def query_monitoring(url, text):
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        return r.text.find(text) != -1
-
     # wait for nameservice config update
     while True:
         if query_monitoring(f'http://localhost:{nbs.mon_port}/actors/dnameserver', 'somewhere'):
@@ -120,10 +135,6 @@ def test_config_dispatcher():
             time.sleep(10)
 
     # check that logging config was not changed
-    result = query_monitoring(
-        f'http://localhost:{nbs.mon_port}/actors/logger?c=1025',
-        'Sampling rate: 0')
+    check_log_config(nbs)
 
     os.kill(nbs.pid, signal.SIGTERM)
-
-    assert result
