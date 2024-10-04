@@ -889,16 +889,17 @@ void TDiskRegistryState::RemoveAgentFromNode(
     ApplyAgentStateChange(db, agent, timestamp, *affectedDisks);
 }
 
-NProto::TError TDiskRegistryState::RegisterAgent(
+auto TDiskRegistryState::RegisterAgent(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig config,
-    TInstant timestamp,
-    TVector<TDiskId>* affectedDisks,
-    TVector<TDiskId>* disksToReallocate)
+    TInstant timestamp) -> TResultOrError<TAgentRegistrationResult>
 {
     if (auto error = ValidateAgent(config); HasError(error)) {
         return error;
     }
+
+    TVector<TDiskId> affectedDisks;
+    TVector<TDiskId> disksToReallocate;
 
     try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
@@ -916,8 +917,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                 db,
                 *buddy,
                 timestamp,
-                affectedDisks,
-                disksToReallocate);
+                &affectedDisks,
+                &disksToReallocate);
         }
 
         const auto& knownAgent = KnownAgents.Value(
@@ -991,7 +992,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
 
         for (auto& id: diskIds) {
             if (TryUpdateDiskState(db, id, timestamp)) {
-                affectedDisks->push_back(id);
+                affectedDisks.push_back(id);
             }
             TDiskState& disk = Disks[id];
             UpdatePlacementGroup(db, id, disk, "RegisterAgent");
@@ -1000,7 +1001,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         if (r.PrevNodeId != agent.GetNodeId()) {
             for (const auto& id: diskIds) {
                 AddReallocateRequest(db, id);
-                disksToReallocate->push_back(id);
+                disksToReallocate.push_back(id);
             }
         }
 
@@ -1012,7 +1013,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                 timestamp,
                 "back from unavailable");
 
-            ApplyAgentStateChange(db, agent, timestamp, *affectedDisks);
+            ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
         }
 
         UpdateAgent(db, agent);
@@ -1022,7 +1023,9 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         return MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
-    return {};
+    return TAgentRegistrationResult{
+        .AffectedDisks = std::move(affectedDisks),
+        .DisksToReallocate = std::move(disksToReallocate)};
 }
 
 NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
