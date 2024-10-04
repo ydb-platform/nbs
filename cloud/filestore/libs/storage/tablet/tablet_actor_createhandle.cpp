@@ -60,8 +60,8 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles = GetFileSystem().GetShardNo() > 0
-            || GetFileSystem().GetFollowerFileSystemIds().empty();
+        const bool shouldStoreHandles =
+            GetFileSystem().GetFollowerFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
