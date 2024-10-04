@@ -26,8 +26,8 @@ message PoolsConfig {
     optional string ReleasedSlotExpirationTimeout = 14 [default = "30m"];
     optional string ClearReleasedSlotsTaskScheduleInterval = 15 [default = "1m"];
     optional uint32 ClearReleasedSlotsLimit = 16 [default = 1000];
-    optional uint64 ConvertToImageSizedBaseDiskThreshold = 17 [default = 128];
-    optional uint64 ConvertToDefaultSizedBaseDiskThreshold = 18 [default = 32];
+    optional uint64 ConvertToImageSizedBaseDiskThreshold = 17 [default = 32];
+    optional uint64 ConvertToDefaultSizedBaseDiskThreshold = 18 [default = 128];
     optional string OptimizeBaseDisksTaskScheduleInterval = 19 [default = "15m"];
     optional string MinOptimizedPoolAge = 20 [default = "24h"];
     optional bool RegularBaseDiskOptimizationEnabled = 21 [default = true];

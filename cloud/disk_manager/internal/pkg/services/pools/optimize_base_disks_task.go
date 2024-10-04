@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -40,6 +41,8 @@ func (t *optimizeBaseDisksTask) Run(
 
 	t1 := t.convertToDefaultSizedBaseDisksThreshold
 	t2 := t.convertToImageSizedBaseDisksThreshold
+	common.Assert(t1 > t2, `ConvertToDefaultSizedBaseDisksThreshold should be greater 
+		than convertToImageSizedBaseDisksThreshold`)
 
 	if t1 == 0 && t2 == 0 {
 		return nil
