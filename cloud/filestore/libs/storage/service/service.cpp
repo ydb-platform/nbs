@@ -13,14 +13,14 @@ IActorPtr CreateStorageService(
     IRequestStatsRegistryPtr statsRegistry,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerialzer,
-    NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher)
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher)
 {
     return std::make_unique<TStorageServiceActor>(
         std::move(storageConfig),
         std::move(statsRegistry),
         std::move(profileLog),
         std::move(traceSerialzer),
-        std::move(cgroupStatsFetcher));
+        std::move(statsFetcher));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

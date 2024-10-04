@@ -305,7 +305,7 @@ public:
         auto volumeBalancerService = CreateVolumeBalancerActor(
             Args.StorageConfig,
             Args.VolumeStats,
-            Args.CgroupStatsFetcher,
+            Args.StatsFetcher,
             Args.VolumeBalancerSwitch,
             MakeStorageServiceId());
 

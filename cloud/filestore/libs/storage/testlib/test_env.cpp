@@ -246,7 +246,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StatsRegistry,
         ProfileLog,
         TraceSerializer,
-        CreateCgroupStatsFetcherStub());
+        CreateStatsFetcherStub());
     auto indexServiceId = Runtime.Register(
         indexService.release(),
         nodeIdx,

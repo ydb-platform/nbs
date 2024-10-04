@@ -60,7 +60,7 @@ struct TServerActorSystemArgs
     IVolumeStatsPtr VolumeStats;
     NRdma::IServerPtr RdmaServer;
     NRdma::IClientPtr RdmaClient;
-    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     TManuallyPreemptedVolumesPtr PreemptedVolumes;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;

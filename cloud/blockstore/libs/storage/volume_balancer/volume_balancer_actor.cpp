@@ -140,12 +140,12 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 TVolumeBalancerActor::TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
-        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
-    , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
+    , StatsFetcher(std::move(statsFetcher))
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
     , ServiceActorId(serviceActorId)
     , State(std::make_unique<TVolumeBalancerState>(StorageConfig))
@@ -245,7 +245,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        auto cpuLack = CpuLackPercentsMultiplier * CgroupStatsFetcher->GetCpuWait().MicroSeconds();
+        auto cpuLack = CpuLackPercentsMultiplier * StatsFetcher->GetCpuWait().MicroSeconds();
         cpuLack /= interval;
         *CpuWait = cpuLack;
 
