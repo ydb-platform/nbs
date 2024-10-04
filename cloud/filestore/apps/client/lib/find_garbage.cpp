@@ -25,6 +25,7 @@ class TFindGarbageCommand final
 {
 private:
     TVector<TString> Shards;
+    ui32 PageSize = 0;
 
 public:
     TFindGarbageCommand()
@@ -32,6 +33,10 @@ public:
         Opts.AddLongOption("shard")
             .RequiredArgument("STR")
             .AppendTo(&Shards);
+
+        Opts.AddLongOption("page-size")
+            .RequiredArgument("STR")
+            .StoreResult(&PageSize);
     }
 
     NProto::TListNodesResponse ListAll(const TString& fsId, ui64 parentId)
@@ -43,7 +48,10 @@ public:
             request->SetFileSystemId(fsId);
             request->SetNodeId(parentId);
             request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
-            // TODO: traverse all pages
+            if (PageSize) {
+                request->SetMaxBytes(PageSize);
+            }
+            request->SetCookie(cookie);
             // TODO: async listing
 
             auto response = WaitFor(Client->ListNodes(

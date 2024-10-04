@@ -416,14 +416,14 @@ def test_multitablet_findgarbage():
         "FollowerFileSystemIds": [shard1_id, shard2_id],
     })
 
-    client.write(fs_id, "/xxx", "--data", data_file)
-    client.write(fs_id, "/xxx1", "--data", data_file)
-    client.write(fs_id, "/xxx2", "--data", data_file)
+    # let's generate multiple "pages" for listing
+    for i in range(100):
+        client.write(fs_id, "/xxx%s" % i, "--data", data_file)
     client.write(shard1_id, "/garbage1_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
     # TODO: teach the client to fetch shard list by itself
-    out += client.find_garbage(fs_id, [shard1_id, shard2_id])
+    out += client.find_garbage(fs_id, [shard1_id, shard2_id], page_size=1024)
 
     client.destroy(fs_id)
     client.destroy(shard1_id)
