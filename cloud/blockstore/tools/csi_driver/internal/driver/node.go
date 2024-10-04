@@ -640,7 +640,20 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	return s.mounter.Mount(req.StagingTargetPath, req.TargetPath, "", mountOptions)
+	err := s.mounter.Mount(req.StagingTargetPath, req.TargetPath, "", mountOptions)
+	if err != nil {
+		return err
+	}
+
+	if mnt != nil && mnt.VolumeMountGroup != "" {
+		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
+				mnt.VolumeMountGroup, req.TargetPath, err, out)
+		}
+	}
+
+	return nil
 }
 
 func (s *nodeService) nodeStageDiskAsFilesystem(
