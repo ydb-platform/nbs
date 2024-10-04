@@ -27,11 +27,11 @@ class ImageFileServer(Daemon):
             service_name=SERVICE_NAME)
 
 
-def _check_file_is_valid(path: Path, expected_image_file_size: str):
+def _check_file_is_valid(path: Path, expected_image_file_size: int):
     if not path.is_file():
         raise RuntimeError(f"Image file path {path} does not exist")
     actual_image_file_size = path.stat().st_size
-    if actual_image_file_size != int(expected_image_file_size):
+    if actual_image_file_size != expected_image_file_size:
         raise RuntimeError(
             f"Image file size {actual_image_file_size} does not match expected"
         )
@@ -41,14 +41,16 @@ class ImageFileServerLauncher:
 
     def __init__(
             self,
-            image_file_path,
-            expected_image_file_size,
-            other_image_file_path="",
-            other_expected_image_file_size=None,
+            image_file_path: str,
+            expected_image_file_size: int | None,
+            other_image_file_path: str = "",
+            other_expected_image_file_size: int | None = None,
     ):
 
         self.__image_file_path = Path(image_file_path)
-        _check_file_is_valid(expected_image_file_size, image_file_path)
+        if expected_image_file_size is not None:
+            _check_file_is_valid(Path(image_file_path), expected_image_file_size)
+        self.__other_image_file_path = ""
         if other_image_file_path != "":
             self.__other_image_file_path = Path(other_image_file_path)
             if other_expected_image_file_size is None:
