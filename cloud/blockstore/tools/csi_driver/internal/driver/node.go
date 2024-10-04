@@ -747,7 +747,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mounter.Mount(req.StagingTargetPath, req.TargetPath, "", mountOptions)
+	return s.mountBlockDevice(req.VolumeId, req.StagingTargetPath, req.TargetPath)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
