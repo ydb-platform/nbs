@@ -1264,6 +1264,24 @@ private:
         const NProto::TDiskRegistryConfig& newConfig) const;
 
     std::optional<ui64> GetDiskBlockCount(const TDiskId& diskId) const;
+
+    NProto::TError ReplaceDeviceWithoutDiskStateUpdate(
+        TDiskRegistryDatabase& db,
+        TDiskState& disk,
+        const TString& diskId,
+        const TString& deviceId,
+        const TString& deviceReplacementId,
+        TInstant timestamp,
+        TString message,
+        bool manual);
+
+    void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+        TDiskRegistryDatabase& db,
+        TDiskState& disk,
+        const TString& diskId,
+        const TString& deviceId,
+        TInstant timestamp,
+        TString reason);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
