@@ -33,14 +33,14 @@ func (m *ydbMetrics) StatCall(
 			"call": name,
 		})
 
-		errorTypes := []string{"TLI", "scheme", "transport", "overloaded",
-			"unavailable", "ratelimiterAcquire", "unknown"}
-
 		// Should initialize all counters before using them, to avoid 'no data'.
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("timeout")
 		successCounter := subRegistry.Counter("success")
 		errorCounters := make(map[string]metrics.Counter)
+
+		errorTypes := []string{"TLI", "scheme", "transport", "overloaded",
+			"unavailable", "ratelimiterAcquire", "unknown"}
 
 		for _, errorType := range errorTypes {
 			registry := subRegistry.WithTags(map[string]string{
