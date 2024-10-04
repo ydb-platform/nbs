@@ -1938,6 +1938,7 @@ func (s *storageYDB) getPoolConfigs(
 
 		select *
 		from configs
+		where capacity > 0
 	`, s.tablesPath,
 	))
 	if err != nil {
