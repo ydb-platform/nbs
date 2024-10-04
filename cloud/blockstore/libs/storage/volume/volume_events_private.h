@@ -192,7 +192,7 @@ struct TEvVolumePrivate
     };
 
     //
-    // MultipartitionWriteOrZeroCompleted & WriteOrZeroCompleted
+    // WriteOrZeroCompleted
     //
 
     struct TWriteOrZeroCompleted
@@ -306,7 +306,6 @@ struct TEvVolumePrivate
         EvRetryStartPartition,
         EvAcquireDiskIfNeeded,
         EvPartStatsSaved,
-        EvMultipartitionWriteOrZeroCompleted,
         EvWriteOrZeroCompleted,
         EvUpdateReadWriteClientInfo,
         EvRemoveExpiredVolumeParams,
@@ -347,11 +346,6 @@ struct TEvVolumePrivate
     using TEvPartStatsSaved = TRequestEvent<
         TPartStatsSaved,
         EvPartStatsSaved
-    >;
-
-    using TEvMultipartitionWriteOrZeroCompleted = TRequestEvent<
-        TMultipartitionWriteOrZeroCompleted,
-        EvMultipartitionWriteOrZeroCompleted
     >;
 
     using TEvWriteOrZeroCompleted = TRequestEvent<
