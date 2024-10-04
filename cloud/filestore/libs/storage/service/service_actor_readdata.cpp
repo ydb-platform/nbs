@@ -141,13 +141,16 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     request->Record.SetOffset(ReadRequest.GetOffset());
     request->Record.SetLength(ReadRequest.GetLength());
 
-    // RequestType is set in order to properly record the request type
-    RequestInfo->CallContext->RequestType = EFileStoreRequest::DescribeData;
+    auto describeCallContext = MakeIntrusive<TCallContext>(
+        RequestInfo->CallContext->FileSystemId,
+        RequestInfo->CallContext->RequestId);
+    describeCallContext->SetRequestStartedCycles(GetCycleCount());
+    describeCallContext->RequestType = EFileStoreRequest::DescribeData;
     InFlightRequest.emplace(
         TRequestInfo(
             RequestInfo->Sender,
             RequestInfo->Cookie,
-            RequestInfo->CallContext),
+            std::move(describeCallContext)),
         ProfileLog,
         MediaKind,
         RequestStats);
@@ -262,9 +265,6 @@ void TReadDataActor::HandleDescribeDataResponse(
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
-    // After the DescribeData response is received, we continue to consider the
-    // request as a ReadData request
-    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     if (FAILED(msg->GetStatus())) {
         ReadData(ctx, FormatError(msg->GetError()));
@@ -292,14 +292,18 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadBlob;
+    auto readBlobCallContext = MakeIntrusive<TCallContext>(
+        RequestInfo->CallContext->FileSystemId,
+        RequestInfo->CallContext->RequestId);
+    readBlobCallContext->SetRequestStartedCycles(GetCycleCount());
+    readBlobCallContext->RequestType = EFileStoreRequest::ReadBlob;
     ui32 blobPieceId = 0;
 
     InFlightRequest.emplace(
         TRequestInfo(
             RequestInfo->Sender,
             RequestInfo->Cookie,
-            RequestInfo->CallContext),
+            std::move(readBlobCallContext)),
         ProfileLog,
         MediaKind,
         RequestStats);
@@ -463,7 +467,6 @@ void TReadDataActor::HandleReadBlobResponse(
     if (RemainingBlobsToRead == 0) {
         InFlightRequest->Complete(ctx.Now(), {});
 
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
         ReplyAndDie(ctx);
     }
 }
@@ -485,7 +488,6 @@ void TReadDataActor::ReadData(
     const TString& fallbackReason)
 {
     ReadDataFallbackEnabled = true;
-    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     LOG_WARN(
         ctx,
