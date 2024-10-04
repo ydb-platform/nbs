@@ -3751,7 +3751,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto headers = service.InitSession(fsId, "client");
 
-        auto error = MakeError(E_FS_INVALID_SESSION, "bad session");
+        auto error = MakeError(E_FAIL);
 
         env.GetRuntime().SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
