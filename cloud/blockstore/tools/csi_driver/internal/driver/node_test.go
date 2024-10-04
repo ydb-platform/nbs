@@ -829,9 +829,13 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskID,
 		StagingTargetPath: "testStagingTargetPath",
-		VolumeCapability:  &csi.VolumeCapability{},
+		VolumeCapability: &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			},
+		},
 	})
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// NodePublishVolume without access mode should fail
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{

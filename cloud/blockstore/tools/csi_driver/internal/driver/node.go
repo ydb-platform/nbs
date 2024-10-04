@@ -154,7 +154,20 @@ func (s *nodeService) NodeStageVolume(
 			"VolumeCapability is missing in NodeStageVolumeRequest")
 	}
 
+	accessMode := req.VolumeCapability.AccessMode
+	if accessMode == nil {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"AccessMode is missing in NodePublishVolumeRequest")
+	}
+
 	nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
+	if !nfsBackend && accessMode.GetMode() ==
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		return nil, s.statusError(
+			codes.InvalidArgument,
+			"ReadWriteMany access mode is supported only with nfs backend")
+	}
 
 	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
