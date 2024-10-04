@@ -85,12 +85,16 @@ public:
         request->Record.SetOffset(BlobRange.Offset);
         request->Record.SetLength(BlobRange.Length);
 
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::GenerateBlobIds;
+        auto genCallContext = MakeIntrusive<TCallContext>(
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
+        genCallContext->SetRequestStartedCycles(GetCycleCount());
+        genCallContext->RequestType = EFileStoreRequest::GenerateBlobIds;
         InFlightRequest.ConstructInPlace(
             TRequestInfo(
                 RequestInfo->Sender,
                 RequestInfo->Cookie,
-                RequestInfo->CallContext),
+                std::move(genCallContext)),
             ProfileLog,
             MediaKind,
             RequestStats);
@@ -148,9 +152,6 @@ private:
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
-        // After the GenerateBlobIds response is received, we continue to consider the
-        // request as a WriteData request
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
 
         if (HasError(msg->GetError())) {
             WriteData(ctx, msg->GetError());
@@ -173,18 +174,23 @@ private:
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = BlobRange.Offset - Range.Offset;
 
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteBlob;
         InFlightBSRequests.reserve(RemainingBlobsToWrite);
         StorageStatusFlags.resize(GenerateBlobIdsResponse.BlobsSize());
         ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
+
+            auto writeBlobCallContext = MakeIntrusive<TCallContext>(
+                RequestInfo->CallContext->FileSystemId,
+                RequestInfo->CallContext->RequestId);
+            writeBlobCallContext->SetRequestStartedCycles(GetCycleCount());
+            writeBlobCallContext->RequestType = EFileStoreRequest::WriteBlob;
             InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
                 TRequestInfo(
                     RequestInfo->Sender,
                     RequestInfo->Cookie,
-                    RequestInfo->CallContext),
+                    std::move(writeBlobCallContext)),
                 ProfileLog,
                 MediaKind,
                 RequestStats));
@@ -265,8 +271,6 @@ private:
 
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
-            RequestInfo->CallContext->RequestType =
-                EFileStoreRequest::WriteData;
             AddData(ctx);
         }
     }
@@ -312,12 +316,16 @@ private:
                 Range.End() - BlobRange.End()));
         }
 
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::AddData;
+        auto addCallContext = MakeIntrusive<TCallContext>(
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
+        addCallContext->SetRequestStartedCycles(GetCycleCount());
+        addCallContext->RequestType = EFileStoreRequest::AddData;
         InFlightRequest.ConstructInPlace(
             TRequestInfo(
                 RequestInfo->Sender,
                 RequestInfo->Cookie,
-                RequestInfo->CallContext),
+                std::move(addCallContext)),
             ProfileLog,
             MediaKind,
             RequestStats);
@@ -346,7 +354,6 @@ private:
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
 
         if (HasError(msg->GetError())) {
             return WriteData(ctx, msg->GetError());
@@ -364,7 +371,6 @@ private:
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
         WriteDataFallbackEnabled = true;
-        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
 
         LOG_WARN(
             ctx,
