@@ -17,6 +17,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/common/env.h>
@@ -158,6 +159,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,   // storageProvider
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
+        CreateTaskQueueStub(),
         CreateLoggingService("console"),
         nullptr,    // rdmaServer
         nullptr);   // nvmeManager
@@ -348,6 +350,7 @@ struct TFiles
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
@@ -521,6 +524,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             }),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
@@ -734,6 +738,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     }),
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
+                    CreateTaskQueueStub(),
                     CreateLoggingService("console"),
                     nullptr,    // rdmaServer
                     NvmeManager);
@@ -801,6 +806,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             std::make_shared<TTestNvmeManager>());
@@ -1221,6 +1227,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
@@ -1379,6 +1386,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
@@ -1459,6 +1467,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
+            CreateTaskQueueStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager);
@@ -1539,6 +1548,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 std::make_shared<TTestStorageProvider>(storageState),
                 CreateProfileLogStub(),
                 CreateBlockDigestGeneratorStub(),
+                CreateTaskQueueStub(),
                 CreateLoggingService("console"),
                 nullptr,    // rdmaServer
                 NvmeManager);

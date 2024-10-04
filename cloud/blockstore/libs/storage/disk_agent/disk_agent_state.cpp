@@ -23,6 +23,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -245,6 +246,7 @@ TDiskAgentState::TDiskAgentState(
         IStorageProviderPtr storageProvider,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        ITaskQueuePtr backgroundTaskQueue,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager)
@@ -256,6 +258,7 @@ TDiskAgentState::TDiskAgentState(
     , StorageProvider(std::move(storageProvider))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BackgroundTaskQueue(std::move(backgroundTaskQueue))
     , Logging(std::move(logging))
     , Log(Logging->CreateLog("BLOCKSTORE_DISK_AGENT"))
     , RdmaServer(std::move(rdmaServer))
@@ -729,23 +732,31 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
         {} // no data buffer
     );
 
-    return result.Apply(
-        [] (auto future) {
+    auto promise = NewPromise<NProto::TChecksumDeviceBlocksResponse>();
+    result.Subscribe(
+        [taskQueue = BackgroundTaskQueue, promise](auto future) mutable
+        {
             auto data = future.ExtractValue();
-            NProto::TChecksumDeviceBlocksResponse response;
 
             if (HasError(data.GetError())) {
+                NProto::TChecksumDeviceBlocksResponse response;
                 *response.MutableError() = data.GetError();
-            } else {
-                TBlockChecksum checksum;
-                for (const auto& buffer : data.GetBlocks().GetBuffers()) {
-                    checksum.Extend(buffer.Data(), buffer.Size());
-                }
-                response.SetChecksum(checksum.GetValue());
+                promise.SetValue(std::move(response));
+                return;
             }
-
-            return response;
+            taskQueue->Execute(
+                [promise, data = std::move(data)]() mutable
+                {
+                    NProto::TChecksumDeviceBlocksResponse response;
+                    TBlockChecksum checksum;
+                    for (const auto& buffer: data.GetBlocks().GetBuffers()) {
+                        checksum.Extend(buffer.Data(), buffer.Size());
+                    }
+                    response.SetChecksum(checksum.GetValue());
+                    promise.SetValue(std::move(response));
+                });
         });
+    return promise.GetFuture();
 }
 
 void TDiskAgentState::CheckIOTimeouts(TInstant now)

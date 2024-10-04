@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 
+#include <cloud/storage/core/libs/common/public.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,6 +25,7 @@ NActors::IActorPtr CreateDiskAgent(
     IStorageProviderPtr storageProvider,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
+    ITaskQueuePtr backgroundTaskQueue,
     ILoggingServicePtr logging,
     NRdma::IServerPtr rdmaServer,
     NNvme::INvmeManagerPtr nvmeManager);

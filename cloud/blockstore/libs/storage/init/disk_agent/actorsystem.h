@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/public.h>
 
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
@@ -43,6 +44,8 @@ struct TDiskAgentActorSystemArgs
     IStorageProviderPtr AioStorageProvider;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
+    ITaskQueuePtr BackgroundThreadPool;
+
     NRdma::IServerPtr RdmaServer;
     NNvme::INvmeManagerPtr NvmeManager;
 };

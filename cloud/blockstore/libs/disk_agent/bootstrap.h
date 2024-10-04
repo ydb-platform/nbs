@@ -11,6 +11,8 @@
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/http/simple_http_server.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
@@ -64,6 +66,7 @@ private:
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
+    ITaskQueuePtr BackgroundThreadPool;
     IFileIOServiceProviderPtr FileIOServiceProvider;
     NSpdk::ISpdkEnvPtr Spdk;
     std::function<void(TLog& log)> SpdkLogInitializer;

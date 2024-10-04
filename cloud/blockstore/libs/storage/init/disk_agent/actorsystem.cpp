@@ -35,8 +35,8 @@ private:
     const TDiskAgentActorSystemArgs Args;
 
 public:
-    TStorageServicesInitializer(const TDiskAgentActorSystemArgs& args)
-        : Args(args)
+    explicit TStorageServicesInitializer(TDiskAgentActorSystemArgs args)
+        : Args(std::move(args))
     {}
 
     void InitializeServices(
@@ -108,6 +108,7 @@ public:
                 Args.AioStorageProvider,
                 Args.ProfileLog,
                 Args.BlockDigestGenerator,
+                Args.BackgroundThreadPool,
                 Args.Logging,
                 Args.RdmaServer,
                 Args.NvmeManager);

@@ -27,6 +27,7 @@ TDiskAgentActor::TDiskAgentActor(
         IStorageProviderPtr storageProvider,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        ITaskQueuePtr backgroundTaskQueue,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager)
@@ -38,6 +39,7 @@ TDiskAgentActor::TDiskAgentActor(
     , StorageProvider(std::move(storageProvider))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BackgroundTaskQueue(std::move(backgroundTaskQueue))
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))

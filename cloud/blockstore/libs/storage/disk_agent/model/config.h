@@ -113,6 +113,7 @@ public:
     bool GetDisableNodeBrokerRegisterationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;
+    ui32 GetBackgroundThreadPoolSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
