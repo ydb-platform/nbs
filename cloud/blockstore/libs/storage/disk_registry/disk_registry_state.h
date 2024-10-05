@@ -352,12 +352,16 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
-    NProto::TError RegisterAgent(
+    struct TAgentRegistrationResult
+    {
+        TVector<TDiskId> AffectedDisks;
+        TVector<TDiskId> DisksToReallocate;
+    };
+
+    auto RegisterAgent(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig config,
-        TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TInstant timestamp) -> TResultOrError<TAgentRegistrationResult>;
 
     NProto::TError UnregisterAgent(
         TDiskRegistryDatabase& db,
