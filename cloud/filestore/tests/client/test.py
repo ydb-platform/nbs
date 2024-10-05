@@ -376,6 +376,11 @@ def test_multitablet_findgarbage():
     with open(data_file, "w") as f:
         f.write("some data")
 
+    big_data_file = os.path.join(common.output_path(), "big_data.txt")
+    with open(big_data_file, "w") as f:
+        for i in range(1024):
+            f.write("some big data %s\n" % i)
+
     fs_id = "fs0"
     shard1_id = fs_id + "-shard1"
     shard2_id = fs_id + "-shard2"
@@ -422,6 +427,7 @@ def test_multitablet_findgarbage():
     client.write(shard1_id, "/garbage1_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
+    client.write(shard2_id, "/garbage2_3", "--data", big_data_file)
     # TODO: teach the client to fetch shard list by itself
     out += client.find_garbage(fs_id, [shard1_id, shard2_id], page_size=1024)
 

@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <sys/stat.h>
 
 namespace NCloud::NFileStore::NClient {
@@ -35,7 +37,7 @@ public:
             .AppendTo(&Shards);
 
         Opts.AddLongOption("page-size")
-            .RequiredArgument("STR")
+            .RequiredArgument("NUM")
             .StoreResult(&PageSize);
     }
 
@@ -103,7 +105,10 @@ public:
         }
     }
 
-    bool Exists(const TString& fsId, ui64 parentId, const TString& name)
+    TMaybe<NProto::TNodeAttr> Stat(
+        const TString& fsId,
+        ui64 parentId,
+        const TString& name)
     {
         auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
         request->SetFileSystemId(fsId);
@@ -115,7 +120,7 @@ public:
             std::move(request)));
 
         if (response.GetError().GetCode() == E_FS_NOENT) {
-            return false;
+            return {};
         }
 
         Y_ENSURE_EX(
@@ -123,7 +128,7 @@ public:
             yexception() << "GetNodeAttr error: "
                 << FormatError(response.GetError()));
 
-        return true;
+        return std::move(*response.MutableNode());
     }
 
     bool Execute() override
@@ -146,14 +151,42 @@ public:
             followerNames.insert(node.FollowerNodeName);
         }
 
+        struct TResult
+        {
+            TString Shard;
+            TString Name;
+            ui64 Size = 0;
+
+            bool operator<(const TResult& rhs) const
+            {
+                const auto s = Max<ui64>() - Size;
+                const auto rs = Max<ui64>() - rhs.Size;
+                return std::tie(Shard, s, Name)
+                    < std::tie(rhs.Shard, rs, rhs.Name);
+            }
+        };
+
+        TVector<TResult> results;
+
         for (const auto& [shard, nodes]: shard2Nodes) {
             for (const auto& node: nodes) {
                 if (!followerNames.contains(node.Name)) {
-                    if (Exists(shard, RootNodeId, node.Name)) {
-                        Cout << shard << "\t" << node.Name << "\n";
+                    auto stat = Stat(shard, RootNodeId, node.Name);
+
+                    if (stat) {
+                        results.push_back({shard, node.Name, stat->GetSize()});
                     }
                 }
             }
+        }
+
+        Sort(results.begin(), results.end());
+        for (const auto& result: results) {
+            Cout << result.Shard
+                << "\t" << result.Name
+                << "\t" << FormatByteSize(result.Size)
+                << " (" << result.Size << ")"
+                << "\n";
         }
 
         return true;
