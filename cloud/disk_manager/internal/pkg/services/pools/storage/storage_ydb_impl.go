@@ -1937,7 +1937,7 @@ func (s *storageYDB) getPoolConfigs(
 		pragma TablePathPrefix = "%v";
 
 		select *
-		from configs 
+		from configs
 	`, s.tablesPath,
 	))
 	if err != nil {
