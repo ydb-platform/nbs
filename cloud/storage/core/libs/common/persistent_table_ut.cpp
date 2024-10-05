@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
+#include <util/random/random.h>
 
 #include <iterator>
 
@@ -21,6 +22,98 @@ struct TRecord
 {
     ui64 Index;
     ui64 Val;
+};
+
+struct TReferenceImplementation
+{
+    ui32 MaxTableSize;
+    ui32 NextFreeRecord;
+    TList<ui64> FreeRecords;
+    TMap<ui64, ui64> Records;
+
+    TReferenceImplementation(ui32 tableSize)
+        : MaxTableSize(tableSize)
+        , NextFreeRecord(0)
+    {}
+
+    size_t CountRecords()
+    {
+        return Records.size();
+    }
+
+    ui64 AllocRecord()
+    {
+        if (!FreeRecords.empty()) {
+            return FreeRecords.front();
+        }
+
+        if (NextFreeRecord < MaxTableSize) {
+            return NextFreeRecord;
+        }
+
+        return TPersistentTable<THeader, TRecord>::InvalidIndex;
+    }
+
+    void CommitRecord(ui64 index, ui64 val)
+    {
+        Records[index] = val;
+        if (auto count = FreeRecords.remove(index); count > 0) {
+            UNIT_ASSERT_VALUES_EQUAL(1, count);
+            return;
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(NextFreeRecord, index);
+        NextFreeRecord++;
+    }
+
+    void DeleteRecord(ui64 index)
+    {
+        auto count = Records.erase(index);
+        UNIT_ASSERT_VALUES_EQUAL(1, count);
+
+        if (index + 1 == NextFreeRecord) {
+            NextFreeRecord--;
+            return;
+        }
+
+        FreeRecords.push_back(index);
+    }
+
+    ui64 RecordVal(ui64 index)
+    {
+        auto it = Records.find(index);
+        UNIT_ASSERT_C(it != Records.end(), "index " << index << " not found");
+
+        return it->second;
+    }
+
+    ui64 SomeRecord()
+    {
+        auto count = RandomNumber(Records.size());
+        for (auto& [index, _]: Records) {
+            if (count > 0) {
+                count--;
+                continue;
+            }
+            return index;
+        }
+
+        return Records.begin()->second;
+    }
+
+    void CompactRecords()
+    {
+        ui64 index = 0;
+        TMap<ui64, ui64> newRecords;
+        for (auto& [_, val]: Records) {
+            newRecords[index] = val;
+            index++;
+        }
+
+        Records = std::move(newRecords);
+        NextFreeRecord = index;
+        FreeRecords.clear();
+    }
 };
 
 }   // namespace
@@ -165,6 +258,95 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
                 UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
             }
             UNIT_ASSERT_VALUES_EQUAL(index, recordValues.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCountRecords)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+
+        auto tableSize = 32;
+
+        {
+            TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
+            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
+
+            for (auto i = 0; i < tableSize; i++) {
+                auto index = table.AllocRecord();
+                UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
+                UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
+            }
+
+            ui32 deletedRecords = 0;
+            for (auto i = 0; i < tableSize; i++) {
+                if (i % 2 == 0) {
+                    deletedRecords++;
+                    table.DeleteRecord(i);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        table.CountRecords(),
+                        tableSize - deletedRecords);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(RandomizedAllocDeleteRestore)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+
+        const ui32 tableSize = 100;
+        const ui32 testRecords = 1000;
+        const double restoreProbability = 0.05;
+
+        std::unique_ptr<TPersistentTable<THeader, TRecord>> table;
+        TReferenceImplementation ri(tableSize);
+
+        auto restore = [&]()
+        {
+            table = std::make_unique<TPersistentTable<THeader, TRecord>>(
+                tablePath,
+                tableSize);
+            ri.CompactRecords();
+        };
+
+        restore();
+
+        ui32 remainingRecords = testRecords;
+        while (remainingRecords || ri.CountRecords()) {
+            const bool shouldAlloc = remainingRecords && RandomNumber<bool>();
+            // Cerr << "remainingRecords=" << remainingRecords
+            //      << ", shouldAlloc=" << shouldAlloc << Endl;
+            if (shouldAlloc) {
+                auto index = table->AllocRecord();
+                UNIT_ASSERT_VALUES_EQUAL(index, ri.AllocRecord());
+                if (index != TPersistentTable<THeader, TRecord>::InvalidIndex) {
+                    remainingRecords--;
+                    auto *record = table->RecordData(index);
+                    record->Val = RandomNumber<ui64>();
+                    ri.CommitRecord(index, record->Val);
+                    table->CommitRecord(index);
+                    // Cerr << "commit index=" << index
+                    //      << " ,value=" << record->Val << Endl;
+                }
+            } else {
+                if (ri.CountRecords()) {
+                    auto index = ri.SomeRecord();
+                    auto* record = table->RecordData(index);
+                    UNIT_ASSERT_VALUES_EQUAL(record->Val, ri.RecordVal(index));
+                    ri.DeleteRecord(index);
+                    table->DeleteRecord(index);
+                    // Cerr << "delete index=" << index << Endl;
+                }
+            }
+
+            if (RandomNumber<double>() < restoreProbability) {
+                // Cerr << "restore" << Endl;
+                restore();
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(ri.CountRecords(), table->CountRecords());
         }
     }
 }

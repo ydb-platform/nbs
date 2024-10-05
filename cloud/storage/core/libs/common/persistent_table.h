@@ -17,8 +17,11 @@ template <typename H, typename R>
 class TPersistentTable
 {
 private:
+    static constexpr ui32 VERSION = 1;
+
     struct THeader
     {
+        ui32 Version = 0;
         size_t HeaderSize = 0;
         size_t RecordSize = 0;
         size_t RecordCount = 0;
@@ -145,21 +148,34 @@ public:
         FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
         FileMap->Map(0, sizeof(THeader));
 
-        auto* header = static_cast<THeader*>(FileMap->Ptr());
+        auto* header = reinterpret_cast<THeader*>(FileMap->Ptr());
         if (header->RecordCount == 0) {
+            header->Version = VERSION;
             header->RecordCount = RecordCount;
             header->HeaderSize = sizeof(THeader);
             header->RecordSize = sizeof(TRecord);
         }
 
-        Y_ABORT_UNLESS(header->HeaderSize == sizeof(THeader));
-        Y_ABORT_UNLESS(header->RecordSize == sizeof(TRecord));
+        Y_ABORT_UNLESS(
+            header->Version == VERSION,
+            "Invalid header version %d",
+            header->Version);
+        Y_ABORT_UNLESS(
+            header->HeaderSize == sizeof(THeader),
+            "Invalid header size %lu != %lu",
+            header->HeaderSize,
+            sizeof(THeader));
+        Y_ABORT_UNLESS(
+            header->RecordSize == sizeof(TRecord),
+            "Invalid record size %lu != %lu",
+            header->RecordSize,
+            sizeof(TRecord));
 
         RecordCount = header->RecordCount;
 
         FileMap->ResizeAndRemap(0, CalcFileSize(RecordCount));
-        HeaderPtr = static_cast<THeader*>(FileMap->Ptr());
-        RecordsPtr = static_cast<TRecord*>((void*)(HeaderPtr + 1));
+        HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
+        RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
 
         CompactRecords();
     }
@@ -200,8 +216,9 @@ public:
 
     void DeleteRecord(ui64 index)
     {
-        Y_ABORT_UNLESS(index < RecordCount);
+        Y_ABORT_UNLESS(index < RecordCount, "%lu < %lu", index, RecordCount);
         RecordsPtr[index].State = ERecordState::Free;
+
         if (index + 1 == NextFreeRecord) {
             NextFreeRecord--;
         } else {
@@ -211,7 +228,7 @@ public:
 
     size_t CountRecords()
     {
-        return std::distance(begin(), end());
+        return NextFreeRecord - FreeRecords.size();
     }
 
 private:
