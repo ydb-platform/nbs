@@ -1937,8 +1937,7 @@ func (s *storageYDB) getPoolConfigs(
 		pragma TablePathPrefix = "%v";
 
 		select *
-		from configs
-		where capacity > 0
+		from configs 
 	`, s.tablesPath,
 	))
 	if err != nil {
@@ -1975,6 +1974,44 @@ func (s *storageYDB) getPoolConfigs(
 
 	for _, config := range m {
 		configs = append(configs, *config)
+	}
+
+	return configs, nil
+}
+
+func (s *storageYDB) getPoolConfigsForActiveImages(
+	ctx context.Context,
+	session *persistence.Session,
+) (configs []poolConfig, err error) {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select *
+		from configs 
+		where capacity > 0
+	`, s.tablesPath,
+	))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			config, err := scanPoolConfig(res)
+			if err != nil {
+				return nil, err
+			}
+			configs = append(configs, config)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
 	}
 
 	return configs, nil
@@ -2182,7 +2219,7 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 
 	defer s.metrics.StatCall("takeBaseDisksToSchedule")(&err)
 
-	configs, err := s.getPoolConfigs(ctx, session)
+	configs, err := s.getPoolConfigsForActiveImages(ctx, session)
 	if err != nil {
 		return nil, err
 	}
