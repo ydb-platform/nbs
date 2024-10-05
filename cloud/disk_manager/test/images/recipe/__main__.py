@@ -113,7 +113,6 @@ def start(argv):
         )
         ubuntu1804_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_FILE_SERVER_PORT", str(ubuntu1804_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_FILE_SIZE", "332595200")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_SIZE", "2361393152")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_CRC32", "2577917554")
@@ -129,7 +128,6 @@ def start(argv):
         )
         ubuntu1604_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(ubuntu1604_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_FILE_SIZE", "1902575616")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_SIZE", "15246295040")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_CRC32", "1189208160")
@@ -145,7 +143,6 @@ def start(argv):
         )
         ubuntu2204_vmdk_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_FILE_SERVER_PORT", str(ubuntu2204_vmdk_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_FILE_SIZE", "667248128")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_SIZE", "10737418240")
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_CRC32", "3896929631")
@@ -162,7 +159,6 @@ def start(argv):
         )
         windows_vmdk_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT", str(windows_vmdk_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SIZE", "1354152960")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE", "8589934592")
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32", "2831814743")

@@ -27,13 +27,12 @@ class ImageFileServer(Daemon):
             service_name=SERVICE_NAME)
 
 
-def _check_file_is_valid(path: Path, expected_image_file_size: int):
-    if not path.is_file():
-        raise RuntimeError(f"Image file path {path} does not exist")
-    actual_image_file_size = path.stat().st_size
+def _validate_file(path: str, expected_image_file_size: int):
+    actual_image_file_size = Path(path).stat().st_size
     if actual_image_file_size != expected_image_file_size:
         raise RuntimeError(
-            f"Image file size {actual_image_file_size} does not match expected"
+            f"Image file size {actual_image_file_size} does not "
+            f"match expected {expected_image_file_size}, path: {path}"
         )
 
 
@@ -46,18 +45,13 @@ class ImageFileServerLauncher:
             other_image_file_path: str = "",
             other_expected_image_file_size: int | None = None,
     ):
-
-        self.__image_file_path = Path(image_file_path)
+        self.__image_file_path = image_file_path
         if expected_image_file_size is not None:
-            _check_file_is_valid(Path(image_file_path), expected_image_file_size)
+            _validate_file(image_file_path, expected_image_file_size)
         self.__other_image_file_path = ""
         if other_image_file_path != "":
-            self.__other_image_file_path = Path(other_image_file_path)
-            if other_expected_image_file_size is None:
-                raise RuntimeError(
-                    "other_expected_image_file_size can not be None if other_image_file_path is present"
-                )
-            _check_file_is_valid(self.__other_image_file_path, other_expected_image_file_size)
+            self.__other_image_file_path = other_image_file_path
+            _validate_file(self.__other_image_file_path, other_expected_image_file_size)
 
         self.__port_manager = yatest_common.PortManager()
         self.__port = self.__port_manager.get_port()
@@ -71,8 +65,8 @@ class ImageFileServerLauncher:
         self.__daemon = ImageFileServer(
             self.__port,
             working_dir,
-            str(self.__image_file_path),
-            str(self.__other_image_file_path))
+            self.__image_file_path,
+            self.__other_image_file_path)
 
     def start(self):
         self.__daemon.start()
