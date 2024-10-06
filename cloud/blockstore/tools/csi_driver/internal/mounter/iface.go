@@ -9,4 +9,7 @@ type Interface interface {
 
 	IsFilesystemExisted(device string) (bool, error)
 	MakeFilesystem(device string, fsType string) ([]byte, error)
+
+	NeedResize(devicePath string, deviceMountPath string) (bool, error)
+	Resize(devicePath, deviceMountPath string) (bool, error)
 }
