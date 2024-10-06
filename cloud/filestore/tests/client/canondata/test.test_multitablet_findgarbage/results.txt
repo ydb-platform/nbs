@@ -1,6 +1,7 @@
 {}
 {}
 {}
-fs0-shard1	garbage1_1
-fs0-shard2	garbage2_1
-fs0-shard2	garbage2_2
+fs0-shard1	garbage1_1	9 B (9)
+fs0-shard2	garbage2_3	17.92 KiB (18346)
+fs0-shard2	garbage2_1	9 B (9)
+fs0-shard2	garbage2_2	9 B (9)
