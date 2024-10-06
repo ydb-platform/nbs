@@ -261,6 +261,80 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldResumeAbortedCompaction)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+        auto getTableHeader = [](auto& table) {
+            auto *userHeader = table.HeaderData();
+            auto* tableHeader = reinterpret_cast<TTable::THeader*>(
+                reinterpret_cast<char*>(userHeader) -
+                offsetof(TTable::THeader, Data));
+            return tableHeader;
+        };
+
+        TVector<ui64> recordValues = {1, 344, 67, 68, 56};
+        {
+            TTable table(tablePath, 32);
+            for (auto& data: recordValues) {
+                auto index = table.AllocRecord();
+                table.RecordData(index)->Index = index;
+                table.RecordData(index)->Val = data;
+                table.CommitRecord(index);
+            }
+
+            auto* tableHeader = getTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordDstIndex);
+
+            // compaction copied entry 3 to 1 but restarted before setting
+            // CompactedRecordSrcIndex/CompactedRecordDstIndex to InvalidIndex
+            tableHeader->CompactedRecordSrcIndex = 3;
+            tableHeader->CompactedRecordDstIndex = 1;
+            table.DeleteRecord(tableHeader->CompactedRecordSrcIndex);
+
+            recordValues[tableHeader->CompactedRecordDstIndex] =
+                recordValues[tableHeader->CompactedRecordSrcIndex];
+            recordValues.erase(recordValues.begin() + tableHeader->CompactedRecordSrcIndex);
+        }
+
+        {
+            TTable table(tablePath, 32);
+            ui64 index = 0;
+            for (auto it = table.begin(); it != table.end(); index++, it++) {
+                UNIT_ASSERT_LT(index, recordValues.size());
+                UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
+                UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(index, recordValues.size());
+
+            auto* tableHeader = getTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordDstIndex);
+
+            // compaction started setting the compacted indexes but restarted before coping the data
+            tableHeader->CompactedRecordSrcIndex = 23;
+            tableHeader->CompactedRecordDstIndex = TTable::InvalidIndex;
+        }
+
+        {
+            TTable table(tablePath, 32);
+            ui64 index = 0;
+            for (auto it = table.begin(); it != table.end(); index++, it++) {
+                UNIT_ASSERT_LT(index, recordValues.size());
+                UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
+                UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(index, recordValues.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCountRecords)
     {
         TTempDir dir;

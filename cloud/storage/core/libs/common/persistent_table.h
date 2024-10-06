@@ -16,8 +16,23 @@ namespace NCloud {
 template <typename H, typename R>
 class TPersistentTable
 {
+public:
+    struct THeader;
+    struct TRecord;
+
 private:
-    static constexpr ui32 VERSION = 1;
+    TString FileName;
+    size_t RecordCount = 0;
+    size_t NextFreeRecord = 0;
+
+    std::unique_ptr<TFileMap> FileMap;
+    TList<ui64> FreeRecords;
+    THeader* HeaderPtr = nullptr;
+    TRecord* RecordsPtr = nullptr;
+
+public:
+    static constexpr ui64 InvalidIndex = -1;
+    static constexpr ui32 Version = 1;
 
     struct THeader
     {
@@ -25,6 +40,11 @@ private:
         size_t HeaderSize = 0;
         size_t RecordSize = 0;
         size_t RecordCount = 0;
+
+        // indexes used during compaction
+        ui64 CompactedRecordSrcIndex = InvalidIndex;
+        ui64 CompactedRecordDstIndex = InvalidIndex;
+
         H Data;
     };
 
@@ -40,18 +60,6 @@ private:
         R Data;
         ERecordState State = ERecordState::Free;
     };
-
-    TString FileName;
-    size_t RecordCount = 0;
-    size_t NextFreeRecord = 0;
-
-    std::unique_ptr<TFileMap> FileMap;
-    TList<ui64> FreeRecords;
-    THeader* HeaderPtr = nullptr;
-    TRecord* RecordsPtr = nullptr;
-
-public:
-    static constexpr ui64 InvalidIndex = -1;
 
     class TIterator
     {
@@ -150,14 +158,16 @@ public:
 
         auto* header = reinterpret_cast<THeader*>(FileMap->Ptr());
         if (header->RecordCount == 0) {
-            header->Version = VERSION;
+            header->Version = Version;
             header->RecordCount = RecordCount;
             header->HeaderSize = sizeof(THeader);
             header->RecordSize = sizeof(TRecord);
+            header->CompactedRecordSrcIndex = InvalidIndex;
+            header->CompactedRecordDstIndex = InvalidIndex;
         }
 
         Y_ABORT_UNLESS(
-            header->Version == VERSION,
+            header->Version == Version,
             "Invalid header version %d",
             header->Version);
         Y_ABORT_UNLESS(
@@ -242,6 +252,9 @@ private:
         ui64 writeRecordIndex = 0;
         ui64 readRecordIndex = 0;
 
+        // try to complete last record compaction if it was interrupted
+        FinishCompactRecord();
+
         while (readRecordIndex < RecordCount) {
             if (RecordsPtr[readRecordIndex].State != ERecordState::Stored) {
                 readRecordIndex++;
@@ -249,17 +262,58 @@ private:
             }
 
             if (writeRecordIndex != readRecordIndex) {
-                std::memcpy(
-                    &RecordsPtr[writeRecordIndex],
-                    &RecordsPtr[readRecordIndex],
-                    sizeof(TRecord));
-                RecordsPtr[readRecordIndex].State = ERecordState::Free;
+                PrepareCompactRecord(readRecordIndex, writeRecordIndex);
+                FinishCompactRecord();
             }
             writeRecordIndex++;
             readRecordIndex++;
         }
 
         NextFreeRecord = writeRecordIndex;
+    }
+
+    void PrepareCompactRecord(ui64 srcIndex, ui64 dstIndex)
+    {
+        // set compacted indexes atomically (64bit memory assigment)
+        // if we restart during the copy we can retry the copy until we succeed
+        // and set at least one of the indexes to InvalidIndex value
+        HeaderPtr->CompactedRecordSrcIndex = srcIndex;
+        HeaderPtr->CompactedRecordDstIndex = dstIndex;
+    }
+
+    void FinishCompactRecord()
+    {
+        if (HeaderPtr->CompactedRecordSrcIndex == InvalidIndex ||
+            HeaderPtr->CompactedRecordDstIndex == InvalidIndex) {
+            // Prepare phase didn't finish and none of the records were moved
+            HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
+            HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            HeaderPtr->CompactedRecordSrcIndex < RecordCount,
+            "Invalid CompactedRecordSrcIndex %lu",
+            HeaderPtr->CompactedRecordSrcIndex);
+        Y_ABORT_UNLESS(
+            HeaderPtr->CompactedRecordDstIndex < RecordCount,
+            "Invalid CompactedRecordDstIndex %lu",
+            HeaderPtr->CompactedRecordDstIndex);
+
+        std::memcpy(
+            &RecordsPtr[HeaderPtr->CompactedRecordDstIndex],
+            &RecordsPtr[HeaderPtr->CompactedRecordSrcIndex],
+            sizeof(TRecord));
+
+        RecordsPtr[HeaderPtr->CompactedRecordSrcIndex].State =
+            ERecordState::Free;
+        RecordsPtr[HeaderPtr->CompactedRecordDstIndex].State =
+            ERecordState::Stored;
+
+        // setting one of the indexes to InvalidIndex marks the completion of
+        // record compaction
+        HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
+        HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
     }
 };
 
