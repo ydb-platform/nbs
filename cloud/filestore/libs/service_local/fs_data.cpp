@@ -32,6 +32,9 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     }
 
     int flags = HandleFlagsToSystem(request.GetFlags());
+    if (!Config->GetDirectIoEnabled()) {
+        flags &= ~O_DIRECT;
+    }
     const int mode = request.GetMode()
         ? request.GetMode() : Config->GetDefaultPermissions();
 
