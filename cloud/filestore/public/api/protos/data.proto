@@ -27,11 +27,11 @@ message TCreateHandleRequest
         E_NOFOLLOW = 9;
         E_NONBLOCK = 10;
         E_PATH = 11;
+        E_DIRECT = 12;
 
         // TODO: these flags have no meaning or only useful for the local svc
         // E_ASYNC
         // E_CLOEXEC
-        // E_DIRECT
         // E_DSYNC
         // E_LARGEFILE
         // E_NOCTTY

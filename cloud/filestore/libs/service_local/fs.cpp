@@ -24,6 +24,11 @@ TLocalFileSystem::TLocalFileSystem(
 {
     Log = Logging->CreateLog(Store.GetFileSystemId());
 
+    STORAGE_INFO(
+        "LocalFileSystemId=" << Store.GetFileSystemId() <<
+        ", DirectIoEnabled=" << Config->GetDirectIoEnabled() <<
+        ", DirectIoAlign=" << Config->GetDirectIoAlign());
+
     Index = std::make_shared<TLocalIndex>(
         Root,
         StatePath,
