@@ -83,7 +83,7 @@ type runnerForRun struct {
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
-	maxSampledTaskGeneration              uint64
+	maxSampledTaskGeneration          uint64
 }
 
 func (r *runnerForRun) receiveTask(
@@ -340,7 +340,7 @@ type runnerForCancel struct {
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
-	maxSampledTaskGeneration              uint64
+	maxSampledTaskGeneration          uint64
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -679,7 +679,7 @@ func startRunner(
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
-		maxSampledTaskGeneration:              maxSampledTaskGeneration,
+		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
 
 	runnerForCancelMetrics := newRunnerMetrics(
@@ -701,7 +701,7 @@ func startRunner(
 
 		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
-		maxSampledTaskGeneration:              maxSampledTaskGeneration,
+		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
 
 	return nil
