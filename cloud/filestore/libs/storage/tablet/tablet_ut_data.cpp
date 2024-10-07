@@ -6430,7 +6430,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
-        const ui32 compactionThreshold = 5;
+        const auto sanitizerType = GetEnv("SANITIZER_TYPE");
+        const THashSet<TString> slowSanitizers({"thread"});
+        const ui32 compactionThreshold =
+            slowSanitizers.contains(sanitizerType) ? 2 : 5;
         storageConfig.SetCompactionThreshold(compactionThreshold);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetLoadedCompactionRangesPerTx(2);
@@ -6458,14 +6461,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // compaction ranges
         const ui32 nodeCount = 14;
         TVector<ui64> nodes(nodeCount);
-        const ui32 collisions = 10;
+        const ui32 collisions = 2 * compactionThreshold;
         TVector<ui32> collidingBlocks;
         for (ui32 i = 0; i < collisions; ++i) {
             // see TBlockLocalityHasher implementation
             collidingBlocks.push_back(i * (BlockGroupSize << 16));
         }
 
-        // should be 140 x 64 x 4KiB == 35MiB
+        // should be 140 x 64 x 4KiB == 35MiB for builds without slow sanitizers
         const auto expectedBlockCount = nodeCount * collisions * BlockGroupSize;
         const auto expectedBlobCount = static_cast<ui32>(ceil(
             static_cast<double>(expectedBlockCount) / (4_MB / block)));
