@@ -28,7 +28,7 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         .SchemeShardDir = Config->GetSchemeShardDir(),
         .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
     });
-    StorageSSProxyActor = NCloud::Register(ctx, std::move(actor));
+    StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +38,7 @@ bool TSSProxyActor::HandleRequests(STFUNC_SIG)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
         HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
+        HFunc(TEvStorageSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
 
         FILESTORE_SS_PROXY_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvSSProxy)
 
@@ -61,14 +62,21 @@ void TSSProxyActor::HandleDescribeScheme(
     const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ctx.Send(ev->Forward(StorageSSProxyActor));
+    ctx.Send(ev->Forward(StorageSSProxy));
 }
 
 void TSSProxyActor::HandleModifyScheme(
     const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ctx.Send(ev->Forward(StorageSSProxyActor));
+    ctx.Send(ev->Forward(StorageSSProxy));
+}
+
+void TSSProxyActor::HandleBackupPathDescriptions(
+    const TEvStorageSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(ev->Forward(StorageSSProxy));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

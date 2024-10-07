@@ -431,4 +431,7 @@ message TStorageConfig
     // Server will reject all requests to destroy filestores in the provided
     // list
     repeated string DestroyFilestoreDenyList = 396;
+
+    // In fallback mode, all requests to SchemeShard are served from backup.
+    optional bool SSProxyFallbackMode = 397;
 }
