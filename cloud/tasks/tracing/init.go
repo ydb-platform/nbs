@@ -71,10 +71,9 @@ func newTraceExporter(
 
 func newParentBasedSampler() sdktrace.Sampler {
 	rootSampler := newSampler()
-	// If a parent span is not sampled, then
-	// the child span will not be sampled also.
-	// If a parent span is sampled, then
-	// the rootSampler is used to make sampling decision about the child span.
+	// If a parent span is not sampled, then the child span will not be sampled
+	// also. If a parent span is sampled, then the rootSampler is used to make
+	// sampling decision about the child span.
 	return sdktrace.ParentBased(
 		rootSampler,
 		sdktrace.WithLocalParentSampled(rootSampler),
