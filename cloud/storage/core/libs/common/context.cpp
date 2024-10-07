@@ -86,6 +86,7 @@ void TCallContextBase::Postpone(ui64 nowCycles)
     Y_DEBUG_ABORT_UNLESS(
         AtomicGet(PostponeTsCycles) == 0,
         "Request was not advanced.");
+    Y_DEBUG_ABORT_UNLESS(nowCycles > 0);
     AtomicSet(PostponeTsCycles, nowCycles);
 }
 

@@ -272,7 +272,7 @@ struct TEvService
     static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
         "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
 
-    FILESTORE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
+    FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 
     using TEvRegisterLocalFileStoreRequest = TRequestEvent<
         TRegisterLocalFileStore,

@@ -148,15 +148,21 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
             return;
         }
 
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node unlinking failed for %s, %s with error %s"
+        const auto message = Sprintf(
+            "Follower node unlinking failed for %s, %s with error %s"
             ", will not retry",
-            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        ReportReceivedNodeOpErrorFromFollower(message);
 
         ReplyAndDie(ctx, msg->GetError());
         return;
@@ -239,20 +245,24 @@ void TIndexTabletActor::HandleUnlinkNode(
         return;
     }
 
-    auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
-    if (!session) {
-        return;
-    }
-
     auto* msg = ev->Get();
-    const auto requestId = GetRequestId(msg->Record);
-    if (const auto* e = session->LookupDupEntry(requestId)) {
-        auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        if (GetDupCacheEntry(e, response->Record)) {
-            return NCloud::Reply(ctx, *ev, std::move(response));
+
+    // DupCache isn't needed for Create/UnlinkNode requests in shards
+    if (!IsShard()) {
+        auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
+        if (!session) {
+            return;
         }
 
-        session->DropDupEntry(requestId);
+        const auto requestId = GetRequestId(msg->Record);
+        if (const auto* e = session->LookupDupEntry(requestId)) {
+            auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+            if (GetDupCacheEntry(e, response->Record)) {
+                return NCloud::Reply(ctx, *ev, std::move(response));
+            }
+
+            session->DropDupEntry(requestId);
+        }
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -277,7 +287,9 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 {
     Y_UNUSED(ctx);
 
-    FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
+    if (!IsShard()) {
+        FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
+    }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
@@ -383,29 +395,36 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
-        UnlinkNode(
+        auto e = UnlinkNode(
             db,
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
             args.ChildRef->MinCommitId,
             args.CommitId);
+
+        if (HasError(e)) {
+            args.Error = std::move(e);
+            return;
+        }
     }
 
-    auto* session = FindSession(args.SessionId);
-    if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
-            << "UnlinkNode: " << args.Request.ShortDebugString());
-        args.Error = MakeError(E_INVALID_STATE, std::move(message));
-        return;
-    }
+    if (!IsShard()) {
+        auto* session = FindSession(args.SessionId);
+        if (!session) {
+            auto message = ReportSessionNotFoundInTx(TStringBuilder()
+                << "UnlinkNode: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
 
-    AddDupCacheEntry(
-        db,
-        session,
-        args.RequestId,
-        NProto::TUnlinkNodeResponse{},
-        Config->GetDupCacheEntryCount());
+        AddDupCacheEntry(
+            db,
+            session,
+            args.RequestId,
+            NProto::TUnlinkNodeResponse{},
+            Config->GetDupCacheEntryCount());
+    }
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -445,7 +464,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             return;
         }
 
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
+        if (!IsShard()) {
+            CommitDupCacheEntry(args.SessionId, args.RequestId);
+        }
 
         // TODO(#1350): support session events for external nodes
         NProto::TSessionEvent sessionEvent;

@@ -36,7 +36,8 @@ void TIndexTabletActor::HandleCleanup(
             return;
         }
 
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCleanupResponse>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvCleanupResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -70,6 +71,7 @@ void TIndexTabletActor::HandleCleanup(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TCleanup>(
         ctx,

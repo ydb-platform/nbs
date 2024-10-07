@@ -1705,6 +1705,260 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetNode().GetId());
         }
     }
+
+    Y_UNIT_TEST(ShouldIdentifyStaleHandlesInDupCache)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
+            auto request = tablet.CreateCreateHandleRequest(
+                nodeId, TCreateHandleArgs::RDWR);
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
+        const TString name = "file";
+
+        const auto nodeId = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name))->Record.GetNode().GetId();
+
+        const ui64 requestId = 100500;
+        ui64 handle = 0;
+
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId,
+                response->Record.GetNodeAttr().GetId());
+
+            handle = response->Record.GetHandle();
+            tablet.DescribeData(handle, 0, 1_KB);
+            tablet.DestroyHandle(handle);
+        }
+
+        // opening the same file again using the same requestId
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        {
+            // DupCache shouldn't be used this time
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId,
+                response->Record.GetNodeAttr().GetId());
+
+            const auto handle2 = response->Record.GetHandle();
+            UNIT_ASSERT_VALUES_UNEQUAL(handle, handle2);
+
+            // DescribeData should succeed
+            tablet.DescribeData(handle2, 0, 1_KB);
+            tablet.DestroyHandle(handle2);
+        }
+    }
+
+    // This test enforces the fact that if some data has been modified by a RW
+    // transaction, but it has not been completed yet, that will not be visible
+    // to other transactions.
+    Y_UNIT_TEST(ShouldNotReadPhantomData)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(RootNodeId).SetUid(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            tablet.GetNodeAttr(RootNodeId)->Record.GetNode().GetUid());
+
+        TAutoPtr<IEventHandle> putEvent;
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut:
+                        if (!putEvent) {
+                            putEvent = std::move(event);
+                            return true;
+                        }
+                }
+                return false;
+            });
+
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        // Execute stage of RW tx will produce a TEvPut request, which is
+        // dropped to postpone the completion of the transaction
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return putEvent != nullptr;
+            }});
+
+        // Ensure that if the Execute stage of RW tx has written some data, RO
+        // tx will not complete until the RW tx is completed
+
+        // Thus, the following order is to be observed:
+        //
+        // RW Prepare
+        // RW Execute
+        // RO Prepare
+        // RO Execute
+        // * RO tx can wait indefinitely
+        // RW Complete
+        // RO Complete
+
+        tablet.SendGetNodeAttrRequest(RootNodeId);
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(10));
+
+        tablet.AssertSetNodeAttrNoResponse();
+        tablet.AssertGetNodeAttrNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        runtime.Send(putEvent.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+        }
+
+        auto response = tablet.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetStatus());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetUid());
+    }
+
+    Y_UNIT_TEST(DataObservedByROTxUponCompletionShouldNeverBeStale)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(RootNodeId).SetUid(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            tablet.GetNodeAttr(RootNodeId)->Record.GetNode().GetUid());
+
+        TAutoPtr<IEventHandle> putEvent;
+        auto& runtime = env.GetRuntime();
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut:
+                        putEvent = std::move(event);
+                        return true;
+                }
+                return false;
+            });
+
+        // Write(2)
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return putEvent != nullptr;
+            }});
+        // Write should hang
+
+        // Read
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        tablet.SendGetNodeAttrRequest(RootNodeId);
+        // Read should hang
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(10));
+        tablet.AssertSetNodeAttrNoResponse();
+        tablet.AssertGetNodeAttrNoResponse();
+
+        // Write(3)
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(3));
+
+        TString observedOrder = "";
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvSetNodeAttrResponse: {
+                        using TResponse = TEvService::TEvSetNodeAttrResponse;
+                        auto* msg = event->template Get<TResponse>();
+                        observedOrder +=
+                            "W" + ToString(msg->Record.GetNode().GetUid());
+                        return false;
+                    }
+                    case TEvService::EvGetNodeAttrResponse: {
+                        using TResponse = TEvService::TEvGetNodeAttrResponse;
+                        auto* msg = event->template Get<TResponse>();
+                        observedOrder +=
+                            "R" + ToString(msg->Record.GetNode().GetUid());
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        runtime.Send(putEvent.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+        }
+        {
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                2,
+                response->Record.GetNode().GetUid(),
+                response->Record.DebugString());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("W2R2W3", observedOrder);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

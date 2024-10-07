@@ -199,11 +199,15 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         if (args.CommitId == InvalidCommitId) {
             return RebootTabletOnCommitOverflow(ctx, "AllocateData");
         }
-        ZeroRange(
+        auto e = ZeroRange(
             db,
             args.NodeId,
             args.CommitId,
             TByteRange(args.Offset, minBorder - args.Offset, GetBlockSize()));
+        if (HasError(e)) {
+            args.Error = std::move(e);
+            return;
+        }
     }
 
     if (!needExtend) {

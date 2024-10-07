@@ -56,6 +56,7 @@
 #include <cloud/blockstore/libs/service/service_filtered.h>
 #include <cloud/blockstore/libs/service/service_null.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/service_local.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
@@ -740,7 +741,8 @@ void TBootstrapBase::InitLocalService()
         ? *Configs->ServerConfig->GetLocalServiceConfig()
         : NProto::TLocalServiceConfig();
 
-    FileIOService = CreateAIOService();
+    FileIOServiceProvider =
+        CreateSingleFileIOServiceProvider(CreateAIOService());
 
     NvmeManager = CreateNvmeManager(
         Configs->DiskAgentConfig->GetSecureEraseTimeout());
@@ -749,7 +751,7 @@ void TBootstrapBase::InitLocalService()
         config,
         DiscoveryService,
         CreateAioStorageProvider(
-            FileIOService,
+            FileIOServiceProvider,
             NvmeManager,
             false,  // directIO
             EAioSubmitQueueOpt::DontUse
@@ -869,7 +871,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_KIKIMR_COMPONENT(ActorSystem);
-    START_COMMON_COMPONENT(FileIOService);
+    START_COMMON_COMPONENT(FileIOServiceProvider);
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
@@ -939,7 +941,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);
-    STOP_COMMON_COMPONENT(FileIOService);
+    STOP_COMMON_COMPONENT(FileIOServiceProvider);
     STOP_KIKIMR_COMPONENT(ActorSystem);
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);

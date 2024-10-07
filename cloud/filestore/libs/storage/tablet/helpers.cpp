@@ -87,7 +87,10 @@ NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
     return node;
 }
 
-void ConvertNodeFromAttrs(NProto::TNodeAttr& dst, ui64 id, const NProto::TNode& src)
+void ConvertNodeFromAttrs(
+    NProto::TNodeAttr& dst,
+    ui64 id,
+    const NProto::TNode& src)
 {
     dst.SetId(id);
     dst.SetType(src.GetType());
@@ -99,6 +102,19 @@ void ConvertNodeFromAttrs(NProto::TNodeAttr& dst, ui64 id, const NProto::TNode& 
     dst.SetCTime(src.GetCTime());
     dst.SetSize(src.GetSize());
     dst.SetLinks(src.GetLinks());
+}
+
+void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst)
+{
+    dst->SetType(src.GetType());
+    dst->SetMode(src.GetMode());
+    dst->SetUid(src.GetUid());
+    dst->SetGid(src.GetGid());
+    dst->SetATime(src.GetATime());
+    dst->SetMTime(src.GetMTime());
+    dst->SetCTime(src.GetCTime());
+    dst->SetSize(src.GetSize());
+    dst->SetLinks(src.GetLinks());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

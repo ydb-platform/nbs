@@ -111,6 +111,7 @@ TString PrintNodeInfo(
     TStringBuf nodeIdLabel,
     TStringBuf handleLabel,
     TStringBuf sizeLabel,
+    TStringBuf typeLabel,
     const NProto::TProfileLogNodeInfo& nodeInfo)
 {
     TStringBuilder out;
@@ -143,6 +144,9 @@ TString PrintNodeInfo(
     }
     if (nodeInfo.HasSize()) {
         out << PrintValue(sizeLabel, nodeInfo.GetSize()) << ", ";
+    }
+    if (nodeInfo.HasType()) {
+        out << PrintValue(typeLabel, nodeInfo.GetType()) << ", ";
     }
 
     if (out.empty()) {
@@ -302,6 +306,7 @@ public:
                 "node_id",
                 "handle",
                 "size",
+                "type",
                 request.GetNodeInfo()) << "\t";
         }
 
@@ -365,6 +370,7 @@ public:
                 "node_id",
                 "",
                 "",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -391,6 +397,7 @@ public:
                 "node_id",
                 "",
                 "version",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -410,6 +417,7 @@ public:
             return PrintNodeInfo(
                 "node_id",
                 "attr_name",
+                "",
                 "",
                 "",
                 "",
@@ -443,6 +451,7 @@ public:
                 "node_id",
                 "",
                 "",
+                "",
                 request.GetNodeInfo());
         }
 
@@ -468,6 +477,7 @@ public:
                 "data_only",
                 "node_id",
                 "handle",
+                "",
                 "",
                 request.GetNodeInfo());
         }
@@ -567,6 +577,7 @@ IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
         switch (static_cast<NFuse::EFileStoreFuseRequest>(requestType)) {
             case NFuse::EFileStoreFuseRequest::Flush:
             case NFuse::EFileStoreFuseRequest::Fsync:
+            case NFuse::EFileStoreFuseRequest::FsyncDir:
                 return std::make_shared<TFlushFsyncRequestPrinter>();
             default:
                 break;

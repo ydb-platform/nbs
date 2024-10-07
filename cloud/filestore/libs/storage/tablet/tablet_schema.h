@@ -533,6 +533,19 @@ struct TIndexTabletSchema
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
+    struct OrphanNodes: TTableSchema<27>
+    {
+        struct NodeId       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+
+        using TKey = TableKey<NodeId>;
+
+        using TColumns = TableColumns<
+            NodeId
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -559,7 +572,8 @@ struct TIndexTabletSchema
         TruncateQueue,
         SessionHistory,
         OpLog,
-        LargeDeletionMarkers
+        LargeDeletionMarkers,
+        OrphanNodes
     >;
 
     using TSettings = SchemaSettings<

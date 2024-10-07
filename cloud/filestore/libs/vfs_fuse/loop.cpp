@@ -1007,7 +1007,7 @@ private:
         //
 
         ops.statfs = [] (fuse_req_t req, fuse_ino_t ino) {
-            CALL(StatFs, EFileStoreRequest::GetFileStoreInfo, 0, req, ino);
+            CALL(StatFs, EFileStoreRequest::StatFileStore, 0, req, ino);
         };
 
         //

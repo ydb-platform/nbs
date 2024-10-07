@@ -51,7 +51,6 @@ struct TServerActorSystemArgs
     NDiscovery::IDiscoveryServicePtr DiscoveryService;
     NSpdk::ISpdkEnvPtr Spdk;
     ICachingAllocatorPtr Allocator;
-    IFileIOServicePtr FileIOService;
     IStorageProviderPtr AioStorageProvider;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;

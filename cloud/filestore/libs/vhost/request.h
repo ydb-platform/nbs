@@ -424,4 +424,30 @@ struct TReleaseRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFsyncRequest
+    : public TRequestBase<fuse_fsync_in, void, void>
+{
+    TFsyncRequest(ui64 nodeId, ui64 fh, bool datasync)
+    {
+        In->Header.opcode = FUSE_FSYNC;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = fh;
+        In->Body.fsync_flags = datasync;
+    }
+};
+
+struct TFsyncDirRequest
+    : public TRequestBase<fuse_fsync_in, void, void>
+{
+    TFsyncDirRequest(ui64 nodeId, ui64 fh, bool datasync)
+    {
+        In->Header.opcode = FUSE_FSYNCDIR;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = fh;
+        In->Body.fsync_flags = datasync;
+    }
+};
+
 }   // namespace NCloud::NFileStore::NVhost

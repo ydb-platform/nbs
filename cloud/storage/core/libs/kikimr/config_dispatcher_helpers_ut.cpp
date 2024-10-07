@@ -45,7 +45,8 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             SetupConfigDispatcher(settings, &config);
 
             UNIT_ASSERT(
-                std::holds_alternative<std::monostate>(config.ItemsServeRules));
+                std::holds_alternative<TAllowList>(config.ItemsServeRules));
+            UNIT_ASSERT(std::get<TAllowList>(config.ItemsServeRules).Items.empty());
             UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
         }
 
@@ -58,9 +59,23 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             SetupConfigDispatcher(settings, &config);
 
             UNIT_ASSERT(
-                std::holds_alternative<std::monostate>(config.ItemsServeRules));
+                std::holds_alternative<TDenyList>(config.ItemsServeRules));
+            UNIT_ASSERT(std::get<TDenyList>(config.ItemsServeRules).Items.empty());
             UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
         }
+    }
+
+    Y_UNIT_TEST(ShouldAllowAllConfigsWhenAllSettingsAreEmpty)
+    {
+        auto counter = SetupCriticalEvent();
+
+        NKikimr::NConfig::TConfigsDispatcherInitInfo config;
+        NProto::TConfigDispatcherSettings settings;
+        SetupConfigDispatcher(settings, &config);
+
+        UNIT_ASSERT(
+            std::holds_alternative<std::monostate>(config.ItemsServeRules));
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
     }
 
     Y_UNIT_TEST(ShouldParseConfigDispatcherItems)

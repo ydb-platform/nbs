@@ -60,18 +60,40 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
+        const bool shouldStoreHandles =
+            GetFileSystem().GetFollowerFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
-        // sometimes bugged clients send us duplicate request ids
+
+        // sometimes we may receive duplicate request ids - either due to
+        // client-side bugs or due to our own bugs (e.g. not doing ResetSession
+        // upon unmount) or ungraceful client reboots (without actual unmounts)
         // see #2033
         if (!GetDupCacheEntry(e, response->Record)) {
+            // invalid entry type - it's certainly a request id collision
             session->DropDupEntry(requestId);
         } else if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
                 != response->Record.GetNodeAttr().GetId())
         {
+            // this handle relates to a different node id => it's certainly a
+            // request id collision as well
             ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
                 << " for different NodeId found for RequestId=" << requestId
                 << ": " << response->Record.GetNodeAttr().GetId()
                 << " != " << msg->Record.GetNodeId());
+            session->DropDupEntry(requestId);
+        } else if (shouldStoreHandles
+                && !HasError(response->Record.GetError())
+                && !FindHandle(response->Record.GetHandle()))
+        {
+            // there is no open handle associated with this CreateHandleResponse
+            // even though it may be an actual retry attempt of some old request
+            // it's still safer to disregard this DupCache entry and try to
+            // rerun this request
+            ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
+                << " with stale handle found for RequestId=" << requestId
+                << ": ResponseNodeId=" << response->Record.GetNodeAttr().GetId()
+                << " NodeId=" << msg->Record.GetNodeId()
+                << " HandleId=" << response->Record.GetHandle());
             session->DropDupEntry(requestId);
         } else {
             return NCloud::Reply(ctx, *ev, std::move(response));
@@ -309,12 +331,16 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     } else if (args.FollowerId.Empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
-        Truncate(
+        auto e = Truncate(
             db,
             args.TargetNodeId,
             args.WriteCommitId,
             args.TargetNode->Attrs.GetSize(),
             0);
+        if (HasError(e)) {
+            args.Error = std::move(e);
+            return;
+        }
 
         auto attrs = CopyAttrs(args.TargetNode->Attrs, E_CM_CMTIME);
         attrs.SetSize(0);

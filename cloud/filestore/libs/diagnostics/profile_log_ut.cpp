@@ -49,7 +49,8 @@ TString NodeInfoToString(const NProto::TProfileLogNodeInfo& nodeInfo)
         << "," << nodeInfo.GetMode()
         << "," << nodeInfo.GetNodeId()
         << "," << nodeInfo.GetHandle()
-        << "," << nodeInfo.GetSize();
+        << "," << nodeInfo.GetSize()
+        << "," << nodeInfo.GetType();
 }
 
 TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
@@ -196,7 +197,8 @@ struct TRequestInfoBuilder
         ui32 mode,
         ui64 nodeId,
         ui64 handle,
-        ui64 size)
+        ui64 size,
+        ui32 type)
     {
         auto nodeInfo = R.MutableNodeInfo();
         nodeInfo->SetParentNodeId(parentNodeId);
@@ -208,6 +210,7 @@ struct TRequestInfoBuilder
         nodeInfo->SetNodeId(nodeId);
         nodeInfo->SetHandle(handle);
         nodeInfo->SetSize(size);
+        nodeInfo->SetType(type);
         return *this;
     }
 
@@ -308,7 +311,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                 .SetDuration(TDuration::MilliSeconds(800))
                 .SetRequestType(11)
                 .SetError(1)
-                .AddNodeInfo(1, "node", 2, "new_node", 3, 7, 12, 123, 32)
+                .AddNodeInfo(1, "node", 2, "new_node", 3, 7, 12, 123, 32, 2)
                 .Build()
         });
 
@@ -340,7 +343,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             EventProcessor.FlatMessages[2]
         );
         UNIT_ASSERT_VALUES_EQUAL(
-            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32",
+            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2",
             EventProcessor.FlatMessages[3]
         );
         UNIT_ASSERT_VALUES_EQUAL(

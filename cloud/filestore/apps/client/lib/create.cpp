@@ -2,6 +2,8 @@
 
 #include "performance_profile_params.h"
 
+#include "library/cpp/json/json_writer.h"
+
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <util/generic/size_literals.h>
@@ -85,6 +87,25 @@ public:
             Client->CreateFileStore(
                 std::move(callContext),
                 std::move(request)));
+
+        if (JsonOutput){
+            // We don't use result.PrintJSON(), because TError.PrintJSON()
+            // writes only code, and it is more reliable to use formatted
+            // error in tests and scripts.
+            NJson::TJsonValue resultJson;
+            if (HasError(response)){
+                resultJson["Error"] = FormatErrorJson(response.GetError());
+            }
+
+            NJson::WriteJson(&Cout, &resultJson, false, true, true);
+
+            if (HasError(response)){
+                ProgramShouldContinue.ShouldStop(1);
+                return false;
+            }
+
+            return true;
+        }
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

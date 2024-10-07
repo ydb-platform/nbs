@@ -322,7 +322,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
         args.Range.Length,
         args.ProfileLogRequest);
 
-    TruncateRange(db, args.NodeId, commitId, args.Range);
+    args.Error = TruncateRange(db, args.NodeId, commitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_TruncateRange(
@@ -334,7 +334,7 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
         std::move(args.ProfileLogRequest),
         ctx.Now(),
         GetFileSystemId(),
-        {},
+        args.Error,
         ProfileLog);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -343,7 +343,9 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
         args.NodeId,
         args.Range.Describe().c_str());
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);

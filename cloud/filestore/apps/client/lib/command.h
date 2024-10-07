@@ -77,6 +77,11 @@ public:
         return Opts;
     }
 
+    TLog& AccessLog()
+    {
+        return Log;
+    }
+
 protected:
     virtual void Init();
 
@@ -177,16 +182,22 @@ protected:
     class TSessionGuard final
     {
         TFileStoreCommand& FileStoreCmd;
+        TLog& Log;
 
     public:
         explicit TSessionGuard(TFileStoreCommand& fileStoreCmd)
             : FileStoreCmd(fileStoreCmd)
+            , Log(FileStoreCmd.AccessLog())
         {
         }
 
         ~TSessionGuard()
         {
-            FileStoreCmd.DestroySession();
+            try {
+                FileStoreCmd.DestroySession();
+            } catch (...) {
+                STORAGE_ERROR("~TSessionGuard: " << CurrentExceptionMessage());
+            }
         }
     };
 

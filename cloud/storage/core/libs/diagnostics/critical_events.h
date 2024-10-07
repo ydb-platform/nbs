@@ -10,6 +10,9 @@ namespace NCloud {
     xxx(CpuWaitCounterReadError)                                               \
     xxx(HiveProxyConcurrentLockError)                                          \
     xxx(BackupTabletBootInfosFailure)                                          \
+    xxx(LoadTabletBootInfoBackupFailure)                                       \
+    xxx(BackupPathDescriptionsFailure)                                         \
+    xxx(LoadPathDescriptionBackupFailure)                                      \
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
 // STORAGE_CRITICAL_EVENTS

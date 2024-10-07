@@ -267,6 +267,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        std::atomic<int> fsyncCalledWithDataSync = 0;
+        std::atomic<int> fsyncCalledWithoutDataSync = 0;
+
+        bootstrap.Service->FsyncHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            if (request->GetDataSync()) {
+                fsyncCalledWithDataSync++;
+            } else {
+                fsyncCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncResponse());
+        };
+
         bootstrap.Start();
 
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
@@ -275,6 +290,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, fsyncCalledWithDataSync.load());
+
+        fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithDataSync.load());
     }
 
     Y_UNIT_TEST(ShouldPassSessionId)
@@ -500,6 +527,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        std::atomic<int> fsyncDirCalledWithDataSync = 0;
+        std::atomic<int> fsyncDirCalledWithoutDataSync = 0;
+
+        bootstrap.Service->FsyncDirHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            if (request->GetDataSync()) {
+                fsyncDirCalledWithDataSync++;
+            } else {
+                fsyncDirCalledWithoutDataSync++;
+            }
+
+            return MakeFuture(NProto::TFsyncDirResponse());
+        };
+
         bootstrap.Start();
 
         const ui64 nodeId = 123;
@@ -518,6 +560,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         size = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size, 0);
+
+        auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, false /* no data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_EQUAL(0, fsyncDirCalledWithDataSync.load());
+
+        fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, handleId, true /* data sync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithDataSync.load());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
@@ -1373,10 +1427,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -1384,10 +1436,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId2 = 11;
         std::atomic_bool releaseFinished = false;
         std::atomic_uint handlerCalled = 0;
-        auto destroyFinished = NewPromise<void>();
+        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                            ->FindSubgroup("request", "DestroyHandle");
+        auto responsePromise1 = NewPromise<NProto::TDestroyHandleResponse>();
+        auto responsePromise2 = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
-            [&, destroyFinished](auto callContext, auto request) mutable
+            [&,
+             responsePromise1,
+             responsePromise2](auto callContext, auto request) mutable
             {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
@@ -1396,18 +1457,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT(releaseFinished);
                     UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
-                } else if (handlerCalled == 2) {
+                    return responsePromise1;
+                }
+                if (handlerCalled == 2) {
                     UNIT_ASSERT(releaseFinished);
                     UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
                     UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
-                    destroyFinished.TrySetValue();
-                } else {
-                    UNIT_ASSERT_C(
-                        false,
-                        "Handler should not be called more than two times");
+                    return responsePromise2;
                 }
 
-                return MakeFuture(NProto::TDestroyHandleResponse{});
+                UNIT_ASSERT_C(
+                    false,
+                    "Handler should not be called more than two times");
+                return NewPromise<NProto::TDestroyHandleResponse>();
             });
 
         bootstrap.Start();
@@ -1419,8 +1481,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         releaseFinished = true;
 
-        destroyFinished.GetFuture().Wait(WaitTimeout);
+        scheduler->RunAllScheduledTasks();
+        responsePromise1.SetValue(NProto::TDestroyHandleResponse{});
+
+        scheduler->RunAllScheduledTasks();
+        responsePromise2.SetValue(NProto::TDestroyHandleResponse{});
+
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)

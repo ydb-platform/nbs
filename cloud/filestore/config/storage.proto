@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
+import "cloud/storage/core/protos/config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
@@ -417,7 +418,17 @@ message TStorageConfig
     // tablet startup due to bugs.
     optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
 
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 393;
+
+    // If the number of blocks marked for deletion via large deletion markers
+    // exceeds this threshold, large truncate-like operations will be rejected.
+    optional uint64 LargeDeletionMarkersThresholdForBackpressure = 394;
+
+    // Enables persistent backup for tablet path descriptions.
+    optional string PathDescriptionBackupFilePath = 395;
+
     // Server will reject all requests to destroy filestores in the provided
     // list
-    repeated string DestroyFilestoreDenyList = 393;
+    repeated string DestroyFilestoreDenyList = 396;
 }

@@ -604,6 +604,8 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+
+    NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 };
 
 ui64 GetAllocationUnit(

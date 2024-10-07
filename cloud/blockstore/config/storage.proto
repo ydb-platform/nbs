@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
+import "cloud/storage/core/protos/config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
@@ -638,7 +639,7 @@ message TStorageServiceConfig
     optional string TabletBootInfoBackupFilePath = 244;
     // In fallback mode, all requests to Hive are served from backup.
     optional bool HiveProxyFallbackMode = 245;
-    // Enables persistent backup for volume path descriptions.
+    // Enables persistent backup for tablet path descriptions.
     optional string PathDescriptionBackupFilePath = 246;
     // In fallback mode, all requests to SchemeShard are served from backup.
     optional bool SSProxyFallbackMode = 247;
@@ -1035,4 +1036,7 @@ message TStorageServiceConfig
 
     // Node type
     optional string NodeType = 384;
+
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 385;
 }

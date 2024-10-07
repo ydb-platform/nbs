@@ -10,5 +10,5 @@ spec:
     requests:
       storage: 1Gi
     limits:
-      storage: 1Gi
+      storage: 10Gi
   storageClassName: nbs-csi-sc

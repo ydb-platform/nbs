@@ -481,6 +481,14 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
     , MaxUnalignedBlockCount(maxUnalignedRequestSize / BlockSize)
 {}
 
+TUnalignedDeviceHandler::~TUnalignedDeviceHandler()
+{
+    with_lock (RequestsLock) {
+        AlignedRequests.clear();
+        UnalignedRequests.clear();
+    }
+}
+
 TFuture<NProto::TReadBlocksLocalResponse> TUnalignedDeviceHandler::Read(
     TCallContextPtr ctx,
     ui64 from,

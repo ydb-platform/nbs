@@ -45,13 +45,13 @@ public:
 private:
     void CreateFileStore(const TActorContext& ctx);
     void HandleCreateFileStoreResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void EnsureDirs(const TActorContext& ctx);
     void CreateDir(const TActorContext& ctx);
     void HandleCreateDirResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void ReplyAndDie(
@@ -109,14 +109,14 @@ void TCreateFileStoreActor::CreateFileStore(const TActorContext& ctx)
         workingDir.Quote().c_str(),
         name.Quote().c_str());
 
-    auto request = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+    auto request = std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
         std::move(modifyScheme));
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
 void TCreateFileStoreActor::HandleCreateFileStoreResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -183,14 +183,14 @@ void TCreateFileStoreActor::CreateDir(const TActorContext& ctx)
     auto* op = modifyScheme.MutableMkDir();
     op->SetName(name);
 
-    auto request = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+    auto request = std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
         std::move(modifyScheme));
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
 void TCreateFileStoreActor::HandleCreateDirResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -223,7 +223,7 @@ void TCreateFileStoreActor::ReplyAndDie(
 STFUNC(TCreateFileStoreActor::StateCreateFileStore)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleCreateFileStoreResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
@@ -234,7 +234,7 @@ STFUNC(TCreateFileStoreActor::StateCreateFileStore)
 STFUNC(TCreateFileStoreActor::StateCreateDir)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleCreateDirResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateDirResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);

@@ -19,19 +19,25 @@ def __init_test():
     return client, results_path
 
 
+def __process_stat(node):
+    def d(k):
+        if k in node:
+            del node[k]
+
+    d("ATime")
+    d("MTime")
+    d("CTime")
+    d("FollowerNodeName")
+
+    return node
+
+
 def __exec_ls(client, *args):
     output = str(client.ls(*args, "--json"), 'utf-8')
     nodes: list = json.loads(output)['content']
 
     for node in nodes:
-        def d(k):
-            if k in node:
-                del node[k]
-
-        d("ATime")
-        d("MTime")
-        d("CTime")
-        d("FollowerNodeName")
+        __process_stat(node)
 
     return json.dumps(nodes, indent=4).encode('utf-8')
 
@@ -370,6 +376,11 @@ def test_multitablet_findgarbage():
     with open(data_file, "w") as f:
         f.write("some data")
 
+    big_data_file = os.path.join(common.output_path(), "big_data.txt")
+    with open(big_data_file, "w") as f:
+        for i in range(1024):
+            f.write("some big data %s\n" % i)
+
     fs_id = "fs0"
     shard1_id = fs_id + "-shard1"
     shard2_id = fs_id + "-shard2"
@@ -410,14 +421,15 @@ def test_multitablet_findgarbage():
         "FollowerFileSystemIds": [shard1_id, shard2_id],
     })
 
-    client.write(fs_id, "/xxx", "--data", data_file)
-    client.write(fs_id, "/xxx1", "--data", data_file)
-    client.write(fs_id, "/xxx2", "--data", data_file)
+    # let's generate multiple "pages" for listing
+    for i in range(100):
+        client.write(fs_id, "/xxx%s" % i, "--data", data_file)
     client.write(shard1_id, "/garbage1_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
+    client.write(shard2_id, "/garbage2_3", "--data", big_data_file)
     # TODO: teach the client to fetch shard list by itself
-    out += client.find_garbage(fs_id, [shard1_id, shard2_id])
+    out += client.find_garbage(fs_id, [shard1_id, shard2_id], page_size=1024)
 
     client.destroy(fs_id)
     client.destroy(shard1_id)
@@ -425,6 +437,64 @@ def test_multitablet_findgarbage():
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_large_file():
+    TiB = 1024 * 1024 * 1024 * 1024
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    client, results_path = __init_test()
+    client.create(
+        "fs0",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        TiB // BLOCK_SIZE)
+    client.mkdir("fs0", "/aaa")
+    client.touch("fs0", "/aaa/bbb")
+
+    out = client.stat("fs0", "/aaa/bbb")
+    stat = json.loads(out)
+    node_id = stat["Id"]
+    result = json.dumps(__process_stat(stat))
+    result += "\n"
+
+    client.write("fs0", "/aaa/bbb", "--data", data_file)
+
+    client.set_node_attr("fs0", node_id, "--size", str(TiB))
+    result += client.read("fs0", "/aaa/bbb", "--length", "9").decode("utf8")
+    result += "\n"
+
+    out = client.stat("fs0", "/aaa/bbb")
+    stat = json.loads(out)
+    assert stat["Size"] == TiB
+    result += json.dumps(__process_stat(stat))
+    result += "\n"
+
+    client.set_node_attr("fs0", node_id, "--size", "1024")
+    result += client.read("fs0", "/aaa/bbb", "--length", "0").decode("utf8")
+    result += "\n"
+
+    out = client.stat("fs0", "/aaa/bbb")
+    new_stat = json.loads(out)
+    assert stat["Size"] == TiB
+    result += json.dumps(__process_stat(new_stat))
+    result += "\n"
+    result += client.read("fs0", "/aaa/bbb", "--length", "0").decode("utf8")
+    result += "\n"
+
+    client.rm("fs0", "/aaa/bbb")
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        results_file.write(result)
 
     ret = common.canonical_file(results_path, local=True)
     return ret
