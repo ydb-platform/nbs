@@ -25,7 +25,7 @@ func (s *sampler) ShouldSample(
 	params sdktrace.SamplingParameters,
 ) sdktrace.SamplingResult {
 
-	if !hasShouldSampleAttribute(params) {
+	if !hasSampledAttribute(params) {
 		return sdktrace.SamplingResult{Decision: sdktrace.Drop}
 	}
 	return sdktrace.SamplingResult{Decision: sdktrace.RecordAndSample}
@@ -33,17 +33,16 @@ func (s *sampler) ShouldSample(
 
 func (s *sampler) Description() string {
 	return "Basic cloud.tasks sampler. " +
-		"Uses attribute 'sampled' of the span for sampling decision."
-
+		"Uses attribute 'sampled' of a span for sampling decision."
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newShouldSampleAttribute(sampled bool) attribute.KeyValue {
+func newSampledAttribute(sampled bool) attribute.KeyValue {
 	return attribute.Bool(sampledAttributeKey, sampled)
 }
 
-func hasShouldSampleAttribute(params sdktrace.SamplingParameters) bool {
+func hasSampledAttribute(params sdktrace.SamplingParameters) bool {
 	for _, attr := range params.Attributes {
 		if attr.Key == sampledAttributeKey {
 			return attr.Value.AsBool()
