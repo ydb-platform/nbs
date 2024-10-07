@@ -533,6 +533,11 @@ public:
     // Nodes
     //
 
+    bool ReadNode(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) final;
+
     void WriteNode(
         ui64 nodeId,
         ui64 commitId,
@@ -555,6 +560,12 @@ public:
     //
     // NodeAttrs
     //
+
+    bool ReadNodeAttr(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        TMaybe<TNodeAttr>& attr) override;
 
     void WriteNodeAttr(
         ui64 nodeId,
@@ -585,6 +596,20 @@ public:
     //
     // NodeRefs
     //
+
+    bool ReadNodeRef(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+
+    bool ReadNodeRefs(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& cookie,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui32 maxBytes,
+        TString* next = nullptr) override;
 
     void WriteNodeRef(
         ui64 nodeId,
