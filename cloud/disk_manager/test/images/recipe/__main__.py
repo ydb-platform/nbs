@@ -12,7 +12,8 @@ from cloud.disk_manager.test.images.recipe.vmdk_image_generator import VMDKImage
 
 def start(argv):
     raw_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/raw.img")
-    raw_image_file_server = ImageFileServerLauncher(raw_image_file_path)
+    raw_image_file_size = 67108864
+    raw_image_file_server = ImageFileServerLauncher(raw_image_file_path, raw_image_file_size)
     raw_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_FILE_SERVER_PORT", str(raw_image_file_server.port))
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_SIZE", "67108864")
@@ -20,7 +21,14 @@ def start(argv):
 
     qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2.img")
     other_qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_other.img")
-    qcow2_image_file_server = ImageFileServerLauncher(qcow2_image_file_path, other_qcow2_image_file_path)
+    qcow2_image_file_size = 16338944
+    other_qcow2_image_file_size = 33882112
+    qcow2_image_file_server = ImageFileServerLauncher(
+        qcow2_image_file_path,
+        qcow2_image_file_size,
+        other_qcow2_image_file_path,
+        other_qcow2_image_file_size,
+    )
     qcow2_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_QCOW2_IMAGE_FILE_SERVER_PORT", str(qcow2_image_file_server.port))
     # size and crc32 after converting to raw image
@@ -30,15 +38,22 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_OTHER_QCOW2_IMAGE_CRC32", "3837173913")
 
     vmdk_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk.img")
-    vmdk_image_file_server = ImageFileServerLauncher(vmdk_image_file_path)
+    vmdk_image_file_size = 35782656
+    vmdk_image_file_server = ImageFileServerLauncher(vmdk_image_file_path, vmdk_image_file_size)
     vmdk_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_FILE_SERVER_PORT", str(vmdk_image_file_server.port))
     # size and crc32 after converting to raw image
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_VMDK_IMAGE_CRC32", "1412309815")
 
-    vmdk_stream_optimized_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk_stream_optimized.img")
-    vmdk_stream_optimized_image_file_server = ImageFileServerLauncher(vmdk_stream_optimized_file_path)
+    vmdk_stream_optimized_file_path = yatest_common.source_path(
+        "cloud/disk_manager/test/images/recipe/data/vmdk_stream_optimized.img",
+    )
+    vmdk_stream_optimized_file_size = 34455040
+    vmdk_stream_optimized_image_file_server = ImageFileServerLauncher(
+        vmdk_stream_optimized_file_path,
+        vmdk_stream_optimized_file_size,
+    )
     vmdk_stream_optimized_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_FILE_SERVER_PORT", str(vmdk_stream_optimized_image_file_server.port))
     # size and crc32 after converting to raw image
@@ -46,7 +61,11 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_CRC32", "1412309815")
 
     vhd_raw_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_raw.img")
-    vhd_raw_image_file_server = ImageFileServerLauncher(vhd_raw_image_file_path)
+    vhd_raw_image_file_size = 67125760
+    vhd_raw_image_file_server = ImageFileServerLauncher(
+        vhd_raw_image_file_path,
+        vhd_raw_image_file_size,
+    )
     vhd_raw_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_FILE_SERVER_PORT", str(vhd_raw_image_file_server.port))
     # size and crc32 after converting to raw image
@@ -56,7 +75,8 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_MAP_FILE", image_map_file_path)
 
     vhd_dynamic_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_dynamic.img")
-    vhd_dynamic_image_file_server = ImageFileServerLauncher(vhd_dynamic_image_file_path)
+    vhd_dynamic_image_file_size = 54541824
+    vhd_dynamic_image_file_server = ImageFileServerLauncher(vhd_dynamic_image_file_path, vhd_dynamic_image_file_size)
     vhd_dynamic_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_FILE_SERVER_PORT", str(vhd_dynamic_image_file_server.port))
     # size and crc32 after converting to raw image
@@ -67,7 +87,11 @@ def start(argv):
 
     vhd_ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vhd_images/ubuntu1604-ci-stable")
     if os.path.exists(vhd_ubuntu1604_image_file_path):
-        vhd_ubuntu1604_image_file_server = ImageFileServerLauncher(vhd_ubuntu1604_image_file_path)
+        vhd_ubuntu1604_image_file_size = 4306535424
+        vhd_ubuntu1604_image_file_server = ImageFileServerLauncher(
+            vhd_ubuntu1604_image_file_path,
+            vhd_ubuntu1604_image_file_size,
+        )
         vhd_ubuntu1604_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(vhd_ubuntu1604_image_file_server.port))
         # size and crc32 after converting to raw image
@@ -76,16 +100,19 @@ def start(argv):
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_ubuntu1604_image_map.json")
         set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_MAP_FILE", image_map_file_path)
 
-    nonexistent_image_file_server = ImageFileServerLauncher("nonexistent")
+    nonexistent_image_file_server = ImageFileServerLauncher("nonexistent", None)
     nonexistent_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_NON_EXISTENT_IMAGE_FILE_SERVER_PORT", str(nonexistent_image_file_server.port))
 
     ubuntu1804_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/ubuntu-18.04-minimal-cloudimg-amd64.img")
     if os.path.exists(ubuntu1804_image_file_path):
-        ubuntu1804_image_file_server = ImageFileServerLauncher(ubuntu1804_image_file_path)
+        ubuntu1804_image_file_size = 332595200
+        ubuntu1804_image_file_server = ImageFileServerLauncher(
+            ubuntu1804_image_file_path,
+            ubuntu1804_image_file_size,
+        )
         ubuntu1804_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_FILE_SERVER_PORT", str(ubuntu1804_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_FILE_SIZE", "332595200")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_SIZE", "2361393152")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_CRC32", "2577917554")
@@ -94,10 +121,13 @@ def start(argv):
 
     ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/ubuntu1604-ci-stable")
     if os.path.exists(ubuntu1604_image_file_path):
-        ubuntu1604_image_file_server = ImageFileServerLauncher(ubuntu1604_image_file_path)
+        ubuntu1604_image_file_size = 1902575616
+        ubuntu1604_image_file_server = ImageFileServerLauncher(
+            ubuntu1604_image_file_path,
+            ubuntu1604_image_file_size,
+        )
         ubuntu1604_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(ubuntu1604_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_FILE_SIZE", "332595200")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_SIZE", "15246295040")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_CRC32", "1189208160")
@@ -106,10 +136,13 @@ def start(argv):
 
     ubuntu2204_vmdk_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk")
     if os.path.exists(ubuntu2204_vmdk_image_file_path):
-        ubuntu2204_vmdk_image_file_server = ImageFileServerLauncher(ubuntu2204_vmdk_image_file_path)
+        ubuntu2204_vmdk_image_file_size = 667248128
+        ubuntu2204_vmdk_image_file_server = ImageFileServerLauncher(
+            ubuntu2204_vmdk_image_file_path,
+            ubuntu2204_vmdk_image_file_size,
+        )
         ubuntu2204_vmdk_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_FILE_SERVER_PORT", str(ubuntu2204_vmdk_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_FILE_SIZE", "667248128")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_SIZE", "10737418240")
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_CRC32", "3896929631")
@@ -119,15 +152,19 @@ def start(argv):
     windows_vmdk_image_file_path = yatest_common.build_path(
         "cloud/disk_manager/test/images/resources/vmdk_images/windows-vmdk-stream-optimised-multiple-grains.vmdk")
     if os.path.exists(windows_vmdk_image_file_path):
+        windows_vmdk_image_file_size = 1354152960
         windows_vmdk_image_file_server = ImageFileServerLauncher(
-            windows_vmdk_image_file_path)
+            windows_vmdk_image_file_path,
+            windows_vmdk_image_file_size,
+        )
         windows_vmdk_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT", str(windows_vmdk_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SIZE", "1354152960")
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE", "8589934592")
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32", "2831814743")
-        image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/windows_vmdk_stream_optimised_multiple_grains_image_map.json")
+        image_map_file_path = yatest_common.source_path(
+            "cloud/disk_manager/test/images/recipe/data/windows_vmdk_stream_optimised_multiple_grains_image_map.json",
+        )
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_MAP_FILE", image_map_file_path)
 
     working_dir = get_unique_path_for_current_test(
@@ -149,7 +186,7 @@ def start(argv):
         "--output-file-path",
         invalid_qcow2_image_file_path,
     ])
-    invalid_qcow2_image_file_server = ImageFileServerLauncher(invalid_qcow2_image_file_path)
+    invalid_qcow2_image_file_server = ImageFileServerLauncher(invalid_qcow2_image_file_path, None)
     invalid_qcow2_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_INVALID_QCOW2_IMAGE_FILE_SERVER_PORT", str(invalid_qcow2_image_file_server.port))
 
@@ -166,7 +203,7 @@ def start(argv):
         "--output-file-path",
         qcow2_fuzzing_image_file_path,
     ])
-    qcow2_fuzzing_image_file_server = ImageFileServerLauncher(qcow2_fuzzing_image_file_path)
+    qcow2_fuzzing_image_file_server = ImageFileServerLauncher(qcow2_fuzzing_image_file_path, None)
     qcow2_fuzzing_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_QCOW2_FUZZING_IMAGE_FILE_SERVER_PORT", str(qcow2_fuzzing_image_file_server.port))
 
@@ -182,7 +219,7 @@ def start(argv):
         vmdk_image_generator = VMDKImageGenerator(generated_raw_image_file_path, generated_vmdk_image_file_path)
         vmdk_image_generator.generate()
 
-        generated_vmdk_image_file_server = ImageFileServerLauncher(generated_vmdk_image_file_path)
+        generated_vmdk_image_file_server = ImageFileServerLauncher(generated_vmdk_image_file_path, None)
         generated_vmdk_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_FILE_SERVER_PORT", str(generated_vmdk_image_file_server.port))
         # size and crc32 after converting to raw image
