@@ -212,12 +212,6 @@ func (s *nodeService) NodeStageVolume(
 			}
 		}
 	case *csi.VolumeCapability_Block:
-		if nfsBackend {
-			return nil, s.statusError(codes.InvalidArgument,
-				"'Block' volume mode is not supported for nfs backend")
-		} else {
-			err = s.nodeStageDiskAsBlockDevice(ctx, req)
-		}
 	default:
 		return nil, s.statusError(codes.InvalidArgument, "Unknown access type")
 	}
@@ -723,24 +717,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) nodeStageDiskAsBlockDevice(
-	ctx context.Context,
-	req *csi.NodeStageVolumeRequest) error {
-
-	resp, err := s.startNbsEndpointForNBD(ctx, s.nodeID, req.VolumeId, req.VolumeContext)
-	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
-	}
-
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.StagingTargetPath)
-}
-
-func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
+func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
@@ -755,25 +732,6 @@ func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath)
-}
-
-func (s *nodeService) nodePublishDiskAsBlockDevice(
-	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
-
-	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
-	if !mounted {
-		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
-	}
-
-	mountOptions := []string{"bind"}
-	mnt := req.VolumeCapability.GetMount()
-	if mnt != nil {
-		for _, flag := range mnt.MountFlags {
-			mountOptions = append(mountOptions, flag)
-		}
-	}
-	return s.mountBlockDevice(req.VolumeId, req.StagingTargetPath, req.TargetPath)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
