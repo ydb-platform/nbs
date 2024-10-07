@@ -1979,7 +1979,7 @@ func (s *storageYDB) getPoolConfigs(
 	return configs, nil
 }
 
-func (s *storageYDB) getActivePoolConfigs(
+func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
 	ctx context.Context,
 	session *persistence.Session,
 ) (configs []poolConfig, err error) {
@@ -2219,7 +2219,7 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 
 	defer s.metrics.StatCall("takeBaseDisksToSchedule")(&err)
 
-	configs, err := s.getActivePoolConfigs(ctx, session)
+	configs, err := s.getPoolConfigsWithNonZeroCapacity(ctx, session)
 	if err != nil {
 		return nil, err
 	}
