@@ -274,6 +274,8 @@ public:
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
     TString GetPathDescriptionBackupFilePath() const;
+
+    TVector<TString> GetDestroyFilestoreDenyList() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
