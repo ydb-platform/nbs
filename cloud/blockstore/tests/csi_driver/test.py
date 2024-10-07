@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import os
 import pytest
@@ -5,6 +6,7 @@ import subprocess
 import tempfile
 import time
 import json
+import yaml
 
 from pathlib import Path
 
@@ -34,12 +36,13 @@ class CsiLoadTest(LocalLoadTest):
             sockets_dir: str,
             grpc_unix_socket_path: str,
             sockets_temporary_directory: tempfile.TemporaryDirectory,
+            vm_mode: bool,
             *args,
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
         self.sockets_temporary_directory = sockets_temporary_directory
-        self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path)
+        self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path, vm_mode)
         self.csi.start()
 
     def tear_down(self):
@@ -48,7 +51,7 @@ class CsiLoadTest(LocalLoadTest):
         self.sockets_temporary_directory.cleanup()
 
 
-def init():
+def init(vm_mode: bool = False):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -61,7 +64,7 @@ def init():
     logging.info("Created temporary dir %s", temp_dir.name)
     sockets_dir = Path(temp_dir.name)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
-    server_config_patch.VhostEnabled = False
+    server_config_patch.VhostEnabled = True
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
@@ -73,6 +76,7 @@ def init():
         sockets_dir=str(sockets_dir),
         grpc_unix_socket_path=server_config_patch.UnixSocketPath,
         sockets_temporary_directory=temp_dir,
+        vm_mode=vm_mode,
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
@@ -109,7 +113,7 @@ def init():
 
 class NbsCsiDriverRunner:
 
-    def __init__(self, sockets_dir: str, grpc_unix_socket_path: str):
+    def __init__(self, sockets_dir: str, grpc_unix_socket_path: str, vm_mode: bool):
         csi_driver_dir = Path(
             common.binary_path("cloud/blockstore/tools/csi_driver/"),
         )
@@ -121,22 +125,27 @@ class NbsCsiDriverRunner:
         self._proc = None
         self._csi_driver_output = os.path.join(common.output_path(), "driver_output.txt")
         self._log_file = None
+        self._vm_mode = vm_mode
 
     def start(self):
         self._log_file = open(self._csi_driver_output, "w")
+        args = [
+            str(self._binary_path),
+            "--name=nbs.csi.nebius.ai",
+            "--version",
+            "v1",
+            "--node-id=localhost",
+            "--nbs-socket", self._grpc_unix_socket_path,
+            f"--sockets-dir={self._sockets_dir}",
+            f"--endpoint={str(self._endpoint)}",
+            "--nfs-vhost-port=0",
+            "--nfs-server-port=0",
+        ]
+        if self._vm_mode:
+            args += ["--vm-mode=true"]
+
         self._proc = subprocess.Popen(
-            [
-                str(self._binary_path),
-                "--name=nbs.csi.nebius.ai",
-                "--version",
-                "v1",
-                "--node-id=localhost",
-                "--nbs-socket", self._grpc_unix_socket_path,
-                f"--sockets-dir={self._sockets_dir}",
-                f"--endpoint={str(self._endpoint)}",
-                "--nfs-vhost-port=0",
-                "--nfs-server-port=0",
-            ],
+            args,
             stdout=self._log_file,
             stderr=self._log_file,
         )
@@ -178,6 +187,20 @@ class NbsCsiDriverRunner:
 
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
+
+    def stage_volume(self, volume_id: str):
+        return self._node_run(
+            "stagevolume",
+            "--volume-id",
+            volume_id,
+        )
+
+    def unstage_volume(self, volume_id: str):
+        return self._node_run(
+            "unstagevolume",
+            "--volume-id",
+            volume_id,
+        )
 
     def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
         return self._node_run(
@@ -244,6 +267,14 @@ def log_called_process_error(exc):
     )
 
 
+@contextlib.contextmanager
+def called_process_error_logged():
+    try:
+        yield
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+
+
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
     env, run = init()
     try:
@@ -252,6 +283,7 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
         result = run(
             "destroyvolume",
@@ -265,14 +297,12 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         if result.returncode != 1:
             raise AssertionError("Destroyvolume must return exit code 1")
         assert "E_REJECTED" in result.stdout
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
@@ -295,6 +325,7 @@ def test_nbs_csi_driver_volume_stat():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
         stats1 = env.csi.volumestats(pod_id, volume_name)
 
@@ -331,14 +362,12 @@ def test_nbs_csi_driver_volume_stat():
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
 
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
@@ -346,11 +375,12 @@ def test_nbs_csi_driver_volume_stat():
         cleanup_after_test(env)
 
 
-@pytest.mark.parametrize('mount_path,volume_access_type',
-                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount"),
-                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block")])
-def test_csi_sanity_nbs_backend(mount_path, volume_access_type):
-    env, run = init()
+@pytest.mark.parametrize('mount_path,volume_access_type,vm_mode',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", False),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block", False),
+                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", True)])
+def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
+    env, run = init(vm_mode)
     backend = "nbs"
 
     try:
@@ -358,8 +388,13 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type):
         mount_dir = Path(mount_path)
         mount_dir.parent.mkdir(parents=True, exist_ok=True)
 
-        params_file = Path(os.getcwd()) / "params.yaml"
-        params_file.write_text(f"backend: {backend}")
+        params_file = Path("params.yaml")
+        params_file.write_text(yaml.safe_dump(
+            {
+                "backend": backend,
+                "instanceId": "test-instance-id",
+            }
+        ))
 
         skipTests = ["should fail when the node does not exist"]
 
@@ -395,6 +430,7 @@ def test_node_volume_expand():
         pod_name = "example-pod"
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id, volume_name, pod_name)
 
         new_volume_size = 2 * volume_size
@@ -415,12 +451,38 @@ def test_node_volume_expand():
         log_called_process_error(e)
         raise
     finally:
-        try:
+        with called_process_error_logged():
             env.csi.unpublish_volume(pod_id, volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
-        try:
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
             env.csi.delete_volume(volume_name)
-        except subprocess.CalledProcessError as e:
-            log_called_process_error(e)
+        cleanup_after_test(env)
+
+
+def test_publish_volume_twice_on_the_same_node():
+    env, run = init(vm_mode=True)
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_name2 = "example-pod-2"
+        pod_id1 = "deadbeef1"
+        pod_id2 = "deadbeef2"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.publish_volume(pod_id2, volume_name, pod_name2)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id1, volume_name)
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id2, volume_name)
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
+            env.csi.delete_volume(volume_name)
         cleanup_after_test(env)
