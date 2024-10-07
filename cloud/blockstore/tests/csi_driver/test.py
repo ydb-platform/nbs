@@ -13,6 +13,7 @@ from pathlib import Path
 import yatest.common as common
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
@@ -123,7 +124,9 @@ class NbsCsiDriverRunner:
         self._endpoint = Path(sockets_dir) / "csi.sock"
         self._grpc_unix_socket_path = grpc_unix_socket_path
         self._proc = None
-        self._csi_driver_output = os.path.join(common.output_path(), "driver_output.txt")
+        self._csi_driver_output = os.path.join(get_unique_path_for_current_test(
+            output_path=common.output_path(),
+            sub_folder=""), "driver_output.txt")
         self._log_file = None
         self._vm_mode = vm_mode
 
