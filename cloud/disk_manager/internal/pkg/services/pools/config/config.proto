@@ -12,7 +12,7 @@ message PoolsConfig {
     // Maximum number of base disks simultaneously creating from one image.
     optional uint32 MaxBaseDisksInflight = 2 [default = 5];
     optional uint32 MaxBaseDiskUnits = 3 [default = 640];
-    optional uint32 TakeBaseDisksToScheduleParallelism = 4 [default = 20];
+    optional uint32 TakeBaseDisksToScheduleParallelism = 4 [default = 60];
     optional string ScheduleBaseDisksTaskScheduleInterval = 5 [default = "1m"];
     optional string DeleteBaseDisksTaskScheduleInterval = 6 [default = "1m"];
     optional string StorageFolder = 7 [default = "pools"];
