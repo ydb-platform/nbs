@@ -197,7 +197,7 @@ void TStorageServiceActor::HandleDestroyFileStore(
 
     if (Count(
             StorageConfig->GetDestroyFilestoreDenyList(),
-            (msg->Record.GetFileSystemId())))
+            msg->Record.GetFileSystemId()))
     {
         LOG_INFO(
             ctx,
