@@ -246,6 +246,12 @@ NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
 NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
 
 template <typename T>
+concept TAcceptsError = requires(T a)
+{
+    { *a.MutableError() = MakeError(S_OK) };
+};
+
+template <typename T>
 T ErrorResponse(ui32 code, TString message)
 {
     T response;
@@ -402,7 +408,7 @@ public:
         , Message(e.GetMessage())
     {}
 
-    template <typename T>
+    template <TAcceptsError T>
     operator T() const
     {
         return ErrorResponse<T>(Code, Message);
