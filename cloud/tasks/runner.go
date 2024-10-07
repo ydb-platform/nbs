@@ -575,6 +575,7 @@ func lockAndExecuteTask(
 		sampleForTracing,
 		tracing.WithAttributes(
 			tracing.AttributeString("task_id", taskInfo.ID),
+			tracing.AttributeString("request_id", headers.GetRequestID(runCtx)),
 			tracing.AttributeInt64(
 				"generation_id",
 				int64(taskInfo.GenerationID),
