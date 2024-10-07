@@ -212,6 +212,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
                                                                                \
+    xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
                                                                                \
     xxx(SSProxyFallbackMode,            bool,     false                       )\
 // FILESTORE_STORAGE_CONFIG
@@ -237,14 +238,21 @@ bool IsEmpty(const T& t)
 }
 
 template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+}
+
+template <>
 bool IsEmpty(const TAliases& value)
 {
     return value.GetEntries().empty();
 }
 
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 {
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
+    return value.empty();
 }
 
 template <typename TTarget, typename TSource>
@@ -263,6 +271,13 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    return TVector<TString>(value.begin(), value.end());
 }
 
 IOutputStream& operator <<(
@@ -286,6 +301,16 @@ void DumpImpl(const T& t, IOutputStream& os)
 }
 
 template <>
+void DumpImpl(const TCertificate& value, IOutputStream& os)
+{
+    os << "{ "
+        << value.CertFile
+        << ", "
+        << value.CertPrivateKeyFile
+        << " }";
+}
+
+template <>
 void DumpImpl(const TAliases& value, IOutputStream& os)
 {
     os << "{ ";
@@ -295,13 +320,15 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
     os << " }";
 }
 
-void DumpImpl(const TCertificate& value, IOutputStream& os)
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 {
-    os << "{ "
-        << value.CertFile
-        << ", "
-        << value.CertPrivateKeyFile
-        << " }";
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
 }
 
 }   // namespace

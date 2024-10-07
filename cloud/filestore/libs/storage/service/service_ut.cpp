@@ -4150,6 +4150,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(DestroyFilestoreShouldRespectDenyList)
+    {
+        NProto::TStorageConfig config;
+        config.MutableDestroyFilestoreDenyList()->Add("test");
+        config.SetGetNodeAttrBatchEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldValidateRequestsWithShardId)
     {
         TTestEnv env;

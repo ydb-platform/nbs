@@ -272,6 +272,8 @@ public:
 
     TString GetPathDescriptionBackupFilePath() const;
 
+    TVector<TString> GetDestroyFilestoreDenyList() const;
+
     bool GetSSProxyFallbackMode() const;
 };
 
