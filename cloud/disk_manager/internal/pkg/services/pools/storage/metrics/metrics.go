@@ -43,11 +43,8 @@ func (s *callStats) onError() {
 ////////////////////////////////////////////////////////////////////////////////
 
 func callDurationBuckets() common_metrics.DurationBuckets {
-	return common_metrics.NewDurationBuckets(
-		10*time.Millisecond, 20*time.Millisecond, 50*time.Millisecond,
-		100*time.Millisecond, 200*time.Millisecond, 500*time.Millisecond,
-		1*time.Second, 2*time.Second, 5*time.Second, 10*time.Second,
-		20*time.Second, 50*time.Second,
+	return common_metrics.NewExponentialDurationBuckets(
+		10*time.Millisecond, 2, 14,
 	)
 }
 
