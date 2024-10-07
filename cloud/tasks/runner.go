@@ -340,7 +340,7 @@ type runnerForCancel struct {
 
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
-	maxSampledGeneration              uint64 // TODO:_ maybe not use this limit for cancel?
+	maxSampledGeneration              uint64
 }
 
 func (r *runnerForCancel) receiveTask(

@@ -41,7 +41,7 @@ func StartSpanWithSampling(
 	opts ...trace.SpanStartOption,
 ) (context.Context, trace.Span) {
 
-	opts = append(opts, WithAttributes(makeShouldSampleAttribute(sampled)))
+	opts = append(opts, WithAttributes(newShouldSampleAttribute(sampled)))
 	return StartSpan(ctx, spanName, opts...)
 }
 
@@ -70,11 +70,13 @@ func newTraceExporter(
 }
 
 func newParentBasedSampler() sdktrace.Sampler {
-	sampler := newSampler() // TODO:_ naming: sampler?
+	rootSampler := newSampler()
+	// If the parent span is not sampled. then the child span also will not be sampled.
+	// If the parent span is sampled, then the rootSampler will make sampling decision.
 	return sdktrace.ParentBased(
-		sampler,
-		sdktrace.WithLocalParentSampled(sampler),
-		sdktrace.WithRemoteParentSampled(sampler),
+		rootSampler,
+		sdktrace.WithLocalParentSampled(rootSampler),
+		sdktrace.WithRemoteParentSampled(rootSampler),
 	)
 }
 

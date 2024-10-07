@@ -1276,6 +1276,7 @@ func TestTryExecutingTask(t *testing.T) {
 		taskInfo,
 		time.Hour,
 		2,
+		false,
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
@@ -1336,6 +1337,7 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		taskInfo,
 		time.Hour,
 		2,
+		false,
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
