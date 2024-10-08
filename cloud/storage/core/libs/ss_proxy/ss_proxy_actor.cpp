@@ -143,11 +143,4 @@ void TSSProxyActor::HandleBackupPathDescriptions(
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-IActorPtr CreateSSProxy(TSSProxyConfig config)
-{
-    return std::make_unique<TSSProxyActor>(std::move(config));
-}
-
 }   // namespace NCloud::NStorage

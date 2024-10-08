@@ -8,6 +8,7 @@ SRCS(
     ss_proxy_actor_createfs.cpp
     ss_proxy_actor_describefs.cpp
     ss_proxy_actor_destroyfs.cpp
+    ss_proxy_fallback_actor.cpp
 )
 
 PEERDIR(

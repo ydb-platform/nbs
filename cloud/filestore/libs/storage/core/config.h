@@ -271,6 +271,8 @@ public:
     bool GetMultipleStageRequestThrottlingEnabled() const;
 
     TString GetPathDescriptionBackupFilePath() const;
+
+    bool GetSSProxyFallbackMode() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

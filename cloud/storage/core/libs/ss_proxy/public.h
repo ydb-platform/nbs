@@ -15,6 +15,7 @@ struct TSSProxyConfig
     TDuration PipeClientMaxRetryTime;
     TString SchemeShardDir;
     TString PathDescriptionBackupFilePath;
+    bool FallbackMode = false;
 };
 
 }   // namespace NCloud::NStorage
