@@ -327,16 +327,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         );
 
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.CountRead,
+            rdmaCounters.CountRead.Value,
             counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.CountWrite,
+            rdmaCounters.CountWrite.Value,
             counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.ReadBlocks,
+            rdmaCounters.ReadBlocks.Value,
             counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.WriteBlocks,
+            rdmaCounters.WriteBlocks.Value,
             counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -419,16 +419,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         );
 
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.CountRead,
+            rdmaCounters.CountRead.Value,
             counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.CountWrite,
+            rdmaCounters.CountWrite.Value,
             counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.ReadBlocks,
+            rdmaCounters.ReadBlocks.Value,
             counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(
-            rdmaCounters.WriteBlocks,
+            rdmaCounters.WriteBlocks.Value,
             counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
