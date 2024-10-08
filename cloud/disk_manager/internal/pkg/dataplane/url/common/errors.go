@@ -41,3 +41,14 @@ func NewSourceForbiddenError(format string, args ...interface{}) error {
 		},
 	)
 }
+
+func NewWrongETagError(format string, args ...interface{}) error {
+	return errors.NewDetailedError(
+		fmt.Errorf(format, args...),
+		&errors.ErrorDetails{
+			Code:     error_codes.Aborted,
+			Message:  "url source data was changed during image creation",
+			Internal: false,
+		},
+	)
+}
