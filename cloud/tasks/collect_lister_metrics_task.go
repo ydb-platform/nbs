@@ -159,11 +159,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 ) error {
 
 	metricName := "hangingTasks"
-	totalHangingTasksGauge := c.registry.WithTags(
-		map[string]string{
-			"type": "any", "id": "any",
-		},
-	).Gauge(metricName)
+	totalHangingTasksGauge := c.registry.Gauge(metricName)
 
 	taskInfos, err := c.storage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
