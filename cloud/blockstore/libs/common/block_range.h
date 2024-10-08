@@ -6,6 +6,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
+#include <util/generic/ylimits.h>
 
 #include <concepts>
 #include <optional>
