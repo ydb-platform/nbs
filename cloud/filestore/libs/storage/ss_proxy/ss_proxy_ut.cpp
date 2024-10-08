@@ -364,10 +364,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        {
-            NProto::TStorageConfig config;
-            config.SetPathDescriptionBackupFilePath(backupFilePath);
+        NProto::TStorageConfig config;
+        config.SetPathDescriptionBackupFilePath(backupFilePath);
 
+        {
             TSSProxyClient ssProxy(
                 CreateTestStorageConfig(config),
                 runtime,
@@ -385,13 +385,14 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
 
         {
-            NProto::TStorageConfig config;
             config.SetSSProxyFallbackMode(true);
 
             TSSProxyClient ssProxy(
                 CreateTestStorageConfig(config),
                 runtime,
                 nodeIdx);
+
+            ssProxy.DescribeFileStore("test");
 
             ssProxy.SendRequest(
                 MakeSSProxyServiceId(),
