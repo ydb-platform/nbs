@@ -28,6 +28,7 @@ func (s *sampler) ShouldSample(
 	if !hasSampledAttribute(params) {
 		return sdktrace.SamplingResult{Decision: sdktrace.Drop}
 	}
+
 	return sdktrace.SamplingResult{Decision: sdktrace.RecordAndSample}
 }
 
@@ -48,5 +49,6 @@ func hasSampledAttribute(params sdktrace.SamplingParameters) bool {
 			return attr.Value.AsBool()
 		}
 	}
+
 	return true
 }
