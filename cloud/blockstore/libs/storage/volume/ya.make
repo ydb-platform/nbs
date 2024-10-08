@@ -20,6 +20,7 @@ SRCS(
     volume_actor_monitoring_removeclient.cpp
     volume_actor_monitoring.cpp
     volume_actor_read_history.cpp
+    volume_actor_read_meta_history.cpp
     volume_actor_reallocatedisk.cpp
     volume_actor_removeclient.cpp
     volume_actor_reset_seqnumber.cpp
