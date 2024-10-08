@@ -516,10 +516,6 @@ private:
         size_t recordCount,
         bool monRequest);
 
-    void ProcessReadMetaHistory(
-        const NActors::TActorContext& ctx,
-        TRequestInfoPtr requestInfo);
-
     bool CheckAllocationResult(
         const NActors::TActorContext& ctx,
         const TDevices& devices,

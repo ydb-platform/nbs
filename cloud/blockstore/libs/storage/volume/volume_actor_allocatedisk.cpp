@@ -118,8 +118,14 @@ std::unique_ptr<MessageDifferencer> CreateNodeIdChangeDifferencer()
         NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId");
     const auto* rdmaPortDescriptor =
         NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port");
-    Y_DEBUG_ABORT_UNLESS(nodeIdDescriptor);
-    Y_DEBUG_ABORT_UNLESS(rdmaPortDescriptor);
+    if (!nodeIdDescriptor || !rdmaPortDescriptor) {
+        ReportFieldDescriptorNotFound(
+            TStringBuilder()
+            << "Lite reallocation is impossible. nodeIdDescriptor = "
+            << nodeIdDescriptor
+            << "; rdmaPortDescriptor = " << rdmaPortDescriptor);
+        return nullptr;
+    }
 
     auto diff = std::make_unique<MessageDifferencer>();
     diff->IgnoreField(nodeIdDescriptor);
@@ -517,14 +523,8 @@ void TVolumeActor::ExecuteUpdateDevices(
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
     if (Config->GetAllowLiteDiskReallocations()) {
         auto differencer = CreateNodeIdChangeDifferencer();
-
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "\noldmeta = %s; \nnewmeta = %s",
-            oldMeta.DebugString().c_str(),
-            newMeta.DebugString().c_str());
-        args.LiteReallocation = differencer->Compare(oldMeta, newMeta);
+        args.LiteReallocation =
+            differencer && differencer->Compare(oldMeta, newMeta);
     }
 
     TVolumeDatabase db(tx.DB);
@@ -550,7 +550,7 @@ void TVolumeActor::CompleteUpdateDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Devices has been updated. DiskId: %s LiteReallocation: %d",
+        "[%lu] Devices have been updated. DiskId: %s LiteReallocation: %d",
         TabletID(),
         State->GetDiskId().c_str(),
         args.LiteReallocation);

@@ -86,6 +86,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
+    xxx(FieldDescriptorNotFound)                                               \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

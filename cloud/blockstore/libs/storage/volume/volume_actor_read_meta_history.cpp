@@ -2,7 +2,6 @@
 
 #include "volume_database.h"
 
-// #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
@@ -13,8 +12,6 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleReadMetaHistory(
@@ -24,14 +21,6 @@ void TVolumeActor::HandleReadMetaHistory(
     auto* msg = ev->Get();
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    ProcessReadMetaHistory(ctx, std::move(requestInfo));
-}
-
-void TVolumeActor::ProcessReadMetaHistory(
-    const NActors::TActorContext& ctx,
-    TRequestInfoPtr requestInfo)
-{
     AddTransaction(*requestInfo);
 
     ExecuteTx<TReadMetaHistory>(ctx, std::move(requestInfo));
