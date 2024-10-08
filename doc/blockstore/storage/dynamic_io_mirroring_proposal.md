@@ -80,7 +80,7 @@ A lagging agent can be either unresponsive or resyncing.
 There can be 0-1 instances of `IncompleteMirrorRWModeController` per `NonreplicatedPartition`. The presence of the `IncompleteMirrorRWModeController` indicates that the replica has agents that lag behind. `IncompleteMirrorRWModeController` manages the lifetimes of `AgentAvailabilityMonitor` and `SmartMigrationActor` entities.
 
 Since the dirty block map will not be stored persistently, we must handle lagging replica on restart of a partition, volume, or a whole service. In this case, the basic resync is started, but with a small difference that only devices of lagging agents will be processed.
-There is one caveat, though: mirror-3 disks can now store different data in the same block across all three replicas. The lagging replica - the oldest data and the other two can differ because a write blocks request was sent to only one replica before the restart. That is not a problem because write confirmation was not sent to a client, but it is something that the current resync algorithm is not ready for.
+There is one caveat, though: mirror-3 disks can now store different data in the same block across all three replicas. The lagging replica - the oldest data and the other two can differ because a write blocks request was sent to only one replica before the restart. That is not a problem because write confirmation was not sent to a client, but it is something that the current resync algorithm is not ready for. It will pick a random replica, read blocks from it, and write them to the others. We should give it a hint that it should not pick the lagging replica since it definitely contains old data.
 
 ### AgentAvailabilityMonitor
 
