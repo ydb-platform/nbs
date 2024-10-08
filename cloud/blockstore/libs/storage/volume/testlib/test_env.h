@@ -457,7 +457,8 @@ public:
         TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
         ui64 processedBlockCount);
 
-    std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest> CreateReadMetaHistoryRequest();
+    std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest>
+    CreateReadMetaHistoryRequest();
 
     void SendRemoteHttpInfo(
         const TString& params,

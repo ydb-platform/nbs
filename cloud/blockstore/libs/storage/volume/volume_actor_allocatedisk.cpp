@@ -122,8 +122,9 @@ std::unique_ptr<MessageDifferencer> CreateNodeIdChangeDifferencer()
         ReportFieldDescriptorNotFound(
             TStringBuilder()
             << "Lite reallocation is impossible. nodeIdDescriptor = "
-            << nodeIdDescriptor
-            << "; rdmaPortDescriptor = " << rdmaPortDescriptor);
+            << static_cast<const void*>(nodeIdDescriptor)
+            << "; rdmaPortDescriptor = "
+            << static_cast<const void*>(rdmaPortDescriptor));
         return nullptr;
     }
 
