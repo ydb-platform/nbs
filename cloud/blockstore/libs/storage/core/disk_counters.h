@@ -636,6 +636,29 @@ static_assert(
     sizeof(TVolumeSelfRequestCounters::TCounter) *
         std::size(TVolumeSelfRequestCounters::AllCounters));
 
+struct TTransportRequestCounters
+{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
+
+    TCounter ReadBlocks{EPublishingPolicy::All};
+    TCounter WriteBlocks{EPublishingPolicy::All};
+    TCounter CountRead{EPublishingPolicy::All};
+    TCounter CountWrite{EPublishingPolicy::All};
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TTransportRequestCounters::ReadBlocks>(),
+        MakeMeta<&TTransportRequestCounters::WriteBlocks>(),
+        MakeMeta<&TTransportRequestCounters::CountRead>(),
+        MakeMeta<&TTransportRequestCounters::CountWrite>(),
+
+    };
+};
+
+static_assert(
+    sizeof(TTransportRequestCounters) ==
+    (sizeof(TTransportRequestCounters::TCounter) *
+     std::size(TTransportRequestCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionDiskCounters
@@ -644,6 +667,8 @@ struct TPartitionDiskCounters
     TCumulativeDiskCounters Cumulative;
     THistogramRequestCounters RequestCounters;
     THistogramCounters Histogram;
+    TTransportRequestCounters Rdma;
+    TTransportRequestCounters Interconnect;
 
     EPublishingPolicy Policy;
 
@@ -654,6 +679,10 @@ struct TPartitionDiskCounters
     void Add(const TPartitionDiskCounters& source);
     void AggregateWith(const TPartitionDiskCounters& source);
     void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
+    void RegisterTTransportRequestCounters(
+        NMonitoring::TDynamicCountersPtr& counters,
+        TTransportRequestCounters& requestCounters,
+        TString requestType);
     void Publish(TInstant now);
     void Reset();
 };

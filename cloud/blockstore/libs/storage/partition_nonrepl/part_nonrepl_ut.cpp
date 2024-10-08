@@ -427,6 +427,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& transportCounters =
+            env.StorageStatsServiceState->Counters.Interconnect;
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.CountRead,
+            counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
@@ -493,6 +498,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        auto& transportCounters =
+            env.StorageStatsServiceState->Counters.Interconnect;
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.CountWrite,
+            counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(1, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * 3072,
