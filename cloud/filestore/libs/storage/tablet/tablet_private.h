@@ -38,6 +38,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(WriteBlob,                              __VA_ARGS__)                   \
     xxx(WriteBatch,                             __VA_ARGS__)                   \
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
+    xxx(LoadNodeRefs,                           __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
@@ -84,7 +85,7 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_IGNORE_COMPLETION(name, ns)                                  \
     IgnoreFunc(ns::TEv##name##Completed);                                      \
-// FILESTORE_HANDLE_COMPLETION
+// FILESTORE_IGNORE_COMPLETION
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -521,6 +522,40 @@ struct TEvIndexTabletPrivate
                 ui32 lastRangeId)
             : FirstRangeId(firstRangeId)
             , LastRangeId(lastRangeId)
+        {}
+    };
+
+    //
+    // LoadNodeRefs
+    //
+
+    struct TLoadNodeRefsRequest
+    {
+        const ui64 NodeId;
+        const TString Name;
+        const ui64 MaxNodeRefs;
+
+        TLoadNodeRefsRequest(
+                ui64 nodeId,
+                TString name,
+                ui64 maxNodeRefs)
+            : NodeId(nodeId)
+            , Name(std::move(name))
+            , MaxNodeRefs(maxNodeRefs)
+        {}
+    };
+
+    using TLoadNodeRefsResponse = TEmpty;
+
+    struct TLoadNodeRefsCompleted {
+        const ui64 NextNodeId;
+        const TString NextCookie;
+
+        TLoadNodeRefsCompleted(
+                ui64 nextNodeId,
+                TString nextCookie)
+            : NextNodeId(nextNodeId)
+            , NextCookie(std::move(nextCookie))
         {}
     };
 

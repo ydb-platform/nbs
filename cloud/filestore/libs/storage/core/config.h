@@ -233,6 +233,8 @@ public:
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
     ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    bool GetInMemoryIndexCacheLoadOnTabletStart() const;
+    ui64 GetInMemoryIndexCacheLoadOnTabletStarRowsPerTx() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;

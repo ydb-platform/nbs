@@ -598,6 +598,46 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     return true;
 }
 
+bool TIndexTabletDatabase::ReadNodeRefs(
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    using TTable = TIndexTabletSchema::NodeRefs;
+
+    auto it = Table<TTable>().GreaterOrEqual(startNodeId, startCookie).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid() && maxCount > 0) {
+        refs.emplace_back(TNodeRef{
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::Name>(),
+            it.GetValue<TTable::ChildId>(),
+            it.GetValue<TTable::FollowerId>(),
+            it.GetValue<TTable::FollowerName>(),
+            it.GetValue<TTable::CommitId>(),
+            InvalidCommitId});
+        --maxCount;
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    if (it.IsValid()) {
+        nextNodeId = it.GetValue<TTable::NodeId>();
+        nextCookie = it.GetValue<TTable::Name>();
+    }
+
+    return true;
+}
+
 bool TIndexTabletDatabase::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
@@ -2030,13 +2070,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     if (result && ref) {
         // If ReadNodeRef was successful, it is reasonable to update the cache
         // with the value that has just been read.
-        NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
-            .NodeRefsKey = {nodeId, name},
-            .NodeRefsRow = {
-                .CommitId = ref->MinCommitId,
-                .ChildId = ref->ChildNodeId,
-                .FollowerId = ref->FollowerId,
-                .FollowerName = ref->FollowerName}});
+        NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(*ref));
     }
     return result;
 }
@@ -2054,14 +2088,33 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
+        for (const auto& ref : refs) {
+            NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
+        }
+    }
+    return result;
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodeRefs(
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    auto result = TIndexTabletDatabase::ReadNodeRefs(
+        startNodeId,
+        startCookie,
+        maxCount,
+        refs,
+        nextNodeId,
+        nextCookie);
+    if (result) {
+        // If ReadNodeRefs was successful, it is reasonable to update the cache
+        // with the values that have just been read.
         for (const auto& ref: refs) {
-            NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
-                .NodeRefsKey = {nodeId, ref.Name},
-                .NodeRefsRow = {
-                    .CommitId = ref.MinCommitId,
-                    .ChildId = ref.ChildNodeId,
-                    .FollowerId = ref.FollowerId,
-                    .FollowerName = ref.FollowerName}});
+            NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
         }
     }
     return result;
@@ -2125,6 +2178,18 @@ void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
 {
     TIndexTabletDatabase::DeleteNodeRefVer(nodeId, commitId, name);
     // TODO(#1146): _Ver tables not yet supported
+}
+
+TInMemoryIndexState::TWriteNodeRefsRequest
+TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
+{
+    return TInMemoryIndexState::TWriteNodeRefsRequest{
+        .NodeRefsKey = {ref.NodeId, ref.Name},
+        .NodeRefsRow = {
+            .CommitId = ref.MinCommitId,
+            .ChildId = ref.ChildNodeId,
+            .FollowerId = ref.FollowerId,
+            .FollowerName = ref.FollowerName}};
 }
 
 }   // namespace NCloud::NFileStore::NStorage
