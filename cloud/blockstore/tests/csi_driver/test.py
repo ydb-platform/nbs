@@ -488,3 +488,54 @@ def test_publish_volume_twice_on_the_same_node():
         with called_process_error_logged():
             env.csi.delete_volume(volume_name)
         cleanup_after_test(env)
+
+
+def test_restart_kubelet_with_old_format_endpoint():
+    env, run = init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_id1 = "deadbeef1"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+
+        # skip stage to create endpoint with old format
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id1, volume_name)
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
+            env.csi.delete_volume(volume_name)
+        cleanup_after_test(env)
+
+
+def test_restart_kubelet_with_new_format_endpoint():
+    env, run = init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_id1 = "deadbeef1"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id1, volume_name)
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
+            env.csi.delete_volume(volume_name)
+        cleanup_after_test(env)
