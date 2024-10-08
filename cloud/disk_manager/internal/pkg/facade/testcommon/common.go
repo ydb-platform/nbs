@@ -3,7 +3,6 @@ package testcommon
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -296,22 +295,6 @@ func GetRequestContext(t *testing.T, ctx context.Context) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func WaitForRandomDuration(min time.Duration, max time.Duration) {
-	var duration time.Duration
-
-	rand.Seed(time.Now().UnixNano())
-	x := min.Microseconds()
-	y := max.Microseconds()
-
-	if y <= x {
-		duration = min
-	} else {
-		duration = time.Duration(x+rand.Int63n(y-x)) * time.Microsecond
-	}
-
-	<-time.After(duration)
-}
-
 func RequireCheckpointsAreEmpty(
 	t *testing.T,
 	ctx context.Context,
@@ -467,7 +450,7 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	return pools_storage.NewStorage(&pools_config.PoolsConfig{
 		CloudId:  &cloudID,
 		FolderId: &folderID,
-	}, db)
+	}, db, metrics.NewEmptyRegistry())
 }
 
 func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {

@@ -54,10 +54,14 @@ void TIndexTabletActor::HandleRenameNode(
     }
 
     auto* msg = ev->Get();
-    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    const auto requestId = GetRequestId(msg->Record);
+    if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TEvService::TEvRenameNodeResponse>();
-        GetDupCacheEntry(e, response->Record);
-        return NCloud::Reply(ctx, *ev, std::move(response));
+        if (GetDupCacheEntry(e, response->Record)) {
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+
+        session->DropDupEntry(requestId);
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -318,13 +322,22 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             }
 
             // remove target ref and unlink target node
-            UnlinkNode(
+            auto e = UnlinkNode(
                 db,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 *args.NewChildNode,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
+
+            if (HasError(e)) {
+                const auto nodeId = args.NewChildNode->NodeId;
+                WriteOrphanNode(db, TStringBuilder()
+                    << "RenameNode: " << args.SessionId
+                    << ", ParentNodeId: " << args.NewParentNode->NodeId
+                    << ", NodeId: " << nodeId
+                    << ", Error: " << FormatError(e), nodeId);
+            }
         } else {
             // remove target ref
             UnlinkExternalNode(

@@ -654,7 +654,13 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             blockSize,
             CreateMonitoringServiceStub());
 
-        TStorageAdapter storageAdapter(std::move(storage), blockSize, true);
+        TStorageAdapter storageAdapter(
+            std::move(storage),
+            blockSize,
+            true,                // normalize,
+            TDuration::Zero(),   // maxRequestDuration
+            TDuration::Zero()    // shutdownTimeout
+        );
 
         Y_DEFER { device.Stop(); };
 

@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
@@ -26,6 +27,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/storage/init/disk_agent/actorsystem.h>
@@ -90,6 +93,33 @@ void ParseProtoTextFromFile(const TString& fileName, T& dst)
 {
     TFileInput in(fileName);
     ParseFromTextFormat(in, dst);
+}
+
+bool AgentHasDevices(
+    TLog log,
+    const NStorage::TStorageConfigPtr& storageConfig,
+    const NStorage::TDiskAgentConfigPtr& agentConfig)
+{
+    if (!agentConfig->GetFileDevices().empty()) {
+        return true;
+    }
+
+    const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = agentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
+    auto cachedDevices = NStorage::LoadCachedConfig(path);
+    if (!cachedDevices.empty()) {
+        return true;
+    }
+
+    NStorage::TDeviceGenerator gen{std::move(log), agentConfig->GetAgentId()};
+    auto error =
+        FindDevices(agentConfig->GetStorageDiscoveryConfig(), std::ref(gen));
+    if (HasError(error)) {
+        return false;
+    }
+
+    return !gen.ExtractResult().empty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,6 +225,17 @@ void TBootstrap::ParseOptions(int argc, char** argv)
     Configs = std::make_unique<TConfigInitializer>(std::move(options));
 }
 
+void TBootstrap::InitHTTPServer()
+{
+    Y_DEBUG_ABORT_UNLESS(!Initialized);
+
+    StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
+        Configs->DiagnosticsConfig->GetNbsMonPort(),
+        "This node is not registered in the NodeBroker. See "
+        "\"DisableNodeBrokerRegisterationOnDevicelessAgent\" in the disk agent "
+        "config.");
+}
+
 void TBootstrap::Init()
 {
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
@@ -204,8 +245,12 @@ void TBootstrap::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
-    InitKikimrService();
+    if (!InitKikimrService()) {
+        InitHTTPServer();
+        return;
+    }
 
+    Initialized = true;
     STORAGE_INFO("Kikimr service initialized");
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
@@ -281,7 +326,7 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
     }
 }
 
-void TBootstrap::InitKikimrService()
+bool TBootstrap::InitKikimrService()
 {
     Configs->InitKikimrConfig();
     Configs->InitServerConfig();
@@ -328,6 +373,23 @@ void TBootstrap::InitKikimrService()
 
     STORAGE_INFO("Configs initialized");
 
+    if (const auto& agentConfig = Configs->DiskAgentConfig;
+        agentConfig->GetDisableNodeBrokerRegisterationOnDevicelessAgent())
+    {
+        if (!agentConfig->GetEnabled()) {
+            STORAGE_INFO(
+                "Agent is disabled. Skipping the node broker registration.");
+            return false;
+        }
+
+        if (!AgentHasDevices(Log, Configs->StorageConfig, agentConfig)) {
+            STORAGE_INFO(
+                "Devices were not found. Skipping the node broker "
+                "registration.");
+            return false;
+        }
+    }
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
@@ -369,12 +431,22 @@ void TBootstrap::InitKikimrService()
                 break;
             }
 
-            case NProto::DISK_AGENT_BACKEND_AIO:
-                FileIOService = CreateAIOService();
+            case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
+                auto factory = [events = config.GetMaxAIOContextEvents()] {
+                    return CreateAIOService(events);
+                };
+
+                FileIOServiceProvider =
+                    config.GetPathsPerFileIOService()
+                        ? CreateFileIOServiceProvider(
+                              config.GetPathsPerFileIOService(),
+                              factory)
+                        : CreateSingleFileIOServiceProvider(factory());
+
                 AioStorageProvider = CreateAioStorageProvider(
-                    FileIOService,
+                    FileIOServiceProvider,
                     NvmeManager,
                     !config.GetDirectIoFlagDisabled(),
                     EAioSubmitQueueOpt::Use
@@ -382,6 +454,7 @@ void TBootstrap::InitKikimrService()
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
+            }
             case NProto::DISK_AGENT_BACKEND_NULL:
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
                 AioStorageProvider = CreateNullStorageProvider();
@@ -427,7 +500,6 @@ void TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.FileIOService = FileIOService;
     args.AioStorageProvider = AioStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
@@ -450,6 +522,8 @@ void TBootstrap::InitKikimrService()
     if (SpdkLogInitializer) {
         SpdkLogInitializer(spdkLog);
     }
+
+    return true;
 }
 
 void TBootstrap::InitLWTrace()
@@ -522,6 +596,12 @@ void TBootstrap::InitLWTrace()
 
 void TBootstrap::Start()
 {
+    if (!Initialized) {
+        if (StubMonPageServer) {
+            StubMonPageServer->Start();
+        }
+        return;
+    }
 #define START_COMPONENT(c)                                                     \
     if (c) {                                                                   \
         c->Start();                                                            \
@@ -536,7 +616,7 @@ void TBootstrap::Start()
     START_COMPONENT(TraceProcessor);
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
-    START_COMPONENT(FileIOService);
+    START_COMPONENT(FileIOServiceProvider);
     START_COMPONENT(ActorSystem);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -556,6 +636,12 @@ void TBootstrap::Start()
 
 void TBootstrap::Stop()
 {
+    if (!Initialized) {
+        if (StubMonPageServer) {
+            StubMonPageServer->Stop();
+        }
+        return;
+    }
 #define STOP_COMPONENT(c)                                                      \
     if (c) {                                                                   \
         c->Stop();                                                             \
@@ -568,9 +654,9 @@ void TBootstrap::Stop()
     STOP_COMPONENT(Scheduler);
 
     STOP_COMPONENT(ActorSystem);
-    // stop FileIOService after ActorSystem to ensure that there are no
+    // stop FileIOServiceProvider after ActorSystem to ensure that there are no
     // in-flight I/O requests from TDiskAgentActor
-    STOP_COMPONENT(FileIOService);
+    STOP_COMPONENT(FileIOServiceProvider);
 
     STOP_COMPONENT(Spdk);
     STOP_COMPONENT(RdmaServer);

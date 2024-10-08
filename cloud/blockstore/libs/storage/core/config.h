@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-
+#include <cloud/blockstore/config/server.pb.h>
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/media.pb.h>
@@ -596,6 +596,9 @@ public:
     TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefixes() const;
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
+    TDuration GetDiskRegistryDisksNotificationTimeout() const;
+
+    bool GetAllowLiteDiskReallocations() const;
 
     TString GetNodeRegistrationToken() const;
     ui32 GetNodeRegistrationMaxAttempts() const;
@@ -604,10 +607,17 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+
+    NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 };
 
 ui64 GetAllocationUnit(
     const TStorageConfig& config,
     NCloud::NProto::EStorageMediaKind mediaKind);
+
+void AdaptNodeRegistrationParams(
+    const TString& overriddenNodeType,
+    const NProto::TServerConfig& serverConfig,
+    NProto::TStorageServiceConfig& storageConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage

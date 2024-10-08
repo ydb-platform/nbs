@@ -15,6 +15,10 @@ GO_TEST_SRCS(
 
 END()
 
+RECURSE(
+    metrics
+)
+
 RECURSE_FOR_TESTS(
     mocks
     tests

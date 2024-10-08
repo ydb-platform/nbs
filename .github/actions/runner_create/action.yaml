@@ -127,3 +127,10 @@ runs:
         VM_IMAGE: ${{ inputs.vm_image }}
         VM_LABELS: ${{ inputs.vm_labels }}
         VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
+
+    - name: save console output if we had any
+      if: ${{ steps.create-vm.outputs.console-output }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: console-output-${{ inputs.vm_name }}
+        path: ${{ steps.create-vm.outputs.console-output }}

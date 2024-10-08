@@ -112,21 +112,14 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    const FHANDLE fd = *handle;
     auto b = std::move(*request.MutableBuffer());
     TArrayRef<char> data(b.begin(), b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
     FileIOService->AsyncWrite(*handle, request.GetOffset(), data).Subscribe(
-        [b = std::move(b), promise, fd] (const TFuture<ui32>& f) mutable {
+        [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TWriteDataResponse response;
             try {
                 f.GetValue();
-                TFileHandle h(fd);
-                const bool flushed = h.Flush();
-                h.Release();
-                if (!flushed) {
-                    throw yexception() << "failed to flush " << fd;
-                }
             } catch (...) {
                 *response.MutableError() =
                     MakeError(E_IO, CurrentExceptionMessage());
@@ -157,6 +150,47 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
         request.GetOffset(),
         request.GetLength());
     handle->Flush(); // TODO
+
+    return {};
+}
+
+NProto::TFsyncResponse TLocalFileSystem::Fsync(
+    const NProto::TFsyncRequest& request)
+{
+    STORAGE_TRACE("Fsync " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
+        return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
+    }
+
+    const bool flushed =
+        request.GetDataSync() ? handle->FlushData() : handle->Flush();
+    if (!flushed) {
+        return TErrorResponse(E_IO, "flush failed");
+    }
+
+    return {};
+}
+
+NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
+    const NProto::TFsyncDirRequest& request)
+{
+    STORAGE_TRACE("FsyncDir " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto node = session->LookupNode(request.GetNodeId());
+    if (!node) {
+        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+    }
+
+    auto handle = node->OpenHandle(O_RDONLY|O_DIRECTORY);
+    const bool flushed =
+        request.GetDataSync() ? handle.FlushData() : handle.Flush();
+    if (!flushed) {
+        return TErrorResponse(E_IO, "flush failed");
+    }
 
     return {};
 }

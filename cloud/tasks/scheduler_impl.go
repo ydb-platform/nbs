@@ -153,9 +153,11 @@ func (s *scheduler) ScheduleRegularTasks(
 				continue
 			}
 
-			ctx = headers.SetIncomingRequestID(ctx, requestID.String())
-			ctx = tracing.SetTracingContext(ctx)
-			metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
+			metadataCtx := headers.SetIncomingRequestID(ctx, requestID.String())
+			metadataCtx = tracing.SetTracingContext(metadataCtx)
+			metadata := tasks_storage.NewMetadata(
+				headers.GetTracingHeaders(metadataCtx),
+			)
 
 			schedule := tasks_storage.TaskSchedule{
 				ScheduleInterval: schedule.ScheduleInterval,
@@ -619,7 +621,6 @@ func NewScheduler(
 				metricsCollectionInterval: listerMetricsCollectionInterval,
 
 				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
-				exceptHangingTaskTypes:    config.GetExceptHangingTaskTypes(),
 				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
 			}
 		},

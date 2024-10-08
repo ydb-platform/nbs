@@ -545,6 +545,12 @@ TVolumeClient::CreateUpdateShadowDiskStateRequest(
         processedBlockCount);
 }
 
+std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest>
+TVolumeClient::CreateReadMetaHistoryRequest()
+{
+    return std::make_unique<TEvVolumePrivate::TEvReadMetaHistoryRequest>();
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)

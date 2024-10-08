@@ -15,3 +15,7 @@ RECURSE(
     empty
     mocks
 )
+
+RECURSE_FOR_TESTS(
+    tests
+)

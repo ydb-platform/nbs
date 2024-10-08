@@ -319,6 +319,15 @@ public:
         return requestToTablet;
     }
 
+    auto CreateConfigureAsFollowerRequest(ui32 shardNo)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerRequest>();
+        request->Record.SetShardNo(shardNo);
+
+        return request;
+    }
+
     //
     // TEvIndexTabletPrivate
     //
@@ -421,20 +430,28 @@ public:
     // TEvService
     //
 
-    auto CreateCreateNodeRequest(const TCreateNodeArgs& args)
+    auto CreateCreateNodeRequest(
+        const TCreateNodeArgs& args,
+        ui64 requestId = 0)
     {
         auto request = CreateSessionRequest<TEvService::TEvCreateNodeRequest>();
         Headers.Fill(request->Record);
         args.Fill(request->Record);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         return request;
     }
 
-    auto CreateUnlinkNodeRequest(ui64 parent, const TString& name, bool unlinkDirectory)
+    auto CreateUnlinkNodeRequest(
+        ui64 parent,
+        const TString& name,
+        bool unlinkDirectory,
+        ui64 requestId = 0)
     {
         auto request = CreateSessionRequest<TEvService::TEvUnlinkNodeRequest>();
         request->Record.SetNodeId(parent);
         request->Record.SetName(name);
         request->Record.SetUnlinkDirectory(unlinkDirectory);
+        request->Record.MutableHeaders()->SetRequestId(requestId);
         return request;
     }
 

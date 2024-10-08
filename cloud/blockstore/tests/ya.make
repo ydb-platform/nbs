@@ -7,6 +7,7 @@ ENDIF()
 
 RECURSE(
     client
+    config_dispatcher
     csi_driver
     disk_agent_config
     external_endpoint

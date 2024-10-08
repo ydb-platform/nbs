@@ -58,15 +58,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST_IMPL(name, 16_KB)                                              \
 // TABLET_TEST_16K
 
-    auto CompactionRangeToString(const NProtoPrivate::TCompactionRangeStats& rs)
-    {
-        return Sprintf(
-            "r=%u b=%u d=%u",
-            rs.GetRangeId(),
-            rs.GetBlobCount(),
-            rs.GetDeletionCount());
-    }
-
     TABLET_TEST(ShouldStoreFreshBytes)
     {
         TTestEnv env;
@@ -2672,7 +2663,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThresholdForBackpressure(999'999);
         storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
         storageConfig.SetFlushThresholdForBackpressure(block);
-        storageConfig.SetMaxBackpressureErrorsBeforeSuicide(2);
+        storageConfig.SetMaxBackpressureErrorsBeforeSuicide(999999);
+        storageConfig.SetMaxBackpressurePeriodBeforeSuicide(60'000); // 1m
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -2714,6 +2706,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         });
 
         // backpressure due to FlushThresholdForBackpressure
+        // should not cause tablet reboot since the backpressure period hasn't
+        // passed yet
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!poisonPillObserved);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+
+        // backpressure due to FlushThresholdForBackpressure
         // should cause tablet reboot
         tablet.SendWriteDataRequest(handle, 0, block, '0');
         {
@@ -2723,6 +2729,78 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(poisonPillObserved);
+    }
+
+    TABLET_TEST(FlushBytesShouldReenqueueAfterAttemptToEnqueueItDuringFlush)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(2 * block);
+        storageConfig.SetFlushBytesThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        TAutoPtr<IEventHandle> flush;
+        TAutoPtr<IEventHandle> flushBytesCompletion;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvFlushRequest: {
+                    UNIT_ASSERT(!flush);
+                    flush = event.Release();
+                    return true;
+                }
+
+                case TEvIndexTabletPrivate::EvFlushBytesCompleted: {
+                    UNIT_ASSERT(!flushBytesCompletion);
+                    flushBytesCompletion = event.Release();
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        // triggering Flush
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 fresh blocks
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        // Flush caught
+        UNIT_ASSERT(flush);
+
+        // triggering FlushBytes
+        // FlushBytes shouldn't get triggered since Flush is already enqueued
+        tablet.WriteData(handle, 0, block / 2, '0'); // fresh bytes
+        tablet.WriteData(handle, 0, block / 2, '0'); // fresh bytes
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // releasing Flush
+        env.GetRuntime().Send(flush.Release(), 1 /* node index */);
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        // FlushBytes should get enqueued and should successfully run and finish
+        UNIT_ASSERT(flushBytesCompletion);
     }
 
     TABLET_TEST(ShouldReadUnAligned)
@@ -5999,6 +6077,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
         storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
         storageConfig.SetLargeDeletionMarkersCleanupThreshold(3_TB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            10_TB / block);
         const auto blobSize = 2 * block;
         storageConfig.SetWriteBlobThreshold(blobSize);
 
@@ -6130,26 +6210,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST_4K_ONLY(ShouldHandleRangeIdCollisionsInCompactionMapStats)
+    TABLET_TEST(ShouldFlushBytesWithLargeDeletionMarkers)
     {
         const auto block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
-        const ui32 compactionThreshold = 5;
-        storageConfig.SetCompactionThreshold(compactionThreshold);
-        storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetLoadedCompactionRangesPerTx(2);
-        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetMaxFileBlocks(2_TB / block);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
+        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
+        // disabling Cleanup
+        storageConfig.SetLargeDeletionMarkersCleanupThreshold(1_PB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            1_PB / block);
+        // disabling FlushBytes
+        storageConfig.SetFlushBytesThreshold(1_PB);
+        storageConfig.SetFlushBytesThresholdForBackpressure(1_PB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        const auto blobSize = 2 * block;
+        storageConfig.SetWriteBlobThreshold(blobSize);
 
+        TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        // more than enough space
-        tabletConfig.BlockCount = 30_TB / block;
+        tabletConfig.BlockCount = 10_TB / block;
 
         TIndexTabletClient tablet(
             env.GetRuntime(),
@@ -6158,76 +6245,174 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        // RootNodeId is 1, so we will create nodes 2 - 15 and all of them
-        // will end up in a single NodeGroup and, thus, will go to the same
-        // compaction ranges
-        const ui32 nodeCount = 14;
-        TVector<ui64> nodes(nodeCount);
-        const ui32 collisions = 10;
-        TVector<ui32> collidingBlocks;
-        for (ui32 i = 0; i < collisions; ++i) {
-            // see TBlockLocalityHasher implementation
-            collidingBlocks.push_back(i * (BlockGroupSize << 16));
-        }
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
 
-        // should be 140 x 64 x 4KiB == 35MiB
-        const auto expectedBlockCount = nodeCount * collisions * BlockGroupSize;
-        const auto expectedBlobCount = static_cast<ui32>(ceil(
-            static_cast<double>(expectedBlockCount) / (4_MB / block)));
-        UNIT_ASSERT_C(
-            compactionThreshold < expectedBlobCount,
-            TStringBuilder() << "expectedBlobCount: " << expectedBlobCount);
+        // increasing file size to 1TiB
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(1_TB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(1_TB, GetNodeAttrs(tablet, id).GetSize());
 
-        for (ui32 i = 0; i < nodeCount; ++i) {
-            const auto id = CreateNode(
-                tablet,
-                TCreateNodeArgs::File(RootNodeId, Sprintf("test_%u", i)));
+        // decreasing the size to 1GiB to generate LargeDeletionMarkers
+        args.SetSize(1_GB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, GetNodeAttrs(tablet, id).GetSize());
 
-            nodes[i] = id;
-        }
-
-        ui32 rangeId = GetMixedRangeIndex(nodes[0], collidingBlocks[0]);
-        for (auto nodeId: nodes) {
-            for (auto blockIndex: collidingBlocks) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    rangeId,
-                    GetMixedRangeIndex(nodeId, blockIndex));
-                UNIT_ASSERT_VALUES_EQUAL(
-                    rangeId,
-                    GetMixedRangeIndex(nodeId, blockIndex));
-            }
-        }
-
-        for (auto nodeId: nodes) {
-            auto handle = CreateHandle(tablet, nodeId);
-            for (auto blockIndex: collidingBlocks) {
-                tablet.WriteData(
-                    handle,
-                    static_cast<ui64>(block) * blockIndex,
-                    block * BlockGroupSize,
-                    'a');
-            }
-        }
-
-        // Compactions should've happened automatically
+        // resize is needed to disable the fresh bytes to fresh block
+        // rounding optimization on the next write
+        args.SetSize(10_GB + block);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10_GB + block,
+            GetNodeAttrs(tablet, id).GetSize());
+        // adding some fresh bytes to make FlushBytes actually do some work
+        // offset should be >= 2^32 for this test
+        tablet.WriteData(handle, 10_GB, 1_KB, '1');
 
         {
-            auto response = tablet.GetStorageStats(1);
+            auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedBlockCount,
-                stats.GetMixedBlocksCount());
+                (1_TB - 1_GB) / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(1_KB, stats.GetFreshBytesCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedBlobCount,
-                stats.GetMixedBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedCompactionRanges());
+                1_TB - 1_GB,
+                stats.GetDeletedFreshBytesCount());
+        }
+
+        // just checking that FlushBytes succeeds
+        tablet.FlushBytes();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
-                256,
-                stats.GetAllocatedCompactionRanges());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+                (1_TB - 1_GB) / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+        }
+
+        {
+            TString expected;
+            expected.ReserveAndResize(block);
+            memset(expected.begin(), 0, block);
+            memset(expected.begin(), '1', 1_KB);
+            auto response = tablet.ReadData(handle, 10_GB, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldRejectLargeFileTruncationIfLargeDeletionMarkerCountIsTooHigh)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxFileBlocks(5_TB / block);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
+        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
+        storageConfig.SetLargeDeletionMarkersCleanupThreshold(20_TB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            4_TB / block);
+        const auto blobSize = 2 * block;
+        storageConfig.SetWriteBlobThreshold(blobSize);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.BlockCount = 10_TB / block;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        for (const auto id: {id1, id2}) {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(5_TB);
+            tablet.SetNodeAttr(args);
+            UNIT_ASSERT_VALUES_EQUAL(5_TB, GetNodeAttrs(tablet, id).GetSize());
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(RootNodeId, "test1", false);
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            tablet.SendUnlinkNodeRequest(RootNodeId, "test2", false);
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
-                Sprintf("r=1177944064 b=%u d=8960", (compactionThreshold - 1)),
-                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+                5_TB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedNodesCount());
+        }
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        auto registry = env.GetRegistry();
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OrphanNodesCount"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        tablet.RenameNode(RootNodeId, "test3", RootNodeId, "test2");
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OrphanNodesCount"}, {"filesystem", "test"}}, 1},
+            });
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                5_TB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedNodesCount());
         }
     }
 

@@ -4,8 +4,10 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    auth
     build_arcadia_test
     client
+    config_dispatcher
     fio
     fio_index
     fio_index_migration

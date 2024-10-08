@@ -3,8 +3,9 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/tablet.h>
+
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -44,8 +45,13 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 
     if (ReadOnlyMode) {
         try {
-            MergeFromTextFormat(BackupFilePath, BackupProto);
+            TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+            TUnbufferedFileInput input(file);
+            MergeFromTextFormat(input, BackupProto);
+            LOG_INFO_S(ctx, LogComponent,
+                "TabletBootInfoBackup: loaded " << file.GetLength() << " bytes");
         } catch (...) {
+            ReportLoadTabletBootInfoBackupFailure();
             LOG_WARN_S(ctx, LogComponent,
                 "TabletBootInfoBackup: can't load from file: "
                 << CurrentExceptionMessage());

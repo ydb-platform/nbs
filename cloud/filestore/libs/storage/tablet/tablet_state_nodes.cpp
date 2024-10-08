@@ -98,12 +98,27 @@ void TIndexTabletState::UpdateNode(
     InvalidateNodeIndexCache(nodeId);
 }
 
-void TIndexTabletState::RemoveNode(
+NProto::TError TIndexTabletState::RemoveNode(
     TIndexTabletDatabase& db,
     const IIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
+    // SymLinks have size (equal to TargetPath) but store no real data so there
+    // is no need to write deletion markers upon SymLink removal
+    if (!node.Attrs.GetSymLink()) {
+        auto e = Truncate(
+            db,
+            node.NodeId,
+            maxCommitId,
+            node.Attrs.GetSize(),
+            0);
+
+        if (HasError(e)) {
+            return e;
+        }
+    }
+
     db.DeleteNode(node.NodeId);
     DecrementUsedNodesCount(db);
 
@@ -116,21 +131,12 @@ void TIndexTabletState::RemoveNode(
         AddCheckpointNode(db, checkpointId, node.NodeId);
     }
 
-    // SymLinks have size (equal to TargetPath) but store no real data so there
-    // is no need to write deletion markers upon SymLink removal
-    if (!node.Attrs.GetSymLink()) {
-        Truncate(
-            db,
-            node.NodeId,
-            maxCommitId,
-            node.Attrs.GetSize(),
-            0);
-    }
-
     InvalidateNodeIndexCache(node.NodeId);
+
+    return {};
 }
 
-void TIndexTabletState::UnlinkNode(
+NProto::TError TIndexTabletState::UnlinkNode(
     TIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
@@ -148,11 +154,15 @@ void TIndexTabletState::UnlinkNode(
             attrs,
             node.Attrs);
     } else {
-        RemoveNode(
+        auto e = RemoveNode(
             db,
             node,
             minCommitId,
             maxCommitId);
+
+        if (HasError(e)) {
+            return e;
+        }
     }
 
     RemoveNodeRef(
@@ -165,6 +175,8 @@ void TIndexTabletState::UnlinkNode(
         "", // followerId
         "" // followerName
     );
+
+    return {};
 }
 
 void TIndexTabletState::UnlinkExternalNode(
@@ -230,6 +242,16 @@ void TIndexTabletState::RewriteNode(
     }
 
     InvalidateNodeIndexCache(nodeId);
+}
+
+void TIndexTabletState::WriteOrphanNode(
+    TIndexTabletDatabase& db,
+    const TString& message,
+    ui64 nodeId)
+{
+    ReportGeneratedOrphanNode(message);
+    db.WriteOrphanNode(nodeId);
+    Impl->OrphanNodeIds.insert(nodeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -566,6 +588,12 @@ TNodeIndexCacheStats TIndexTabletState::CalculateNodeIndexCacheStats() const
 IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()
 {
     return Impl->InMemoryIndexState;
+}
+
+void TIndexTabletState::UpdateInMemoryIndexState(
+    TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
+{
+    Impl->InMemoryIndexState.UpdateState(nodeUpdates);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

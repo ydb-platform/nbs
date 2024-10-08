@@ -167,12 +167,17 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
         attrs.SetCTime(update.GetCTime());
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
-        Truncate(
+        auto e = Truncate(
             db,
             args.NodeId,
             args.CommitId,
             attrs.GetSize(),
             update.GetSize());
+
+        if (HasError(e)) {
+            args.Error = e;
+            return;
+        }
 
         attrs.SetSize(update.GetSize());
     }

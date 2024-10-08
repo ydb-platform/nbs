@@ -204,6 +204,7 @@ public:
     bool GetConfigsDispatcherServiceEnabled() const;
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+    TDuration GetMaxBackpressurePeriodBeforeSuicide() const;
 
     TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
 
@@ -266,8 +267,17 @@ public:
     ui64 GetLargeDeletionMarkerBlocks() const;
     ui64 GetLargeDeletionMarkersThreshold() const;
     ui64 GetLargeDeletionMarkersCleanupThreshold() const;
+    ui64 GetLargeDeletionMarkersThresholdForBackpressure() const;
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
+
+    NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
+
+    TString GetPathDescriptionBackupFilePath() const;
+
+    TVector<TString> GetDestroyFilestoreDenyList() const;
+
+    bool GetSSProxyFallbackMode() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

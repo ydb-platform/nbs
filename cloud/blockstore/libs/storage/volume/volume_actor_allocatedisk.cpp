@@ -16,6 +16,8 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,6 +108,57 @@ bool ValidateDevices(
     }
 
     return ok;
+}
+
+std::unique_ptr<MessageDifferencer> CreateNodeIdChangeDifferencer()
+{
+    // These are two fields that will change during disk agent blue-green
+    // deploy.
+    const auto* nodeIdDescriptor =
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId");
+    const auto* rdmaPortDescriptor =
+        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port");
+    if (!nodeIdDescriptor || !rdmaPortDescriptor) {
+        ReportFieldDescriptorNotFound(
+            TStringBuilder()
+            << "Lite reallocation is impossible. nodeIdDescriptor = "
+            << static_cast<const void*>(nodeIdDescriptor)
+            << "; rdmaPortDescriptor = "
+            << static_cast<const void*>(rdmaPortDescriptor));
+        return nullptr;
+    }
+
+    auto diff = std::make_unique<MessageDifferencer>();
+    diff->IgnoreField(nodeIdDescriptor);
+    diff->IgnoreField(rdmaPortDescriptor);
+    diff->set_float_comparison(
+        MessageDifferencer::FloatComparison::APPROXIMATE);
+    diff->set_message_field_comparison(
+        MessageDifferencer::MessageFieldComparison::EQUAL);
+    return diff;
+}
+
+NProto::TVolumeMeta CreateNewMeta(
+    const NProto::TVolumeMeta& oldMeta,
+    TTxVolume::TUpdateDevices& args)
+{
+    auto newMeta = oldMeta;
+    *newMeta.MutableDevices() = std::move(args.Devices);
+    *newMeta.MutableMigrations() = std::move(args.Migrations);
+    newMeta.ClearReplicas();
+    for (auto& devices: args.Replicas) {
+        auto* replica = newMeta.AddReplicas();
+        *replica->MutableDevices() = std::move(devices);
+    }
+    newMeta.ClearFreshDeviceIds();
+    for (auto& freshDeviceId: args.FreshDeviceIds) {
+        *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
+    }
+    newMeta.SetIOMode(args.IOMode);
+    newMeta.SetIOModeTs(args.IOModeTs.MicroSeconds());
+    newMeta.SetMuteIOErrors(args.MuteIOErrors);
+
+    return newMeta;
 }
 
 }   // namespace
@@ -464,49 +517,52 @@ void TVolumeActor::ExecuteUpdateDevices(
     TTransactionContext& tx,
     TTxVolume::TUpdateDevices& args)
 {
-    Y_UNUSED(ctx);
     Y_ABORT_UNLESS(State);
+    const auto& oldMeta = State->GetMeta();
+    auto newMeta = CreateNewMeta(oldMeta, args);
 
-    auto newMeta = State->GetMeta();
-    *newMeta.MutableDevices() = std::move(args.Devices);
-    *newMeta.MutableMigrations() = std::move(args.Migrations);
-    newMeta.ClearReplicas();
-    for (auto& devices: args.Replicas) {
-        auto* replica = newMeta.AddReplicas();
-        *replica->MutableDevices() = std::move(devices);
+    Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
+    if (Config->GetAllowLiteDiskReallocations()) {
+        auto differencer = CreateNodeIdChangeDifferencer();
+        args.LiteReallocation =
+            differencer && differencer->Compare(oldMeta, newMeta);
     }
-    newMeta.ClearFreshDeviceIds();
-    for (auto& freshDeviceId: args.FreshDeviceIds) {
-        *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
-    }
-    newMeta.SetIOMode(args.IOMode);
-    newMeta.SetIOModeTs(args.IOModeTs.MicroSeconds());
-    newMeta.SetMuteIOErrors(args.MuteIOErrors);
-
-    // TODO: reset MigrationIndex here and in UpdateVolumeConfig only if our
-    // migration or fresh device lists have changed
-    // NBS-1988
-    newMeta.SetMigrationIndex(0);
-
-    TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
 
     TVolumeDatabase db(tx.DB);
+    if (!args.LiteReallocation) {
+        // TODO: reset MigrationIndex here and in UpdateVolumeConfig only if our
+        // migration or fresh device lists have changed
+        // NBS-1988
+        newMeta.SetMigrationIndex(0);
+
+        TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
+        db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
+        State->AddMetaHistory(std::move(metaHistoryItem));
+    }
+
     db.WriteMeta(newMeta);
-    db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
     State->ResetMeta(std::move(newMeta));
-    State->AddMetaHistory(std::move(metaHistoryItem));
 }
 
 void TVolumeActor::CompleteUpdateDevices(
     const TActorContext& ctx,
     TTxVolume::TUpdateDevices& args)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Devices have been updated. DiskId: %s LiteReallocation: %d",
+        TabletID(),
+        State->GetDiskId().c_str(),
+        args.LiteReallocation);
+
     if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
         if (!args.RequestInfo) {
             WaitForPartitions.emplace_back(actorId, nullptr);
         } else {
-            auto requestInfo = std::move(args.RequestInfo);
-            auto reply = [=] (const auto& ctx, auto error) {
+            auto reply =
+                [requestInfo = args.RequestInfo](const auto& ctx, auto error)
+            {
                 using TResponse = TEvVolumePrivate::TEvUpdateDevicesResponse;
 
                 NCloud::Reply(

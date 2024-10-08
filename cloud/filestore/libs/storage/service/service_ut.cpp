@@ -318,8 +318,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 createChannelsCount = 0;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                    case TEvStorageSSProxy::EvModifySchemeRequest: {
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateFileStore)
                         {
@@ -340,8 +340,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 alterChannelsCount = 0;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                    case TEvStorageSSProxy::EvModifySchemeRequest: {
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpAlterFileStore)
                         {
@@ -953,8 +953,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
         runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                    case TEvStorageSSProxy::EvDescribeSchemeRequest: {
+                        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                             error);
                         runtime.Send(
                             new IEventHandle(
@@ -2030,9 +2030,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             auto subgroup = counters->FindSubgroup("request", "ReadBlob");
             UNIT_ASSERT(subgroup);
-            // 1MB = 4 blobs of 256KB. Read is performed thrice
+            // Read is performed thrice
             UNIT_ASSERT_VALUES_EQUAL(
-                12,
+                3,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
     }
@@ -3750,7 +3750,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto headers = service.InitSession(fsId, "client");
 
-        auto error = MakeError(E_FS_INVALID_SESSION, "bad session");
+        auto error = MakeError(E_FAIL);
 
         env.GetRuntime().SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
@@ -4118,6 +4118,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 alreadyDestroyedFileStoreResponse->GetStatus(),
                 alreadyDestroyedFileStoreResponse->GetErrorReason());
         }
+    }
+
+    Y_UNIT_TEST(DestroyFilestoreShouldRespectDenyList)
+    {
+        NProto::TStorageConfig config;
+        config.MutableDestroyFilestoreDenyList()->Add("test");
+        config.SetGetNodeAttrBatchEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto initialBlockCount = 1'000;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)

@@ -29,11 +29,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Maximum size of the request data.
-constexpr ui32 MaxRequestSize = 32_MB;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TReadBlocksLocalMethod
 {
     static TFuture<NProto::TReadBlocksLocalResponse> Execute(
@@ -426,7 +421,6 @@ public:
             std::move(storage),
             options.ClientId,
             options.BlockSize,
-            MaxRequestSize / options.BlockSize,
             options.UnalignedRequestsDisabled);
 
         auto endpoint = std::make_shared<TEndpoint>(

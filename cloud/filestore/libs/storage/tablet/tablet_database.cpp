@@ -1405,6 +1405,49 @@ bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// OrphanNodes
+
+void TIndexTabletDatabase::WriteOrphanNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Update();
+}
+
+void TIndexTabletDatabase::DeleteOrphanNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadOrphanNodes(TVector<ui64>& nodeIds)
+{
+    using TTable = TIndexTabletSchema::OrphanNodes;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        nodeIds.emplace_back(it.GetValue<TTable::NodeId>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)
@@ -1683,15 +1726,20 @@ void TIndexTabletDatabase::WriteCompactionMap(
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {
-    return ReadCompactionMap(compactionMap, 0, Max<ui32>());
+    return ReadCompactionMap(compactionMap, 0, Max<ui32>(), true);
 }
 
 bool TIndexTabletDatabase::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap,
     ui32 firstRangeId,
-    ui32 rangeCount)
+    ui32 rangeCount,
+    bool prechargeAll)
 {
     using TTable = TIndexTabletSchema::CompactionMap;
+
+    if (!firstRangeId && prechargeAll) {
+        Table<TTable>().Precharge();
+    }
 
     auto it = Table<TTable>()
         .GreaterOrEqual(firstRangeId)

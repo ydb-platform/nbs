@@ -931,7 +931,6 @@ func (s *storageYDB) listHangingTasks(
 	ctx context.Context,
 	session *persistence.Session,
 	limit uint64,
-	exceptTaskTypes []string,
 ) ([]TaskInfo, error) {
 
 	now := time.Now()
@@ -971,7 +970,7 @@ func (s *storageYDB) listHangingTasks(
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam(
 			"$except_task_types",
-			strListValue(exceptTaskTypes),
+			strListValue(s.exceptHangingTaskTypes),
 		),
 		persistence.ValueParam(
 			"$hanging_task_timeout",

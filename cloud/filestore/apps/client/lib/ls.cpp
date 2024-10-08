@@ -18,7 +18,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString NameColumnName = "Name";
-constexpr int NameColumnIndex = NProto::TNodeAttr::kModeFieldNumber - 1;
 
 using TNodeId = ui64;
 
@@ -61,6 +60,7 @@ TString FileStateModeToString(ui32 mode)
         mode & S_IROTH ? 'r' : '-',
         mode & S_IWOTH ? 'w' : '-',
         mode & S_IXOTH ? 'x' : '-',
+        '\0',
     };
     return permissions;
 }
@@ -94,10 +94,26 @@ TString NodeTypeToString(NProto::ENodeType nodeType)
             return "l";
         case NProto::E_SOCK_NODE:
             return "s";
+        case NProto::E_SYMLINK_NODE:
+            return "L";
         default:
             ythrow yexception() << "must be unreachable";
     }
 }
+
+const TVector<TString> NodeInfoColumns = {
+    "Id",
+    "Type",
+    "Name",
+    "Mode",
+    "Uid",
+    "Gid",
+    "ATime",
+    "MTime",
+    "CTime",
+    "Size",
+    "Links",
+};
 
 TVector<TString> ToStringVector(const TNodeInfo& nodeInfo)
 {
@@ -119,12 +135,7 @@ TVector<TString> ToStringVector(const TNodeInfo& nodeInfo)
 
 NTextTable::TTextTable ToTextTable(const TVector<TNodeInfo>& nodes)
 {
-    auto columns = NTextTable::ToColumns<NProto::TNodeAttr>();
-    columns.emplace(
-        columns.begin() + NameColumnIndex,
-        NameColumnName,
-        NameColumnName.size()
-    );
+    auto columns = NTextTable::ToColumns(NodeInfoColumns);
 
     NTextTable::TTextTable table{std::move(columns)};
 

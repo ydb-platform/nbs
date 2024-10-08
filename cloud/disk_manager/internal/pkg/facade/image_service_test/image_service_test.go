@@ -10,6 +10,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -582,7 +583,7 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	require.NotEmpty(t, operation)
 
 	// Need to add some variance for better testing.
-	testcommon.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
+	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
 	// Overwrites image URL contents.
 	testcommon.UseOtherQCOW2ImageFile(t)
 

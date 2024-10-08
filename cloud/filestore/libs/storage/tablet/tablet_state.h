@@ -143,6 +143,11 @@ struct TNodeToSessionCounters
     i64 NodesOpenForReadingByMultipleSessions{0};
 };
 
+struct TMiscNodeStats
+{
+    i64 OrphanNodesCount{0};
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
@@ -171,6 +176,7 @@ private:
     /*const*/ ui64 LargeDeletionMarkerBlocks = 0;
     /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
+    /*const*/ ui64 LargeDeletionMarkersThresholdForBackpressure = 0;
 
     bool StateLoaded = false;
 
@@ -190,6 +196,7 @@ public:
         const NProto::TFileSystemStats& fileSystemStats,
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
+        const TVector<ui64>& orphanNodeIds,
         const TThrottlerConfig& throttlerConfig);
 
     bool IsStateLoaded() const
@@ -274,6 +281,8 @@ public:
     {
         return NodeToSessionCounters;
     }
+
+    TMiscNodeStats GetMiscNodeStats() const;
 
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 
@@ -380,13 +389,13 @@ public:
         const NProto::TNode& attrs,
         const NProto::TNode& prevAttrs);
 
-    void RemoveNode(
+    [[nodiscard]] NProto::TError RemoveNode(
         TIndexTabletDatabase& db,
         const IIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
 
-    void UnlinkNode(
+    [[nodiscard]] NProto::TError UnlinkNode(
         TIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
@@ -422,6 +431,11 @@ public:
 
     bool HasBlocksLeft(
         ui32 blocks) const;
+
+    void WriteOrphanNode(
+        TIndexTabletDatabase& db,
+        const TString& message,
+        ui64 nodeId);
 
 private:
     void UpdateUsedBlocksCount(
@@ -678,7 +692,7 @@ public:                                                                         
         const NProto::T##name##Response& response,                              \
         ui32 maxEntries);                                                       \
                                                                                 \
-    void GetDupCacheEntry(                                                      \
+    bool GetDupCacheEntry(                                                      \
         const TDupCacheEntry* entry,                                            \
         NProto::T##name##Response& response);                                   \
 // FILESTORE_DECLARE_DUPCACHE
@@ -1197,7 +1211,7 @@ public:
     void AddTruncate(TIndexTabletDatabase& db, ui64 nodeId, TByteRange range);
     void DeleteTruncate(TIndexTabletDatabase& db, ui64 nodeId);
 
-    void Truncate(
+    [[nodiscard]] NProto::TError Truncate(
         TIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
@@ -1210,7 +1224,7 @@ public:
     // - aligns up range in the tail;
     // - deletes all blocks in NEW range;
     // - writes fresh bytes (zeroes) on unaligned head, if range.Offset != 0.
-    void TruncateRange(
+    [[nodiscard]] NProto::TError TruncateRange(
         TIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
@@ -1220,14 +1234,14 @@ public:
     // resizing the node. This function:
     // - writes fresh bytes (zeroes) on unaligned head, if any;
     // - writes fresh bytes (zeroes) on unaligned tail, if any.
-    void ZeroRange(
+    [[nodiscard]] NProto::TError ZeroRange(
         TIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         TByteRange range);
 
 private:
-    void DeleteRange(
+    [[nodiscard]] NProto::TError DeleteRange(
         TIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
@@ -1271,6 +1285,8 @@ public:
     TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
+    void UpdateInMemoryIndexState(
+        TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

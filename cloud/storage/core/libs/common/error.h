@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/protos/error.pb.h>
 
+#include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
@@ -240,8 +241,15 @@ public:
 
 TString FormatError(const NProto::TError& e);
 TString FormatResultCode(ui32 code);
+NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
 
 NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
+
+template <typename T>
+concept TAcceptsError = requires(T a)
+{
+    { *a.MutableError() = MakeError(S_OK) };
+};
 
 template <typename T>
 T ErrorResponse(ui32 code, TString message)
@@ -400,7 +408,7 @@ public:
         , Message(e.GetMessage())
     {}
 
-    template <typename T>
+    template <TAcceptsError T>
     operator T() const
     {
         return ErrorResponse<T>(Code, Message);

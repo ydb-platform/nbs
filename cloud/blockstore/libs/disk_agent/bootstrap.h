@@ -11,10 +11,11 @@
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/storage/core/libs/http/simple_http_server.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
-
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/log.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -63,7 +64,7 @@ private:
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
-    IFileIOServicePtr FileIOService;
+    IFileIOServiceProviderPtr FileIOServiceProvider;
     NSpdk::ISpdkEnvPtr Spdk;
     std::function<void(TLog& log)> SpdkLogInitializer;
     ICachingAllocatorPtr Allocator;
@@ -73,6 +74,9 @@ private:
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
+
+    std::unique_ptr<NCloud::NStorage::TSimpleHttpServer> StubMonPageServer;
+    bool Initialized = false;
 
 public:
     TBootstrap(
@@ -91,7 +95,9 @@ public:
 private:
     void InitLWTrace();
     void InitProfileLog();
-    void InitKikimrService();
+    bool InitKikimrService();
+
+    void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
 };

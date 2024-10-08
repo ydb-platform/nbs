@@ -723,7 +723,6 @@ def __run_test(test_case):
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
-        has_cluster_uuid=False,
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),

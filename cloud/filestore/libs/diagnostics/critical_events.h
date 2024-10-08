@@ -21,6 +21,9 @@ namespace NCloud::NFileStore{
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
     xxx(DuplicateRequestId)                                                    \
+    xxx(InvalidDupCacheEntry)                                                  \
+    xxx(GeneratedOrphanNode)                                                   \
+    xxx(ReceivedNodeOpErrorFromFollower)                                       \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

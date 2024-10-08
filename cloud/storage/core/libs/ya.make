@@ -11,7 +11,9 @@ RECURSE(
     features
     grpc
     hive_proxy
+    http
     kikimr
+    ss_proxy
     tablet
     throttling
     uds

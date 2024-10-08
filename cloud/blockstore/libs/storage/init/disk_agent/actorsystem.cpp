@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
+#include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -130,6 +131,14 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     TVector<TIntrusivePtr<IServiceInitializer>> initializers = {
         new TStorageServicesInitializer(daArgs)
     };
+    auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
+        if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+            SetupConfigDispatcher(
+                daArgs.StorageConfig->GetConfigDispatcherSettings(),
+                &runConfig.ConfigsDispatcherInitInfo);
+            runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
+        }
+    };
     auto onInitialize = [&] (
         TKikimrRunConfig& runConfig,
         TServiceInitializersList& initializers)
@@ -171,6 +180,7 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         .AppConfig = daArgs.AppConfig,
         .AsyncLogger = daArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
+        .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
         .ServicesMask = servicesMask,
         .OnStart = [] (IActorSystem&) {},
     };

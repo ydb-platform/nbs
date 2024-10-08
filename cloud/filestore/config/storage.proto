@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
+import "cloud/storage/core/protos/config_dispatcher_settings.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
@@ -16,6 +17,14 @@ enum EBlobIndexOpsPriority
     BIOP_FAIR = 2;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//
+//  !!!IMPORTANT!!!
+//  Even though StorageConfig is usually stored in textual format, it may be
+//  overridden for some tablets and in this case it's stored in binary format
+//  in the tablet's localdb. So binary backward-compatibility should be
+//  maintained.
+//
 ////////////////////////////////////////////////////////////////////////////////
 
 message TStorageConfig
@@ -402,4 +411,27 @@ message TStorageConfig
     // uncontrollable behaviour change for production systems. TODO: gradually
     // enable this flag everywhere and make this behaviour the new default.
     optional bool UseMixedBlocksInsteadOfAliveBlocksInCompaction = 391;
+
+    // IndexTabletActor will suicide (and thus reboot) after observing
+    // consecutive backpressure errors for this period of time. Needed to
+    // automatically recover after various races that may happen during index
+    // tablet startup due to bugs.
+    optional uint32 MaxBackpressurePeriodBeforeSuicide = 392;   // in ms
+
+    // settings for ydb config dispatcher service.
+    optional NCloud.NProto.TConfigDispatcherSettings ConfigDispatcherSettings = 393;
+
+    // If the number of blocks marked for deletion via large deletion markers
+    // exceeds this threshold, large truncate-like operations will be rejected.
+    optional uint64 LargeDeletionMarkersThresholdForBackpressure = 394;
+
+    // Enables persistent backup for tablet path descriptions.
+    optional string PathDescriptionBackupFilePath = 395;
+
+    // Server will reject all requests to destroy filestores in the provided
+    // list
+    repeated string DestroyFilestoreDenyList = 396;
+
+    // In fallback mode, all requests to SchemeShard are served from backup.
+    optional bool SSProxyFallbackMode = 397;
 }

@@ -171,7 +171,7 @@ def test_multiple_endpoints(nbs):
             try:
                 process_name = os.path.basename(process.exe())
                 process_parent = process.parent()
-            except psutil.AccessDenied:
+            except psutil.Error:
                 continue
 
             if process_parent is None:
@@ -208,3 +208,81 @@ def test_multiple_endpoints(nbs):
     })
     assert crit is not None
     assert crit['value'] == 0  # Vhost servers should not have restarted.
+
+
+def test_switch_multiple_endpoints(nbs):
+    client = CreateClient(f"localhost:{nbs.port}")
+
+    @retry(max_times=10, exception=ClientError)
+    def create_vol(disk_id: str):
+        client.create_volume(
+            disk_id=disk_id,
+            block_size=4096,
+            blocks_count=DEVICE_SIZE//4096,
+            storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
+            storage_pool_name="1Mb")
+
+    @retry(max_times=10, exception=requests.ConnectionError)
+    def wait_for_vhost_servers(nbs, expected_count):
+        count = 0
+        for process in psutil.process_iter():
+            try:
+                process_name = os.path.basename(process.exe())
+                process_parent = process.parent()
+            except psutil.Error:
+                continue
+
+            if process_parent is None:
+                continue
+
+            if process_name == "blockstore-vhost-server" and process_parent.pid == nbs.pid:
+                count += 1
+        if count != expected_count:
+            raise RuntimeError(
+                f"vhost count expected {expected_count}, actual {count}")
+
+    # Create disks and start an endpoint for each one.
+    DISK_COUNT = 6
+    disks = []
+    for i in range(DISK_COUNT):
+        disks.append(f"local-{i+1}")
+    sockets = []
+    for disk in disks:
+        create_vol(disk)
+        socket = tempfile.NamedTemporaryFile()
+        sockets.append(socket)
+        client.start_endpoint(
+            unix_socket_path=socket.name,
+            disk_id=disk,
+            ipc_type=IPC_VHOST,
+            client_id=f"{socket.name}-id",
+            seq_number=1
+        )
+
+    wait_for_vhost_servers(nbs, DISK_COUNT)
+
+    # Switch the endpoints. This will restart all vhost servers.
+    for i in range(0, DISK_COUNT):
+        idx = i % DISK_COUNT
+        disk = disks[idx]
+        socket = sockets[idx]
+
+        client.start_endpoint_async(
+            unix_socket_path=socket.name,
+            disk_id=disk,
+            ipc_type=IPC_VHOST,
+            client_id=f"{socket.name}-id",
+            seq_number=2
+        )
+
+    wait_for_vhost_servers(nbs, len(disks))
+
+    # Wait for the counters to be updated
+    time.sleep(15)
+
+    crit = nbs.counters.find({
+        'sensor': 'AppCriticalEvents/ExternalEndpointUnexpectedExit'
+    })
+    assert crit is not None
+    # Vhost servers should not have restarted unexpectedly.
+    assert crit['value'] == 0

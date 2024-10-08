@@ -24,6 +24,7 @@ from yandex.cloud.compute.v1.instance_service_pb2 import (
     DeleteInstanceRequest,
     CreateInstanceMetadata,
     DeleteInstanceMetadata,
+    GetInstanceSerialPortOutputRequest,
 )
 from yandex.cloud.compute.v1.instance_pb2 import IpVersion
 
@@ -371,6 +372,27 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
             runner_id = wait_for_runner_registration(
                 gh, instance_id, args.github_repo_owner, args.github_repo, 10, 60
             )
+            # Saving console output
+            # it is not using create_operation_and_get_result() because it is not an operation like
+            # https://github.com/yandex-cloud/cloudapi/blob/master/yandex/cloud/compute/v1/instance_service.proto#L35
+            # and do not have necessary attributes for it
+            # https://github.com/yandex-cloud/cloudapi/blob/master/yandex/cloud/compute/v1/instance_service.proto#L80
+            instance_service = sdk.client(InstanceServiceStub)
+
+            result_serial = instance_service.GetSerialPortOutput(
+                GetInstanceSerialPortOutputRequest(instance_id=instance_id)
+            )
+
+            if not result_serial.contents:
+                logger.error(
+                    "Failed to get console output for VM with ID %s", instance_id
+                )
+                github_output("console-output", "false")
+            else:
+                with open("console_output.txt", "w") as f:
+                    f.write(result_serial.contents)
+                github_output("console-output", "console_output.txt")
+
             if runner_id is not None:
                 logger.info("VM registered as Github Runner %s", runner_id)
             else:

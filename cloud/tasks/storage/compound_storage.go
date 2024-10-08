@@ -250,18 +250,13 @@ func (s *compoundStorage) ListTasksCancelling(
 func (s *compoundStorage) ListHangingTasks(
 	ctx context.Context,
 	limit uint64,
-	exceptTaskTypes []string,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
 	err := s.visit(
 		ctx,
 		func(storage Storage) error {
-			values, err := storage.ListHangingTasks(
-				ctx,
-				limit,
-				exceptTaskTypes,
-			)
+			values, err := storage.ListHangingTasks(ctx, limit)
 			tasks = append(tasks, values...)
 			return err
 		},
@@ -476,6 +471,7 @@ func NewStorage(
 			ZoneIDs:             config.GetZoneIds(),
 			metrics:             metrics,
 
+			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
 			hangingTaskTimeout:                hangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		}

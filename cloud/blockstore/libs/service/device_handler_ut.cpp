@@ -123,11 +123,11 @@ public:
                 });
             };
 
-        DeviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(maxBlockCount * BlockSize);
+        DeviceHandler = factory->CreateDeviceHandler(
             std::move(testStorage),
             "testClientId",
             BlockSize,
-            maxBlockCount,
             unalignedRequestsDisabled);
     }
 
@@ -211,18 +211,24 @@ public:
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
 
+        TString read;
+        read.resize(expected.size(), 0);
         const char* ptr = buffer.data();
-        for (const char& c: expected) {
-            for (size_t i = 0; i < SectorSize; ++i) {
-
+        bool allOk = true;
+        for (size_t i = 0; i != expected.size(); ++i) {
+            char c = expected[i];
+            read[i] = *ptr == 0 ? 'Z' : *ptr;
+            for (size_t j = 0; j < SectorSize; ++j) {
                 if (c == 'Z') {
-                    UNIT_ASSERT(*ptr == 0);
+                    allOk = allOk && *ptr == 0;
                 } else {
-                    UNIT_ASSERT(*ptr == c);
+                    allOk = allOk && *ptr == c;
                 }
                 ++ptr;
             }
         }
+        UNIT_ASSERT_VALUES_EQUAL(expected, read);
+        UNIT_ASSERT(allOk);
     }
 
     ui32 GetReadRequestCount() const {
@@ -235,6 +241,13 @@ public:
 
     ui32 GetZeroRequestCount() const {
         return ZeroRequestCount;
+    }
+
+    void ResetRequestCounters()
+    {
+        ReadRequestCount = 0;
+        WriteRequestCount = 0;
+        ZeroRequestCount = 0;
     }
 };
 
@@ -322,11 +335,11 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             clientId,
             blockSize,
-            blocksCountLimit,
             false);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -389,7 +402,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             true);
 
         ui32 startIndex = 42;
@@ -476,7 +488,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             true);
 
         {
@@ -516,18 +527,61 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSliceHugeReadAndWriteRequestsInAlignedBackend)
+    void ShouldSliceHugeAlignedRequests(bool unalignedRequestsDisabled)
     {
-        TTestEnvironment env(16, DefaultBlockSize, 1, 4, true);
+        TTestEnvironment
+            env(24, DefaultBlockSize, 1, 4, unalignedRequestsDisabled);
 
         env.RunWriteService();
 
+        env.ZeroSectors(0, 24);
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetZeroRequestCount());
         env.WriteSectors(0, 8, 'a');
         env.WriteSectors(8, 8, 'b');
         UNIT_ASSERT_VALUES_EQUAL(4, env.GetWriteRequestCount());
 
-        env.ReadSectorsAndCheck(0, 16, "aaaaaaaabbbbbbbb");
-        UNIT_ASSERT_VALUES_EQUAL(4, env.GetReadRequestCount());
+        env.ReadSectorsAndCheck(0, 24, "aaaaaaaabbbbbbbbZZZZZZZZ");
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+    }
+
+    Y_UNIT_TEST(ShouldSliceHugeAlignedRequestsInAlignedBackend)
+    {
+       ShouldSliceHugeAlignedRequests(true);
+    }
+
+     Y_UNIT_TEST(ShouldSliceHugeAlignedRequestsInUnalignedBackend)
+    {
+       ShouldSliceHugeAlignedRequests(false);
+    }
+
+    Y_UNIT_TEST (ShouldSliceHugeUnalignedRequests)
+    {
+        TTestEnvironment
+            env(24, DefaultBlockSize, 2, 4, false);
+
+        env.RunWriteService();
+
+        // An unaligned request requires the execution of a read-modify-write pattern.
+        env.ZeroSectors(1, 46);
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.WriteSectors(3, 8, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.WriteSectors(13, 3, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
+        env.ResetRequestCounters();
+
+        env.ReadSectorsAndCheck(
+            0,
+            48,
+            "0ZZaaaaaaaaZZbbbZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ0");
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
     }
 
     void DoShouldSliceHugeZeroRequest(bool requestUnaligned, bool unalignedRequestDisabled)
@@ -542,11 +596,11 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             clientId,
             blockSize,
-            blocksCountLimit,
             unalignedRequestDisabled);
 
         storage->ZeroBlocksHandler = [&] (
@@ -661,7 +715,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             false);
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -725,7 +778,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            1024,
             false);
 
         storage->WriteBlocksLocalHandler = [&] (

@@ -398,16 +398,7 @@ func listHangingTasks(
 	}
 	defer db.Close(ctx)
 
-	tasksConfig := serverConfig.GetTasksConfig()
-	if tasksConfig == nil {
-		return fmt.Errorf("tasks config is nil")
-	}
-
-	taskInfos, err := taskStorage.ListHangingTasks(
-		ctx,
-		^uint64(0),
-		tasksConfig.ExceptHangingTaskTypes,
-	)
+	taskInfos, err := taskStorage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
 		return err
 	}

@@ -123,6 +123,9 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(ConfigDispatcherSettings,                                              \
+        NCloud::NProto::TConfigDispatcherSettings,                             \
+        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -508,6 +511,8 @@ TDuration MSeconds(ui32 value)
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
+    xxx(AllowLiteDiskReallocations,                     bool,      false         )\
+    xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
@@ -594,6 +599,12 @@ template <typename T>
 bool IsEmpty(const T& t)
 {
     return !t;
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
+{
+    return !value.HasAllowList() && !value.HasDenyList();
 }
 
 template <typename T>
@@ -956,6 +967,40 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
 const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
 {
     return Impl->StorageServiceConfig;
+}
+
+void AdaptNodeRegistrationParams(
+    const TString& overriddenNodeType,
+    const NProto::TServerConfig& serverConfig,
+    NProto::TStorageServiceConfig& storageConfig)
+{
+    if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
+        storageConfig.SetNodeRegistrationMaxAttempts(
+            serverConfig.GetNodeRegistrationMaxAttempts());
+    }
+
+    if (!storageConfig.GetNodeRegistrationTimeout()) {
+        storageConfig.SetNodeRegistrationTimeout(
+            serverConfig.GetNodeRegistrationTimeout());
+    }
+
+    if (!storageConfig.GetNodeRegistrationErrorTimeout()) {
+        storageConfig.SetNodeRegistrationErrorTimeout(
+            serverConfig.GetNodeRegistrationErrorTimeout());
+    }
+
+    if (!storageConfig.GetNodeRegistrationToken()) {
+        storageConfig.SetNodeRegistrationToken(
+            serverConfig.GetNodeRegistrationToken());
+    }
+
+    if (overriddenNodeType) {
+        storageConfig.SetNodeType(overriddenNodeType);
+    }
+
+    if (!storageConfig.GetNodeType()) {
+        storageConfig.SetNodeType(serverConfig.GetNodeType());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

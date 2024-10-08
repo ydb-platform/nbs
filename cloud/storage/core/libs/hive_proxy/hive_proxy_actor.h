@@ -4,8 +4,8 @@
 
 #include "hive_proxy_events_private.h"
 
-#include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/mind/local.h>

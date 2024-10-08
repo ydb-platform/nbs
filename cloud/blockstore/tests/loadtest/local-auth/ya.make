@@ -8,6 +8,7 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/storage/core/tools/testing/access_service/mock
+    cloud/storage/core/tools/testing/access_service_new/mock
 )
 
 DATA(

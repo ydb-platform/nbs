@@ -1,3 +1,1 @@
-cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure
-cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure/store_chunks_in_s3
-cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure/store_chunks_in_ydb
+cloud/blockstore/tests/external_endpoint *

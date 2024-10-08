@@ -64,7 +64,9 @@ void TIndexTabletActor::HandleListNodes(
 
     AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
-    auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
+    auto maxBytes = Min(
+        Config->GetMaxResponseEntries() * MaxName,
+        Config->GetMaxResponseBytes());
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
     }

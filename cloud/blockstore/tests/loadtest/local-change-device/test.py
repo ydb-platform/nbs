@@ -43,7 +43,6 @@ def kikimr_start():
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
-        has_cluster_uuid=False,
         use_in_memory_pdisks=True,
         static_pdisk_size=PDISK_SIZE,
         dynamic_pdisk_size=PDISK_SIZE,

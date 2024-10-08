@@ -355,13 +355,122 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const auto sanitizerType = GetEnv("SANITIZER_TYPE");
         // temporary logging
         Cerr << "sanitizer: " << sanitizerType << Endl;
-        THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
+        const THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
         const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
 
         PERFORM_TEST(5'000 / d);
         PERFORM_TEST(1'000 / d);
 
 #undef PERFORM_TEST
+    }
+
+    Y_UNIT_TEST(ShouldHandleRangeIdCollisionsInCompactionMapStats)
+    {
+        const auto block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        const auto sanitizerType = GetEnv("SANITIZER_TYPE");
+        const THashSet<TString> slowSanitizers({"thread"});
+        const ui32 compactionThreshold =
+            slowSanitizers.contains(sanitizerType) ? 2 : 5;
+        storageConfig.SetCompactionThreshold(compactionThreshold);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        // more than enough space
+        TFileSystemConfig tabletConfig;
+        tabletConfig.BlockCount = 30_TB / block;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        // RootNodeId is 1, so we will create nodes 2 - 15 and all of them
+        // will end up in a single NodeGroup and, thus, will go to the same
+        // compaction ranges
+        const ui32 nodeCount = 14;
+        TVector<ui64> nodes(nodeCount);
+        const ui32 collisions = 2 * compactionThreshold;
+        const ui32 deletionMarkers = nodeCount * collisions * BlockGroupSize;
+        TVector<ui32> collidingBlocks;
+        for (ui32 i = 0; i < collisions; ++i) {
+            // see TBlockLocalityHasher implementation
+            collidingBlocks.push_back(i * (BlockGroupSize << 16));
+        }
+
+        // should be 140 x 64 x 4KiB == 35MiB for builds without slow sanitizers
+        const auto expectedBlockCount = nodeCount * collisions * BlockGroupSize;
+        const auto expectedBlobCount = static_cast<ui32>(ceil(
+            static_cast<double>(expectedBlockCount) / (4_MB / block)));
+        UNIT_ASSERT_C(
+            compactionThreshold < expectedBlobCount,
+            TStringBuilder() << "expectedBlobCount: " << expectedBlobCount);
+
+        for (ui32 i = 0; i < nodeCount; ++i) {
+            const auto id = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("test_%u", i)));
+
+            nodes[i] = id;
+        }
+
+        ui32 rangeId = GetMixedRangeIndex(nodes[0], collidingBlocks[0]);
+        for (auto nodeId: nodes) {
+            for (auto blockIndex: collidingBlocks) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    rangeId,
+                    GetMixedRangeIndex(nodeId, blockIndex));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    rangeId,
+                    GetMixedRangeIndex(nodeId, blockIndex));
+            }
+        }
+
+        for (auto nodeId: nodes) {
+            auto handle = CreateHandle(tablet, nodeId);
+            for (auto blockIndex: collidingBlocks) {
+                tablet.WriteData(
+                    handle,
+                    static_cast<ui64>(block) * blockIndex,
+                    block * BlockGroupSize,
+                    'a');
+            }
+        }
+
+        // Compactions should've happened automatically
+
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlobCount,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(
+                256,
+                stats.GetAllocatedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                Sprintf(
+                    "r=1177944064 b=%u d=%u",
+                    (compactionThreshold - 1),
+                    deletionMarkers),
+                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+        }
     }
 }
 

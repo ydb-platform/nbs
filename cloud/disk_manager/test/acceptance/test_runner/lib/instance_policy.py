@@ -74,7 +74,7 @@ class YcpNewInstancePolicy:
                 self._ycp.delete_instance(self._instance)
 
     @contextmanager
-    def attach_disk(self, disk: Ycp.Disk):
+    def attach_disk(self, disk: Ycp.Disk) -> str:
         with self._ycp.attach_disk(self._instance, disk):
             yield wait_for_block_device_to_appear(
                 self._instance.ip,

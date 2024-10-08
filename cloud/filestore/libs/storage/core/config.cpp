@@ -50,11 +50,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
                                                                                \
-    xxx(MaxFileBlocks,                          ui32,   300_GB / 4_KB         )\
-    xxx(LargeDeletionMarkersEnabled,            bool,   false                 )\
-    xxx(LargeDeletionMarkerBlocks,              ui64,   1_GB / 4_KB           )\
-    xxx(LargeDeletionMarkersThreshold,          ui64,   128_GB / 4_KB         )\
-    xxx(LargeDeletionMarkersCleanupThreshold,   ui64,   1_TB / 4_KB           )\
+    xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
+    xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
+    xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\
+    xxx(LargeDeletionMarkersThreshold,                  ui64,   128_GB / 4_KB )\
+    xxx(LargeDeletionMarkersCleanupThreshold,           ui64,   1_TB / 4_KB   )\
+    xxx(LargeDeletionMarkersThresholdForBackpressure,   ui64,   10_TB / 4_KB  )\
                                                                                \
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
     xxx(BlobIndexOpsPriority,                                                  \
@@ -170,7 +171,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
-    xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
+    xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
+    xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
                                                                                \
     xxx(NewLocalDBCompactionPolicyEnabled,              bool,      false      )\
                                                                                \
@@ -207,6 +209,16 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
     xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+                                                                               \
+    xxx(ConfigDispatcherSettings,                                              \
+        NCloud::NProto::TConfigDispatcherSettings,                             \
+        {}                                                                    )\
+                                                                               \
+    xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
+                                                                               \
+    xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
+                                                                               \
+    xxx(SSProxyFallbackMode,            bool,     false                       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -241,6 +253,18 @@ bool IsEmpty(const TAliases& value)
     return value.GetEntries().empty();
 }
 
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
+{
+    return !value.HasAllowList() && !value.HasDenyList();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
@@ -257,6 +281,13 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    return TVector<TString>(value.begin(), value.end());
 }
 
 IOutputStream& operator <<(
@@ -297,6 +328,17 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
         os << x.GetAlias() << ": " << x.GetFsId() << ", ";
     }
     os << " }";
+}
+
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
 }
 
 }   // namespace

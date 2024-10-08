@@ -249,7 +249,6 @@ def start_ydb(grpc_ssl_enable=False):
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
-        has_cluster_uuid=False,
         use_in_memory_pdisks=True,
         grpc_ssl_enable=grpc_ssl_enable,
         dynamic_storage_pools=[

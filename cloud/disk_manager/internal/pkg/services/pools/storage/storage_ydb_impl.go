@@ -18,7 +18,9 @@ func (s *storageYDB) findBaseDisks(
 	ctx context.Context,
 	session *persistence.Session,
 	ids []string,
-) ([]baseDisk, error) {
+) (baseDisks []baseDisk, err error) {
+
+	defer s.metrics.StatCall("findBaseDisks")(&err)
 
 	if len(ids) == 0 {
 		return nil, nil
@@ -45,7 +47,7 @@ func (s *storageYDB) findBaseDisks(
 	}
 	defer res.Close()
 
-	baseDisks, err := scanBaseDisks(ctx, res)
+	baseDisks, err = scanBaseDisks(ctx, res)
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +621,9 @@ func (s *storageYDB) getPoolOrDefault(
 	tx *persistence.Transaction,
 	imageID string,
 	zoneID string,
-) (pool, error) {
+) (poolInstance pool, err error) {
+
+	defer s.metrics.StatCall("getPoolOrDefault")(&err)
 
 	res, err := tx.Execute(
 		ctx,
@@ -1924,7 +1928,9 @@ func (s *storageYDB) getPoolConfig(
 func (s *storageYDB) getPoolConfigs(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]poolConfig, error) {
+) (configs []poolConfig, err error) {
+
+	defer s.metrics.StatCall("getPoolConfigs")(&err)
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1966,9 +1972,46 @@ func (s *storageYDB) getPoolConfigs(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	var configs []poolConfig
 	for _, config := range m {
 		configs = append(configs, *config)
+	}
+
+	return configs, nil
+}
+
+func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
+	ctx context.Context,
+	session *persistence.Session,
+) (configs []poolConfig, err error) {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select *
+		from configs 
+		where capacity > 0
+	`, s.tablesPath,
+	))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			config, err := scanPoolConfig(res)
+			if err != nil {
+				return nil, err
+			}
+			configs = append(configs, config)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
 	}
 
 	return configs, nil
@@ -1977,7 +2020,9 @@ func (s *storageYDB) getPoolConfigs(
 func (s *storageYDB) getBaseDisksScheduling(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]BaseDisk, error) {
+) (baseDisks []BaseDisk, err error) {
+
+	defer s.metrics.StatCall("getBaseDisksScheduling")(&err)
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -2012,7 +2057,6 @@ func (s *storageYDB) getBaseDisksScheduling(
 		return nil, err
 	}
 
-	var baseDisks []BaseDisk
 	for _, baseDisk := range found {
 		baseDisks = append(baseDisks, baseDisk.toBaseDisk())
 	}
@@ -2024,7 +2068,9 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	ctx context.Context,
 	session *persistence.Session,
 	config poolConfig,
-) ([]BaseDisk, error) {
+) (baseDisks []BaseDisk, err error) {
+
+	defer s.metrics.StatCall("takeBaseDisksToScheduleForPool")(&err)
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
@@ -2158,30 +2204,34 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		return nil, err
 	}
 
-	var res []BaseDisk
 	for _, baseDisk := range newBaseDisks {
-		res = append(res, baseDisk.toBaseDisk())
+		baseDisks = append(baseDisks, baseDisk.toBaseDisk())
 	}
 
-	return res, nil
+	logging.Info(ctx, "%v disks will be scheduled for pool %+v", len(baseDisks), pool)
+	return baseDisks, nil
 }
 
 func (s *storageYDB) takeBaseDisksToSchedule(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]BaseDisk, error) {
+) (baseDisks []BaseDisk, err error) {
 
-	configs, err := s.getPoolConfigs(ctx, session)
+	defer s.metrics.StatCall("takeBaseDisksToSchedule")(&err)
+
+	configs, err := s.getPoolConfigsWithNonZeroCapacity(ctx, session)
 	if err != nil {
 		return nil, err
 	}
+
+	logging.Info(ctx, "Got %v pool configs to schedule base disks for", len(configs))
 
 	scheduling, err := s.getBaseDisksScheduling(ctx, session)
 	if err != nil {
 		return nil, err
 	}
 
-	var baseDisks []BaseDisk
+	logging.Info(ctx, "Got %v base disks to schedule", len(scheduling))
 
 	for _, disk := range scheduling {
 		if disk.SrcDisk != nil {
@@ -2545,7 +2595,7 @@ func (s *storageYDB) deletePool(
 	updated := p
 	updated.status = poolStatusDeleted
 
-	logging.Info(ctx, "applying pool transition from %+v to %+v", p, updated)
+	logging.Info(ctx, "Applying pool transition from %+v to %+v", p, updated)
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1

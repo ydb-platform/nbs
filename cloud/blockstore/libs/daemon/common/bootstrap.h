@@ -61,9 +61,10 @@ protected:
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
     NBD::IServerPtr NbdServer;
-    IFileIOServicePtr FileIOService;
+    IFileIOServiceProviderPtr FileIOServiceProvider;
     IStorageProviderPtr StorageProvider;
     IKmsKeyProviderPtr KmsKeyProvider;
+    IRootKmsKeyProviderPtr RootKmsKeyProvider;
     TExecutorPtr Executor;
     IServerPtr Server;
     NSpdk::ISpdkEnvPtr Spdk;

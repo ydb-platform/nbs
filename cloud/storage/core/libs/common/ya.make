@@ -19,6 +19,7 @@ SRCS(
     helpers.cpp
     history.cpp
     media.cpp
+    persistent_table.cpp
     proto_helpers.cpp
     random.cpp
     ring_buffer.cpp
@@ -42,6 +43,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/deprecated/atomic
+    library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace
     library/cpp/protobuf/util

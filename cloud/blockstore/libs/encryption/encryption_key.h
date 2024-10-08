@@ -59,10 +59,25 @@ struct IKmsKeyProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IRootKmsKeyProvider
+{
+    virtual ~IRootKmsKeyProvider() = default;
+
+    virtual auto GetKey(const NProto::TKmsKey& kmsKey, const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<TEncryptionKey>> = 0;
+
+    virtual auto GenerateDataEncryptionKey(const TString& diskId)
+        -> NThreading::TFuture<TResultOrError<NProto::TKmsKey>> = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IKmsKeyProviderPtr CreateKmsKeyProviderStub();
+IRootKmsKeyProviderPtr CreateRootKmsKeyProviderStub();
 
 IEncryptionKeyProviderPtr CreateEncryptionKeyProvider(
-    IKmsKeyProviderPtr kmsKeyProvider);
+    IKmsKeyProviderPtr kmsKeyProvider,
+    IRootKmsKeyProviderPtr rootKmsKeyProvider);
 
 IEncryptionKeyProviderPtr CreateDefaultEncryptionKeyProvider();
 

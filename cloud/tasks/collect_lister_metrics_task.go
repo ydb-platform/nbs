@@ -19,7 +19,6 @@ type collectListerMetricsTask struct {
 	metricsCollectionInterval time.Duration
 
 	hangingTaskGaugesByID     map[string]metrics.Gauge
-	exceptHangingTaskTypes    []string
 	maxHangingTaskIDsToReport int64
 }
 
@@ -159,11 +158,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	ctx context.Context,
 ) error {
 
-	taskInfos, err := c.storage.ListHangingTasks(
-		ctx,
-		^uint64(0),
-		c.exceptHangingTaskTypes,
-	)
+	taskInfos, err := c.storage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
 		return err
 	}

@@ -110,6 +110,9 @@ public:
 
     ui32 GetIOParserActorCount() const;
     bool GetOffloadAllIORequestsParsingEnabled() const;
+    bool GetDisableNodeBrokerRegisterationOnDevicelessAgent() const;
+    ui32 GetMaxAIOContextEvents() const;
+    ui32 GetPathsPerFileIOService() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

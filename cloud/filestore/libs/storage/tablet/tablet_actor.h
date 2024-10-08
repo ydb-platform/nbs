@@ -107,6 +107,12 @@ private:
         // Node index cache
         std::atomic<i64> NodeIndexCacheHitCount{0};
         std::atomic<i64> NodeIndexCacheNodeCount{0};
+        // Read-only transactions that used fast path (in-memory index state)
+        std::atomic<i64> InMemoryIndexStateROCacheHitCount{0};
+        // Read-only transactions that used slow path
+        std::atomic<i64> InMemoryIndexStateROCacheMissCount{0};
+        // Read-write transactions
+        std::atomic<i64> InMemoryIndexStateRWCount{0};
 
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
@@ -135,13 +141,17 @@ private:
         std::atomic<i64> IdleTime{0};
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
 
+        // Blob compression stats
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};
 
+        // Opened nodes stats
         std::atomic<i64> NodesOpenForWritingBySingleSession{0};
         std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
         std::atomic<i64> NodesOpenForReadingBySingleSession{0};
         std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
+
+        std::atomic<i64> OrphanNodesCount{0};
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
@@ -208,7 +218,8 @@ private:
             const TChannelsStats& channelsStats,
             const TReadAheadCacheStats& readAheadStats,
             const TNodeIndexCacheStats& nodeIndexCacheStats,
-            const TNodeToSessionCounters& nodeToSessionCounters);
+            const TNodeToSessionCounters& nodeToSessionCounters,
+            const TMiscNodeStats& miscNodeStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
@@ -250,6 +261,7 @@ private:
     NProto::TStorageConfig StorageConfigOverride;
 
     ui32 BackpressureErrorCount = 0;
+    TInstant BackpressurePeriodStart;
 
     const NBlockCodecs::ICodec* BlobCodec;
 
@@ -348,6 +360,8 @@ private:
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
 
+    TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+
     void AddTransaction(
         TRequestInfo& transaction,
         TRequestInfo::TCancelRoutine cancelRoutine);
@@ -382,8 +396,14 @@ private:
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
         if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
+            Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
             return;
         }
+        Metrics.InMemoryIndexStateROCacheMissCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
     }
 
@@ -392,6 +412,9 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
+        Metrics.InMemoryIndexStateRWCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(
             ctx,
             std::forward<TArgs>(args)...);
@@ -400,6 +423,22 @@ private:
     void RemoveTransaction(TRequestInfo& transaction);
     void TerminateTransactions(const NActors::TActorContext& ctx);
     void ReleaseTransactions();
+
+    // Updates in-memory index state with the given node updates. Is to be
+    // called upon every operation that changes node-related data. As of now, it
+    // is called upon completion of every RW transaction that can change the
+    // node-related data. Failure to perform this operation will lead to
+    // inconsistent cache state between the localDB and the in-memory index
+    // state
+    template <typename T>
+    void UpdateInMemoryIndexState(const T& args)
+    {
+        if constexpr (std::is_base_of_v<TIndexStateNodeUpdates, T>) {
+            if (Config->GetInMemoryIndexCacheEnabled()) {
+                TIndexTabletState::UpdateInMemoryIndexState(args.NodeUpdates);
+            }
+        }
+    }
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,
@@ -452,6 +491,8 @@ private:
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
 
+    bool IsShard() const;
+
 private:
     template <typename TMethod>
     TSession* AcceptRequest(
@@ -487,6 +528,7 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
+    bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

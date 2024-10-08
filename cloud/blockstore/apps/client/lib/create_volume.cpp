@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 namespace NCloud::NBlockStore::NClient {
@@ -47,6 +48,7 @@ private:
 
     TString StoragePoolName;
     TVector<TString> AgentIds;
+    bool JsonOutput = false;
 
 public:
     TCreateVolumeCommand(IBlockStorePtr client)
@@ -116,6 +118,7 @@ public:
                 "Allowed only for nonreplicated disks")
             .RequiredArgument("STR")
             .AppendTo(&AgentIds);
+        Opts.AddLongOption("json").StoreTrue(&JsonOutput);
     }
 
 protected:
@@ -177,6 +180,18 @@ protected:
         if (Proto) {
             SerializeToTextFormat(result, output);
             return true;
+        }
+
+        if (JsonOutput){
+            // We don't use result.PrintJSON(), because TError.PrintJSON()
+            // writes only code, and it is more reliable to use formatted
+            // error in tests and scripts.
+            NJson::TJsonValue resultJson;
+            if (HasError(result)){
+                resultJson["Error"] = FormatErrorJson(result.GetError());
+            }
+            NJson::WriteJson(&output, &resultJson, false, true, true);
+            return !HasError(result);
         }
 
         if (HasError(result)) {

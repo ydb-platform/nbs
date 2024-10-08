@@ -78,7 +78,7 @@ public:
         TABLET_VERIFY(!ApplyingByteLayer);
 
         if (BlockMinCommitId < deletion.CommitId) {
-            Block = {};
+            Block.Block = {};
         }
     }
 
@@ -90,6 +90,11 @@ public:
             const auto bytesOffset =
                 static_cast<ui64>(Block.BlockIndex) * BlockSize;
             Block.BytesMinCommitId = bytes.MinCommitId;
+            TABLET_VERIFY_C(
+                bytes.Offset - bytesOffset <= BlockSize,
+                "Bytes: " << bytes.Describe()
+                    << ", Block: " << Block.BlockIndex
+                    << ", BlockSize: " << BlockSize);
             Block.BlockBytes.Intervals.push_back({
                 IntegerCast<ui32>(bytes.Offset - bytesOffset),
                 TString(data)

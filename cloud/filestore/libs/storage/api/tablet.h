@@ -32,6 +32,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
     xxx(WriteCompactionMap,         __VA_ARGS__)                               \
+    xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
+    xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
+    xxx(UnsafeGetNode,              __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +99,15 @@ struct TEvIndexTablet
 
         EvWriteCompactionMapRequest = EvBegin + 33,
         EvWriteCompactionMapResponse,
+
+        EvUnsafeDeleteNodeRequest = EvBegin + 35,
+        EvUnsafeDeleteNodeResponse,
+
+        EvUnsafeUpdateNodeRequest = EvBegin + 37,
+        EvUnsafeUpdateNodeResponse,
+
+        EvUnsafeGetNodeRequest = EvBegin + 39,
+        EvUnsafeGetNodeResponse,
 
         EvEnd
     };

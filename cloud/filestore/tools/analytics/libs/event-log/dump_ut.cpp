@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(70, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(73, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -151,20 +151,23 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(43, ReadData);
         TEST_REQUEST_TYPE(44, WriteData);
         TEST_REQUEST_TYPE(45, AllocateData);
-        TEST_REQUEST_TYPE(46, GetSessionEventsStream);
-        TEST_REQUEST_TYPE(47, StartEndpoint);
-        TEST_REQUEST_TYPE(48, StopEndpoint);
-        TEST_REQUEST_TYPE(49, ListEndpoints);
-        TEST_REQUEST_TYPE(50, KickEndpoint);
-        TEST_REQUEST_TYPE(51, DescribeData);
-        TEST_REQUEST_TYPE(52, GenerateBlobIds);
-        TEST_REQUEST_TYPE(53, AddData);
-        TEST_REQUEST_TYPE(54, ReadBlob);
-        TEST_REQUEST_TYPE(55, WriteBlob);
+        TEST_REQUEST_TYPE(46, Fsync);
+        TEST_REQUEST_TYPE(47, FsyncDir);
+        TEST_REQUEST_TYPE(48, GetSessionEventsStream);
+        TEST_REQUEST_TYPE(49, StartEndpoint);
+        TEST_REQUEST_TYPE(50, StopEndpoint);
+        TEST_REQUEST_TYPE(51, ListEndpoints);
+        TEST_REQUEST_TYPE(52, KickEndpoint);
+        TEST_REQUEST_TYPE(53, DescribeData);
+        TEST_REQUEST_TYPE(54, GenerateBlobIds);
+        TEST_REQUEST_TYPE(55, AddData);
+        TEST_REQUEST_TYPE(56, ReadBlob);
+        TEST_REQUEST_TYPE(57, WriteBlob);
 
         // Fuse
         TEST_REQUEST_TYPE(1001, Flush);
         TEST_REQUEST_TYPE(1002, Fsync);
+        TEST_REQUEST_TYPE(1003, FsyncDir);
 
         // Tablet
         TEST_REQUEST_TYPE(10001, Flush);

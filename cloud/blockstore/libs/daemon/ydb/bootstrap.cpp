@@ -32,6 +32,7 @@
 #include <cloud/blockstore/libs/service/service_auth.h>
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -231,6 +232,16 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
+    bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
+    bool emergencyMode =
+        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode();
+
+    if (loadCmsConfigs && emergencyMode) {
+        STORAGE_INFO("Disable loading configs from CMS in emergency mode");
+        loadCmsConfigs = false;
+    }
+
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
@@ -238,9 +249,13 @@ void TBootstrapYdb::InitKikimrService()
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
         .InterconnectPort = Configs->Options->InterconnectPort,
-        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
+        .LoadCmsConfigs = loadCmsConfigs,
         .Settings = std::move(settings)
     };
+
+    if (emergencyMode) {
+        registerOpts.SchemeShardDir = "";
+    }
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
@@ -419,23 +434,30 @@ void TBootstrapYdb::InitKikimrService()
 
     InitSpdk();
 
-    FileIOService = CreateAIOService();
-
-    if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
+    if (const auto& config = *Configs->DiskAgentConfig;
+        config.GetEnabled() &&
+        config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
         !AioStorageProvider)
     {
-        Y_ABORT_UNLESS(FileIOService);
-
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
+        auto factory = [events = config.GetMaxAIOContextEvents()] {
+            return CreateAIOService(events);
+        };
+
+        FileIOServiceProvider =
+            config.GetPathsPerFileIOService()
+                ? CreateFileIOServiceProvider(
+                      config.GetPathsPerFileIOService(),
+                      factory)
+                : CreateSingleFileIOServiceProvider(factory());
+
         AioStorageProvider = CreateAioStorageProvider(
-            FileIOService,
+            FileIOServiceProvider,
             NvmeManager,
-            !Configs->DiskAgentConfig->GetDirectIoFlagDisabled(),
-            EAioSubmitQueueOpt::DontUse
-        );
+            !config.GetDirectIoFlagDisabled(),
+            EAioSubmitQueueOpt::DontUse);
 
         STORAGE_INFO("AioStorageProvider initialized");
     }
@@ -450,8 +472,6 @@ void TBootstrapYdb::InitKikimrService()
 
         STORAGE_INFO("AioStorageProvider (null) initialized");
     }
-
-    Y_ABORT_UNLESS(FileIOService);
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),
@@ -520,7 +540,6 @@ void TBootstrapYdb::InitKikimrService()
     args.DiscoveryService = DiscoveryService;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.FileIOService = FileIOService;
     args.AioStorageProvider = AioStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;

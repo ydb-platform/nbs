@@ -428,6 +428,14 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers);
 
     //
+    // OrphanNodes
+    //
+
+    void WriteOrphanNode(ui64 nodeId);
+    void DeleteOrphanNode(ui64 nodeId);
+    bool ReadOrphanNodes(TVector<ui64>& nodeIds);
+
+    //
     // NewBlobs
     //
 
@@ -498,7 +506,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,
         ui32 firstRangeId,
-        ui32 rangeCount);
+        ui32 rangeCount,
+        bool prechargeAll);
 
     //
     // OpLog

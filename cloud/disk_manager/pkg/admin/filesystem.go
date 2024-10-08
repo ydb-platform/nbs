@@ -346,7 +346,8 @@ func newFilesystemCmd(
 ) *cobra.Command {
 
 	cmd := &cobra.Command{
-		Use: "filesystem",
+		Use:     "filesystems",
+		Aliases: []string{"filesystem"},
 	}
 
 	cmd.AddCommand(

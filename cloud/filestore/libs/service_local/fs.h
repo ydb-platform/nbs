@@ -58,6 +58,9 @@ namespace NCloud::NFileStore {
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
     xxx(AllocateData,                       __VA_ARGS__)                       \
+                                                                               \
+    xxx(Fsync,                              __VA_ARGS__)                       \
+    xxx(FsyncDir,                           __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS_LOCAL_SYNC
 
 #define FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx, ...)                           \

@@ -215,6 +215,7 @@ private:
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
+    bool RejectRequests(STFUNC_SIG);
 
     BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgent)
     BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgentPrivate)

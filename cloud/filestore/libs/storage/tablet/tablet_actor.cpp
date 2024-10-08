@@ -359,9 +359,20 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        if (CompactionStateLoadStatus.Finished &&
-            ++BackpressureErrorCount >=
-                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        TDuration backpressurePeriod;
+        if (CompactionStateLoadStatus.Finished) {
+            if (!BackpressurePeriodStart) {
+                BackpressurePeriodStart = ctx.Now();
+            }
+
+            ++BackpressureErrorCount;
+            backpressurePeriod = ctx.Now() - BackpressurePeriodStart;
+        }
+
+        if (BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide()
+                || backpressurePeriod >=
+                Config->GetMaxBackpressurePeriodBeforeSuicide())
         {
             LOG_WARN(
                 ctx,
@@ -373,10 +384,18 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
             Suicide(ctx);
         }
 
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+
         return MakeError(
             E_REJECTED,
             TStringBuilder() << "rejected due to backpressure: " << message);
     }
+
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
+    BackpressurePeriodStart = TInstant::Zero();
 
     return NProto::TError{};
 }
@@ -490,10 +509,19 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
     bool isPriority = false;
 
-    if (auto priorityRange = NextPriorityRangeForCleanup()) {
-        cleanupRangeId = priorityRange->RangeId;
-        cleanupScore = Max<ui32>();
-        isPriority = true;
+    TString dummy;
+    // if we are close to our write backpressure thresholds, it's better to
+    // clean up normal deletion markers first in order not to freeze write
+    // requests
+    //
+    // large deletion marker cleanup is a slower process and having too many
+    // large deletion markers affects a much smaller percentage of workloads
+    if (!IsCloseToBackpressureThresholds(&dummy)) {
+        if (auto priorityRange = NextPriorityRangeForCleanup()) {
+            cleanupRangeId = priorityRange->RangeId;
+            cleanupScore = Max<ui32>();
+            isPriority = true;
+        }
     }
 
     return {
@@ -511,6 +539,17 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             || Config->GetNewCleanupEnabled()
             && cleanupScore && shouldCleanup
             || isPriority};
+}
+
+bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
+{
+    auto bpThresholds = BuildBackpressureThresholds();
+    const double scale =
+        Config->GetBackpressurePercentageForFairBlobIndexOpsPriority()
+        / 100.;
+    bpThresholds.CompactionScore *= scale;
+    bpThresholds.CleanupScore *= scale;
+    return !IsWriteAllowed(bpThresholds, GetBackpressureValues(), message);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -621,6 +660,18 @@ void TIndexTabletActor::HandleDescribeSessions(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
+{
+    TVector<ui32> ranges;
+    const auto& zeroRanges = RangesWithEmptyCompactionScore;
+    ui32 i = 0;
+    while (i < zeroRanges.size()) {
+        ranges.push_back(i);
+        i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
+    }
+    return ranges;
+}
+
 void TIndexTabletActor::HandleForcedOperation(
     const TEvIndexTablet::TEvForcedOperationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -667,12 +718,7 @@ void TIndexTabletActor::HandleForcedOperation(
     if (code == S_OK) {
         TVector<ui32> ranges;
         if (mode == EMode::DeleteZeroCompactionRanges) {
-            const auto& zeroRanges = RangesWithEmptyCompactionScore;
-            ui32 i = 0;
-            while (i < zeroRanges.size()) {
-                ranges.push_back(i);
-                i += Config->GetMaxZeroCompactionRangesToDeletePerTx();
-            }
+            ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = request.GetProcessAllRanges()
                 ? GetAllCompactionRanges()
@@ -1018,6 +1064,13 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;
     return delta;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::IsShard() const
+{
+    return GetFileSystem().GetShardNo() > 0;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

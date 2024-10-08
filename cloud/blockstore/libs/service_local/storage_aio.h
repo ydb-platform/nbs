@@ -19,7 +19,7 @@ enum class EAioSubmitQueueOpt : bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageProviderPtr CreateAioStorageProvider(
-    IFileIOServicePtr fileIO,
+    IFileIOServiceProviderPtr fileIOProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     bool directIO,
     EAioSubmitQueueOpt submitQueueOpt);

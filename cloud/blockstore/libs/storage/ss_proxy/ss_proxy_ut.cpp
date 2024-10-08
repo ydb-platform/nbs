@@ -486,11 +486,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)
     {
-        TString cacheFilePath =
-            "ShouldDescribeVolumeInFallbackMode.path_description_backup";
+        TString backupFilePath =
+            "ShouldDescribeVolumesInFallbackMode.path_description_backup";
 
         NProto::TStorageServiceConfig configProto;
-        configProto.SetPathDescriptionBackupFilePath(cacheFilePath);
+        configProto.SetPathDescriptionBackupFilePath(backupFilePath);
 
         {
             TTestEnv env;

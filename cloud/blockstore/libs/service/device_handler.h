@@ -45,12 +45,12 @@ struct IDeviceHandlerFactory
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxBlockCount,
         bool unalignedRequestsDisabled) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IDeviceHandlerFactoryPtr CreateDefaultDeviceHandlerFactory();
+IDeviceHandlerFactoryPtr CreateDeviceHandlerFactory(ui32 maxSubRequestSize);
 
 }   // namespace NCloud::NBlockStore

@@ -601,3 +601,43 @@ message TWriteCompactionMapResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Direct inode manipulation.
+
+message TUnsafeDeleteNodeRequest
+{
+    string FileSystemId = 1;
+    uint64 Id = 2;
+}
+
+message TUnsafeDeleteNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeUpdateNodeRequest
+{
+    string FileSystemId = 1;
+    NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeUpdateNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeGetNodeRequest
+{
+    string FileSystemId = 1;
+    uint64 Id = 2;
+}
+
+message TUnsafeGetNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+    NProto.TNodeAttr Node = 2;
+}

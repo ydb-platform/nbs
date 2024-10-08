@@ -8,6 +8,7 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import create_file_de
     setup_disk_registry_proxy_config, setup_disk_agent_config
 
 from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
+from cloud.storage.core.tools.testing.access_service.lib import AccessService
 
 from .nbs_runner import LocalNbs
 from .endpoint_proxy import EndpointProxy
@@ -51,6 +52,8 @@ class LocalLoadTest:
             kikimr_binary_path=None,
             with_endpoint_proxy=False,
             with_netlink=False,
+            access_service_type=AccessService,
+            load_configs_from_cms=True,
     ):
 
         self.__endpoint = endpoint
@@ -61,7 +64,6 @@ class LocalLoadTest:
         self.configurator = KikimrConfigGenerator(
             erasure=None,
             binary_path=kikimr_binary_path,
-            has_cluster_uuid=False,
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
             dynamic_storage_pools=dynamic_storage_pools,
@@ -76,6 +78,9 @@ class LocalLoadTest:
         if run_kikimr:
             self.kikimr_cluster.start()
             kikimr_port = list(self.kikimr_cluster.nodes.values())[0].port
+        else:
+            # makes sense only when Kikimr is running
+            load_configs_from_cms = False
 
         self.__devices = []
 
@@ -107,10 +112,12 @@ class LocalLoadTest:
             discovery_config=discovery_config,
             restart_interval=restart_interval,
             dynamic_storage_pools=dynamic_storage_pools,
-            load_configs_from_cms=run_kikimr,
+            load_configs_from_cms=load_configs_from_cms,
             features_config_patch=features_config_patch,
             grpc_trace=grpc_trace,
-            rack=rack)
+            rack=rack,
+            access_service_type=access_service_type,
+        )
 
         self.endpoint_proxy = None
         if with_endpoint_proxy:
@@ -157,7 +164,7 @@ class LocalLoadTest:
             try:
                 with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
                     subprocess.run(
-                        ["sudo", "dmesg", "-T"],
+                        ["sudo", "-n", "dmesg", "-T"],
                         stdout=dmesg_output,
                         stderr=dmesg_output,
                         timeout=10
