@@ -217,6 +217,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
                                                                                \
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
+                                                                               \
+    xxx(SSProxyFallbackMode,            bool,     false                       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
