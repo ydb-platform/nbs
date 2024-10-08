@@ -821,8 +821,113 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount -
-        statsBefore.RWCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
+    Y_UNIT_TEST(ShouldUseNodeRefsCacheIfOneIsExhaustive)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id1 =
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"))
+                ->Record.GetNode()
+                .GetId();
+        auto id2 =
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"))
+                ->Record.GetNode()
+                .GetId();
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RO transactions, populate the cache. These calls are made to populate
+        // the Nodes cache, which is also used for ListNodes requests
+        tablet.GetNodeAttr(RootNodeId, "");
+        tablet.GetNodeAttr(id1, "");
+        tablet.GetNodeAttr(id2, "");
+
+        // The noderefs cache is exhaustive thus list nodes should be a cache
+        // hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+
+        statsBefore = statsAfter;
+
+        auto id3 =
+            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "test3"))
+                ->Record.GetNode()
+                .GetId();
+        tablet.CreateNode(TCreateNodeArgs::File(id3, "test4"));
+        tablet.CreateNode(TCreateNodeArgs::File(id3, "test5"));
+        tablet.CreateNode(TCreateNodeArgs::File(id3, "test6"));
+
+        /*
+        |- test1
+        |- test2
+        |- test3
+            |- test4
+            |- test5
+            |- test6
+        */
+
+        // The NodeRefs cache is still exhaustive thus list nodes should be a
+        // cache hit
+        UNIT_ASSERT_VALUES_EQUAL(3, tablet.ListNodes(id3)->Record.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+
+        // Now let us ensure that the cache is evicted
+        for (int i = 0; i < 100; ++i) {
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, std::to_string(i)));
+        }
+
+        statsBefore = statsAfter;
+
+        tablet.ListNodes(RootNodeId);
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
     }
 }
 
