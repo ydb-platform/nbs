@@ -153,6 +153,7 @@ struct TTxVolume
         bool MuteIOErrors;
 
         bool LiteReallocation = false;
+        bool MigrationIndexReset = false;
 
         TUpdateDevices(
                 TDevices devices,
