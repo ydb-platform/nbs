@@ -297,14 +297,13 @@ void TNonreplicatedPartitionMigrationCommonActor::
     // Migration ranges are stored in the ascending order of start block and
     // their sizes are equal. Thus the range in the begin is leftmost.
     if (!DeferredMigrations.empty()) {
-        migrationProgressAchieved = std::min(
-            migrationProgressAchieved,
-            DeferredMigrations.begin()->End + 1);
+        migrationProgressAchieved =
+            Min(migrationProgressAchieved, DeferredMigrations.begin()->End + 1);
     }
     if (!MigrationsInProgress.empty()) {
-        migrationProgressAchieved = std::min(
-            migrationProgressAchieved,
-            MigrationsInProgress.begin()->End + 1);
+        migrationProgressAchieved =
+            Min(migrationProgressAchieved,
+                MigrationsInProgress.begin()->End + 1);
     }
 
     LastReportedMigratedBlockCount = MigratedBlockCount;

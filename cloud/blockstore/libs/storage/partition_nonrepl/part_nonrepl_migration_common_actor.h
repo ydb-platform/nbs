@@ -99,8 +99,16 @@ private:
     bool MigrationEnabled = false;
     bool RangeMigrationScheduled = false;
     TInstant LastRangeMigrationStartTs;
-    TSet<TBlockRange64> MigrationsInProgress;
-    TSet<TBlockRange64> DeferredMigrations;
+
+    // Custom comparator that orders ranges by their start positions.
+    struct TBlockRangeComparator
+    {
+        bool operator()(
+            const TBlockRange64& lhs,
+            const TBlockRange64& rhs) const;
+    };
+    TSet<TBlockRange64, TBlockRangeComparator> MigrationsInProgress;
+    TSet<TBlockRange64, TBlockRangeComparator> DeferredMigrations;
 
     TChangedRangesMap ChangedRangesMap;
 
