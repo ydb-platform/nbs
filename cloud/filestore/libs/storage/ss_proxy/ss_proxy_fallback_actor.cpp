@@ -94,7 +94,6 @@ STFUNC(TDescribeFileStoreActor::StateWork)
 
 }   // namespace
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TSSProxyFallbackActor::TSSProxyFallbackActor(TStorageConfigPtr config)
