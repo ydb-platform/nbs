@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
+#include <util/generic/list.h>
 #include <util/random/random.h>
 
 #include <iterator>
@@ -63,7 +64,7 @@ struct TReferenceImplementation
         }
 
         UNIT_ASSERT_VALUES_EQUAL(NextFreeRecord, index);
-        NextFreeRecord++;
+        ++NextFreeRecord;
     }
 
     void DeleteRecord(ui64 index)
@@ -106,8 +107,7 @@ struct TReferenceImplementation
         ui64 index = 0;
         TMap<ui64, ui64> newRecords;
         for (auto& [_, val]: Records) {
-            newRecords[index] = val;
-            index++;
+            newRecords[index++] = val;
         }
 
         Records = std::move(newRecords);
@@ -166,11 +166,11 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             UNIT_ASSERT_VALUES_EQUAL(recordValues.size(), table.CountRecords());
 
             auto it = table.begin();
-            for (ui64 index = 0; index < recordValues.size(); index++) {
+            for (ui64 index = 0; index < recordValues.size(); ++index) {
                 UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
                 UNIT_ASSERT_VALUES_EQUAL(index, it->Index);
                 UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
-                it++;
+                ++it;
             }
         }
     }
@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         {
             TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
-            for (auto i = 0; i < tableSize; i++) {
+            for (auto i = 0; i < tableSize; ++i) {
                 auto index = table.AllocRecord();
                 UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
             }
@@ -239,7 +239,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             }
 
             TVector<ui64> newRecordData;
-            for (ui64 index = 0; index < recordValues.size(); index++) {
+            for (ui64 index = 0; index < recordValues.size(); ++index) {
                 if (index % 2 == 0) {
                     newRecordData.push_back(recordValues[index]);
                 } else {
@@ -252,7 +252,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         {
             TPersistentTable<THeader, TRecord> table(tablePath, 32);
             ui64 index = 0;
-            for (auto it = table.begin(); it != table.end(); index++, it++) {
+            for (auto it = table.begin(); it != table.end(); ++index, ++it) {
                 UNIT_ASSERT_LT(index, recordValues.size());
                 UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
                 UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         {
             TTable table(tablePath, 32);
             ui64 index = 0;
-            for (auto it = table.begin(); it != table.end(); index++, it++) {
+            for (auto it = table.begin(); it != table.end(); ++index, ++it) {
                 UNIT_ASSERT_LT(index, recordValues.size());
                 UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
                 UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
@@ -326,7 +326,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         {
             TTable table(tablePath, 32);
             ui64 index = 0;
-            for (auto it = table.begin(); it != table.end(); index++, it++) {
+            for (auto it = table.begin(); it != table.end(); ++index, ++it) {
                 UNIT_ASSERT_LT(index, recordValues.size());
                 UNIT_ASSERT_VALUES_EQUAL(index, it.GetIndex());
                 UNIT_ASSERT_VALUES_EQUAL(recordValues[index], it->Val);
@@ -346,16 +346,16 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
             UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
 
-            for (auto i = 0; i < tableSize; i++) {
+            for (auto i = 0; i < tableSize; ++i) {
                 auto index = table.AllocRecord();
                 UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
                 UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
             }
 
             ui32 deletedRecords = 0;
-            for (auto i = 0; i < tableSize; i++) {
+            for (auto i = 0; i < tableSize; ++i) {
                 if (i % 2 == 0) {
-                    deletedRecords++;
+                    ++deletedRecords;
                     table.DeleteRecord(i);
                     UNIT_ASSERT_VALUES_EQUAL(
                         table.CountRecords(),

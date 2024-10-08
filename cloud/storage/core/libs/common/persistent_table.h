@@ -1,7 +1,6 @@
 #pragma once
 
-#include <util/generic/list.h>
-#include <util/generic/vector.h>
+#include <util/generic/deque.h>
 #include <util/system/file.h>
 #include <util/system/filemap.h>
 #include <util/system/yassert.h>
@@ -26,7 +25,7 @@ private:
     size_t NextFreeRecord = 0;
 
     std::unique_ptr<TFileMap> FileMap;
-    TList<ui64> FreeRecords;
+    TDeque<ui64> FreeRecords;
     THeader* HeaderPtr = nullptr;
     TRecord* RecordsPtr = nullptr;
 
@@ -71,8 +70,8 @@ public:
         using reference = R&;
 
         TIterator(TPersistentTable& table, ui64 index)
-            : Index(index)
-            , Table(table)
+            : Table(table)
+            , Index(index)
         {
             SkipEmptyRecords();
         }
@@ -127,8 +126,8 @@ public:
         }
 
     private:
-        ui64 Index;
         TPersistentTable& Table;
+        ui64 Index;
     };
 
     TIterator begin()
@@ -257,7 +256,7 @@ private:
 
         while (readRecordIndex < RecordCount) {
             if (RecordsPtr[readRecordIndex].State != ERecordState::Stored) {
-                readRecordIndex++;
+                RecordsPtr[readRecordIndex++].State = ERecordState::Free;
                 continue;
             }
 
@@ -265,8 +264,8 @@ private:
                 PrepareCompactRecord(readRecordIndex, writeRecordIndex);
                 FinishCompactRecord();
             }
-            writeRecordIndex++;
-            readRecordIndex++;
+            ++writeRecordIndex;
+            ++readRecordIndex;
         }
 
         NextFreeRecord = writeRecordIndex;
@@ -284,7 +283,8 @@ private:
     void FinishCompactRecord()
     {
         if (HeaderPtr->CompactedRecordSrcIndex == InvalidIndex ||
-            HeaderPtr->CompactedRecordDstIndex == InvalidIndex) {
+            HeaderPtr->CompactedRecordDstIndex == InvalidIndex)
+        {
             // Prepare phase didn't finish and none of the records were moved
             HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
             HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
