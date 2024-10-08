@@ -232,7 +232,8 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksRequest>();
 
-    auto deadline = Min(DisksNotificationStartTs, ctx.Now()) + TDuration::Seconds(5);
+    auto deadline = Min(DisksNotificationStartTs, ctx.Now()) +
+                    Config->GetDiskRegistryDisksNotificationTimeout();
     if (deadline > ctx.Now()) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Scheduled disks notification, now: %lu, deadline: %lu",

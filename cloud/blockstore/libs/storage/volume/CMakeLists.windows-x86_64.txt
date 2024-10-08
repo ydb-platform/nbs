@@ -61,6 +61,7 @@ target_sources(libs-storage-volume PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_monitoring_removeclient.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_monitoring.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_read_history.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_read_meta_history.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_reallocatedisk.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_removeclient.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/volume/volume_actor_reset_seqnumber.cpp
