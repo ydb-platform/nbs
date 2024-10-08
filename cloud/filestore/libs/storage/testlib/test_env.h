@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
@@ -42,6 +43,16 @@ inline auto GetDefaultMaxFileBlocks()
     // ui32 domain
     static const ui64 VALUE = TStorageConfig().GetMaxFileBlocks();
     return VALUE;
+}
+
+inline auto CompactionRangeToString(
+    const NProtoPrivate::TCompactionRangeStats& rs)
+{
+    return Sprintf(
+        "r=%u b=%u d=%u",
+        rs.GetRangeId(),
+        rs.GetBlobCount(),
+        rs.GetDeletionCount());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
