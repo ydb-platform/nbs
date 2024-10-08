@@ -238,8 +238,6 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
-    TString GetHandleOperationQueuePath() const;
-    ui32 GetHandleOperationQueueSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

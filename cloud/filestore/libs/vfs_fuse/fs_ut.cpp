@@ -92,7 +92,8 @@ struct TBootstrap
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler(),
-            const NProto::TFileStoreFeatures& featuresConfig = {})
+            const NProto::TFileStoreFeatures& featuresConfig = {},
+            ui32 handleOpsQueueSize = 1000)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -153,6 +154,10 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
+        if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
+            proto.SetHandleOpsQueuePath(TempDir.Path());
+            proto.SetHandleOpsQueueSize(handleOpsQueueSize);
+        }
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         Loop = NFuse::CreateFuseLoop(
@@ -1430,7 +1435,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        features.SetHandleOperationQueuePath(TempDir.Path());
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -1501,7 +1505,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        features.SetHandleOperationQueuePath(TempDir.Path());
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
@@ -1543,7 +1546,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        features.SetHandleOperationQueuePath(TempDir.Path());
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -1586,10 +1588,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        features.SetHandleOperationQueuePath(TempDir.Path());
-        features.SetHandleOperationQueueSize(20);
         auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;

@@ -135,7 +135,7 @@ void TFileSystem::Release(
         STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
         with_lock(HandleOpsQueueLock) {
             if (!HandleOpsQueue->AddDestroyRequest(ino, fi->fh)) {
-                // TODO: delay request
+                // TODO(#1541): delay request
                 STORAGE_ERROR("Failed to add destroy handle request to queue");
                 ReplyError(
                     *callContext,

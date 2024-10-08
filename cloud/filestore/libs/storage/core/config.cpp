@@ -206,8 +206,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
-    xxx(HandleOperationQueuePath,      TString,    ""                         )\
-    xxx(HandleOperationQueueSize,      ui32,       1_GB                       )\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
