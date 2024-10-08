@@ -7,6 +7,7 @@
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
 
+#include <concepts>
 #include <optional>
 
 namespace NCloud::NBlockStore {
@@ -179,9 +180,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TBlockRange<TBlockIndex>& blockRange);
-template <typename TBlockIndex>
+template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TVector<TBlockIndex>& blocks);
 
 template <typename TBlockIndex>
