@@ -650,12 +650,65 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
+func (s *nodeService) IsMountConflictError(err error) bool {
+	if err != nil {
+		var clientErr *nbsclient.ClientError
+		if errors.As(err, &clientErr) {
+			if clientErr.Code == nbsclient.E_MOUNT_CONFLICT {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *nodeService) hasDeprecatedEndpoint(
+	ctx context.Context,
+	volumeId string) (bool, error) {
+
+	listEndpointsResp, err := s.nbsClient.ListEndpoints(
+		ctx, &nbsapi.TListEndpointsRequest{},
+	)
+	if err != nil {
+		log.Printf("List endpoints failed %v", err)
+		return false, err
+	}
+
+	if len(listEndpointsResp.Endpoints) == 0 {
+		return false, nil
+	}
+
+	for _, endpoint := range listEndpointsResp.Endpoints {
+		if endpoint.DiskId == volumeId {
+			pathList := filepath.SplitList(endpoint.UnixSocketPath)
+			for _, path := range pathList {
+				if path == "v2" {
+					return false, nil
+				}
+			}
+		}
+	}
+
+	return true, nil
+}
+
 func (s *nodeService) nodeStageDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.nodeID, req.VolumeId, req.VolumeContext)
+	instanceId := filepath.Join("v2", s.nodeID)
+	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, req.VolumeId, req.VolumeContext)
 	if err != nil {
+		if s.IsMountConflictError(err) {
+			deprecatedEndpoint, err := s.hasDeprecatedEndpoint(ctx, req.VolumeId)
+			if err != nil {
+				return err
+			}
+			if deprecatedEndpoint {
+				return nil
+			}
+		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -855,7 +908,7 @@ func (s *nodeService) nodeUnstageVolume(
 		return err
 	}
 
-	endpointDir := s.getEndpointDir(s.nodeID, req.VolumeId)
+	endpointDir := s.getEndpointDir(filepath.Join("v2", s.nodeID), req.VolumeId)
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
@@ -1300,7 +1353,7 @@ func (s *nodeService) NodeExpandVolume(
 	endpointDirOld := s.getEndpointDir(podId, req.VolumeId)
 	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
 
-	endpointDirNew := s.getEndpointDir(s.nodeID, req.VolumeId)
+	endpointDirNew := s.getEndpointDir(filepath.Join("v2", s.nodeID), req.VolumeId)
 	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
