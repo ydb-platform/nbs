@@ -4,15 +4,10 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MAX_ENTRY_SIZE = 8;
-
-////////////////////////////////////////////////////////////////////////////////
-
 THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    :RequestsToProcess(filePath, size, MAX_ENTRY_SIZE)
+    : RequestsToProcess(filePath, size)
 {
 }
-
 
 bool THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
 {
@@ -21,17 +16,17 @@ bool THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
     request.MutableDestroyHandleRequest()->SetNodeId(nodeId);
 
     TString result;
-    Y_PROTOBUF_SUPPRESS_NODISCARD request.SerializeToString(&result);
+    Y_UNUSED(request.SerializeToString(&result));
 
     return RequestsToProcess.Push(result);
 }
 
 NProto::TQueueEntry THandleOpsQueue::Front()
 {
+    const auto req = RequestsToProcess.Front();
+
     NProto::TQueueEntry entry;
-    if (!entry.ParseFromString(TString(RequestsToProcess.Front()))) {
-        // TODO: corruption?
-    }
+    Y_UNUSED(entry.ParseFromArray(req.data(), req.size()));
 
     return entry;
 }

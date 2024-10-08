@@ -302,14 +302,21 @@ void TFileSystem::ProcessHandleOpsQueue()
                     } else {
                         with_lock(HandleOpsQueueLock) {
                             HandleOpsQueue->Pop();
-                            // TODO: try to process delayed requests
+                            // TODO(#1541): check if we have delayed request
+                            // due to queue overflow
                         }
                     }
                     ScheduleProcessHandleOpsQueue();
                 }
             });
-    } else {
+    } else if (entry.HasCreateHandleRequest()) {
         // TODO(#1541): process create handle
+    } else {
+        ReportHandleOpsQueueCorruptedEntry(
+            "Can't parse request from HandleOpsQueue entry");
+        with_lock(HandleOpsQueueLock) {
+            HandleOpsQueue->Pop();
+        }
     }
 
 }

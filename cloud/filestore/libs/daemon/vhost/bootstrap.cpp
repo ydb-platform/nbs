@@ -338,7 +338,10 @@ void TBootstrapVhost::InitEndpoints()
             Timer,
             Scheduler,
             StatsRegistry,
-            ProfileLog));
+            ProfileLog),
+        THandleOpsQueueConfig(
+            Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
+            Configs->VhostServiceConfig->GetHandleOpsQueueSize()));
 
     EndpointManager = CreateEndpointManager(
         Logging,

@@ -54,25 +54,25 @@ struct TReferenceImplementation
     static constexpr ui32 EntryOverhead = 8;
 
     const ui32 MaxWeight;
-    const ui32 MaxEntrySize;
-
     TDeque<TString> Q;
     ui32 ReadPos = 0;
     ui32 WritePos = 0;
     ui32 SlackSpace = 0;
 
-    explicit TReferenceImplementation(ui32 maxWeight, ui32 maxEntrySize)
+    explicit TReferenceImplementation(ui32 maxWeight)
         : MaxWeight(maxWeight)
-        , MaxEntrySize(maxEntrySize)
     {}
 
     bool Push(TStringBuf data)
     {
-        if (data.Empty() || data.Size() > MaxEntrySize) {
+        if (data.Empty() || data.Size() > MaxWeight) {
             return false;
         }
 
         const ui32 sz = EntryOverhead + data.Size();
+        if (sz > MaxWeight) {
+            return false;
+        }
 
         if (!Empty()) {
             if (ReadPos < WritePos) {
@@ -151,13 +151,22 @@ struct TReferenceImplementation
 
 Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 {
+    TString GenerateData(ui32 sz)
+    {
+        TString s(sz, 0);
+        for (ui32 i = 0; i < sz; ++i) {
+            s[i] = 'a' + RandomNumber<char>('z' - 'a' + 1);
+        }
+        return s;
+    }
+
     template <typename TRingBuffer>
     void DoTestShouldPushPop(TRingBuffer& rb)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
         UNIT_ASSERT(rb.Empty());
 
-        UNIT_ASSERT(!rb.Push("longvasya11"));   // too long
+        UNIT_ASSERT(!rb.Push(GenerateData(rb.Size())));   // too long
         UNIT_ASSERT(!rb.Push(""));              // empty
         UNIT_ASSERT(rb.Push("vasya"));
         UNIT_ASSERT(rb.Push("petya"));
@@ -205,8 +214,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        const ui32 maxEntrySize = 10;
-        TFileRingBuffer rb(f.GetName(), len, maxEntrySize);
+        TFileRingBuffer rb(f.GetName(), len);
 
         DoTestShouldPushPop(rb);
     }
@@ -214,8 +222,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldPushPopReferenceImplementation)
     {
         const ui32 len = 64;
-        const ui32 maxEntrySize = 10;
-        TReferenceImplementation rb(len, maxEntrySize);
+        TReferenceImplementation rb(len);
 
         DoTestShouldPushPop(rb);
     }
@@ -224,11 +231,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        const ui32 maxEntrySize = 10;
         auto rb = std::make_unique<TFileRingBuffer>(
             f.GetName(),
-            len,
-            maxEntrySize);
+            len);
 
         UNIT_ASSERT(rb->Push("vasya"));
         UNIT_ASSERT(rb->Push("petya"));
@@ -241,8 +246,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         rb = std::make_unique<TFileRingBuffer>(
             f.GetName(),
-            len,
-            maxEntrySize);
+            len);
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
         UNIT_ASSERT_VALUES_EQUAL(4, rb->Size());
@@ -254,8 +258,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        const ui32 maxEntrySize = 10;
-        TFileRingBuffer rb(f.GetName(), len, maxEntrySize);
+        TFileRingBuffer rb(f.GetName(), len);
 
         UNIT_ASSERT(rb.Push("vasya"));
         UNIT_ASSERT(rb.Push("petya"));
@@ -273,31 +276,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             Dump(rb.Validate()));
     }
 
-    TString GenerateData(ui32 sz)
-    {
-        TString s(sz, 0);
-        for (ui32 i = 0; i < sz; ++i) {
-            s[i] = 'a' + RandomNumber<char>('z' - 'a' + 1);
-        }
-        return s;
-    }
-
     Y_UNIT_TEST(RandomizedPushPopRestore)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 1_MB;
         const ui32 testBytes = 16_MB;
-        const ui32 maxEntrySize = 4_KB;
         const ui32 testUpToEntrySize = 5_KB;
         const double restoreProbability = 0.05;
         std::unique_ptr<TFileRingBuffer> rb;
-        TReferenceImplementation ri(len, maxEntrySize);
+        TReferenceImplementation ri(len);
 
         auto restore = [&] () {
             rb = std::make_unique<TFileRingBuffer>(
                 f.GetName(),
-                len,
-                maxEntrySize);
+                len);
         };
 
         restore();

@@ -20,6 +20,7 @@ namespace NCloud::NFileStore{
     xxx(NodeNotFoundInFollower)                                                \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
+    xxx(HandleOpsQueueCorruptedEntry)                                          \
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \

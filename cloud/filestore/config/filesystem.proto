@@ -42,12 +42,4 @@ message TFileSystemConfig
 
     // Period of processing create/destroy handle requests.
     optional uint32 AsyncHandleOperationPeriod = 12;
-
-    // Path to the directory where HandleOpsQueue stored for all sessions.
-    // Will create a directory with the filesystemId
-    // and a subdirectory with the sessionId if not present.
-    optional string HandleOperationQueuePath = 13;
-
-    // HandleOpsQueue size in bytes.
-    optional uint32 HandleOperationQueueSize = 14;
 }

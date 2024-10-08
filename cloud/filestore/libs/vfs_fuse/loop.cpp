@@ -764,11 +764,11 @@ private:
             std::unique_ptr<THandleOpsQueue> handleOpsQueue;
 
             if (filestoreConfig->GetAsyncDestroyHandleEnabled()) {
-                TString path = TFsPath(filestoreConfig->GetHandleOperationQueuePath())
-                            / filestoreConfig->GetFileSystemId()
-                            / response.GetSession().GetSessionId();
-                if (!NFs::MakeDirectoryRecursive(path))
-                {
+                TString path =
+                    TFsPath(Config->GetHandleOpsQueuePath()) /
+                    filestoreConfig->GetFileSystemId() /
+                    response.GetSession().GetSessionId();
+                if (!NFs::MakeDirectoryRecursive(path)) {
                     STORAGE_ERROR(
                         "[f:%s][c:%s] failed to create directory "
                         "for handle ops queue: %s",
@@ -781,7 +781,7 @@ private:
                     file.Touch();
                     handleOpsQueue = CreateHandleOpsQueue(
                         file.GetPath(),
-                        filestoreConfig->GetHandleOperationQueueSize());
+                        Config->GetHandleOpsQueueSize());
                 }
             }
             FileSystem = CreateFileSystem(
@@ -869,10 +869,6 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
-        config.SetHandleOperationQueuePath(
-            features.GetHandleOperationQueuePath());
-        config.SetHandleOperationQueueSize(
-            features.GetHandleOperationQueueSize());
         return std::make_shared<TFileSystemConfig>(config);
     }
 
