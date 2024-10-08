@@ -572,7 +572,7 @@ func lockAndExecuteTask(
 	runCtx, span := tracing.StartSpanWithSampling(
 		runCtx,
 		fmt.Sprintf(taskInfo.TaskType),
-		taskInfo.GenerationID <= maxSampledTaskGeneration,
+		taskInfo.GenerationID <= maxSampledTaskGeneration, // sampled
 		tracing.WithAttributes(
 			tracing.AttributeString("task_id", taskInfo.ID),
 			tracing.AttributeString("request_id", headers.GetRequestID(runCtx)),
