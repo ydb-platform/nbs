@@ -13,7 +13,7 @@ Since we deal with nonreplicated disks, we can't afford to store the map in the 
 
 `NonreplicatedPartition` is already tracking the response times of devices. An agent will be declared as unavailable once one of its devices has not responded for some time. The plan right now is to start from 5 seconds and slowly bring it down to values that are unnoticeable to users.
 
-Note that we make an assumption, that if one of the agent devices becomes unresponsive, it probably means that the other are too. There is no such guarantee, of course. Technically long response times could indicate a faulty SSD. But in that case, after volume reallocation lagging behind devices will resync.
+Note that we assume that if one of the agent devices becomes unresponsive, it probably means that the others are too. There is no such guarantee, of course. Technically, long response times could indicate a faulty SSD. But in that case, the DR will notice that, replace faulty devices with fresh ones, and reallocate the volume. The volume then fills up those fresh devices with actual data.
 The major benefit of such an assumption is that when all of the replica devices of an agent belong to a single SSD, user IO will hiccup only once.
 
 ## Goals
@@ -62,7 +62,7 @@ flowchart TD
 ### IncompleteMirrorRWModeController
 
 This actor proxies all IO messages between MirrorPartition and `NonreplicatedPartition`. Its purpose to manage lagging agents in one of the replicas.
-A lagging agent can be either unresponsive or resyncing.
+A lagging agent can be either unresponsive or replicating.
 
 - In the unresponsive state:
     - `AgentAvailabilityMonitor` is created.
@@ -70,9 +70,9 @@ A lagging agent can be either unresponsive or resyncing.
     - Writes that hit unavailable agent instantly replied with `S_OK` and their range is stored in the dirty block map.
     - Writes that hit 2 agents and one of them is available are split into two parts. The range of the unavailable one is stored in the map. The second one is proxied to `NonreplicatedPartition`.
     - Writes that hit available agents are just proxied to the `NonreplicatedPartition`.
-    - Ultimately, waiting for one of the two events: the volume reallocates and creates a migration partition, or `AgentAvailabilityMonitor` notifies that the agent has become available. The second event switches state to the resyncing.
+    - Ultimately, waiting for one of the two events: the volume reallocates and creates a migration partition, or `AgentAvailabilityMonitor` notifies that the agent has become available. The second event switches state to the replicating.
 
-- In the resyncing state:
+- In the replicating state:
     - `SmartMigrationActor` is created.
     - Doesn't accept reads.
     - Writes are proxied to `SmartMigrationActor`.
