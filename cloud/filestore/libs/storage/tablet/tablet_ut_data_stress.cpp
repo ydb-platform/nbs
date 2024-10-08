@@ -402,6 +402,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const ui32 nodeCount = 14;
         TVector<ui64> nodes(nodeCount);
         const ui32 collisions = 2 * compactionThreshold;
+        const ui32 deletionMarkers = nodeCount * collisions * BlockGroupSize;
         TVector<ui32> collidingBlocks;
         for (ui32 i = 0; i < collisions; ++i) {
             // see TBlockLocalityHasher implementation
@@ -464,7 +465,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
                 stats.GetAllocatedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                Sprintf("r=1177944064 b=%u d=8960", (compactionThreshold - 1)),
+                Sprintf(
+                    "r=1177944064 b=%u d=%u",
+                    (compactionThreshold - 1),
+                    deletionMarkers),
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
         }
     }
