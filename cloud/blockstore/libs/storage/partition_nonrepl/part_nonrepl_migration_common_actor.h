@@ -99,17 +99,21 @@ private:
     bool MigrationEnabled = false;
     bool RangeMigrationScheduled = false;
     TInstant LastRangeMigrationStartTs;
-    TMap<ui64, TBlockRange64> MigrationsInProgress;
-    TMap<ui64, TBlockRange64> DeferredMigrations;
+
+    // Custom comparator that orders ranges by their start positions.
+    struct TBlockRangeComparator
+    {
+        bool operator()(
+            const TBlockRange64& lhs,
+            const TBlockRange64& rhs) const;
+    };
+    TSet<TBlockRange64, TBlockRangeComparator> MigrationsInProgress;
+    TSet<TBlockRange64, TBlockRangeComparator> DeferredMigrations;
 
     TChangedRangesMap ChangedRangesMap;
 
-    // When we migrated a block whose range contains or exceeds a persistently
-    // stored offset of the progress of the entire migration, we remember this
-    // offset and wait for all blocks with addresses less than this offset to
-    // migrate. After that, we save the execution progress persistently by
-    // calling MigrationOwner->OnMigrationProgress().
-    std::optional<ui64> CachedMigrationProgressAchieved;
+    std::optional<ui64> LastReportedMigratedBlockCount;
+    ui64 MigratedBlockCount = 0;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
         EAllowedRequests::WriteOnly};
