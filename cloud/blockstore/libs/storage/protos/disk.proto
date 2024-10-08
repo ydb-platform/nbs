@@ -1602,6 +1602,12 @@ message TGetAgentNodeIdResponse
 
     // Node that agent is running on.
     uint32 NodeId = 2;
+
+    // Agent state.
+    EAgentState AgentState = 3;
+
+    // Whether the agent is connected to the DR or not.
+    bool Connected = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

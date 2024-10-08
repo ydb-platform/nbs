@@ -143,6 +143,71 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
             UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
         });
     }
+
+    Y_UNIT_TEST(ShouldEraseDiskCreatedFromSuspendedDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1.1"),
+             Device("dev-2", "uuid-1.2"),
+             Device("dev-3", "uuid-1.3"),
+             Device("dev-4", "uuid-1.4")})};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithAgents(agents)
+                .WithSuspendedDevices({"uuid-1.1"})
+                .WithDirtyDevices({TDirtyDevice{"uuid-1.1", ""}})
+                .Build();
+
+        // Create a disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result;
+                NProto::TDeviceConfig device = state.GetDevice("uuid-1.1");
+                auto error = state.CreateDiskFromDevices(
+                    TInstant::Zero(),
+                    db,
+                    /*force=*/true,
+                    "vol0",
+                    4_KB,
+                    {device},
+                    &result);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
+                UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+                UNIT_ASSERT_EQUAL(
+                    device.GetDeviceUUID(),
+                    result.Devices[0].GetDeviceUUID());
+            });
+
+        // Create pending deallocation with the disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "vol0"));
+                auto error = state.DeallocateDisk(db, "vol0");
+                UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
+            });
+
+        // Marking the device as clean removes it from PendingCleanup.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDirtyDevice> dirtyDevices;
+                UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+                UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", dirtyDevices[0].Id);
+
+                auto diskId =
+                    state.MarkDeviceAsClean(Now(), db, dirtyDevices.back().Id);
+                UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
+            });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

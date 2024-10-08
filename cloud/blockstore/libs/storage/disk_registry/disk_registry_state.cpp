@@ -714,7 +714,9 @@ void TDiskRegistryState::ProcessDisksToCleanup(TVector<TString> disksToCleanup)
 void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 {
     for (auto&& [uuid, diskId]: dirtyDevices) {
-        PendingCleanup.Insert(std::move(diskId), std::move(uuid));
+        if (!diskId.empty()) {
+            PendingCleanup.Insert(diskId, std::move(uuid));
+        }
     }
 }
 
@@ -3753,6 +3755,7 @@ TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
     for (const auto& uuid: uuids) {
         auto [agent, device] = FindDeviceLocation(uuid);
         if (!agent || !device) {
+            STORAGE_WARN("Could not update device: %s", uuid.c_str());
             continue;
         }
         ret.push_back(uuid);
@@ -3762,6 +3765,7 @@ TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
 
     for (const auto& agentId: agentsSet) {
         auto* agent = AgentList.FindAgent(agentId);
+        Y_DEBUG_ABORT_UNLESS(agent);
         if (!agent) {
             continue;
         }
