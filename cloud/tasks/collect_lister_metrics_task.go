@@ -158,8 +158,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	ctx context.Context,
 ) error {
 
-	metricName := "hangingTasks"
-	totalHangingTasksGauge := c.registry.Gauge(metricName)
+	totalHangingTasksGauge := c.registry.Gauge("totalHangingTaskCount")
 
 	taskInfos, err := c.storage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
@@ -204,7 +203,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 					"type": taskInfo.TaskType, "id": taskInfo.ID,
 				},
 			)
-			gauge := subRegistry.Gauge(metricName)
+			gauge := subRegistry.Gauge("hangingTasks")
 			gauge.Set(float64(1))
 			c.hangingTaskGaugesByID[taskInfo.ID] = gauge
 			reportedTaskIDCount++
