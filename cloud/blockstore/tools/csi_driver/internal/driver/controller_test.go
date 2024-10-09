@@ -24,7 +24,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 	var blockSize uint32 = 4096
 	var blockCount uint64 = 1024
 
-	controller := newNBSServerControllerService(nbsClient, nfsClient)
+	controller := newNBSServerControllerService(nbsClient, nfsClient, false)
 
 	if parameters["backend"] == "nbs" {
 		nbsClient.On("CreateVolume", ctx, &nbs.TCreateVolumeRequest{
@@ -127,4 +127,19 @@ func TestGetStorageMediaKind(t *testing.T) {
 			v,
 		)
 	}
+}
+
+func TestVolueCapabilitiesInVmMode(t *testing.T) {
+	nbsClient := mocks.NewNbsClientMock()
+	nfsClient := mocks.NewNfsClientMock()
+	vmMode := true
+	ctx := context.Background()
+	controller := newNBSServerControllerService(nbsClient, nfsClient, vmMode)
+
+	resp, err := controller.ControllerGetCapabilities(
+		ctx,
+		&csi.ControllerGetCapabilitiesRequest{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(resp.Capabilities))
 }
