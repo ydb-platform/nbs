@@ -11,6 +11,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
 	nfs "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	storage "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,7 +26,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 	var blockSize uint32 = 4096
 	var blockCount uint64 = 1024
 
-	controller := newNBSServerControllerService(nbsClient, nfsClient)
+	controller := newNBSServerControllerService(nbsClient, nfsClient, false)
 
 	if parameters["backend"] == "nbs" {
 		nbsClient.On("CreateVolume", ctx, &nbs.TCreateVolumeRequest{
@@ -127,4 +129,40 @@ func TestGetStorageMediaKind(t *testing.T) {
 			v,
 		)
 	}
+}
+
+func TestCreateDeleteVolumeNotImplementedInVmMode(t *testing.T) {
+	nbsClient := mocks.NewNbsClientMock()
+	nfsClient := mocks.NewNfsClientMock()
+
+	ctx := context.Background()
+	volumeID := "test-volume-id-42"
+	var blockSize uint32 = 4096
+	var blockCount uint64 = 1024
+	parameters := map[string]string{
+		"backend": "nbs",
+	}
+
+	controller := newNBSServerControllerService(nbsClient, nfsClient, true)
+	_, err := controller.CreateVolume(ctx, &csi.CreateVolumeRequest{
+		Name:               volumeID,
+		Parameters:         parameters,
+		VolumeCapabilities: []*csi.VolumeCapability{},
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: int64(blockCount * uint64(blockSize)),
+		},
+	})
+
+	require.Error(t, err)
+	status, ok := status.FromError(err)
+	assert.True(t, ok)
+	assert.Equal(t, codes.Unimplemented, status.Code())
+
+	_, err = controller.DeleteVolume(ctx, &csi.DeleteVolumeRequest{
+		VolumeId: volumeID,
+	})
+	require.Error(t, err)
+	status, ok = status.FromError(err)
+	assert.True(t, ok)
+	assert.Equal(t, codes.Unimplemented, status.Code())
 }
