@@ -61,12 +61,24 @@ message TReplaySpec
     string FileName = 1;
     string ReplayRoot = 2; // not used in grpc
     string FileSystemIdFilter = 3;
+
+    // Skip read operations: AccessNode ReadData GetNodeAttr
     bool NoRead = 4;
+
+    // Skip write operations: CreateNode CreateHandle Write RenameNode UnlinkNode
     bool NoWrite = 5;
-    bool Prepare = 6; // Only write files needed for reading
+
+    // Factor for sleeps for respect timings from log
+    // Example: 0: disable sleep; 0.5: try be 2x faster; 1: keep as in log; 2: 2x times slower; 
     double TimeScale = 7;
+
+    // Write random data
     bool WriteRandom = 8;
+
+    // Write empty data
     bool WriteEmpty = 9;
+    
+    // Create missing files in CreateHandle requests
     bool CreateOnRead = 10;
 }
 

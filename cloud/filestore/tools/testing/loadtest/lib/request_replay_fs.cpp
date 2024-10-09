@@ -547,7 +547,7 @@ private:
                 // open mode
                 TFileHandle fh(
                     fullName,
-                    OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr));
+                    OpenAlways | RdWr);
                 if (fh) {
                     nodeid = TFileStat{fh}.INode;
                 } else {
@@ -614,7 +614,7 @@ private:
         // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
         // node_name=HEAD.lock, new_parent_node_id=12527, new_node_name=HEAD}
         // request->SetNodeId(NodesLogToActual[r.GetNodeInfo().GetNodeId()]);
-        if (Spec.GetNoRead()) {
+        if (Spec.GetNoWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_RENAME_NODE,
                 Started,
