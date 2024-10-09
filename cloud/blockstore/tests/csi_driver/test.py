@@ -462,8 +462,9 @@ def test_node_volume_expand():
         cleanup_after_test(env)
 
 
-def test_publish_volume_twice_on_the_same_node():
-    env, run = init(vm_mode=True)
+@pytest.mark.parametrize('vm_mode', [True, False])
+def test_publish_volume_twice_on_the_same_node(vm_mode):
+    env, run = init(vm_mode=vm_mode)
     try:
         volume_name = "example-disk"
         volume_size = 1024 ** 3
