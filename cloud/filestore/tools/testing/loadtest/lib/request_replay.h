@@ -41,15 +41,13 @@ public:
         TString filesystemId,
         NProto::THeaders headers);
 
-    bool ShouldInstantProcessQueue() override;
+    bool ShouldImmediatelyProcessQueue() override;
 
     bool ShouldFailOnError() override;
 
     void Advance();
 
     bool HasNextRequest() override;
-
-    TInstant NextRequestAt() override;
 
     TFuture<TCompletedRequest> ExecuteNextRequest() override;
 

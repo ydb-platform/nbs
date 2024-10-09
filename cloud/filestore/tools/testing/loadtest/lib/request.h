@@ -24,7 +24,7 @@ struct TCompletedRequest
     NProto::EAction Action{};
     TDuration Elapsed;
     NProto::TError Error;
-    bool Stop{};
+    bool Stop = false;
 
     TCompletedRequest() = default;
 
@@ -35,7 +35,7 @@ struct TCompletedRequest
     {}
 
     TCompletedRequest(bool stop) noexcept
-        : Stop{stop}
+        : Stop(stop)
     {}
 };
 
@@ -46,10 +46,9 @@ struct IRequestGenerator
     virtual ~IRequestGenerator() = default;
 
     virtual bool HasNextRequest() = 0;
-    virtual TInstant NextRequestAt() = 0;
     virtual NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() = 0;
 
-    virtual bool ShouldInstantProcessQueue()
+    virtual bool ShouldImmediatelyProcessQueue()
     {
         return false;
     }

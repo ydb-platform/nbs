@@ -596,7 +596,7 @@ private:
                 }
             });
 
-        if (RequestGenerator->ShouldInstantProcessQueue()) {
+        if (RequestGenerator->ShouldImmediatelyProcessQueue()) {
             if (future.HasValue() || future.HasException()) {
                 ProcessCompletedRequests();
             }

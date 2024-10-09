@@ -10,6 +10,9 @@
 #include <library/cpp/logger/log.h>
 
 namespace NCloud::NFileStore::NLoadTest {
+
+////////////////////////////////////////////////////////////////////////////////
+
 IReplayRequestGenerator::IReplayRequestGenerator(
         NProto::TReplaySpec spec,
         ILoggingServicePtr logging,
@@ -25,7 +28,9 @@ IReplayRequestGenerator::IReplayRequestGenerator(
 
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
-    options.SetForceStrongOrdering(true);   // need this?
+
+    // Sort eventlog items by timestamp
+    options.SetForceStrongOrdering(true);
     CurrentEvent = CreateIterator(options);
 }
 
@@ -37,12 +42,7 @@ bool IReplayRequestGenerator::HasNextRequest()
     return !!EventPtr;
 }
 
-TInstant IReplayRequestGenerator::NextRequestAt()
-{
-    return TInstant::Max();
-}
-
-bool IReplayRequestGenerator::ShouldInstantProcessQueue()
+bool IReplayRequestGenerator::ShouldImmediatelyProcessQueue()
 {
     return true;
 }

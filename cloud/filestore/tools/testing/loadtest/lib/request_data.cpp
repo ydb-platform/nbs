@@ -201,11 +201,6 @@ public:
         return true;
     }
 
-    TInstant NextRequestAt() override
-    {
-        return TInstant::Max();
-    }
-
     NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() override
     {
         const auto& action = PeekNextAction();
