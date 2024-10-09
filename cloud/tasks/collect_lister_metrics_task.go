@@ -158,11 +158,14 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	ctx context.Context,
 ) error {
 
+	totalHangingTasksGauge := c.registry.Gauge("totalHangingTaskCount")
+
 	taskInfos, err := c.storage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
 		return err
 	}
 
+	totalHangingTasksGauge.Set(float64(len(taskInfos)))
 	taskInfoByID := make(map[string]storage.TaskInfo)
 	for _, taskInfo := range taskInfos {
 		taskInfoByID[taskInfo.ID] = taskInfo

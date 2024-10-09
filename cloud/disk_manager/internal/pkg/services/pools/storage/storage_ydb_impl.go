@@ -1979,6 +1979,44 @@ func (s *storageYDB) getPoolConfigs(
 	return configs, nil
 }
 
+func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
+	ctx context.Context,
+	session *persistence.Session,
+) (configs []poolConfig, err error) {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select *
+		from configs 
+		where capacity > 0
+	`, s.tablesPath,
+	))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			config, err := scanPoolConfig(res)
+			if err != nil {
+				return nil, err
+			}
+			configs = append(configs, config)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
+	}
+
+	return configs, nil
+}
+
 func (s *storageYDB) getBaseDisksScheduling(
 	ctx context.Context,
 	session *persistence.Session,
@@ -2181,7 +2219,7 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 
 	defer s.metrics.StatCall("takeBaseDisksToSchedule")(&err)
 
-	configs, err := s.getPoolConfigs(ctx, session)
+	configs, err := s.getPoolConfigsWithNonZeroCapacity(ctx, session)
 	if err != nil {
 		return nil, err
 	}

@@ -253,7 +253,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(response->GetErrorReason(), error.GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesout)
+    Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesOut)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -351,6 +351,58 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ssProxy.SendDescribeFileStoreRequest("test");
         auto describe = ssProxy.RecvDescribeFileStoreResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, describe->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldDescribeFileStoreInFallbackMode)
+    {
+        TString backupFilePath =
+            "ShouldDescribeFileStoreInFallbackMode.path_description_backup";
+
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        NProto::TStorageConfig config;
+        config.SetPathDescriptionBackupFilePath(backupFilePath);
+
+        {
+            TSSProxyClient ssProxy(
+                CreateTestStorageConfig(config),
+                runtime,
+                nodeIdx);
+
+            ssProxy.CreateFileStore("test", 2000);
+
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
+
+            ssProxy.SendRequest(
+                MakeSSProxyServiceId(),
+                std::make_unique<TEvStorageSSProxy::TEvBackupPathDescriptionsRequest>());
+        }
+
+        {
+            config.SetSSProxyFallbackMode(true);
+
+            TSSProxyClient ssProxy(
+                CreateTestStorageConfig(config),
+                runtime,
+                nodeIdx);
+
+            ssProxy.DescribeFileStore("test");
+
+            ssProxy.SendRequest(
+                MakeSSProxyServiceId(),
+                std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+                    "unexisting"));
+
+            auto response =
+                ssProxy.RecvResponse<TEvSSProxy::TEvDescribeFileStoreResponse>();
+            UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
+        }
     }
 }
 

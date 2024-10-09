@@ -215,6 +215,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         {}                                                                    )\
                                                                                \
     xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
+                                                                               \
+    xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
+                                                                               \
+    xxx(SSProxyFallbackMode,            bool,     false                       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -249,6 +253,12 @@ bool IsEmpty(const TAliases& value)
     return value.GetEntries().empty();
 }
 
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
+}
+
 template <>
 bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
 {
@@ -271,6 +281,13 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    return TVector<TString>(value.begin(), value.end());
 }
 
 IOutputStream& operator <<(
@@ -311,6 +328,17 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
         os << x.GetAlias() << ": " << x.GetFsId() << ", ";
     }
     os << " }";
+}
+
+template <>
+void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
 }
 
 }   // namespace

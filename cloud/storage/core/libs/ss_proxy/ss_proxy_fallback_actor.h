@@ -2,9 +2,7 @@
 
 #include "public.h"
 
-#include "hive_proxy_events_private.h"
-
-#include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/ss_proxy.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -16,16 +14,16 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THiveProxyFallbackActor final
-    : public NActors::TActorBootstrapped<THiveProxyFallbackActor>
+class TSSProxyFallbackActor final
+    : public NActors::TActorBootstrapped<TSSProxyFallbackActor>
 {
 private:
-    const THiveProxyConfig Config;
+    const TSSProxyConfig Config;
 
-    NActors::TActorId TabletBootInfoBackup;
+    NActors::TActorId PathDescriptionBackup;
 
 public:
-    explicit THiveProxyFallbackActor(THiveProxyConfig config);
+    explicit TSSProxyFallbackActor(TSSProxyConfig config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -34,7 +32,7 @@ private:
 
     bool HandleRequests(STFUNC_SIG);
 
-    STORAGE_HIVE_PROXY_REQUESTS(STORAGE_IMPLEMENT_REQUEST, TEvHiveProxy)
+    STORAGE_SS_PROXY_REQUESTS(STORAGE_IMPLEMENT_REQUEST, TEvSSProxy)
 };
 
 }   // namespace NCloud::NStorage
