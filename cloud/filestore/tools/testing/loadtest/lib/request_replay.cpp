@@ -110,24 +110,27 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 auto diff = current - Started;
 
                 if (timediff > diff.MicroSeconds()) {
-                    auto slp =
+                    auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
                     STORAGE_DEBUG(
-                        "sleep=" << slp << " timediff=" << timediff
-                                 << " diff=" << diff);
+                        "sleep=%lu timediff=%f diff=%lu",
+                        sleep.MicroSeconds(),
+                        timediff,
+                        diff.MicroSeconds());
 
-                    Sleep(slp);
+                    Sleep(sleep);
                 }
 
                 Started = current;
             }
 
             STORAGE_DEBUG(
-                "Processing message "
-                << EventMessageNumber << " typename=" << request.GetTypeName()
-                << " type=" << request.GetRequestType() << " "
-                << " name=" << RequestName(request.GetRequestType())
-                << " json=" << request.AsJSON());
+                "Processing message n=%lu typename=%s type=%d name=%s json=%s",
+                EventMessageNumber,
+                request.GetTypeName().c_str(),
+                request.GetRequestType(),
+                RequestName(request.GetRequestType()).c_str(),
+                ToString(request.AsJSON()).c_str());
             {
                 const auto& action = request.GetRequestType();
                 switch (static_cast<EFileStoreRequest>(action)) {
@@ -165,9 +168,9 @@ IReplayRequestGenerator::ExecuteNextRequest()
 
                     default:
                         STORAGE_INFO(
-                            "Uninmplemented action="
-                            << action << " "
-                            << RequestName(request.GetRequestType()));
+                            "Uninmplemented action=%u %s",
+                            action,
+                            RequestName(request.GetRequestType()).c_str());
                         continue;
                 }
             }
