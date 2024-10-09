@@ -14,23 +14,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSyncFollowerSessionsActor final
-    : public TActorBootstrapped<TSyncFollowerSessionsActor>
+class TSyncShardSessionsActor final
+    : public TActorBootstrapped<TSyncShardSessionsActor>
 {
 private:
     const TString LogTag;
     const TActorId Tablet;
-    const TVector<TString> FollowerIds;
+    const TVector<TString> ShardIds;
     const TRequestInfoPtr RequestInfo;
 
     NProto::TError Error;
-    TMap<TString, TEvIndexTabletPrivate::TFollowerSessionsInfo> Follower2Info;
+    TMap<TString, TEvIndexTabletPrivate::TShardSessionsInfo> Shard2Info;
 
 public:
-    TSyncFollowerSessionsActor(
+    TSyncShardSessionsActor(
         TString logTag,
         TActorId tablet,
-        TVector<TString> followerIds,
+        TVector<TString> shardIds,
         TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -43,12 +43,12 @@ private:
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void SyncFollowerSessions(
+    void SyncShardSessions(
         const TActorContext& ctx,
-        const TString& followerId,
+        const TString& shardId,
         NProtoPrivate::TDescribeSessionsResponse response);
-    void HandleSyncFollowerSessionsResponse(
-        const TEvIndexTabletPrivate::TEvSyncFollowerSessionsResponse::TPtr& ev,
+    void HandleSyncShardSessionsResponse(
+        const TEvIndexTabletPrivate::TEvSyncShardSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -60,37 +60,37 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSyncFollowerSessionsActor::TSyncFollowerSessionsActor(
+TSyncShardSessionsActor::TSyncShardSessionsActor(
         TString logTag,
         TActorId tablet,
-        TVector<TString> followerIds,
+        TVector<TString> shardIds,
         TRequestInfoPtr requestInfo)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
-    , FollowerIds(std::move(followerIds))
+    , ShardIds(std::move(shardIds))
     , RequestInfo(std::move(requestInfo))
 {}
 
-void TSyncFollowerSessionsActor::Bootstrap(const TActorContext& ctx)
+void TSyncShardSessionsActor::Bootstrap(const TActorContext& ctx)
 {
     DescribeSessions(ctx);
     Become(&TThis::StateWork);
 }
 
-void TSyncFollowerSessionsActor::DescribeSessions(const TActorContext& ctx)
+void TSyncShardSessionsActor::DescribeSessions(const TActorContext& ctx)
 {
     ui32 cookie = 0;
-    for (const auto& followerId: FollowerIds) {
+    for (const auto& shardId: ShardIds) {
         auto request =
             std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
-        request->Record.SetFileSystemId(followerId);
+        request->Record.SetFileSystemId(shardId);
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Sending DescribeSessionsRequest to follower %s",
+            "%s Sending DescribeSessionsRequest to shard %s",
             LogTag.c_str(),
-            followerId.c_str());
+            shardId.c_str());
 
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
@@ -100,55 +100,55 @@ void TSyncFollowerSessionsActor::DescribeSessions(const TActorContext& ctx)
     }
 }
 
-void TSyncFollowerSessionsActor::HandleDescribeSessionsResponse(
+void TSyncShardSessionsActor::HandleDescribeSessionsResponse(
     const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    TABLET_VERIFY(ev->Cookie < FollowerIds.size());
-    const auto& followerId = FollowerIds[ev->Cookie];
+    TABLET_VERIFY(ev->Cookie < ShardIds.size());
+    const auto& shardId = ShardIds[ev->Cookie];
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
         "%s[%s] sessions described: %lu (error %s)",
         LogTag.c_str(),
-        followerId.c_str(),
+        shardId.c_str(),
         msg->Record.SessionsSize(),
         FormatError(msg->GetError()).c_str());
 
     if (HasError(msg->GetError())) {
         Error = msg->GetError();
-        Follower2Info[followerId] = {};
+        Shard2Info[shardId] = {};
 
-        if (Follower2Info.size() == FollowerIds.size()) {
+        if (Shard2Info.size() == ShardIds.size()) {
             ReplyAndDie(ctx);
         }
     } else {
-        SyncFollowerSessions(ctx, followerId, std::move(msg->Record));
+        SyncShardSessions(ctx, shardId, std::move(msg->Record));
     }
 }
 
-void TSyncFollowerSessionsActor::SyncFollowerSessions(
+void TSyncShardSessionsActor::SyncShardSessions(
     const TActorContext& ctx,
-    const TString& followerId,
+    const TString& shardId,
     NProtoPrivate::TDescribeSessionsResponse response)
 {
-    using TRequest = TEvIndexTabletPrivate::TEvSyncFollowerSessionsRequest;
+    using TRequest = TEvIndexTabletPrivate::TEvSyncShardSessionsRequest;
     auto request = std::make_unique<TRequest>();
-    request->FollowerId = followerId;
+    request->ShardId = shardId;
     request->Sessions = std::move(response);
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Sending SyncFollowerSessionsRequest for follower %s",
+        "%s Sending SyncShardSessionsRequest for shard %s",
         LogTag.c_str(),
-        followerId.c_str());
+        shardId.c_str());
 
     ctx.Send(Tablet, request.release());
 }
 
-void TSyncFollowerSessionsActor::HandleSyncFollowerSessionsResponse(
-    const TEvIndexTabletPrivate::TEvSyncFollowerSessionsResponse::TPtr& ev,
+void TSyncShardSessionsActor::HandleSyncShardSessionsResponse(
+    const TEvIndexTabletPrivate::TEvSyncShardSessionsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -156,7 +156,7 @@ void TSyncFollowerSessionsActor::HandleSyncFollowerSessionsResponse(
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
         "%s[%s] sessions synced: %lu (error %s)",
         LogTag.c_str(),
-        msg->Info.FollowerId.c_str(),
+        msg->Info.ShardId.c_str(),
         msg->Info.SessionCount,
         FormatError(msg->GetError()).c_str());
 
@@ -164,13 +164,13 @@ void TSyncFollowerSessionsActor::HandleSyncFollowerSessionsResponse(
         Error = msg->GetError();
     }
 
-    Follower2Info[msg->Info.FollowerId] = std::move(msg->Info);
-    if (Follower2Info.size() == FollowerIds.size()) {
+    Shard2Info[msg->Info.ShardId] = std::move(msg->Info);
+    if (Shard2Info.size() == ShardIds.size()) {
         ReplyAndDie(ctx);
     }
 }
 
-void TSyncFollowerSessionsActor::HandlePoisonPill(
+void TSyncShardSessionsActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -179,14 +179,14 @@ void TSyncFollowerSessionsActor::HandlePoisonPill(
     ReplyAndDie(ctx);
 }
 
-void TSyncFollowerSessionsActor::ReplyAndDie(const TActorContext& ctx)
+void TSyncShardSessionsActor::ReplyAndDie(const TActorContext& ctx)
 {
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvSyncSessionsCompleted;
         auto response = std::make_unique<TCompletion>(Error);
-        for (auto& x: Follower2Info) {
-            response->FollowerSessionsInfos.push_back(std::move(x.second));
+        for (auto& x: Shard2Info) {
+            response->ShardSessionsInfos.push_back(std::move(x.second));
         }
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -201,7 +201,7 @@ void TSyncFollowerSessionsActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-STFUNC(TSyncFollowerSessionsActor::StateWork)
+STFUNC(TSyncShardSessionsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -211,8 +211,8 @@ STFUNC(TSyncFollowerSessionsActor::StateWork)
             HandleDescribeSessionsResponse);
 
         HFunc(
-            TEvIndexTabletPrivate::TEvSyncFollowerSessionsResponse,
-            HandleSyncFollowerSessionsResponse);
+            TEvIndexTabletPrivate::TEvSyncShardSessionsResponse,
+            HandleSyncShardSessionsResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -381,12 +381,12 @@ void TIndexTabletActor::HandleSyncSessions(
 
     SyncSessionsScheduled = false;
 
-    TVector<TString> followerIds;
-    for (const auto& followerId: GetFileSystem().GetFollowerFileSystemIds()) {
-        followerIds.push_back(followerId);
+    TVector<TString> shardIds;
+    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+        shardIds.push_back(shardId);
     }
 
-    if (followerIds.empty()) {
+    if (shardIds.empty()) {
         using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
         auto response = std::make_unique<TResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -404,10 +404,10 @@ void TIndexTabletActor::HandleSyncSessions(
         ev->Cookie,
         msg->CallContext);
 
-    auto actor = std::make_unique<TSyncFollowerSessionsActor>(
+    auto actor = std::make_unique<TSyncShardSessionsActor>(
         LogTag,
         ctx.SelfID,
-        std::move(followerIds),
+        std::move(shardIds),
         std::move(requestInfo));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
@@ -425,12 +425,12 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    for (const auto& followerSessionsInfo: msg->FollowerSessionsInfos) {
+    for (const auto& shardSessionsInfo: msg->ShardSessionsInfos) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s Synced %lu sessions for follower %s",
+            "%s Synced %lu sessions for shard %s",
             LogTag.c_str(),
-            followerSessionsInfo.SessionCount,
-            followerSessionsInfo.FollowerId.c_str());
+            shardSessionsInfo.SessionCount,
+            shardSessionsInfo.ShardId.c_str());
     }
 
     WorkerActors.erase(ev->Sender);

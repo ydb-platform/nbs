@@ -126,7 +126,7 @@ if [[ "$1" == "create" ]]; then
 
     if [[ "$SHARD_COUNT" -gt 0 ]]; then
         echo "creating $SHARD_COUNT shards"
-        followers=""
+        shards=""
         for shard in $(seq 1 $SHARD_COUNT); do
             echo "creating shard $shard"
 
@@ -141,16 +141,16 @@ if [[ "$1" == "create" ]]; then
 
             $BIN_DIR/filestore-client executeaction     \
                 --server-port       $SERVER_PORT        \
-                --action            configureasfollower \
+                --action            configureasshard    \
                 --input-json        "{\"FileSystemId\": \"${FS}_${shard}\", \"ShardNo\": $shard}"
 
-            followers="$followers, \"${FS}_${shard}\""
+            shards="$shards, \"${FS}_${shard}\""
         done
         echo "configuring leader"
         $BIN_DIR/filestore-client executeaction     \
             --server-port       $SERVER_PORT        \
-            --action            configurefollowers  \
-            --input-json        "{\"FileSystemId\": \"$FS\", \"FollowerFileSystemIds\": [${followers#, }]}"
+            --action            configureshards     \
+            --input-json        "{\"FileSystemId\": \"$FS\", \"ShardFileSystemIds\": [${shards#, }]}"
     fi
 
     shift

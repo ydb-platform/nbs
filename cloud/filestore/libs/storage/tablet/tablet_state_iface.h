@@ -34,8 +34,8 @@ public:
         ui64 NodeId;
         TString Name;
         ui64 ChildNodeId;
-        TString FollowerId;
-        TString FollowerName;
+        TString ShardId;
+        TString ShardName;
         ui64 MinCommitId;
         ui64 MaxCommitId;
     };

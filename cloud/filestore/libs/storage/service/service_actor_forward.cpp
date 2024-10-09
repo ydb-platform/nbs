@@ -29,8 +29,8 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
         StorageConfig->GetMultiTabletForwardingEnabled()
         && !disableMultiTabletForwarding;
     if (multiTabletForwardingEnabled && shardNo) {
-        const auto& followerIds = filestore.GetFollowerFileSystemIds();
-        if (followerIds.size() < static_cast<int>(shardNo)) {
+        const auto& shardIds = filestore.GetShardFileSystemIds();
+        if (shardIds.size() < static_cast<int>(shardNo)) {
             LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
                 " (legacy handle?)",
@@ -39,23 +39,23 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 methodName.c_str(),
                 requestId,
                 shardNo,
-                followerIds.size());
+                shardIds.size());
 
             // TODO(#1350): uncomment when there are no legacy handles anymore
             //return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
-            //        << shardNo << ", followerIds.size=" << followerIds.size());
+            //        << shardNo << ", shardIds.size=" << shardIds.size());
             return TString();
         }
 
         LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
-            "[%s][%lu] forward %s #%lu to follower %s",
+            "[%s][%lu] forward %s #%lu to shard %s",
             sessionId.Quote().c_str(),
             seqNo,
             methodName.c_str(),
             requestId,
-            followerIds[shardNo - 1].c_str());
+            shardIds[shardNo - 1].c_str());
 
-        return followerIds[shardNo - 1];
+        return shardIds[shardNo - 1];
     }
 
     return TString();
@@ -114,7 +114,7 @@ void TStorageServiceActor::ForwardRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TStorageServiceActor::ForwardRequestToFollower(
+void TStorageServiceActor::ForwardRequestToShard(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
     ui32 shardNo)
@@ -202,7 +202,7 @@ void TStorageServiceActor::ForwardRequestToFollower(
         const ns::TEv##name##Request::TPtr& ev,                                \
         const TActorContext& ctx)                                              \
     {                                                                          \
-        ForwardRequestToFollower<ns::T##name##Method>(                         \
+        ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
             ExtractShardNo(ev->Get()->Record.GetNodeId()));                    \
@@ -219,7 +219,7 @@ void TStorageServiceActor::ForwardRequestToFollower(
         const ns::TEv##name##Request::TPtr& ev,                                \
         const TActorContext& ctx)                                              \
     {                                                                          \
-        ForwardRequestToFollower<ns::T##name##Method>(                         \
+        ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
             ExtractShardNo(ev->Get()->Record.GetHandle()));                    \
@@ -240,13 +240,13 @@ template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \
 #undef FILESTORE_DEFINE_HANDLE_FORWARD
 
 template void
-TStorageServiceActor::ForwardRequestToFollower<TEvService::TCreateHandleMethod>(
+TStorageServiceActor::ForwardRequestToShard<TEvService::TCreateHandleMethod>(
     const TActorContext& ctx,
     const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
     ui32 shardNo);
 
 template void
-TStorageServiceActor::ForwardRequestToFollower<TEvService::TGetNodeAttrMethod>(
+TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
     ui32 shardNo);

@@ -84,8 +84,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadState,                          __VA_ARGS__)                       \
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
-    xxx(ConfigureFollowers,                 __VA_ARGS__)                       \
-    xxx(ConfigureAsFollower,                __VA_ARGS__)                       \
+    xxx(ConfigureShards,                    __VA_ARGS__)                       \
+    xxx(ConfigureAsShard,                   __VA_ARGS__)                       \
                                                                                \
     xxx(CreateSession,                      __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
@@ -132,7 +132,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
-    xxx(CommitNodeCreationInFollower,       __VA_ARGS__)                       \
+    xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
     xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
@@ -398,17 +398,17 @@ struct TTxIndexTablet
     };
 
     //
-    // ConfigureFollowers
+    // ConfigureShards
     //
 
-    struct TConfigureFollowers
+    struct TConfigureShards
     {
         const TRequestInfoPtr RequestInfo;
-        NProtoPrivate::TConfigureFollowersRequest Request;
+        NProtoPrivate::TConfigureShardsRequest Request;
 
-        TConfigureFollowers(
+        TConfigureShards(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TConfigureFollowersRequest request)
+                NProtoPrivate::TConfigureShardsRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -420,17 +420,17 @@ struct TTxIndexTablet
     };
 
     //
-    // ConfigureAsFollower
+    // ConfigureAsShard
     //
 
-    struct TConfigureAsFollower
+    struct TConfigureAsShard
     {
         const TRequestInfoPtr RequestInfo;
-        NProtoPrivate::TConfigureAsFollowerRequest Request;
+        NProtoPrivate::TConfigureAsShardRequest Request;
 
-        TConfigureAsFollower(
+        TConfigureAsShard(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TConfigureAsFollowerRequest request)
+                NProtoPrivate::TConfigureAsShardRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -645,8 +645,8 @@ struct TTxIndexTablet
         const ui64 TargetNodeId;
         const TString Name;
         const NProto::TNode Attrs;
-        const TString FollowerId;
-        const TString FollowerName;
+        const TString ShardId;
+        const TString ShardName;
         NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
@@ -670,13 +670,13 @@ struct TTxIndexTablet
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
             , Attrs(std::move(attrs))
-            , FollowerId(request.GetFollowerFileSystemId())
-            // For multishard filestore, selection of the follower node name for
+            , ShardId(request.GetShardFileSystemId())
+            // For multishard filestore, selection of the shard node name for
             // hard links is done by the client, not the leader. Thus, the
-            // client is able to provide the follower node name explicitly:
-            , FollowerName(
-                  request.HasLink() && request.GetLink().GetFollowerNodeName()
-                      ? request.GetLink().GetFollowerNodeName()
+            // client is able to provide the shard node name explicitly:
+            , ShardName(
+                  request.HasLink() && request.GetLink().GetShardNodeName()
+                      ? request.GetLink().GetShardNodeName()
                       : CreateGuidAsString())
             , Request(std::move(request))
         {
@@ -767,8 +767,8 @@ struct TTxIndexTablet
 
         NProto::TRenameNodeResponse Response;
 
-        TString FollowerIdForUnlink;
-        TString FollowerNameForUnlink;
+        TString ShardIdForUnlink;
+        TString ShardNameForUnlink;
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
@@ -798,8 +798,8 @@ struct TTxIndexTablet
 
             Response.Clear();
 
-            FollowerIdForUnlink.clear();
-            FollowerNameForUnlink.clear();
+            ShardIdForUnlink.clear();
+            ShardNameForUnlink.clear();
         }
     };
 
@@ -952,8 +952,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         ui64 TargetNodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
-        TString FollowerId;
-        TString FollowerName;
+        TString ShardId;
+        TString ShardName;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -971,8 +971,8 @@ struct TTxIndexTablet
             ParentNode.Clear();
             TargetNodeId = InvalidNodeId;
             TargetNode.Clear();
-            FollowerId.clear();
-            FollowerName.clear();
+            ShardId.clear();
+            ShardName.clear();
         }
     };
 
@@ -1160,15 +1160,15 @@ struct TTxIndexTablet
         const ui32 Mode;
         const ui32 Uid;
         const ui32 Gid;
-        const TString RequestFollowerId;
+        const TString RequestShardId;
         NProto::TCreateHandleRequest Request;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
         ui64 TargetNodeId = InvalidNodeId;
-        TString FollowerId;
-        TString FollowerName;
-        bool IsNewFollowerNode = false;
+        TString ShardId;
+        TString ShardName;
+        bool IsNewShardNode = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
 
@@ -1187,7 +1187,7 @@ struct TTxIndexTablet
             , Mode(request.GetMode())
             , Uid(request.GetUid())
             , Gid(request.GetGid())
-            , RequestFollowerId(request.GetFollowerFileSystemId())
+            , RequestShardId(request.GetShardFileSystemId())
             , Request(std::move(request))
         {
         }
@@ -1197,9 +1197,9 @@ struct TTxIndexTablet
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
-            FollowerId.clear();
-            FollowerName.clear();
-            IsNewFollowerNode = false;
+            ShardId.clear();
+            ShardName.clear();
+            IsNewShardNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
 
@@ -1957,10 +1957,10 @@ struct TTxIndexTablet
     };
 
     //
-    // CommitNodeCreationInFollower
+    // CommitNodeCreationInShard
     //
 
-    struct TCommitNodeCreationInFollower
+    struct TCommitNodeCreationInShard
     {
         // actually unused, needed in tablet_tx.h to avoid sophisticated
         // template tricks
@@ -1970,7 +1970,7 @@ struct TTxIndexTablet
         NProto::TCreateNodeResponse Response;
         const ui64 EntryId;
 
-        TCommitNodeCreationInFollower(
+        TCommitNodeCreationInShard(
                 TString sessionId,
                 ui64 requestId,
                 NProto::TCreateNodeResponse response,
