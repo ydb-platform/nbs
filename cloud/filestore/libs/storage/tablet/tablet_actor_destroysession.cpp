@@ -13,25 +13,25 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyFollowerSessionsActor final
-    : public TActorBootstrapped<TDestroyFollowerSessionsActor>
+class TDestroyShardSessionsActor final
+    : public TActorBootstrapped<TDestroyShardSessionsActor>
 {
 private:
     const TString LogTag;
     const TRequestInfoPtr RequestInfo;
     const NProtoPrivate::TDestroySessionRequest Request;
-    const google::protobuf::RepeatedPtrField<TString> FollowerIds;
+    const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> Response;
     int DestroyedSessions = 0;
 
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
-    TDestroyFollowerSessionsActor(
+    TDestroyShardSessionsActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TDestroySessionRequest request,
-        google::protobuf::RepeatedPtrField<TString> followerIds,
+        google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response);
 
     void Bootstrap(const TActorContext& ctx);
@@ -56,40 +56,40 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDestroyFollowerSessionsActor::TDestroyFollowerSessionsActor(
+TDestroyShardSessionsActor::TDestroyShardSessionsActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TDestroySessionRequest request,
-        google::protobuf::RepeatedPtrField<TString> followerIds,
+        google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-    , FollowerIds(std::move(followerIds))
+    , ShardIds(std::move(shardIds))
     , Response(std::move(response))
 {}
 
-void TDestroyFollowerSessionsActor::Bootstrap(const TActorContext& ctx)
+void TDestroyShardSessionsActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequests(ctx);
     Become(&TThis::StateWork);
 }
 
-void TDestroyFollowerSessionsActor::SendRequests(const TActorContext& ctx)
+void TDestroyShardSessionsActor::SendRequests(const TActorContext& ctx)
 {
     ui32 cookie = 0;
-    for (const auto& followerId: FollowerIds) {
+    for (const auto& shardId: ShardIds) {
         auto request =
             std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
         request->Record = Request;
-        request->Record.SetFileSystemId(followerId);
+        request->Record.SetFileSystemId(shardId);
 
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Sending DestroySessionRequest to follower %s",
+            "%s Sending DestroySessionRequest to shard %s",
             LogTag.c_str(),
-            followerId.c_str());
+            shardId.c_str());
 
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
@@ -99,7 +99,7 @@ void TDestroyFollowerSessionsActor::SendRequests(const TActorContext& ctx)
     }
 }
 
-void TDestroyFollowerSessionsActor::HandleDestroySessionResponse(
+void TDestroyShardSessionsActor::HandleDestroySessionResponse(
     const TEvIndexTablet::TEvDestroySessionResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -109,9 +109,9 @@ void TDestroyFollowerSessionsActor::HandleDestroySessionResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Follower session destruction  failed for %s with error %s",
+            "%s Shard session destruction  failed for %s with error %s",
             LogTag.c_str(),
-            FollowerIds[ev->Cookie].c_str(),
+            ShardIds[ev->Cookie].c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -121,16 +121,16 @@ void TDestroyFollowerSessionsActor::HandleDestroySessionResponse(
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Follower session destroyed for %s",
+        "%s Shard session destroyed for %s",
         LogTag.c_str(),
-        FollowerIds[ev->Cookie].c_str());
+        ShardIds[ev->Cookie].c_str());
 
-    if (++DestroyedSessions == FollowerIds.size()) {
+    if (++DestroyedSessions == ShardIds.size()) {
         ReplyAndDie(ctx, {});
     }
 }
 
-void TDestroyFollowerSessionsActor::HandlePoisonPill(
+void TDestroyShardSessionsActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -138,7 +138,7 @@ void TDestroyFollowerSessionsActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TDestroyFollowerSessionsActor::ReplyAndDie(
+void TDestroyShardSessionsActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
@@ -151,7 +151,7 @@ void TDestroyFollowerSessionsActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TDestroyFollowerSessionsActor::StateWork)
+STFUNC(TDestroyShardSessionsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -337,8 +337,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
 
-    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
-    if (followerIds.empty()) {
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s DestroySession completed",
             LogTag.c_str());
@@ -349,15 +349,15 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s DestroySession completed - local"
-        ", destroying follower sessions (%s)",
+        ", destroying shard sessions (%s)",
         LogTag.c_str(),
-        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
 
-    auto actor = std::make_unique<TDestroyFollowerSessionsActor>(
+    auto actor = std::make_unique<TDestroyShardSessionsActor>(
         LogTag,
         args.RequestInfo,
         args.Request,
-        followerIds,
+        shardIds,
         std::move(response));
 
     NCloud::Register(ctx, std::move(actor));

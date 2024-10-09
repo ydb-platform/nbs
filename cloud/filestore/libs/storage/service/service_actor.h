@@ -81,7 +81,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev);
 
     template <typename TMethod>
-    void ForwardRequestToFollower(
+    void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui32 shardNo);
@@ -177,11 +177,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateConfigureFollowersActionActor(
+    NActors::IActorPtr CreateConfigureShardsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateConfigureAsFollowerActionActor(
+    NActors::IActorPtr CreateConfigureAsShardActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

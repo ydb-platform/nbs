@@ -300,7 +300,7 @@ message TStorageConfig
     // This numeric value is that x.
     optional uint32 PreferredBlockSizeMultiplier = 354;
 
-    // Enables request forwarding to followers in the StorageServiceActor.
+    // Enables request forwarding to shards in the StorageServiceActor.
     // Forwarding is done based on the NodeId and Handle high bits.
     // Disabling this thing shouldn't really be needed apart from tests.
     optional bool MultiTabletForwardingEnabled = 355;

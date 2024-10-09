@@ -20,15 +20,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConfigureAsFollowerActionActor final
-    : public TActorBootstrapped<TConfigureAsFollowerActionActor>
+class TConfigureAsShardActionActor final
+    : public TActorBootstrapped<TConfigureAsShardActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
 public:
-    TConfigureAsFollowerActionActor(
+    TConfigureAsShardActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -37,28 +37,28 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProtoPrivate::TConfigureAsFollowerResponse& response);
+        const NProtoPrivate::TConfigureAsShardResponse& response);
 
 private:
     STFUNC(StateWork);
 
-    void HandleConfigureAsFollowerResponse(
-        const TEvIndexTablet::TEvConfigureAsFollowerResponse::TPtr& ev,
+    void HandleConfigureAsShardResponse(
+        const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TConfigureAsFollowerActionActor::TConfigureAsFollowerActionActor(
+TConfigureAsShardActionActor::TConfigureAsShardActionActor(
         TRequestInfoPtr requestInfo,
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TConfigureAsFollowerActionActor::Bootstrap(const TActorContext& ctx)
+void TConfigureAsShardActionActor::Bootstrap(const TActorContext& ctx)
 {
-    NProtoPrivate::TConfigureAsFollowerRequest request;
+    NProtoPrivate::TConfigureAsShardRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
@@ -74,7 +74,7 @@ void TConfigureAsFollowerActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     auto requestToTablet =
-        std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerRequest>();
+        std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
 
     requestToTablet->Record = std::move(request);
 
@@ -86,9 +86,9 @@ void TConfigureAsFollowerActionActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TConfigureAsFollowerActionActor::ReplyAndDie(
+void TConfigureAsShardActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProtoPrivate::TConfigureAsFollowerResponse& response)
+    const NProtoPrivate::TConfigureAsShardResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
@@ -103,8 +103,8 @@ void TConfigureAsFollowerActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TConfigureAsFollowerActionActor::HandleConfigureAsFollowerResponse(
-    const TEvIndexTablet::TEvConfigureAsFollowerResponse::TPtr& ev,
+void TConfigureAsShardActionActor::HandleConfigureAsShardResponse(
+    const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
@@ -112,12 +112,12 @@ void TConfigureAsFollowerActionActor::HandleConfigureAsFollowerResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TConfigureAsFollowerActionActor::StateWork)
+STFUNC(TConfigureAsShardActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvIndexTablet::TEvConfigureAsFollowerResponse,
-            HandleConfigureAsFollowerResponse);
+            TEvIndexTablet::TEvConfigureAsShardResponse,
+            HandleConfigureAsShardResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
@@ -127,11 +127,11 @@ STFUNC(TConfigureAsFollowerActionActor::StateWork)
 
 } // namespace
 
-IActorPtr TStorageServiceActor::CreateConfigureAsFollowerActionActor(
+IActorPtr TStorageServiceActor::CreateConfigureAsShardActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return std::make_unique<TConfigureAsFollowerActionActor>(
+    return std::make_unique<TConfigureAsShardActionActor>(
         std::move(requestInfo),
         std::move(input));
 }

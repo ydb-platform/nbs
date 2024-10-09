@@ -16,8 +16,8 @@ struct TNode
 {
     ui64 Id = 0;
     TString Name;
-    TString FollowerFileSystemId;
-    TString FollowerNodeName;
+    TString ShardFileSystemId;
+    TString ShardNodeName;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,8 +98,8 @@ public:
                 nodes->push_back({
                     node.GetId(),
                     name,
-                    node.GetFollowerFileSystemId(),
-                    node.GetFollowerNodeName(),
+                    node.GetShardFileSystemId(),
+                    node.GetShardNodeName(),
                 });
             }
         }
@@ -142,13 +142,13 @@ public:
         TVector<TNode> leaderNodes;
         FetchAll(FileSystemId, RootNodeId, &leaderNodes);
 
-        THashSet<TString> followerNames;
+        THashSet<TString> shardNames;
         for (const auto& node: leaderNodes) {
-            if (!node.FollowerFileSystemId) {
+            if (!node.ShardFileSystemId) {
                 continue;
             }
 
-            followerNames.insert(node.FollowerNodeName);
+            shardNames.insert(node.ShardNodeName);
         }
 
         struct TResult
@@ -170,7 +170,7 @@ public:
 
         for (const auto& [shard, nodes]: shard2Nodes) {
             for (const auto& node: nodes) {
-                if (!followerNames.contains(node.Name)) {
+                if (!shardNames.contains(node.Name)) {
                     auto stat = Stat(shard, RootNodeId, node.Name);
 
                     if (stat) {

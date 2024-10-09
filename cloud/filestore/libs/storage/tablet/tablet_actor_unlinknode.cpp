@@ -29,8 +29,8 @@ NProto::TError ValidateRequest(const NProto::TUnlinkNodeRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUnlinkNodeInFollowerActor final
-    : public TActorBootstrapped<TUnlinkNodeInFollowerActor>
+class TUnlinkNodeInShardActor final
+    : public TActorBootstrapped<TUnlinkNodeInShardActor>
 {
 private:
     const TString LogTag;
@@ -39,17 +39,17 @@ private:
     const NProto::TUnlinkNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
-    TUnlinkNodeInFollowerResult Result;
+    TUnlinkNodeInShardResult Result;
 
 public:
-    TUnlinkNodeInFollowerActor(
+    TUnlinkNodeInShardActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TUnlinkNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInFollowerResult result);
+        TUnlinkNodeInShardResult result);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -71,14 +71,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TUnlinkNodeInFollowerActor::TUnlinkNodeInFollowerActor(
+TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TUnlinkNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInFollowerResult result)
+        TUnlinkNodeInShardResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -88,13 +88,13 @@ TUnlinkNodeInFollowerActor::TUnlinkNodeInFollowerActor(
     , Result(std::move(result))
 {}
 
-void TUnlinkNodeInFollowerActor::Bootstrap(const TActorContext& ctx)
+void TUnlinkNodeInShardActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequest(ctx);
     Become(&TThis::StateWork);
 }
 
-void TUnlinkNodeInFollowerActor::SendRequest(const TActorContext& ctx)
+void TUnlinkNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
     request->Record = Request;
@@ -102,7 +102,7 @@ void TUnlinkNodeInFollowerActor::SendRequest(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Sending UnlinkNodeRequest to follower %s, %s",
+        "%s Sending UnlinkNodeRequest to shard %s, %s",
         LogTag.c_str(),
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
@@ -112,7 +112,7 @@ void TUnlinkNodeInFollowerActor::SendRequest(const TActorContext& ctx)
         request.release());
 }
 
-void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
+void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
     const TEvService::TEvUnlinkNodeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -123,7 +123,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node unlinking for %s, %s returned ENOENT %s",
+            "%s Shard node unlinking for %s, %s returned ENOENT %s",
             LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
@@ -137,7 +137,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s Follower node unlinking failed for %s, %s with error %s"
+                "%s Shard node unlinking failed for %s, %s with error %s"
                 ", retrying",
                 LogTag.c_str(),
                 Request.GetFileSystemId().c_str(),
@@ -149,7 +149,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
         }
 
         const auto message = Sprintf(
-            "Follower node unlinking failed for %s, %s with error %s"
+            "Shard node unlinking failed for %s, %s with error %s"
             ", will not retry",
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
@@ -162,7 +162,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
             LogTag.c_str(),
             message.c_str());
 
-        ReportReceivedNodeOpErrorFromFollower(message);
+        ReportReceivedNodeOpErrorFromShard(message);
 
         ReplyAndDie(ctx, msg->GetError());
         return;
@@ -171,7 +171,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Follower node unlinked for %s, %s",
+        "%s Shard node unlinked for %s, %s",
         LogTag.c_str(),
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
@@ -179,7 +179,7 @@ void TUnlinkNodeInFollowerActor::HandleUnlinkNodeResponse(
     ReplyAndDie(ctx, {});
 }
 
-void TUnlinkNodeInFollowerActor::HandlePoisonPill(
+void TUnlinkNodeInShardActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -187,7 +187,7 @@ void TUnlinkNodeInFollowerActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TUnlinkNodeInFollowerActor::ReplyAndDie(
+void TUnlinkNodeInShardActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -203,7 +203,7 @@ void TUnlinkNodeInFollowerActor::ReplyAndDie(
         }
     }
 
-    using TResponse = TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower;
+    using TResponse = TEvIndexTabletPrivate::TEvNodeUnlinkedInShard;
     ctx.Send(ParentId, std::make_unique<TResponse>(
         std::move(RequestInfo),
         Request.GetHeaders().GetSessionId(),
@@ -214,7 +214,7 @@ void TUnlinkNodeInFollowerActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TUnlinkNodeInFollowerActor::StateWork)
+STFUNC(TUnlinkNodeInShardActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -321,7 +321,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return false;   // not ready
     }
 
-    if (args.ChildRef->FollowerId) {
+    if (args.ChildRef->ShardId) {
         return true;
     }
 
@@ -374,24 +374,24 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
-    if (args.ChildRef->FollowerId) {
+    if (args.ChildRef->ShardId) {
         UnlinkExternalNode(
             db,
             args.ParentNodeId,
             args.Name,
-            args.ChildRef->FollowerId,
-            args.ChildRef->FollowerName,
+            args.ChildRef->ShardId,
+            args.ChildRef->ShardName,
             args.ChildRef->MinCommitId,
             args.CommitId);
 
         // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
         // use CommitId here in order not to generate some other unique ui64
         args.OpLogEntry.SetEntryId(args.CommitId);
-        auto* followerRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
-        followerRequest->CopyFrom(args.Request);
-        followerRequest->SetFileSystemId(args.ChildRef->FollowerId);
-        followerRequest->SetNodeId(RootNodeId);
-        followerRequest->SetName(args.ChildRef->FollowerName);
+        auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+        shardRequest->CopyFrom(args.Request);
+        shardRequest->SetFileSystemId(args.ChildRef->ShardId);
+        shardRequest->SetNodeId(RootNodeId);
+        shardRequest->SetName(args.ChildRef->ShardName);
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -446,14 +446,14 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     if (!HasError(args.Error)) {
-        if (args.ChildRef->FollowerId) {
+        if (args.ChildRef->ShardId) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-                "%s Unlinking node in follower upon UnlinkNode: %s, %s",
+                "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
-                args.ChildRef->FollowerId.c_str(),
-                args.ChildRef->FollowerName.c_str());
+                args.ChildRef->ShardId.c_str(),
+                args.ChildRef->ShardName.c_str());
 
-            RegisterUnlinkNodeInFollowerActor(
+            RegisterUnlinkNodeInShardActor(
                 ctx,
                 args.RequestInfo,
                 args.OpLogEntry.GetUnlinkNodeRequest(),
@@ -494,8 +494,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleNodeUnlinkedInFollower(
-    const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
+void TIndexTabletActor::HandleNodeUnlinkedInShard(
+    const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -540,15 +540,15 @@ void TIndexTabletActor::HandleNodeUnlinkedInFollower(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RegisterUnlinkNodeInFollowerActor(
+void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProto::TUnlinkNodeRequest request,
     ui64 requestId,
     ui64 opLogEntryId,
-    TUnlinkNodeInFollowerResult result)
+    TUnlinkNodeInShardResult result)
 {
-    auto actor = std::make_unique<TUnlinkNodeInFollowerActor>(
+    auto actor = std::make_unique<TUnlinkNodeInShardActor>(
         LogTag,
         std::move(requestInfo),
         ctx.SelfID,

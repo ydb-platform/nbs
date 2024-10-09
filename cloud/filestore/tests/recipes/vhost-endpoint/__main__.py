@@ -45,14 +45,14 @@ def start(argv):
             shard_id = args.filesystem + "_shard_" + str(i)
             client.create(shard_id, "test_cloud", "test_folder")
             shards.append(shard_id)
-            client.execute_action("configureasfollower", {
+            client.execute_action("configureasshard", {
                 "FileSystemId": shard_id,
                 "ShardNo": i + 1,
             })
 
-        client.execute_action("configurefollowers", {
+        client.execute_action("configureshards", {
             "FileSystemId": args.filesystem,
-            "FollowerFileSystemIds": shards,
+            "ShardFileSystemIds": shards,
         })
 
     socket = create_endpoint(

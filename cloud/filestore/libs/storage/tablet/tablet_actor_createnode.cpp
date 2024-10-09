@@ -71,8 +71,8 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateNodeInFollowerActor final
-    : public TActorBootstrapped<TCreateNodeInFollowerActor>
+class TCreateNodeInShardActor final
+    : public TActorBootstrapped<TCreateNodeInShardActor>
 {
 private:
     const TString LogTag;
@@ -81,17 +81,17 @@ private:
     const NProto::TCreateNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
-    TCreateNodeInFollowerResult Result;
+    TCreateNodeInShardResult Result;
 
 public:
-    TCreateNodeInFollowerActor(
+    TCreateNodeInShardActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TCreateNodeInFollowerResult result);
+        TCreateNodeInShardResult result);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -113,14 +113,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCreateNodeInFollowerActor::TCreateNodeInFollowerActor(
+TCreateNodeInShardActor::TCreateNodeInShardActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TCreateNodeInFollowerResult result)
+        TCreateNodeInShardResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -130,13 +130,13 @@ TCreateNodeInFollowerActor::TCreateNodeInFollowerActor(
     , Result(std::move(result))
 {}
 
-void TCreateNodeInFollowerActor::Bootstrap(const TActorContext& ctx)
+void TCreateNodeInShardActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequest(ctx);
     Become(&TThis::StateWork);
 }
 
-void TCreateNodeInFollowerActor::SendRequest(const TActorContext& ctx)
+void TCreateNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
     request->Record = Request;
@@ -144,7 +144,7 @@ void TCreateNodeInFollowerActor::SendRequest(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Sending CreateNodeRequest to follower %s, %s",
+        "%s Sending CreateNodeRequest to shard %s, %s",
         LogTag.c_str(),
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
@@ -154,7 +154,7 @@ void TCreateNodeInFollowerActor::SendRequest(const TActorContext& ctx)
         request.release());
 }
 
-void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
+void TCreateNodeInShardActor::HandleCreateNodeResponse(
     const TEvService::TEvCreateNodeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -165,7 +165,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Follower node creation for %s, %s returned EEXIST %s",
+            "%s Shard node creation for %s, %s returned EEXIST %s",
             LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
@@ -179,7 +179,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s Follower node creation failed for %s, %s with error %s"
+                "%s Shard node creation failed for %s, %s with error %s"
                 ", retrying",
                 LogTag.c_str(),
                 Request.GetFileSystemId().c_str(),
@@ -191,7 +191,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
         }
 
         const auto message = Sprintf(
-            "Follower node creation failed for %s, %s with error %s"
+            "Shard node creation failed for %s, %s with error %s"
             ", will not retry",
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
@@ -204,7 +204,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
             LogTag.c_str(),
             message.c_str());
 
-        ReportReceivedNodeOpErrorFromFollower(message);
+        ReportReceivedNodeOpErrorFromShard(message);
 
         ReplyAndDie(ctx, msg->GetError());
         return;
@@ -213,7 +213,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Follower node created for %s, %s",
+        "%s Shard node created for %s, %s",
         LogTag.c_str(),
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
@@ -231,7 +231,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
     ReplyAndDie(ctx, {});
 }
 
-void TCreateNodeInFollowerActor::HandlePoisonPill(
+void TCreateNodeInShardActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -239,7 +239,7 @@ void TCreateNodeInFollowerActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TCreateNodeInFollowerActor::ReplyAndDie(
+void TCreateNodeInShardActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -257,7 +257,7 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
         }
     }
 
-    using TResponse = TEvIndexTabletPrivate::TEvNodeCreatedInFollower;
+    using TResponse = TEvIndexTabletPrivate::TEvNodeCreatedInShard;
     ctx.Send(ParentId, std::make_unique<TResponse>(
         std::move(RequestInfo),
         Request.GetHeaders().GetSessionId(),
@@ -268,7 +268,7 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TCreateNodeInFollowerActor::StateWork)
+STFUNC(TCreateNodeInShardActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -308,11 +308,11 @@ void TIndexTabletActor::HandleCreateNode(
             if (GetDupCacheEntry(e, response->Record)) {
                 if (response->Record.GetNode().GetId() == 0) {
                     // it's an external node which is not yet created in
-                    // follower
+                    // shard
                     // this check is needed for the case of leader reboot
                     *response->Record.MutableError() = MakeError(
                         E_REJECTED,
-                        "node not yet created in follower");
+                        "node not yet created in shard");
                 }
 
                 return NCloud::Reply(ctx, *ev, std::move(response));
@@ -409,13 +409,13 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     if (args.TargetNodeId != InvalidNodeId) {
         // hard link: validate link target
         //
-        // Note: for the cases where the FollowerId is set, the target node
+        // Note: for the cases where the ShardId is set, the target node
         // already exists and its link count is updated, no need to validate it
         if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
             return false;   // not ready
         }
 
-        if (args.FollowerId.Empty()) {
+        if (args.ShardId.Empty()) {
             args.ChildNodeId = args.TargetNodeId;
             if (!args.ChildNode) {
                 // should exist
@@ -468,7 +468,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     }
 
     if (args.TargetNodeId == InvalidNodeId) {
-        if (args.FollowerId.Empty()) {
+        if (args.ShardId.Empty()) {
             args.ChildNodeId = CreateNode(
                 db,
                 args.CommitId,
@@ -486,21 +486,21 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             args.OpLogEntry.SetEntryId(args.CommitId);
             args.OpLogEntry.SetSessionId(args.SessionId);
             args.OpLogEntry.SetRequestId(args.RequestId);
-            auto* followerRequest = args.OpLogEntry.MutableCreateNodeRequest();
-            followerRequest->CopyFrom(args.Request);
-            followerRequest->SetFileSystemId(args.FollowerId);
-            followerRequest->SetNodeId(RootNodeId);
-            followerRequest->SetName(args.FollowerName);
-            followerRequest->ClearFollowerFileSystemId();
+            auto* shardRequest = args.OpLogEntry.MutableCreateNodeRequest();
+            shardRequest->CopyFrom(args.Request);
+            shardRequest->SetFileSystemId(args.ShardId);
+            shardRequest->SetNodeId(RootNodeId);
+            shardRequest->SetName(args.ShardName);
+            shardRequest->ClearShardFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
     } else {
         // hard link
 
-        // If the follower is set, no need to update the child node since it is
+        // If the shard is set, no need to update the child node since it is
         // an external node
-        if (args.FollowerId.Empty()) {
+        if (args.ShardId.Empty()) {
             auto attrs =
                 CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
             UpdateNode(
@@ -531,10 +531,10 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.CommitId,
         args.Name,
         args.ChildNodeId,
-        args.FollowerId,
-        args.FollowerName);
+        args.ShardId,
+        args.ShardName);
 
-    if (args.FollowerId.Empty()) {
+    if (args.ShardId.Empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
             auto message = ReportInvalidNodeIdForLocalNode(TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
@@ -548,7 +548,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             args.ChildNode->Attrs);
     }
 
-    // followers shouldn't commit CreateNode DupCache entries since:
+    // shards shouldn't commit CreateNode DupCache entries since:
     // 1. there will be no duplicates - node name is generated by the leader
     // 2. the leader serves all file creation operations and has its own
     //  dupcache
@@ -568,12 +568,12 @@ void TIndexTabletActor::CompleteTx_CreateNode(
 {
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-            "%s Creating node in follower upon CreateNode: %s, %s",
+            "%s Creating node in shard upon CreateNode: %s, %s",
             LogTag.c_str(),
-            args.FollowerId.c_str(),
-            args.FollowerName.c_str());
+            args.ShardId.c_str(),
+            args.ShardName.c_str());
 
-        RegisterCreateNodeInFollowerActor(
+        RegisterCreateNodeInShardActor(
             ctx,
             args.RequestInfo,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
@@ -589,7 +589,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     auto response =
         std::make_unique<TEvService::TEvCreateNodeResponse>(args.Error);
     if (!HasError(args.Error)) {
-        // followers shouldn't commit CreateNode DupCache entries since:
+        // shards shouldn't commit CreateNode DupCache entries since:
         // 1. there will be no duplicates - node name is generated by the leader
         // 2. the leader serves all file creation operations and has its own
         //  dupcache
@@ -600,7 +600,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         if (!args.ChildNode &&
             // A ChildNode can also be empty for a hard link to an external
             // node, and this is a valid case
-            !(args.FollowerId && args.TargetNodeId != InvalidNodeId))
+            !(args.ShardId && args.TargetNodeId != InvalidNodeId))
         {
             auto message = ReportChildNodeIsNull(TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
@@ -630,8 +630,8 @@ void TIndexTabletActor::CompleteTx_CreateNode(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleNodeCreatedInFollower(
-    const TEvIndexTabletPrivate::TEvNodeCreatedInFollower::TPtr& ev,
+void TIndexTabletActor::HandleNodeCreatedInShard(
+    const TEvIndexTabletPrivate::TEvNodeCreatedInShard::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -659,7 +659,7 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }
 
-        ExecuteTx<TCommitNodeCreationInFollower>(
+        ExecuteTx<TCommitNodeCreationInShard>(
             ctx,
             msg->SessionId,
             msg->RequestId,
@@ -691,10 +691,10 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_CommitNodeCreationInFollower(
+bool TIndexTabletActor::PrepareTx_CommitNodeCreationInShard(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TCommitNodeCreationInFollower& args)
+    TTxIndexTablet::TCommitNodeCreationInShard& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -703,10 +703,10 @@ bool TIndexTabletActor::PrepareTx_CommitNodeCreationInFollower(
     return true;
 }
 
-void TIndexTabletActor::ExecuteTx_CommitNodeCreationInFollower(
+void TIndexTabletActor::ExecuteTx_CommitNodeCreationInShard(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TCommitNodeCreationInFollower& args)
+    TTxIndexTablet::TCommitNodeCreationInShard& args)
 {
     Y_UNUSED(ctx);
 
@@ -719,14 +719,14 @@ void TIndexTabletActor::ExecuteTx_CommitNodeCreationInFollower(
     db.DeleteOpLogEntry(args.EntryId);
 }
 
-void TIndexTabletActor::CompleteTx_CommitNodeCreationInFollower(
+void TIndexTabletActor::CompleteTx_CommitNodeCreationInShard(
     const TActorContext& ctx,
-    TTxIndexTablet::TCommitNodeCreationInFollower& args)
+    TTxIndexTablet::TCommitNodeCreationInShard& args)
 {
     CommitDupCacheEntry(args.SessionId, args.RequestId);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s CommitNodeCreationInFollower completed (%lu): %s, %lu",
+        "%s CommitNodeCreationInShard completed (%lu): %s, %lu",
         LogTag.c_str(),
         args.EntryId,
         args.SessionId.c_str(),
@@ -735,15 +735,15 @@ void TIndexTabletActor::CompleteTx_CommitNodeCreationInFollower(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RegisterCreateNodeInFollowerActor(
+void TIndexTabletActor::RegisterCreateNodeInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProto::TCreateNodeRequest request,
     ui64 requestId,
     ui64 opLogEntryId,
-    TCreateNodeInFollowerResult result)
+    TCreateNodeInShardResult result)
 {
-    auto actor = std::make_unique<TCreateNodeInFollowerActor>(
+    auto actor = std::make_unique<TCreateNodeInShardActor>(
         LogTag,
         std::move(requestInfo),
         ctx.SelfID,

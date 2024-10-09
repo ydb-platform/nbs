@@ -48,7 +48,7 @@ private:
     ui32 CheckedNodeCount = 0;
 
     TVector<TVector<ui32>> Cookie2NodeIndices;
-    TVector<TString> Cookie2FollowerId;
+    TVector<TString> Cookie2ShardId;
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
@@ -163,15 +163,15 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 
     for (ui32 i = 0; i < Response.NodesSize(); ++i) {
         const auto& node = Response.GetNodes(i);
-        if (node.GetFollowerFileSystemId()) {
-            auto& batch = batches[node.GetFollowerFileSystemId()];
+        if (node.GetShardFileSystemId()) {
+            auto& batch = batches[node.GetShardFileSystemId()];
             if (batch.Record.GetHeaders().GetSessionId().Empty()) {
                 batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
-                batch.Record.SetFileSystemId(node.GetFollowerFileSystemId());
+                batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }
 
-            batch.Record.AddNames(node.GetFollowerNodeName());
+            batch.Record.AddNames(node.GetShardNodeName());
             batch.NodeIndices.push_back(i);
         } else {
             ++GetNodeAttrResponses;
@@ -180,12 +180,12 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
 
     ui64 cookie = 0;
     Cookie2NodeIndices.resize(batches.size());
-    Cookie2FollowerId.resize(batches.size());
+    Cookie2ShardId.resize(batches.size());
     for (auto& [_, batch]: batches) {
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Executing GetNodeAttrBatch in follower for %s, %s",
+            "[%s] Executing GetNodeAttrBatch in shard for %s, %s",
             LogTag.c_str(),
             batch.Record.GetFileSystemId().c_str(),
             JoinSeq(", ", batch.Record.GetNames()).c_str());
@@ -195,7 +195,7 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
         request->Record = std::move(batch.Record);
 
         Cookie2NodeIndices[cookie] = std::move(batch.NodeIndices);
-        Cookie2FollowerId[cookie] = request->Record.GetFileSystemId();
+        Cookie2ShardId[cookie] = request->Record.GetFileSystemId();
 
         // forward request through tablet proxy
         ctx.Send(
@@ -217,22 +217,22 @@ void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
 
     for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
         const auto& node = Response.GetNodes(cookie);
-        if (node.GetFollowerFileSystemId()) {
+        if (node.GetShardFileSystemId()) {
             LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "[%s] Executing GetNodeAttr in follower for %s, %s",
+                "[%s] Executing GetNodeAttr in shard for %s, %s",
                 LogTag.c_str(),
-                node.GetFollowerFileSystemId().c_str(),
-                node.GetFollowerNodeName().Quote().c_str());
+                node.GetShardFileSystemId().c_str(),
+                node.GetShardNodeName().Quote().c_str());
 
             auto request =
                 std::make_unique<TEvService::TEvGetNodeAttrRequest>();
             request->Record.MutableHeaders()->CopyFrom(
                 ListNodesRequest.GetHeaders());
-            request->Record.SetFileSystemId(node.GetFollowerFileSystemId());
+            request->Record.SetFileSystemId(node.GetShardFileSystemId());
             request->Record.SetNodeId(RootNodeId);
-            request->Record.SetName(node.GetFollowerNodeName());
+            request->Record.SetName(node.GetShardNodeName());
 
             // forward request through tablet proxy
             ctx.Send(
@@ -270,7 +270,7 @@ void TListNodesActor::HandleListNodesResponse(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "No nodes at followers for parent %lu",
+            "No nodes at shards for parent %lu",
             ListNodesRequest.GetNodeId());
 
         ReplyAndDie(ctx);
@@ -288,8 +288,8 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
 
     TABLET_VERIFY(ev->Cookie < Cookie2NodeIndices.size());
     const auto& nodeIndices = Cookie2NodeIndices[ev->Cookie];
-    TABLET_VERIFY(ev->Cookie < Cookie2FollowerId.size());
-    const auto& followerId = Cookie2FollowerId[ev->Cookie];
+    TABLET_VERIFY(ev->Cookie < Cookie2ShardId.size());
+    const auto& shardId = Cookie2ShardId[ev->Cookie];
 
     if (HasError(msg->GetError())) {
         if (msg->GetError().GetCode() == NoEnt) {
@@ -305,16 +305,16 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Nodes not found in follower (invalid parent?): %s, %s, %s",
-                followerId.c_str(),
+                "Nodes not found in shard (invalid parent?): %s, %s, %s",
+                shardId.c_str(),
                 FormatError(msg->GetError()).Quote().c_str(),
                 names.c_str());
         } else {
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttrBatch from follower: %s, %s",
-                followerId.c_str(),
+                "Failed to GetNodeAttrBatch from shard: %s, %s",
+                shardId.c_str(),
                 FormatError(msg->GetError()).Quote().c_str());
 
             HandleError(ctx, *msg->Record.MutableError());
@@ -325,7 +325,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "GetNodeAttrBatchResponse from follower: %s",
+        "GetNodeAttrBatchResponse from shard: %s",
         msg->Record.DebugString().Quote().c_str());
 
     auto& responses = *msg->Record.MutableResponses();
@@ -333,8 +333,8 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     for (const auto i: nodeIndices) {
         if (i >= Response.NodesSize()) {
             const auto message = TStringBuilder() << "NodeIndex " << i
-                << " >= " << Response.NodesSize() << ", FollowerId: "
-                << followerId;
+                << " >= " << Response.NodesSize() << ", ShardId: "
+                << shardId;
             ReportIndexOutOfBounds(message);
             LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
             continue;
@@ -342,7 +342,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
 
         if (responseIter == responses.end()) {
             const auto message = TStringBuilder() << "NodeIndex " << i
-                << " >= " << responses.size() << ", FollowerId: " << followerId;
+                << " >= " << responses.size() << ", ShardId: " << shardId;
             ReportNotEnoughResultsInGetNodeAttrBatchResponses(message);
             LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
             continue;
@@ -352,9 +352,9 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             MissingNodeIndices.push_back(i);
 
             LOG_WARN(ctx, TFileStoreComponents::SERVICE, TStringBuilder()
-                << "Node not found in follower: "
-                << Response.GetNames(i).Quote() << ", FollowerId: "
-                << followerId << ", Error: "
+                << "Node not found in shard: "
+                << Response.GetNames(i).Quote() << ", ShardId: "
+                << shardId << ", Error: "
                 << FormatError(responseIter->GetError()).Quote());
             ++responseIter;
             continue;
@@ -364,9 +364,9 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttr from follower: %s, %s, %s",
+                "Failed to GetNodeAttr from shard: %s, %s, %s",
                 Response.GetNames(i).Quote().c_str(),
-                followerId.c_str(),
+                shardId.c_str(),
                 FormatError(responseIter->GetError()).Quote().c_str());
             ++responseIter;
             continue;
@@ -394,7 +394,7 @@ void TListNodesActor::HandleGetNodeAttrResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "GetNodeAttrResponse from follower: %s",
+        "GetNodeAttrResponse from shard: %s",
         msg->Record.GetNode().DebugString().Quote().c_str());
 
     if (HasError(msg->GetError())) {
@@ -404,14 +404,14 @@ void TListNodesActor::HandleGetNodeAttrResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Node not found in follower: %s, %s",
+                "Node not found in shard: %s, %s",
                 FormatError(msg->GetError()).Quote().c_str(),
                 Response.GetNames(ev->Cookie).c_str());
         } else {
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttr from follower: %s",
+                "Failed to GetNodeAttr from shard: %s",
                 FormatError(msg->GetError()).Quote().c_str());
 
             HandleError(ctx, std::move(*msg->Record.MutableError()));
@@ -486,12 +486,12 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
         }
     } else {
         const auto& attr = msg->Record.GetNode();
-        exists = attr.GetFollowerNodeName() == node.GetFollowerNodeName();
+        exists = attr.GetShardNodeName() == node.GetShardNodeName();
     }
 
     if (exists) {
         ++LostNodeCount;
-        ReportNodeNotFoundInFollower();
+        ReportNodeNotFoundInShard();
     }
 
     if (++CheckedNodeCount == MissingNodeIndices.size()) {
@@ -504,14 +504,14 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
         // request won't lead to a different result => E_IO
         // If some of the missing nodes are missing because they were supposedly
         // unlinked after the ListNodes call to the leader and before the
-        // GetNodeAttr[Batch] calls to the followers, a retry of such a request
+        // GetNodeAttr[Batch] calls to the shards, a retry of such a request
         // will cause a different set of nodes to be read from the leader =>
         // E_REJECTED.
         if (MissingNodeIndices.size() == Response.NodesSize()) {
             NProto::TError error;
             if (MissingNodeIndices.size() == LostNodeCount) {
                 error = MakeError(E_IO, TStringBuilder()
-                    << "lost some nodes in followers for request: "
+                    << "lost some nodes in shards for request: "
                     << ListNodesRequest.ShortDebugString().Quote());
             } else {
                 error = MakeError(E_REJECTED, TStringBuilder()
@@ -544,7 +544,7 @@ void TListNodesActor::CheckResponseAndReply(const TActorContext& ctx)
     }
 
     // Some of the nodes are missing - i.e. they are present in the leader's
-    // ListNodesResponse but absent from the corresponding followers. We need
+    // ListNodesResponse but absent from the corresponding shards. We need
     // to check whether they are still present in leader (they might've been
     // deleted after we got the ListNodesResponse from the leader). If they are,
     // it's an error which we should report (log + critical events). And in some

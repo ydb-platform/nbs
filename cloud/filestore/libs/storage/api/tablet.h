@@ -27,8 +27,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
-    xxx(ConfigureFollowers,         __VA_ARGS__)                               \
-    xxx(ConfigureAsFollower,        __VA_ARGS__)                               \
+    xxx(ConfigureShards,            __VA_ARGS__)                               \
+    xxx(ConfigureAsShard,           __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
     xxx(WriteCompactionMap,         __VA_ARGS__)                               \
@@ -85,11 +85,11 @@ struct TEvIndexTablet
         EvForcedOperationRequest = EvBegin + 23,
         EvForcedOperationResponse,
 
-        EvConfigureFollowersRequest = EvBegin + 25,
-        EvConfigureFollowersResponse,
+        EvConfigureShardsRequest = EvBegin + 25,
+        EvConfigureShardsResponse,
 
-        EvConfigureAsFollowerRequest = EvBegin + 27,
-        EvConfigureAsFollowerResponse,
+        EvConfigureAsShardRequest = EvBegin + 27,
+        EvConfigureAsShardResponse,
 
         EvGetStorageConfigRequest = EvBegin + 29,
         EvGetStorageConfigResponse,
