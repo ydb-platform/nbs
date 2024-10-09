@@ -206,7 +206,7 @@ func (s *nodeService) NodeStageVolume(
 		} else {
 			if nfsBackend {
 				return nil, s.statusError(codes.InvalidArgument,
-					"FileStore can't be mounted to container as a filesystem")
+					"NFS mounts are only supported in VM mode")
 			} else {
 				err = s.nodeStageDiskAsFilesystem(ctx, req)
 			}
