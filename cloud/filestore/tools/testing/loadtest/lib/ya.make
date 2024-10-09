@@ -25,7 +25,6 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/aio
-    library/cpp/deprecated/atomic
     library/cpp/testing/unittest
 )
 

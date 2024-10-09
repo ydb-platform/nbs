@@ -622,9 +622,10 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR("%s failing test %d due to: %s",
+                STORAGE_ERROR(
+                    "%s failing test %s due to: %s",
                     MakeTestTag().c_str(),
-                    request->Action,
+                    NProto::EAction_Name(request->Action).c_str(),
                     FormatError(request->Error).c_str());
 
                 if (RequestGenerator->ShouldFailOnError()) {
@@ -636,7 +637,7 @@ private:
             ++stats.Requests;
             stats.Hist.RecordValue(request->Elapsed);
 
-            if (request->Stop) {
+            if (request->Stopped) {
                 TestStats.Success = false;
             }
         }
