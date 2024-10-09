@@ -26,13 +26,6 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 			},
 		},
 	},
-	{
-		Type: &csi.ControllerServiceCapability_Rpc{
-			Rpc: &csi.ControllerServiceCapability_RPC{
-				Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-			},
-		},
-	},
 }
 
 func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMediaKind {
@@ -231,64 +224,6 @@ func (c *nbsServerControllerService) DeleteVolume(
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
-}
-
-func (c *nbsServerControllerService) ControllerPublishVolume(
-	ctx context.Context,
-	req *csi.ControllerPublishVolumeRequest,
-) (*csi.ControllerPublishVolumeResponse, error) {
-
-	log.Printf("csi.ControllerPublishVolumeRequest: %+v", req)
-
-	if req.VolumeId == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"VolumeId missing in ControllerPublishVolumeRequest")
-	}
-	if req.NodeId == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"NodeId missing in ControllerPublishVolumeRequest")
-	}
-	if req.VolumeCapability == nil {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"VolumeCapability missing in ControllerPublishVolumeRequest")
-	}
-
-	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
-		DiskId: req.VolumeId,
-	}
-	_, err := c.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
-	if err != nil {
-		if nbsclient.IsDiskNotFoundError(err) {
-			return nil, status.Errorf(
-				codes.NotFound, "Volume %q does not exist", req.VolumeId)
-		}
-
-		return nil, status.Errorf(
-			codes.Internal, "Failed to publish volume: %w", err)
-	}
-
-	// TODO (issues/464): check if req.NodeId exists in the cluster
-
-	return &csi.ControllerPublishVolumeResponse{}, nil
-}
-
-func (c *nbsServerControllerService) ControllerUnpublishVolume(
-	ctx context.Context,
-	req *csi.ControllerUnpublishVolumeRequest,
-) (*csi.ControllerUnpublishVolumeResponse, error) {
-
-	log.Printf("csi.ControllerUnpublishVolumeRequest: %+v", req)
-
-	if req.VolumeId == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"VolumeId missing in ControllerUnpublishVolumeRequest")
-	}
-
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
 func (c *nbsServerControllerService) ValidateVolumeCapabilities(
