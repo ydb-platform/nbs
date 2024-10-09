@@ -399,8 +399,7 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
             }
         ))
 
-        skipTests = ["should fail when the node does not exist"]
-
+        skipTests = []
         args = [CSI_SANITY_BINARY_PATH,
                 "-csi.endpoint",
                 env.csi._endpoint,
