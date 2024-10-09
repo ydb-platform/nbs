@@ -24,6 +24,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateDevices,                      __VA_ARGS__)                       \
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
+    xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,6 +117,19 @@ struct TEvVolumePrivate
     struct TReadHistoryResponse
     {
         TVector<THistoryLogItem> History;
+    };
+
+    //
+    // ReadMetaHistory
+    //
+
+    struct TReadMetaHistoryRequest
+    {
+    };
+
+    struct TReadMetaHistoryResponse
+    {
+        TVector<TVolumeMetaHistoryItem> MetaHistory;
     };
 
     //

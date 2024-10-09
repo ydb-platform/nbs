@@ -1035,4 +1035,11 @@ message TStorageServiceConfig
 
     // Node type
     optional string NodeType = 384;
+
+    // The volume actor will compare meta before and after reallocation and
+    // decide whether a lite reallocation is possible.
+    optional bool AllowLiteDiskReallocations = 385;
+
+    // Timeout between disks reallocations.
+    optional uint32 DiskRegistryDisksNotificationTimeout = 386;
 }

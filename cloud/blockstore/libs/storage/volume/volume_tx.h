@@ -40,6 +40,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
     xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
     xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
+    xxx(ReadMetaHistory,                __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,6 +151,8 @@ struct TTxVolume
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
+
+        bool LiteReallocation = false;
 
         TUpdateDevices(
                 TDevices devices,
@@ -365,6 +368,26 @@ struct TTxVolume
         void Clear()
         {
             OutdatedHistory.clear();
+        }
+    };
+
+    //
+    // Read Meta History
+    //
+
+    struct TReadMetaHistory
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        TVector<TVolumeMetaHistoryItem> MetaHistory;
+
+        explicit TReadMetaHistory(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            MetaHistory.clear();
         }
     };
 

@@ -5016,6 +5016,110 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldDoLiteReallocations)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        const auto expectedBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
+            / DefaultBlockSize;
+        const auto expectedDeviceCount = 3;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        NProto::TStorageServiceConfig patch;
+        patch.SetAllowLiteDiskReallocations(true);
+        volume.ChangeStorageConfig(std::move(patch));
+        volume.WaitReady();
+
+        {
+            // Meta history should contain a single item.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, metaHistory->MetaHistory.size());
+        }
+
+        {
+            auto stat = volume.StatVolume();
+            const auto& devices = stat->Record.GetVolume().GetDevices();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount,
+                devices[0].GetBlockCount());
+        }
+
+        {
+            auto sender = runtime->AllocateEdgeActor();
+
+            auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
+            request->Record.SetDiskId("vol0");
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(expectedDeviceCount * expectedBlockCount);
+
+            runtime->Send(new IEventHandle(
+                MakeDiskRegistryProxyServiceId(),
+                sender,
+                request.release()));
+        }
+
+        volume.ReallocateDisk();
+
+        ui32 oldNodeId = 0;
+        {
+            auto stat = volume.StatVolume();
+            const auto& devices = stat->Record.GetVolume().GetDevices();
+            UNIT_ASSERT_VALUES_EQUAL(expectedDeviceCount, devices.size());
+            oldNodeId = devices[0].GetNodeId();
+        }
+
+        {
+            // No lite reallocation, since device count was changed. Meta
+            // history contains 2 items now.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+        }
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvAllocateDiskResponse: {
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::TEvAllocateDiskResponse>();
+                        for (auto& device: *msg->Record.MutableDevices()) {
+                            device.SetNodeId(device.GetNodeId() + 1);
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        volume.ReallocateDisk();
+        {
+            auto stat = volume.StatVolume();
+            const auto& devices = stat->Record.GetVolume().GetDevices();
+            UNIT_ASSERT_VALUES_EQUAL(expectedDeviceCount, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(oldNodeId + 1, devices[0].GetNodeId());
+        }
+
+        {
+            // Lite reallocation happened. Meta history still contains 2 items.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldRejectAllocateDiskResponseWithInvalidDeviceSizes)
     {
         auto runtime = PrepareTestActorRuntime();
