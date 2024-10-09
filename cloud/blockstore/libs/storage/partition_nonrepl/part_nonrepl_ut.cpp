@@ -429,23 +429,32 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         auto& transportCounters =
             env.StorageStatsServiceState->Counters.Interconnect;
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             transportCounters.CountRead.Value,
             counters.ReadBlocks.Count);
-        UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
                 blockRange1.Size() + blockRange3.Intersect(diskRange).Size()
             ),
             counters.ReadBlocks.RequestBytes
         );
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.ReadBlocks.Value,
+            counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.CountWrite.Value,
+            counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
                 blockRange1.Size() + blockRange2.Intersect(diskRange).Size()
             ),
             counters.WriteBlocks.RequestBytes
         );
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.WriteBlocks.Value,
+            counters.WriteBlocks.RequestBytes);
     }
 
     Y_UNIT_TEST(ShouldWriteLargeBuffer)
@@ -506,6 +515,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * 3072,
+            counters.WriteBlocks.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            transportCounters.WriteBlocks.Value,
             counters.WriteBlocks.RequestBytes);
     }
 
