@@ -162,7 +162,7 @@ void TPartitionDiskCounters::Publish(TInstant now)
 void TPartitionDiskCounters::RegisterTTransportRequestCounters(
     NMonitoring::TDynamicCountersPtr& counters,
     TTransportRequestCounters& requestCounters,
-    TString requestType)
+    TString subGroupName)
 {
     auto meta = TTransportRequestCounters::AllCounters[0];
     auto& readCounter = meta.GetValue(requestCounters);
@@ -172,7 +172,7 @@ void TPartitionDiskCounters::RegisterTTransportRequestCounters(
     {
         readCounter.Register(
             counters->GetSubgroup("request", "ReadBlocks")
-                ->GetSubgroup("transport", requestType),
+                ->GetSubgroup("transport", subGroupName),
             "RequestBytes");
     }
 
@@ -184,7 +184,7 @@ void TPartitionDiskCounters::RegisterTTransportRequestCounters(
     {
         writeCounter.Register(
             counters->GetSubgroup("request", "WriteBlocks")
-                ->GetSubgroup("transport", requestType),
+                ->GetSubgroup("transport", subGroupName),
             "RequestBytes");
     }
 
@@ -197,7 +197,7 @@ void TPartitionDiskCounters::RegisterTTransportRequestCounters(
     {
         readCounterCount.Register(
             counters->GetSubgroup("request", "ReadBlocks")
-                ->GetSubgroup("transport", requestType),
+                ->GetSubgroup("transport", subGroupName),
             "Count");
     }
 
@@ -210,7 +210,7 @@ void TPartitionDiskCounters::RegisterTTransportRequestCounters(
     {
         writeCounterCount.Register(
             counters->GetSubgroup("request", "WriteBlocks")
-                ->GetSubgroup("transport", requestType),
+                ->GetSubgroup("transport", subGroupName),
             "Count");
     }
 }

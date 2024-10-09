@@ -682,7 +682,7 @@ struct TPartitionDiskCounters
     void RegisterTTransportRequestCounters(
         NMonitoring::TDynamicCountersPtr& counters,
         TTransportRequestCounters& requestCounters,
-        TString requestType);
+        TString subGroupName);
     void Publish(TInstant now);
     void Reset();
 };
