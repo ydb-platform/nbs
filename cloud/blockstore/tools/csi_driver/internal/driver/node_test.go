@@ -398,13 +398,13 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
-	actualClientId := "testClientId-testNodeId"
+	actualClientId := "testClientId-v2/testNodeId"
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	stagingTargetPath := "testStagingTargetPath"
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := filepath.Join(socketsDir, nodeID, diskID)
-	socketPath := filepath.Join(socketsDir, nodeID, diskID, "nbs.sock")
+	socketPath := filepath.Join(socketsDir, "v2", nodeID, diskID, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podID, diskID, "nbs.sock")
 
 	nodeService := newNodeService(
