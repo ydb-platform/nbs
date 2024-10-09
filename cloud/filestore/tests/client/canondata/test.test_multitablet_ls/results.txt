@@ -10,7 +10,7 @@
     }
 ][
     {
-        "Name": "xxx",
-        "ShardFileSystemId": "fs0-shard"
+        "ShardFileSystemId": "fs0-shard",
+        "Name": "xxx"
     }
 ]
