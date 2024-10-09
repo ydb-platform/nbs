@@ -298,7 +298,7 @@ public:
         ui64 nodeId,
         const TString& name,
         ui32 flags,
-        const TString& followerId = "",
+        const TString& shardId = "",
         const ui64 requestId = 0)
     {
         auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
@@ -308,7 +308,7 @@ public:
         request->Record.SetNodeId(nodeId);
         request->Record.SetName(name);
         request->Record.SetFlags(flags);
-        request->Record.SetFollowerFileSystemId(followerId);
+        request->Record.SetShardFileSystemId(shardId);
         return request;
     }
 

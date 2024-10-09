@@ -164,13 +164,13 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         }
 
         args.TargetNodeId = ref->ChildNodeId;
-        args.FollowerId = ref->FollowerId;
-        args.FollowerName = ref->FollowerName;
+        args.ShardId = ref->ShardId;
+        args.ShardName = ref->ShardName;
     } else {
         args.TargetNodeId = args.NodeId;
     }
 
-    if (args.FollowerId) {
+    if (args.ShardId) {
         return true;
     }
 
@@ -198,9 +198,9 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto* node = response->Record.MutableNode();
-        if (args.FollowerId) {
-            node->SetFollowerFileSystemId(args.FollowerId);
-            node->SetFollowerNodeName(args.FollowerName);
+        if (args.ShardId) {
+            node->SetShardFileSystemId(args.ShardId);
+            node->SetShardNodeName(args.ShardName);
         } else {
             TABLET_VERIFY(args.TargetNode);
             ConvertNodeFromAttrs(
@@ -377,9 +377,9 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         }
 
         auto* nodeAttr = nodeResult->MutableNode();
-        if (refs[i]->FollowerId) {
-            nodeAttr->SetFollowerFileSystemId(refs[i]->FollowerId);
-            nodeAttr->SetFollowerNodeName(refs[i]->FollowerName);
+        if (refs[i]->ShardId) {
+            nodeAttr->SetShardFileSystemId(refs[i]->ShardId);
+            nodeAttr->SetShardNodeName(refs[i]->ShardName);
             continue;
         }
 
@@ -396,7 +396,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         auto* nodeResult = args.Response.MutableResponses(i);
         if (nodeResult->GetNode().GetId() != InvalidNodeId
                 || HasError(nodeResult->GetError())
-                || nodeResult->GetNode().GetFollowerFileSystemId())
+                || nodeResult->GetNode().GetShardFileSystemId())
         {
             continue;
         }

@@ -16,23 +16,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetFollowerStatsActor final
-    : public TActorBootstrapped<TGetFollowerStatsActor>
+class TGetShardStatsActor final
+    : public TActorBootstrapped<TGetShardStatsActor>
 {
 private:
     const TString LogTag;
     const TRequestInfoPtr RequestInfo;
     const NProtoPrivate::TGetStorageStatsRequest Request;
-    const google::protobuf::RepeatedPtrField<TString> FollowerIds;
+    const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
     int Responses = 0;
 
 public:
-    TGetFollowerStatsActor(
+    TGetShardStatsActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
-        google::protobuf::RepeatedPtrField<TString> followerIds,
+        google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response);
 
     void Bootstrap(const TActorContext& ctx);
@@ -57,40 +57,40 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetFollowerStatsActor::TGetFollowerStatsActor(
+TGetShardStatsActor::TGetShardStatsActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
-        google::protobuf::RepeatedPtrField<TString> followerIds,
+        google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-    , FollowerIds(std::move(followerIds))
+    , ShardIds(std::move(shardIds))
     , Response(std::move(response))
 {}
 
-void TGetFollowerStatsActor::Bootstrap(const TActorContext& ctx)
+void TGetShardStatsActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequests(ctx);
     Become(&TThis::StateWork);
 }
 
-void TGetFollowerStatsActor::SendRequests(const TActorContext& ctx)
+void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
 {
     ui32 cookie = 0;
-    for (const auto& followerId: FollowerIds) {
+    for (const auto& shardId: ShardIds) {
         auto request =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
         request->Record = Request;
-        request->Record.SetFileSystemId(followerId);
+        request->Record.SetFileSystemId(shardId);
 
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Sending GetStorageStatsRequest to follower %s",
+            "%s Sending GetStorageStatsRequest to shard %s",
             LogTag.c_str(),
-            followerId.c_str());
+            shardId.c_str());
 
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
@@ -100,7 +100,7 @@ void TGetFollowerStatsActor::SendRequests(const TActorContext& ctx)
     }
 }
 
-void TGetFollowerStatsActor::HandleGetStorageStatsResponse(
+void TGetShardStatsActor::HandleGetStorageStatsResponse(
     const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -110,9 +110,9 @@ void TGetFollowerStatsActor::HandleGetStorageStatsResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Follower storage stats retrieval failed for %s with error %s",
+            "%s Shard storage stats retrieval failed for %s with error %s",
             LogTag.c_str(),
-            FollowerIds[ev->Cookie].c_str(),
+            ShardIds[ev->Cookie].c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -133,16 +133,16 @@ void TGetFollowerStatsActor::HandleGetStorageStatsResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got storage stats for follower %s",
+        "%s Got storage stats for shard %s",
         LogTag.c_str(),
-        FollowerIds[ev->Cookie].c_str());
+        ShardIds[ev->Cookie].c_str());
 
-    if (++Responses == FollowerIds.size()) {
+    if (++Responses == ShardIds.size()) {
         ReplyAndDie(ctx, {});
     }
 }
 
-void TGetFollowerStatsActor::HandlePoisonPill(
+void TGetShardStatsActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -150,7 +150,7 @@ void TGetFollowerStatsActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TGetFollowerStatsActor::ReplyAndDie(
+void TGetShardStatsActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
@@ -163,7 +163,7 @@ void TGetFollowerStatsActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TGetFollowerStatsActor::StateWork)
+STFUNC(TGetShardStatsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -659,9 +659,9 @@ void TIndexTabletActor::HandleGetStorageStats(
     stats->SetCollectGarbageState(static_cast<ui32>(
         CollectGarbageState.GetOperationState()));
 
-    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
 
-    if (followerIds.empty()) {
+    if (shardIds.empty()) {
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -671,11 +671,11 @@ void TIndexTabletActor::HandleGetStorageStats(
         ev->Cookie,
         ev->Get()->CallContext);
 
-    auto actor = std::make_unique<TGetFollowerStatsActor>(
+    auto actor = std::make_unique<TGetShardStatsActor>(
         LogTag,
         std::move(requestInfo),
         std::move(req),
-        followerIds,
+        shardIds,
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

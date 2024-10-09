@@ -54,7 +54,7 @@ private:
         const TEvService::TEvCreateHandleResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void CreateHandleInFollower(const TActorContext& ctx);
+    void CreateHandleInShard(const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -62,7 +62,7 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TCreateHandleResponse followerResponse);
+        NProto::TCreateHandleResponse shardResponse);
     void HandleError(const TActorContext& ctx, NProto::TError error);
 };
 
@@ -97,7 +97,7 @@ void TCreateHandleActor::CreateHandleInLeader(const TActorContext& ctx)
         LogTag.c_str(),
         CreateHandleRequest.GetNodeId(),
         CreateHandleRequest.GetName().Quote().c_str(),
-        CreateHandleRequest.GetFollowerFileSystemId().c_str());
+        CreateHandleRequest.GetShardFileSystemId().c_str());
 
     auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
     request->Record = CreateHandleRequest;
@@ -106,26 +106,26 @@ void TCreateHandleActor::CreateHandleInLeader(const TActorContext& ctx)
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
-void TCreateHandleActor::CreateHandleInFollower(const TActorContext& ctx)
+void TCreateHandleActor::CreateHandleInShard(const TActorContext& ctx)
 {
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Executing CreateHandle in follower for %lu, %s, %s",
+        "[%s] Executing CreateHandle in shard for %lu, %s, %s",
         LogTag.c_str(),
         CreateHandleRequest.GetNodeId(),
         CreateHandleRequest.GetName().Quote().c_str(),
-        CreateHandleRequest.GetFollowerFileSystemId().c_str());
+        CreateHandleRequest.GetShardFileSystemId().c_str());
 
     auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
     request->Record = CreateHandleRequest;
     request->Record.SetFileSystemId(
-        LeaderResponse.GetFollowerFileSystemId());
+        LeaderResponse.GetShardFileSystemId());
     request->Record.SetNodeId(RootNodeId);
-    request->Record.SetName(LeaderResponse.GetFollowerNodeName());
-    request->Record.ClearFollowerFileSystemId();
+    request->Record.SetName(LeaderResponse.GetShardNodeName());
+    request->Record.ClearShardFileSystemId();
     // E_EXCLUSIVE flag should be unset in order not to get EEXIST from the
-    // follower
+    // shard
     const auto exclusiveFlag =
         ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE);
     request->Record.SetFlags(CreateHandleRequest.GetFlags() & ~exclusiveFlag);
@@ -151,7 +151,7 @@ void TCreateHandleActor::HandleCreateHandleResponse(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "CreateHandle succeeded in follower: %lu, %lu",
+            "CreateHandle succeeded in shard: %lu, %lu",
             msg->Record.GetNodeAttr().GetId(),
             msg->Record.GetHandle());
 
@@ -163,12 +163,12 @@ void TCreateHandleActor::HandleCreateHandleResponse(
         ctx,
         TFileStoreComponents::SERVICE,
         "CreateHandle succeeded in leader: %s %s",
-        msg->Record.GetFollowerFileSystemId().c_str(),
-        msg->Record.GetFollowerNodeName().Quote().c_str());
+        msg->Record.GetShardFileSystemId().c_str(),
+        msg->Record.GetShardNodeName().Quote().c_str());
 
     LeaderResponded = true;
     LeaderResponse = std::move(msg->Record);
-    CreateHandleInFollower(ctx);
+    CreateHandleInShard(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,10 +185,10 @@ void TCreateHandleActor::HandlePoisonPill(
 
 void TCreateHandleActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProto::TCreateHandleResponse followerResponse)
+    NProto::TCreateHandleResponse shardResponse)
 {
     auto response = std::make_unique<TEvService::TEvCreateHandleResponse>();
-    response->Record = std::move(followerResponse);
+    response->Record = std::move(shardResponse);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -232,8 +232,8 @@ void TStorageServiceActor::HandleCreateHandle(
     auto* msg = ev->Get();
 
     if (msg->Record.GetName().Empty()) {
-        // handle creation by NodeId can be handled directly by the follower
-        ForwardRequestToFollower<TEvService::TCreateHandleMethod>(
+        // handle creation by NodeId can be handled directly by the shard
+        ForwardRequestToShard<TEvService::TCreateHandleMethod>(
             ctx,
             ev,
             ExtractShardNo(msg->Record.GetNodeId()));
@@ -251,22 +251,22 @@ void TStorageServiceActor::HandleCreateHandle(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
     const NProto::TFileStore& filestore = session->FileStore;
-    const auto& followerId = session->SelectFollower();
+    const auto& shardId = session->SelectShard();
 
     const bool multiTabletForwardingEnabled =
         StorageConfig->GetMultiTabletForwardingEnabled()
         && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
-    if (!multiTabletForwardingEnabled || !followerId) {
+    if (!multiTabletForwardingEnabled || !shardId) {
         ForwardRequest<TEvService::TCreateHandleMethod>(ctx, ev);
         return;
     }
 
-    msg->Record.SetFollowerFileSystemId(followerId);
+    msg->Record.SetShardFileSystemId(shardId);
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "create handle in follower %s",
+        "create handle in shard %s",
         msg->Record.ShortDebugString().Quote().c_str());
 
     auto [cookie, inflight] = CreateInFlightRequest(

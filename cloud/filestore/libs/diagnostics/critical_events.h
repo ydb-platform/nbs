@@ -17,13 +17,13 @@ namespace NCloud::NFileStore{
     xxx(MissingSessionId)                                                      \
     xxx(CreateSessionError)                                                    \
     xxx(DescribeFileStoreError)                                                \
-    xxx(NodeNotFoundInFollower)                                                \
+    xxx(NodeNotFoundInShard)                                                   \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \
-    xxx(ReceivedNodeOpErrorFromFollower)                                       \
+    xxx(ReceivedNodeOpErrorFromShard)                                          \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

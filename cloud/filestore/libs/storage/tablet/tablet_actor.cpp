@@ -135,7 +135,7 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
 
     RegisterCounters(ctx);
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsShard) {
         ExecuteTx<TInitSchema>(ctx, UseNoneCompactionPolicy);
     }
 }
@@ -846,11 +846,11 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
-            HandleNodeCreatedInFollower);
+            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
+            HandleNodeCreatedInShard);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
-            HandleNodeUnlinkedInFollower);
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
+            HandleNodeUnlinkedInShard);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -884,11 +884,11 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
-            HandleNodeCreatedInFollower);
+            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
+            HandleNodeCreatedInShard);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
-            HandleNodeUnlinkedInFollower);
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
+            HandleNodeUnlinkedInShard);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -942,11 +942,11 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
-            HandleNodeCreatedInFollower);
+            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
+            HandleNodeCreatedInShard);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
-            HandleNodeUnlinkedInFollower);
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
+            HandleNodeUnlinkedInShard);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
@@ -982,11 +982,11 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
-            HandleNodeCreatedInFollower);
+            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
+            HandleNodeCreatedInShard);
         HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
-            HandleNodeUnlinkedInFollower);
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
+            HandleNodeUnlinkedInShard);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);

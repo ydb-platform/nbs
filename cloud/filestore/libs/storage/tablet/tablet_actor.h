@@ -321,12 +321,12 @@ private:
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
-    void CreateSessionsInFollowers(
+    void CreateSessionsInShards(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TCreateSessionRequest request,
         std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
-        TVector<TString> followerIds);
+        TVector<TString> shardIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -471,21 +471,21 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
-    void RegisterCreateNodeInFollowerActor(
+    void RegisterCreateNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProto::TCreateNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TCreateNodeInFollowerResult result);
+        TCreateNodeInShardResult result);
 
-    void RegisterUnlinkNodeInFollowerActor(
+    void RegisterUnlinkNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProto::TUnlinkNodeRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInFollowerResult result);
+        TUnlinkNodeInShardResult result);
 
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
@@ -594,12 +594,12 @@ private:
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleNodeCreatedInFollower(
-        const TEvIndexTabletPrivate::TEvNodeCreatedInFollower::TPtr& ev,
+    void HandleNodeCreatedInShard(
+        const TEvIndexTabletPrivate::TEvNodeCreatedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleNodeUnlinkedInFollower(
-        const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
+    void HandleNodeUnlinkedInShard(
+        const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

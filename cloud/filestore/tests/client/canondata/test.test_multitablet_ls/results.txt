@@ -11,6 +11,6 @@
 ][
     {
         "Name": "xxx",
-        "FollowerFileSystemId": "fs0-shard"
+        "ShardFileSystemId": "fs0-shard"
     }
 ]
