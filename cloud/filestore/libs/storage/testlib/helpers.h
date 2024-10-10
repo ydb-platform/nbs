@@ -46,24 +46,24 @@ struct TCreateNodeArgs
     ui64 TargetNode = 0;
     TString TargetPath;
 
-    TString FollowerId;
+    TString ShardId;
 
     TCreateNodeArgs(
             ENodeType nodeType,
             ui64 parent,
             TString name,
-            TString followerId = "")
+            TString shardId = "")
         : NodeType(nodeType)
         , ParentNode(parent)
         , Name(std::move(name))
-        , FollowerId(std::move(followerId))
+        , ShardId(std::move(shardId))
     {}
 
     void Fill(NProto::TCreateNodeRequest& request) const
     {
         request.SetNodeId(ParentNode);
         request.SetName(Name);
-        request.SetFollowerFileSystemId(FollowerId);
+        request.SetShardFileSystemId(ShardId);
 
         switch (NodeType) {
             case ENodeType::Directory: {
@@ -108,9 +108,9 @@ struct TCreateNodeArgs
         ui64 parent,
         const TString& name,
         ui32 mode = 0,
-        const TString& followerId = "")
+        const TString& shardId = "")
     {
-        TCreateNodeArgs args(ENodeType::File, parent, name, followerId);
+        TCreateNodeArgs args(ENodeType::File, parent, name, shardId);
         args.Mode = mode;
         return args;
     }

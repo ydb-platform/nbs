@@ -242,4 +242,36 @@ private:
 
 TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define TABLET_TEST_HEAD(name)                                                 \
+    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
+    Y_UNIT_TEST(name)                                                          \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
+    }                                                                          \
+// TABLET_TEST_HEAD
+
+#define TABLET_TEST_IMPL(name, largeBS)                                        \
+    TABLET_TEST_HEAD(name)                                                     \
+    Y_UNIT_TEST(name##largeBS)                                                 \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
+    }                                                                          \
+    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+// TABLET_TEST_IMPL
+
+#define TABLET_TEST_4K_ONLY(name)                                              \
+    TABLET_TEST_HEAD(name)                                                     \
+    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+// TABLET_TEST_4K_ONLY
+
+#define TABLET_TEST(name)                                                      \
+    TABLET_TEST_IMPL(name, 128_KB)                                             \
+// TABLET_TEST
+
+#define TABLET_TEST_16K(name)                                                  \
+    TABLET_TEST_IMPL(name, 16_KB)                                              \
+// TABLET_TEST_16K
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -2762,54 +2762,54 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             addData.GetApproximateFreeSpaceShares(0));
     }
 
-    void ConfigureFollowers(
+    void ConfigureShards(
         TServiceClient& service,
         const TString& fsId,
         const TString& shard1Id,
         const TString& shard2Id)
     {
         {
-            NProtoPrivate::TConfigureAsFollowerRequest request;
+            NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(shard1Id);
             request.SetShardNo(1);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
-            NProtoPrivate::TConfigureAsFollowerResponse response;
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
 
         {
-            NProtoPrivate::TConfigureAsFollowerRequest request;
+            NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(shard2Id);
             request.SetShardNo(2);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
-            NProtoPrivate::TConfigureAsFollowerResponse response;
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
 
         {
-            NProtoPrivate::TConfigureFollowersRequest request;
+            NProtoPrivate::TConfigureShardsRequest request;
             request.SetFileSystemId(fsId);
-            *request.AddFollowerFileSystemIds() = shard1Id;
-            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
-            NProtoPrivate::TConfigureFollowersResponse response;
+            auto jsonResponse = service.ExecuteAction("configureshards", buf);
+            NProtoPrivate::TConfigureShardsResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateSessionInFollowers)
+    Y_UNIT_TEST(ShouldCreateSessionInShards)
     {
         NProto::TStorageConfig config;
         TTestEnv env({}, config);
@@ -2826,7 +2826,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
         auto headers1 = headers;
@@ -2934,7 +2934,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRestoreSessionInFollowerAfterFollowerRestart)
+    Y_UNIT_TEST(ShouldRestoreSessionInShardAfterShardRestart)
     {
         const auto idleSessionTimeout = TDuration::Minutes(2);
         NProto::TStorageConfig config;
@@ -2991,7 +2991,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
         auto headers1 = headers;
@@ -3085,7 +3085,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         );
         shard2.RebootTablet();
 
-        // triggering follower sessions sync
+        // triggering shard sessions sync
         // sending the event manually since registration observers which enable
         // scheduling for actors are reset upon tablet reboot
 
@@ -3174,7 +3174,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TString(1_MB, 'a'));
     }
 
-    Y_UNIT_TEST(ShouldCreateNodeInFollowerViaLeader)
+    Y_UNIT_TEST(ShouldCreateNodeInShardViaLeader)
     {
         NProto::TStorageConfig config;
         TTestEnv env({}, config);
@@ -3191,7 +3191,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3216,11 +3216,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             shard1Id,
-            createHandleResponse.GetFollowerFileSystemId());
+            createHandleResponse.GetShardFileSystemId());
 
         UNIT_ASSERT_VALUES_UNEQUAL(
             "",
-            createHandleResponse.GetFollowerNodeName());
+            createHandleResponse.GetShardNodeName());
 
         auto headers1 = headers;
         headers1.FileSystemId = shard1Id;
@@ -3229,7 +3229,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             headers1,
             headers1.FileSystemId,
             RootNodeId,
-            createHandleResponse.GetFollowerNodeName(),
+            createHandleResponse.GetShardNodeName(),
             TCreateHandleArgs::RDWR)->Record;
 
         auto handle1 = createHandleResponse.GetHandle();
@@ -3251,7 +3251,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TString(1_MB, 'a'));
     }
 
-    Y_UNIT_TEST(ShouldCreateNodeInFollowerByCreateHandleViaLeader)
+    Y_UNIT_TEST(ShouldCreateNodeInShardByCreateHandleViaLeader)
     {
         NProto::TStorageConfig config;
         TTestEnv env({}, config);
@@ -3268,7 +3268,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3282,12 +3282,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             shard1Id,
-            createHandleResponse.GetFollowerFileSystemId());
+            createHandleResponse.GetShardFileSystemId());
 
-        const auto followerNodeName =
-            createHandleResponse.GetFollowerNodeName();
+        const auto shardNodeName =
+            createHandleResponse.GetShardNodeName();
 
-        UNIT_ASSERT_VALUES_UNEQUAL("", followerNodeName);
+        UNIT_ASSERT_VALUES_UNEQUAL("", shardNodeName);
 
         const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
@@ -3299,7 +3299,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             headers1,
             headers1.FileSystemId,
             RootNodeId,
-            followerNodeName,
+            shardNodeName,
             TCreateHandleArgs::RDWR)->Record;
 
         auto handle1 = createHandleResponse.GetHandle();
@@ -3328,17 +3328,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             shard1Id,
-            getAttrResponse.GetNode().GetFollowerFileSystemId());
+            getAttrResponse.GetNode().GetShardFileSystemId());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            followerNodeName,
-            getAttrResponse.GetNode().GetFollowerNodeName());
+            shardNodeName,
+            getAttrResponse.GetNode().GetShardNodeName());
 
         getAttrResponse = service.GetNodeAttr(
             headers1,
             shard1Id,
             RootNodeId,
-            followerNodeName)->Record;
+            shardNodeName)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(nodeId1, getAttrResponse.GetNode().GetId());
         UNIT_ASSERT_VALUES_EQUAL(1_MB, getAttrResponse.GetNode().GetSize());
@@ -3354,13 +3354,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL(
             shard1Id,
-            listNodesResponse.GetNodes(0).GetFollowerFileSystemId());
+            listNodesResponse.GetNodes(0).GetShardFileSystemId());
         UNIT_ASSERT_VALUES_EQUAL(
-            followerNodeName,
-            listNodesResponse.GetNodes(0).GetFollowerNodeName());
+            shardNodeName,
+            listNodesResponse.GetNodes(0).GetShardNodeName());
     }
 
-    Y_UNIT_TEST(ShouldForwardRequestsToFollower)
+    Y_UNIT_TEST(ShouldForwardRequestsToShard)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -3378,7 +3378,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3391,10 +3391,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
-            createHandleResponse.GetFollowerFileSystemId());
+            createHandleResponse.GetShardFileSystemId());
         UNIT_ASSERT_VALUES_EQUAL(
             "",
-            createHandleResponse.GetFollowerNodeName());
+            createHandleResponse.GetShardNodeName());
 
         const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
@@ -3599,7 +3599,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3689,14 +3689,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // forcing fs to set high bits for handle ids
         {
-            NProtoPrivate::TConfigureAsFollowerRequest request;
+            NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(fsId);
             request.SetShardNo(111);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
-            NProtoPrivate::TConfigureAsFollowerResponse response;
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
@@ -3728,7 +3728,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
     }
 
-    Y_UNIT_TEST(ShouldHandleCreateNodeErrorFromFollowerUponCreateHandleViaLeader)
+    Y_UNIT_TEST(ShouldHandleCreateNodeErrorFromShardUponCreateHandleViaLeader)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -3746,7 +3746,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3821,7 +3821,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -3921,7 +3921,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             env.GetCounters()->FindSubgroup("component", "service");
         UNIT_ASSERT(counters);
         const auto counter =
-            counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInShard");
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
 
         // "breaking" all nodes - ListNodes should fail with E_IO after this
@@ -3971,7 +3971,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
         auto headers1 = headers;
@@ -4142,7 +4142,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
+    Y_UNIT_TEST(ShouldValidateRequestsWithShardId)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -4158,7 +4158,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4171,7 +4171,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto headers1 = headers;
         headers1.FileSystemId = shard1Id;
 
-        // a request with FollowerId and without Name
+        // a request with ShardId and without Name
         service.SendCreateHandleRequest(
             headers,
             fsId,
@@ -4187,7 +4187,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createHandleResponseEvent->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldValidateFollowerConfiguration)
+    Y_UNIT_TEST(ShouldValidateShardConfiguration)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -4205,17 +4205,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard2Id, 1'000);
         service.CreateFileStore(shard3Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         // ShardNo change not allowed
         {
-            NProtoPrivate::TConfigureAsFollowerRequest request;
+            NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(shard1Id);
             request.SetShardNo(2);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("configureasfollower", buf);
+            service.SendExecuteActionRequest("configureasshard", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -4223,15 +4223,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 response->GetErrorReason());
         }
 
-        // Follower deletion not allowed
+        // Shard deletion not allowed
         {
-            NProtoPrivate::TConfigureFollowersRequest request;
+            NProtoPrivate::TConfigureShardsRequest request;
             request.SetFileSystemId(fsId);
-            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("configurefollowers", buf);
+            service.SendExecuteActionRequest("configureshards", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -4239,16 +4239,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 response->GetErrorReason());
         }
 
-        // Follower reordering not allowed
+        // Shard reordering not allowed
         {
-            NProtoPrivate::TConfigureFollowersRequest request;
+            NProtoPrivate::TConfigureShardsRequest request;
             request.SetFileSystemId(fsId);
-            *request.AddFollowerFileSystemIds() = shard2Id;
-            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("configurefollowers", buf);
+            service.SendExecuteActionRequest("configureshards", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -4256,37 +4256,37 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 response->GetErrorReason());
         }
 
-        // Follower addition IS allowed
+        // Shard addition IS allowed
         {
-            NProtoPrivate::TConfigureAsFollowerRequest request;
+            NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(shard3Id);
             request.SetShardNo(3);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
-            NProtoPrivate::TConfigureAsFollowerResponse response;
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
 
         {
-            NProtoPrivate::TConfigureFollowersRequest request;
+            NProtoPrivate::TConfigureShardsRequest request;
             request.SetFileSystemId(fsId);
-            *request.AddFollowerFileSystemIds() = shard1Id;
-            *request.AddFollowerFileSystemIds() = shard2Id;
-            *request.AddFollowerFileSystemIds() = shard3Id;
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard3Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
-            NProtoPrivate::TConfigureFollowersResponse response;
+            auto jsonResponse = service.ExecuteAction("configureshards", buf);
+            NProtoPrivate::TConfigureShardsResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
 
-        // TODO(#1350): leader should check that followers' ShardNos correspond
-        // to the follower order in leader's config
+        // TODO(#1350): leader should check that shards' ShardNos correspond
+        // to the shard order in leader's config
     }
 
     Y_UNIT_TEST(ShouldRenameExternalNodes)
@@ -4307,7 +4307,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4552,7 +4552,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4639,7 +4639,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4704,7 +4704,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, data2);
 
         // Removal of both the file and a hardlink should remove file from both
-        // the follower and a leader
+        // the shard and a leader
 
         service.DestroyHandle(headers, fsId, nodeId1, handle);
         service.DestroyHandle(headers, fsId, linkNodeResponse->Record.GetNode().GetId(), handle2);
@@ -4802,7 +4802,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4855,7 +4855,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fileStoreStats.GetUsedBlocksCount());
     }
 
-    Y_UNIT_TEST(ShouldRetryUnlinkingInFollower)
+    Y_UNIT_TEST(ShouldRetryUnlinkingInShard)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -4873,7 +4873,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -4884,7 +4884,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto nodeId1 = createNodeResponse.GetNode().GetId();
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
 
-        TAutoPtr<IEventHandle> followerUnlinkResponse;
+        TAutoPtr<IEventHandle> shardUnlinkResponse;
         bool intercept = true;
         env.GetRuntime().SetEventFilter(
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
@@ -4899,7 +4899,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             TEvService::TEvUnlinkNodeResponse>(
                             MakeError(E_REJECTED, "error"));
 
-                        followerUnlinkResponse = new IEventHandle(
+                        shardUnlinkResponse = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -4921,13 +4921,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             requestId);
 
         ui32 iterations = 0;
-        while (!followerUnlinkResponse && iterations++ < 100) {
+        while (!shardUnlinkResponse && iterations++ < 100) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT(followerUnlinkResponse);
+        UNIT_ASSERT(shardUnlinkResponse);
         intercept = false;
-        env.GetRuntime().Send(followerUnlinkResponse.Release());
+        env.GetRuntime().Send(shardUnlinkResponse.Release());
 
         auto unlinkResponse = service.RecvUnlinkNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -4969,7 +4969,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             unlinkResponse->GetError().GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponLeaderRestart)
+    Y_UNIT_TEST(ShouldRetryUnlinkingInShardUponLeaderRestart)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5007,7 +5007,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -5088,7 +5088,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 
-    Y_UNIT_TEST(ShouldRetryUnlinkingInFollowerUponLeaderRestartForRenameNode)
+    Y_UNIT_TEST(ShouldRetryUnlinkingInShardUponLeaderRestartForRenameNode)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5126,7 +5126,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -5224,7 +5224,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 
-    Y_UNIT_TEST(ShouldRetryNodeCreationInFollower)
+    Y_UNIT_TEST(ShouldRetryNodeCreationInShard)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5242,11 +5242,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
-        TAutoPtr<IEventHandle> followerCreateResponse;
+        TAutoPtr<IEventHandle> shardCreateResponse;
         bool intercept = true;
         env.GetRuntime().SetEventFilter(
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
@@ -5261,7 +5261,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             TEvService::TEvCreateNodeResponse>(
                             MakeError(E_REJECTED, "error"));
 
-                        followerCreateResponse = new IEventHandle(
+                        shardCreateResponse = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -5281,13 +5281,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             requestId);
 
         ui32 iterations = 0;
-        while (!followerCreateResponse && iterations++ < 100) {
+        while (!shardCreateResponse && iterations++ < 100) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT(followerCreateResponse);
+        UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(followerCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release());
 
         auto createResponse = service.RecvCreateNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -5326,7 +5326,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createResponse->Record.GetNode().GetId());
     }
 
-    Y_UNIT_TEST(ShouldRetryNodeCreationInFollowerUponLeaderRestart)
+    Y_UNIT_TEST(ShouldRetryNodeCreationInShardUponLeaderRestart)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5364,7 +5364,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -5466,7 +5466,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createResponse->Record.GetNode().GetId());
     }
 
-    Y_UNIT_TEST(ShouldRetryNodeCreationInFollowerUponCreateHandle)
+    Y_UNIT_TEST(ShouldRetryNodeCreationInShardUponCreateHandle)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5484,11 +5484,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
-        TAutoPtr<IEventHandle> followerCreateResponse;
+        TAutoPtr<IEventHandle> shardCreateResponse;
         bool intercept = true;
         env.GetRuntime().SetEventFilter(
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
@@ -5503,7 +5503,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             TEvService::TEvCreateNodeResponse>(
                             MakeError(E_REJECTED, "error"));
 
-                        followerCreateResponse = new IEventHandle(
+                        shardCreateResponse = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
@@ -5523,17 +5523,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
-            "", // followerId
+            "", // shardId
             requestId);
 
         ui32 iterations = 0;
-        while (!followerCreateResponse && iterations++ < 100) {
+        while (!shardCreateResponse && iterations++ < 100) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT(followerCreateResponse);
+        UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(followerCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release());
 
         auto createHandleResponse = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -5563,7 +5563,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
-            "", // followerId
+            "", // shardId
             requestId);
 
         createHandleResponse = service.RecvCreateHandleResponse();
@@ -5576,7 +5576,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createHandleResponse->Record.GetNodeAttr().GetId());
     }
 
-    Y_UNIT_TEST(ShouldRetryNodeCreationInFollowerUponCreateHandleUponLeaderRestart)
+    Y_UNIT_TEST(ShouldRetryNodeCreationInShardUponCreateHandleUponLeaderRestart)
     {
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
@@ -5614,7 +5614,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
-        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -5643,7 +5643,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
-            "", // followerId
+            "", // shardId
             requestId);
 
         ui32 iterations = 0;
@@ -5690,7 +5690,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
-            "", // followerId
+            "", // shardId
             requestId);
 
         createHandleResponse = service.RecvCreateHandleResponse();

@@ -319,10 +319,10 @@ public:
         return requestToTablet;
     }
 
-    auto CreateConfigureAsFollowerRequest(ui32 shardNo)
+    auto CreateConfigureAsShardRequest(ui32 shardNo)
     {
         auto request =
-            std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerRequest>();
+            std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetShardNo(shardNo);
 
         return request;

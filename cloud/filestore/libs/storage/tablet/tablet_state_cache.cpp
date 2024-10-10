@@ -191,8 +191,8 @@ bool TInMemoryIndexState::ReadNodeRef(
             nodeId,
             name,
             it->second.ChildId,
-            it->second.FollowerId,
-            it->second.FollowerName,
+            it->second.ShardId,
+            it->second.ShardName,
             minCommitId,
             maxCommitId};
     }
@@ -231,8 +231,8 @@ void TInMemoryIndexState::WriteNodeRef(
     ui64 commitId,
     const TString& name,
     ui64 childNode,
-    const TString& followerId,
-    const TString& followerName)
+    const TString& shardId,
+    const TString& shardName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
     if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
@@ -241,8 +241,8 @@ void TInMemoryIndexState::WriteNodeRef(
     NodeRefs[key] = TNodeRefsRow{
         .CommitId = commitId,
         .ChildId = childNode,
-        .FollowerId = followerId,
-        .FollowerName = followerName};
+        .ShardId = shardId,
+        .ShardName = shardName};
 }
 
 void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)
@@ -327,8 +327,8 @@ void TInMemoryIndexState::UpdateState(
                 request->NodeRefsRow.CommitId,
                 request->NodeRefsKey.Name,
                 request->NodeRefsRow.ChildId,
-                request->NodeRefsRow.FollowerId,
-                request->NodeRefsRow.FollowerName);
+                request->NodeRefsRow.ShardId,
+                request->NodeRefsRow.ShardName);
         } else if (
             const auto* request = std::get_if<TDeleteNodeRefsRequest>(&update))
         {

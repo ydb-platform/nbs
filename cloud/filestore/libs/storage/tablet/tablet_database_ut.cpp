@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 commitId,
                 "child2",
                 childNodeId2,
-                "follower",
+                "shard",
                 "name");
         });
 
@@ -149,14 +149,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             TMaybe<IIndexTabletDatabase::TNodeRef> ref1;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child1", ref1));
             UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
-            UNIT_ASSERT_EQUAL(ref1->FollowerId, "");
-            UNIT_ASSERT_EQUAL(ref1->FollowerName, "");
+            UNIT_ASSERT_EQUAL(ref1->ShardId, "");
+            UNIT_ASSERT_EQUAL(ref1->ShardName, "");
 
             TMaybe<IIndexTabletDatabase::TNodeRef> ref2;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child2", ref2));
             UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
-            UNIT_ASSERT_EQUAL(ref2->FollowerId, "follower");
-            UNIT_ASSERT_EQUAL(ref2->FollowerName, "name");
+            UNIT_ASSERT_EQUAL(ref2->ShardId, "shard");
+            UNIT_ASSERT_EQUAL(ref2->ShardName, "name");
 
             TMaybe<IIndexTabletDatabase::TNodeRef> ref3;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child3", ref3));

@@ -62,8 +62,8 @@ message TCreateHandleRequest
     // Create group
     uint64 Gid = 11;
 
-    // If set, the node will be created or looked up in the follower FS.
-    string FollowerFileSystemId = 12;
+    // If set, the node will be created or looked up in the shard FS.
+    string ShardFileSystemId = 12;
 }
 
 message TCreateHandleResponse
@@ -77,10 +77,10 @@ message TCreateHandleResponse
     // Node Attr.
     TNodeAttr NodeAttr = 3;
 
-    // Follower FS id - if the request should be redirected to a follower.
-    string FollowerFileSystemId = 4;
-    // Node name in the follower FS (under RootNode).
-    string FollowerNodeName = 5;
+    // Shard FS id - if the request should be redirected to a shard.
+    string ShardFileSystemId = 4;
+    // Node name in the shard FS (under RootNode).
+    string ShardNodeName = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

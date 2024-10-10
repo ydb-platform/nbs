@@ -61,11 +61,11 @@ message TNodeAttr
     // Number of persistent links.
     uint32 Links = 10;
 
-    // Follower FS id. Set if this node is actually located in the follower FS.
-    // ATime, MTime, CTime and Size are stored in the follower FS.
-    string FollowerFileSystemId = 11;
-    // Node name in the follower FS.
-    string FollowerNodeName = 12;
+    // Shard FS id. Set if this node is actually located in the shard FS.
+    // ATime, MTime, CTime and Size are stored in the shard FS.
+    string ShardFileSystemId = 11;
+    // Node name in the shard FS.
+    string ShardNodeName = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,9 +116,9 @@ message TCreateNodeRequest
     message TLink
     {
         uint64 TargetNode = 1;
-        // when creating hardlinks, one can enforce the FollowerNodeName and
+        // when creating hardlinks, one can enforce the ShardNodeName and
         // avoid using the generated one
-        string FollowerNodeName = 2;
+        string ShardNodeName = 2;
     }
 
     message TSymLink
@@ -158,8 +158,8 @@ message TCreateNodeRequest
         TSocket Socket = 9;
     }
 
-    // If set, the node will be created in the follower FS.
-    string FollowerFileSystemId = 12;
+    // If set, the node will be created in the shard FS.
+    string ShardFileSystemId = 12;
 }
 
 message TCreateNodeResponse
