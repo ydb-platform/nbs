@@ -1,5 +1,6 @@
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
 from contrib.ydb.tests.library.harness.util import LogLevels
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -162,7 +163,10 @@ class LocalLoadTest:
         finally:
             # It may be beneficial to save dmesg output for debugging purposes.
             try:
-                with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
+                test_output_path = get_unique_path_for_current_test(
+                    output_path=yatest_common.output_path(),
+                    sub_folder="")
+                with open(test_output_path + "/dmesg.txt", "w") as dmesg_output:
                     subprocess.run(
                         ["sudo", "-n", "dmesg", "-T"],
                         stdout=dmesg_output,
