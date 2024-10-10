@@ -230,6 +230,7 @@ void TBootstrap::InitHTTPServer()
     Y_DEBUG_ABORT_UNLESS(!Initialized);
 
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
+        Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
         "This node is not registered in the NodeBroker. See "
         "\"DisableNodeBrokerRegisterationOnDevicelessAgent\" in the disk agent "
