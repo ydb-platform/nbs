@@ -598,6 +598,46 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     return true;
 }
 
+bool TIndexTabletDatabase::ReadNodeRefs(
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    using TTable = TIndexTabletSchema::NodeRefs;
+
+    auto it = Table<TTable>().GreaterOrEqual(startNodeId, startCookie).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid() && maxCount > 0) {
+        refs.emplace_back(TNodeRef{
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::Name>(),
+            it.GetValue<TTable::ChildId>(),
+            it.GetValue<TTable::FollowerId>(),
+            it.GetValue<TTable::FollowerName>(),
+            it.GetValue<TTable::CommitId>(),
+            InvalidCommitId});
+        --maxCount;
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    if (it.IsValid()) {
+        nextNodeId = it.GetValue<TTable::NodeId>();
+        nextCookie = it.GetValue<TTable::Name>();
+    }
+
+    return true;
+}
+
 bool TIndexTabletDatabase::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
@@ -1900,6 +1940,22 @@ TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
     , NodeUpdates(nodeUpdates)
 {}
 
+bool TIndexTabletDatabaseProxy::ReadNode(
+    ui64 nodeId,
+    ui64 commitId,
+    TMaybe<IIndexTabletDatabase::TNode>& node)
+{
+    auto result = TIndexTabletDatabase::ReadNode(nodeId, commitId, node);
+    if (result && node) {
+        // If ReadNode was successful, it is reasonable to update the cache with
+        // the value that has just been read.
+        NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+            .NodeId = nodeId,
+            .Row = {.CommitId = node->MinCommitId, .Node = node->Attrs}});
+    }
+    return result;
+}
+
 void TIndexTabletDatabaseProxy::WriteNode(
     ui64 nodeId,
     ui64 commitId,
@@ -1932,6 +1988,27 @@ void TIndexTabletDatabaseProxy::DeleteNodeVer(ui64 nodeId, ui64 commitId)
 {
     TIndexTabletDatabase::DeleteNodeVer(nodeId, commitId);
     // TODO(#1146): _Ver tables not yet supported
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodeAttr(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    TMaybe<TNodeAttr>& attr)
+{
+    auto result =
+        TIndexTabletDatabase::ReadNodeAttr(nodeId, commitId, name, attr);
+    if (result && attr) {
+        // If ReadNodeAttr  was successful, it is reasonable to update the cache
+        // with the value that has just been read.
+        NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
+            .NodeAttrsKey = {nodeId, name},
+            .NodeAttrsRow = {
+                .CommitId = attr->MinCommitId,
+                .Value = attr->Value,
+                .Version = attr->Version}});
+    }
+    return result;
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeAttr(
@@ -1980,6 +2057,67 @@ void TIndexTabletDatabaseProxy::DeleteNodeAttrVer(
 {
     TIndexTabletDatabase::DeleteNodeAttrVer(nodeId, commitId, name);
     // TODO(#1146): _Ver tables not yet supported
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodeRef(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    TMaybe<IIndexTabletDatabase::TNodeRef>& ref)
+{
+    auto result =
+        TIndexTabletDatabase::ReadNodeRef(nodeId, commitId, name, ref);
+    if (result && ref) {
+        // If ReadNodeRef was successful, it is reasonable to update the cache
+        // with the value that has just been read.
+        NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(*ref));
+    }
+    return result;
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodeRefs(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& cookie,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui32 maxBytes,
+    TString* next)
+{
+    auto result = TIndexTabletDatabase::ReadNodeRefs(
+        nodeId, commitId, cookie, refs, maxBytes, next);
+    if (result) {
+        // If ReadNodeRefs was successful, it is reasonable to update the cache
+        // with the values that have just been read.
+        for (const auto& ref : refs) {
+            NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
+        }
+    }
+    return result;
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodeRefs(
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    auto result = TIndexTabletDatabase::ReadNodeRefs(
+        startNodeId,
+        startCookie,
+        maxCount,
+        refs,
+        nextNodeId,
+        nextCookie);
+    if (result) {
+        // If ReadNodeRefs was successful, it is reasonable to update the cache
+        // with the values that have just been read.
+        for (const auto& ref: refs) {
+            NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
+        }
+    }
+    return result;
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRef(
@@ -2040,6 +2178,18 @@ void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
 {
     TIndexTabletDatabase::DeleteNodeRefVer(nodeId, commitId, name);
     // TODO(#1146): _Ver tables not yet supported
+}
+
+TInMemoryIndexState::TWriteNodeRefsRequest
+TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
+{
+    return TInMemoryIndexState::TWriteNodeRefsRequest{
+        .NodeRefsKey = {ref.NodeId, ref.Name},
+        .NodeRefsRow = {
+            .CommitId = ref.MinCommitId,
+            .ChildId = ref.ChildNodeId,
+            .FollowerId = ref.FollowerId,
+            .FollowerName = ref.FollowerName}};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

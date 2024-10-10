@@ -24,6 +24,10 @@ public:
         ui64 nodeAttrsCapacity,
         ui64 nodeRefsCapacity);
 
+    void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs);
+
+    void MarkNodeRefsLoadComplete();
+
     //
     // Nodes
     //
@@ -109,6 +113,14 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next) override;
+
+    bool ReadNodeRefs(
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie) override;
 
     bool PrechargeNodeRefs(
         ui64 nodeId,
@@ -220,17 +232,9 @@ private:
         ui64 NodeId = 0;
         TString Name;
 
-        bool operator==(const TNodeRefsKey& rhs) const
+        bool operator<(const TNodeRefsKey& rhs) const
         {
-            return std::tie(NodeId, Name) == std::tie(rhs.NodeId, rhs.Name);
-        }
-    };
-
-    struct TNodeRefsKeyHash
-    {
-        size_t operator()(const TNodeRefsKey& key) const
-        {
-            return MultiHash(key.NodeId, key.Name);
+            return std::tie(NodeId, Name) < std::tie(rhs.NodeId, rhs.Name);
         }
     };
 
@@ -242,7 +246,9 @@ private:
         TString ShardName;
     };
 
-    THashMap<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash> NodeRefs;
+    TMap<TNodeRefsKey, TNodeRefsRow> NodeRefs;
+    bool IsNodeRefsEvictionObserved = false;
+    bool IsNodeRefsExhaustive = false;
 
 public:
     struct TWriteNodeRequest

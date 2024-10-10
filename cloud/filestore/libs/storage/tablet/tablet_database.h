@@ -207,6 +207,14 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui32 maxBytes,
         TString* next = nullptr) override;
 
+    virtual bool ReadNodeRefs(
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie) override;
+
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
@@ -533,6 +541,11 @@ public:
     // Nodes
     //
 
+    bool ReadNode(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) final;
+
     void WriteNode(
         ui64 nodeId,
         ui64 commitId,
@@ -555,6 +568,12 @@ public:
     //
     // NodeAttrs
     //
+
+    bool ReadNodeAttr(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        TMaybe<TNodeAttr>& attr) override;
 
     void WriteNodeAttr(
         ui64 nodeId,
@@ -586,6 +605,28 @@ public:
     // NodeRefs
     //
 
+    bool ReadNodeRef(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+
+    bool ReadNodeRefs(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& cookie,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui32 maxBytes,
+        TString* next = nullptr) override;
+
+    bool ReadNodeRefs(
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie) override;
+
     void WriteNodeRef(
         ui64 nodeId,
         ui64 commitId,
@@ -616,6 +657,9 @@ public:
 
 private:
     TVector<TInMemoryIndexState::TIndexStateRequest>& NodeUpdates;
+
+    static TInMemoryIndexState::TWriteNodeRefsRequest
+    ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

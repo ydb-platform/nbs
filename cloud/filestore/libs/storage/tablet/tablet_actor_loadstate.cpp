@@ -307,6 +307,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
+
+    if (Config->GetInMemoryIndexCacheEnabled() &&
+        Config->GetInMemoryIndexCacheLoadOnTabletStart())
+    {
+        LoadNodeRefsIfNeeded(ctx, 0, "");
+    }
+
     ScheduleSyncSessions(ctx);
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
@@ -493,13 +500,6 @@ void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
         args.FirstRangeId,
         args.LastRangeId);
     NCloud::Send(ctx, SelfId(), std::move(notification));
-
-    if (args.RequestInfo->Sender != ctx.SelfID) {
-        using TResponse =
-            TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
-        auto response = std::make_unique<TResponse>();
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

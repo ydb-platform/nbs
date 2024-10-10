@@ -115,6 +115,20 @@ public:
         ui32 maxBytes,
         TString* next) = 0;
 
+    /**
+     * @brief read at most maxCount node refs starting from key
+     * (startNodeId, startCookie). Populates refs with the nodeRefs that have
+     * been read. If there are more nodeRefs to read, nextNodeId and nextCookie
+     * will be populated with the key to continue reading from
+     */
+    virtual bool ReadNodeRefs(
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie) = 0;
+
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
