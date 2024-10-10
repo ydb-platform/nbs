@@ -547,13 +547,13 @@ public:
         TStringBuf blockContent)
     {
         TSgList sglist;
-        sglist.resize(writeRange.Size(), {blockContent.Data(), blockContent.Size()});
+        sglist.resize(writeRange.Size(), {blockContent.data(), blockContent.size()});
 
         auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.SetStartIndex(writeRange.Start);
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.BlocksCount = writeRange.Size();
-        request->Record.BlockSize = blockContent.Size() / writeRange.Size();
+        request->Record.BlockSize = blockContent.size() / writeRange.size();
         return request;
     }
 
@@ -614,7 +614,7 @@ public:
         TStringBuf buffer,
         const TString& checkpointId = {})
     {
-        return CreateReadBlocksLocalRequest(blockIndex, TGuardedSgList{{TBlockDataRef(buffer.Data(), buffer.Size())}}, checkpointId);
+        return CreateReadBlocksLocalRequest(blockIndex, TGuardedSgList{{TBlockDataRef(buffer.data(), buffer.size())}}, checkpointId);
     }
 
     std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> CreateReadBlocksLocalRequest(

@@ -129,8 +129,8 @@ IEventBasePtr CreateReadBlocksResponse(
         for (const auto blockIndex: xrange(readRange)) {
             const auto& blockContent = response->Record.GetBlocks().GetBuffers(blockIndex - readRange.Start);
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(blockSize);
-            if (!blockContent.Empty()) {
-                blockData = TBlockDataRef(blockContent.Data(), blockContent.Size());
+            if (!blockContent.empty()) {
+                blockData = TBlockDataRef(blockContent.data(), blockContent.size());
             }
             const auto digest = blockDigestGenerator.ComputeDigest(
                 blockIndex,
@@ -723,8 +723,8 @@ public:
     {
         if (AddBlock(block, {}, 0, 0)) {
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(BlockSize);
-            if (!blockContent.Empty()) {
-                blockData = TBlockDataRef(blockContent.Data(), blockContent.Size());
+            if (!blockContent.empty()) {
+                blockData = TBlockDataRef(blockContent.data(), blockContent.size());
             }
             Args.ReadHandler->SetBlock(
                 block.BlockIndex,

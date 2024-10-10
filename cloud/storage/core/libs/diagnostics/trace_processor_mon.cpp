@@ -283,10 +283,10 @@ public:
             monitoring->RegisterIndexPage("tracelogs", "Traces Logs");
         auto& index = static_cast<TIndexMonPage&>(*rootPage);
         index.Register(
-            new TMonPageHtml(*this, randomName.Data(), "Random samples"));
+            new TMonPageHtml(*this, randomName.data(), "Random samples"));
         index.Register(
-            new TMonPageHtml(*this, slowName.Data(), "Slow samples"));
-        index.Register(new TMonPageJson(*this, jsonName.Data()));
+            new TMonPageHtml(*this, slowName.data(), "Slow samples"));
+        index.Register(new TMonPageJson(*this, jsonName.data()));
     }
 
     void Start() override
