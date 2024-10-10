@@ -207,7 +207,7 @@ func (f *factory) initClients(
 				Timeout: &durableClientTimeout,
 				OnError: func(ctx context.Context, err nbs_client.ClientError) {
 					tracing.SpanFromContext(ctx).AddEvent(
-						"Retriable error in blockstore Go SDK, will retry after delay",
+						"Retriable error in blockstore SDK",
 						tracing.WithAttributes(
 							tracing.AttributeString(
 								"delay_duration",
