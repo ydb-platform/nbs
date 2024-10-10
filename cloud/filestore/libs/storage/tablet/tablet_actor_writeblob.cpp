@@ -305,7 +305,7 @@ void TIndexTabletActor::HandleWriteBlob(
                 blob.BlobContent,
                 out.begin());
             Metrics.UncompressedBytesWritten.fetch_add(
-                blob.BlobContent.Size(),
+                blob.BlobContent.size(),
                 std::memory_order_relaxed);
             Metrics.CompressedBytesWritten.fetch_add(
                 sz,

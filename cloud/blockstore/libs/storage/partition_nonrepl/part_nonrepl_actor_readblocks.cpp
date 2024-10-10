@@ -264,7 +264,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         auto& destBuffer =
             destBuffers[blockRange.Start + i - Request.GetStartIndex()];
         destBuffer.swap(srcBuffer);
-        if (destBuffer.Empty()) {
+        if (destBuffer.empty()) {
             STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
             destBuffer.resize(blockSize, 0);
             ++VoidBlockCount;

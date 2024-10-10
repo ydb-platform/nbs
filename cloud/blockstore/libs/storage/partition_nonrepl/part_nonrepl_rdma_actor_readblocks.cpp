@@ -90,14 +90,14 @@ public:
         ui64 offset = 0;
         ui64 b = 0;
         bool isAllZeroes = CheckVoidBlocks;
-        while (offset < result.Data.Size()) {
+        while (offset < result.Data.size()) {
             ui64 targetBlock = dr.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
             ui64 bytes =
-                Min(result.Data.Size() - offset, blocks[targetBlock].Size());
+                Min(result.Data.size() - offset, blocks[targetBlock].size());
             Y_ABORT_UNLESS(bytes);
 
-            char* dst = const_cast<char*>(blocks[targetBlock].Data());
+            char* dst = const_cast<char*>(blocks[targetBlock].data());
             const char* src = result.Data.data() + offset;
 
             if (isAllZeroes) {

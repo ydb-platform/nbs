@@ -128,9 +128,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             auto zero = GetBlockContent(0);
             auto one = GetBlockContent(1);
             auto two = GetBlockContent(2);
-            db.WriteFreshBlock(0, commitId, {zero.Data(), zero.Size()});
-            db.WriteFreshBlock(1, commitId, {one.Data(), one.Size()});
-            db.WriteFreshBlock(2, commitId, {two.Data(), two.Size()});
+            db.WriteFreshBlock(0, commitId, {zero.data(), zero.size()});
+            db.WriteFreshBlock(1, commitId, {one.data(), one.size()});
+            db.WriteFreshBlock(2, commitId, {two.data(), two.size()});
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {

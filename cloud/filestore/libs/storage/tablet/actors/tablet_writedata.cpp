@@ -34,7 +34,7 @@ TWriteDataActor::TWriteDataActor(
     , WriteRange(writeRange)
 {
     for (const auto& blob: Blobs) {
-        BlobsSize += blob.BlobContent.Size();
+        BlobsSize += blob.BlobContent.size();
     }
 }
 

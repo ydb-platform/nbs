@@ -92,7 +92,7 @@ void SplitFreshBlockRangeFromRelativeToGlobalIndices(
     const ui32 startIndex = srcRange.GetStartIndex();
     ui32 blocksCount = 0;
 
-    const char* srcRangePtr = srcRange.GetBlocksContent().Data();
+    const char* srcRangePtr = srcRange.GetBlocksContent().data();
     while (blocksCount < srcRange.GetBlocksCount()) {
         const auto index = RelativeToGlobalIndex(
             blocksPerStripe,

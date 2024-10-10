@@ -37,7 +37,7 @@ public:
 
     void Write(TStringBuf buffer)
     {
-        Write(buffer.Data(), buffer.Size());
+        Write(buffer.data(), buffer.size());
     }
 
     void Write(const TBuffer& buffer)

@@ -76,7 +76,7 @@ ui64 CalculateBytesCount(
 
     ui64 bytesInBuffers = 0;
     for (const auto& buffer: request.GetBlocks().GetBuffers()) {
-        bytesInBuffers += buffer.Size();
+        bytesInBuffers += buffer.size();
     }
     return bytesInBuffers;
 }
@@ -88,7 +88,7 @@ ui32 CalculateWriteRequestBlockCount(
 {
     ui32 bytes = 0;
     for (const auto& buffer: request.GetBlocks().GetBuffers()) {
-        bytes += buffer.Size();
+        bytes += buffer.size();
     }
     if (bytes % blockSize) {
         Y_ABORT("bytes %u not divisible by blockSize %u", bytes, blockSize);

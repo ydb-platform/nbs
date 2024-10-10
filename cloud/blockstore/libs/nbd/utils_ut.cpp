@@ -132,7 +132,7 @@ Y_UNIT_TEST_SUITE(TUtilsTest)
         createPidFile(path / "nbd0" / "pid");
         createPidFile(path / "nbd1" / "pid");
 
-        UNIT_ASSERT(FindFreeNbdDevice(path.GetPath()).Empty());
+        UNIT_ASSERT(FindFreeNbdDevice(path.GetPath()).empty());
 
         (path / "nbd2").MkDir();
 

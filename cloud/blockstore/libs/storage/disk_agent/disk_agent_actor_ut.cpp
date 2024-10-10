@@ -3471,7 +3471,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 TString(blockSize, 'X'));
 
             for (const auto& block : blocks) {
-                checksum.Extend(block.Data(), block.Size());
+                checksum.Extend(block.data(), block.size());
             }
 
             WriteDeviceBlocks(runtime, diskAgent, uuids[0], 0, sglist, clientId);

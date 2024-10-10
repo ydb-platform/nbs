@@ -1463,7 +1463,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
     const bool needToCreateShadowActor =
         request.ReqType == ECheckpointRequestType::Create &&
         request.ShadowDiskState != EShadowDiskState::Error &&
-        !request.ShadowDiskId.Empty() &&
+        !request.ShadowDiskId.empty() &&
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
     if (needToDestroyShadowActor || needToCreateShadowActor) {

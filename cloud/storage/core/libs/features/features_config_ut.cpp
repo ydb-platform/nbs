@@ -17,7 +17,7 @@ TVector<TString> RandomStrings(ui32 n)
     TVector<TString> r;
     for (ui32 i = 0; i < n; ++i) {
         TString s(20, 0);
-        for (ui32 j = 0; j < s.Size(); ++j) {
+        for (ui32 j = 0; j < s.size(); ++j) {
             s[j] = RandomNumber<ui8>();
         }
         r.push_back(s);

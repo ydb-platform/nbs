@@ -350,7 +350,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
                 for (size_t i = 0; i < sglist.size(); ++i) {
                     UNIT_ASSERT(storageBlocks[i].size() == sglist[i].Size());
-                    auto* dst = const_cast<char*>(storageBlocks[i].Data());
+                    auto* dst = const_cast<char*>(storageBlocks[i].data());
                     auto* src = sglist[i].Data();
                     memcpy(dst, src, sglist[i].Size());
                 }
@@ -449,7 +449,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 for (size_t i = 0; i < sglist.size(); ++i) {
                     size_t n = i + wRequest->GetStartIndex();
                     UNIT_ASSERT(storageBlocks[n].size() == sglist[i].Size());
-                    auto* dst = const_cast<char*>(storageBlocks[n].Data());
+                    auto* dst = const_cast<char*>(storageBlocks[n].data());
                     auto* src = sglist[i].Data();
                     memcpy(dst, src, sglist[i].Size());
                 }

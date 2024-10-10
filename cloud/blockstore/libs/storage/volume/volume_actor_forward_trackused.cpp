@@ -29,7 +29,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const auto* msg = ev->Get();
 
     const bool overlayDiskRegistryBasedDisk =
-        State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().Empty();
+        State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
         if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())

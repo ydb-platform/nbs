@@ -447,7 +447,7 @@ public:
                     std::move(Checksums));
             }
 
-            BlobContent.AddBlock({block.Content.Data(), block.Content.Size()});
+            BlobContent.AddBlock({block.Content.data(), block.Content.size()});
             Blocks.emplace_back(
                 block.Meta.BlockIndex,
                 block.Meta.CommitId,

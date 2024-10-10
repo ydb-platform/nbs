@@ -258,8 +258,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             auto block2 = TBlock(2, commitId, InvalidCommitId, false);
             auto one = GetBlockContent(1);
             auto two = GetBlockContent(2);
-            state.WriteFreshBlock(block1, {one.Data(), one.Size()});
-            state.WriteFreshBlock(block2, {two.Data(), two.Size()});
+            state.WriteFreshBlock(block1, {one.data(), one.size()});
+            state.WriteFreshBlock(block2, {two.data(), two.size()});
         };
 
         {
@@ -309,8 +309,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             auto one = GetBlockContent(1);
             auto two = GetBlockContent(2);
 
-            state.WriteFreshBlock(block1, {one.Data(), one.Size()});
-            state.WriteFreshBlock(block2, {two.Data(), two.Size()});
+            state.WriteFreshBlock(block1, {one.data(), one.size()});
+            state.WriteFreshBlock(block2, {two.data(), two.size()});
         };
 
         ui64 commitId2 = state.GenerateCommitId();
@@ -328,8 +328,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             auto oneone = GetBlockContent(11);
             auto twotwo = GetBlockContent(22);
 
-            state.WriteFreshBlock(block1, {oneone.Data(), oneone.Size()});
-            state.WriteFreshBlock(block2, {twotwo.Data(), twotwo.Size()});
+            state.WriteFreshBlock(block1, {oneone.data(), oneone.size()});
+            state.WriteFreshBlock(block2, {twotwo.data(), twotwo.size()});
         }
 
         {
@@ -390,8 +390,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             auto one = GetBlockContent(1);
             auto two = GetBlockContent(2);
 
-            state.WriteFreshBlock(block1, {one.Data(), one.Size()});
-            state.WriteFreshBlock(block2, {two.Data(), two.Size()});
+            state.WriteFreshBlock(block1, {one.data(), one.size()});
+            state.WriteFreshBlock(block2, {two.data(), two.size()});
         };
 
         ui64 commitId2 = state.GenerateCommitId();
@@ -405,8 +405,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             auto one = GetBlockContent(11);
             auto two = GetBlockContent(22);
 
-            state.WriteFreshBlock(block1, {one.Data(), one.Size()});
-            state.WriteFreshBlock(block2, {two.Data(), two.Size()});
+            state.WriteFreshBlock(block1, {one.data(), one.size()});
+            state.WriteFreshBlock(block2, {two.data(), two.size()});
         }
 
         {

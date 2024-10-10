@@ -345,7 +345,7 @@ public:
         }
 
         Blocks.push_back(block);
-        BlobContent.AddBlock({blockContent.Data(), blockContent.Size()});
+        BlobContent.AddBlock({blockContent.data(), blockContent.size()});
 
         if (Blocks.size() == MaxBlocksInBlob) {
             Flush();

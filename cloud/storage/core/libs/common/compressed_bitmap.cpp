@@ -805,10 +805,10 @@ public:
     {
         // TODO: endianness
         chunk->UnsetAll(compressedChunkCount);
-        Y_DEBUG_ABORT_UNLESS(data.Size() > 0);
+        Y_DEBUG_ABORT_UNLESS(data.size() > 0);
         switch (chunk->Type() = data[0]) {
             case PLAIN: {
-                Y_DEBUG_ABORT_UNLESS(data.Size() >= sizeof(TPlainChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(data.size() >= sizeof(TPlainChunkData) + 1);
                 auto& plain = chunk->Data.Plain;
                 plain.Data = new TPlainChunkData;
                 memcpy(
@@ -823,11 +823,11 @@ public:
             }
 
             case RLE: {
-                Y_DEBUG_ABORT_UNLESS(data.Size() >= sizeof(TCompressedChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(data.size() >= sizeof(TCompressedChunkData) + 1);
                 auto& compressed = chunk->Data.Compressed;
                 memcpy(
                     compressed.Data.Runs,
-                    data.Data() + 1,
+                    data.data() + 1,
                     sizeof(TCompressedChunkData)
                 );
                 chunk->Count() = compressed.Data.Count();

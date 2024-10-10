@@ -22,7 +22,7 @@ TString MakeShadowDiskClientId(
     const TString& sourceDiskClientId,
     bool readOnlyMount)
 {
-    if (readOnlyMount || sourceDiskClientId.Empty()) {
+    if (readOnlyMount || sourceDiskClientId.empty()) {
         return TString(ShadowDiskClientId);
     }
     return sourceDiskClientId;

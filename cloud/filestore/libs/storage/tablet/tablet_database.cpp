@@ -1019,7 +1019,7 @@ void TIndexTabletDatabase::WriteFreshBytes(
         .Key(commitId, nodeId, offset)
         .Update(
             NIceDb::TUpdate<TTable::Data>(TString(data)),
-            NIceDb::TUpdate<TTable::Len>(data.Size()));
+            NIceDb::TUpdate<TTable::Len>(data.size()));
 }
 
 void TIndexTabletDatabase::WriteFreshBytesDeletionMarker(
@@ -1068,7 +1068,7 @@ bool TIndexTabletDatabase::ReadFreshBytes(TVector<TFreshBytesEntry>& bytes)
         TString data = it.GetValue<TTable::Data>();
         if (data && !len) {
             // backwards-compat
-            len = data.Size();
+            len = data.size();
         }
 
         bytes.emplace_back(TFreshBytesEntry {

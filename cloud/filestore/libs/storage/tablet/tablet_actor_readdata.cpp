@@ -40,7 +40,7 @@ void ApplyBytes(const TBlockBytes& bytes, TStringBuf blockData)
 {
     for (const auto& interval: bytes.Intervals) {
         memcpy(
-            const_cast<char*>(blockData.Data()) + interval.OffsetInBlock,
+            const_cast<char*>(blockData.data()) + interval.OffsetInBlock,
             interval.Data.data(),
             interval.Data.size());
     }
@@ -273,7 +273,7 @@ public:
             if (prev.MinCommitId < bytes.MinCommitId) {
                 Args.Bytes[blockIndex].Intervals.push_back({
                     IntegerCast<ui32>(offsetInBlock),
-                    TString(data.Data() + i, next - i)
+                    TString(data.data() + i, next - i)
                 });
             }
 
