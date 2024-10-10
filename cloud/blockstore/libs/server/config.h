@@ -115,8 +115,8 @@ public:
     TString GetRdmaEndpointListenAddress() const;
     ui32 GetRdmaEndpointListenPort() const;
     bool GetThrottlingEnabled() const;
-    ui32 GetMaxReadBandwidth() const;
-    ui32 GetMaxWriteBandwidth() const;
+    ui64 GetMaxReadBandwidth() const;
+    ui64 GetMaxWriteBandwidth() const;
     ui32 GetMaxReadIops() const;
     ui32 GetMaxWriteIops() const;
     TDuration GetMaxBurstTime() const;
