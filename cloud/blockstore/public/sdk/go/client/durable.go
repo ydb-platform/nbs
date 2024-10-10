@@ -20,7 +20,7 @@ type durableClient struct {
 	impl             ClientIface
 	timeout          time.Duration
 	timeoutIncrement time.Duration
-	onError          func(ClientError)
+	onError          func(context.Context, ClientError)
 	log              Log
 }
 
@@ -56,7 +56,7 @@ func (client *durableClient) executeRequest(
 			return resp, nil
 		}
 
-		client.onError(cerr)
+		client.onError(ctx, cerr)
 
 		if !cerr.IsRetriable() {
 			if logger := client.log.Logger(LOG_ERROR); logger != nil {
@@ -725,7 +725,7 @@ func (client *durableClient) ResizeDevice(
 type DurableClientOpts struct {
 	Timeout          *time.Duration
 	TimeoutIncrement *time.Duration
-	OnError          func(ClientError)
+	OnError          func(context.Context, ClientError)
 }
 
 func NewDurableClient(
@@ -744,7 +744,7 @@ func NewDurableClient(
 		retryTimeoutIncrement = *opts.TimeoutIncrement
 	}
 
-	onError := func(ClientError) {}
+	onError := func(context.Context, ClientError) {}
 	if opts.OnError != nil {
 		onError = opts.OnError
 	}
