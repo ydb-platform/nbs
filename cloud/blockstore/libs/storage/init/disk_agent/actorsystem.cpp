@@ -14,6 +14,9 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
+#include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
+
+#include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -144,7 +147,8 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         TServiceInitializersList& initializers)
     {
         Y_UNUSED(runConfig);
-
+        initializers.AddServiceInitializer(
+            new NStorage::TKikimrServicesInitializer(daArgs.AppConfig));
         initializers.AddServiceInitializer(new TStorageServicesInitializer(
             daArgs));
     };

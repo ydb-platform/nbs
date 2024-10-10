@@ -8,6 +8,7 @@ SRCS(
     config_initializer.cpp
     events.cpp
     helpers.cpp
+    kikimr_initializer.cpp
     node_registration_helpers.cpp
     node_registration_settings.cpp
     node.cpp
@@ -39,6 +40,8 @@ PEERDIR(
     contrib/ydb/core/tx/mediator
     contrib/ydb/core/tx/schemeshard
 )
+
+YQL_LAST_ABI_VERSION()
 
 END()
 

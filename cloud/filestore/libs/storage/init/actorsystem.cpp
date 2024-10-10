@@ -26,12 +26,14 @@
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
+#include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/driver_lib/run/kikimr_services_initializers.h>
 #include <contrib/ydb/core/driver_lib/run/run.h>
+#include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
 #include <contrib/ydb/core/mind/labels_maintainer.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
@@ -369,6 +371,8 @@ void TActorSystem::Init()
         CreateWallClockTimer(),
         NUserStats::CreateUserCounterSupplierStub());
     auto services = CreateServiceInitializersList(runConfig, servicesMask);
+    services->AddServiceInitializer(
+        new NStorage::TKikimrServicesInitializer(Args.AppConfig));
     services->AddServiceInitializer(
         new TStorageServicesInitializer(Args, std::move(statsRegistry)));
     services->AddServiceInitializer(
