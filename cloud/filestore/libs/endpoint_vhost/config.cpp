@@ -2,6 +2,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/size_literals.h>
 #include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore::NVhost {
@@ -25,6 +26,9 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(EndpointStorageDir,         TString,                {}                )\
     xxx(SocketAccessMode,           ui32,                   MODE0660          )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
+                                                                               \
+    xxx(HandleOpsQueuePath,                         TString,    ""            )\
+    xxx(HandleOpsQueueSize,                         ui32,       1_GB          )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \
