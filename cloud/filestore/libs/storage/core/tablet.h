@@ -295,7 +295,7 @@ protected:
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
         static constexpr bool IsReadOnly = true;                               \
                                                                                \
-        template <typename T, typename ...Args>                                \
+        template <typename T>                                                  \
         static bool PrepareTx(                                                 \
             T& target,                                                         \
             const NActors::TActorContext& ctx,                                 \
@@ -309,20 +309,23 @@ protected:
             return true;                                                       \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
+        template <typename T>                                                  \
         static void ExecuteTx(                                                 \
             T& target,                                                         \
             const NActors::TActorContext& ctx,                                 \
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
-            Args&& ...args)                                                    \
+            ns::T##name& args)                                                 \
         {                                                                      \
-            Y_UNUSED(target, ctx, tx, std::forward<Args>(args)...);            \
+            Y_UNUSED(target, ctx, tx, args);                                   \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static void CompleteTx(T& target, Args&& ...args)                      \
+        template <typename T>                                                  \
+        static void CompleteTx(                                                \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            ns::T##name& args)                                                 \
         {                                                                      \
-            target.CompleteAndUpdateState(std::forward<Args>(args)...);        \
+            target.CompleteAndUpdateState(ctx, args);                          \
         }                                                                      \
     };                                                                         \
                                                                                \

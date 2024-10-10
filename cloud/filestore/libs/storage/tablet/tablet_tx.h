@@ -528,6 +528,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Nodes.clear();
         }
     };
@@ -556,6 +557,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
         }
     };
@@ -598,6 +600,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
 
             NodeIds.clear();
@@ -692,6 +695,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNodeId = InvalidNodeId;
@@ -737,6 +741,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
@@ -793,6 +798,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
@@ -949,6 +955,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             Node.Clear();
         }
@@ -1062,6 +1069,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Version = 0;
             CommitId = InvalidCommitId;
             Node.Clear();
@@ -1168,6 +1176,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             Node.Clear();
             Attr.Clear();
@@ -1223,6 +1232,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
@@ -1261,6 +1271,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Node.Clear();
         }
     };
@@ -1433,6 +1444,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
@@ -1512,6 +1524,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             WriteRanges.clear();
             Nodes.clear();
@@ -1549,6 +1562,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
@@ -1598,6 +1612,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             TProfileAware::Clear();
 
             CommitId = InvalidCommitId;
@@ -1829,6 +1844,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             TProfileAware::Clear();
             Error.Clear();
         }
@@ -2036,6 +2052,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Node.Clear();
             Error.Clear();
         }
@@ -2057,6 +2074,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Node.Clear();
         }
     };
