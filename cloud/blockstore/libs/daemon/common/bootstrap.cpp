@@ -277,7 +277,10 @@ void TBootstrapBase::Init()
     }
     PostponedCriticalEvents.clear();
 
-    RequestStats = CreateServerRequestStats(serverGroup, Timer);
+    RequestStats = CreateServerRequestStats(
+        serverGroup,
+        Timer,
+        Configs->DiagnosticsConfig->GetHistogramCounterOptions());
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(

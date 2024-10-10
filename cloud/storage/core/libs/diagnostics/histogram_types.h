@@ -101,5 +101,10 @@ struct TKbSizeBuckets
     static TVector<TString> MakeNames();
 };
 
+template<class TBucketsType>
+inline TVector<double> ConvertToHistBounds(const TBucketsType& buckets) {
+    return {buckets.begin(), std::prev(buckets.end())};
+}
+
 }   // namespace NCloud
 

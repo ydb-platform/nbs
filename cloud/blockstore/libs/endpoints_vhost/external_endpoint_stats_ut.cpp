@@ -124,7 +124,10 @@ struct TFixture
             std::make_shared<TDiagnosticsConfig>(),
             Monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup, Timer),
+            CreateServerRequestStats(
+                serverGroup,
+                Timer,
+                EHistogramCounterOption::ReportMultipleCounters),
             std::move(volumeStats)
         );
 

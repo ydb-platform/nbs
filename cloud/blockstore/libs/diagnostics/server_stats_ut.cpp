@@ -142,7 +142,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup,timer),
+            CreateServerRequestStats(
+                serverGroup,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters),
             std::move(volumeStats)
         );
 
@@ -209,7 +212,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup,timer),
+            CreateServerRequestStats(
+                serverGroup,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters),
             std::move(volumeStats)
         );
 
@@ -242,7 +248,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup,timer),
+            CreateServerRequestStats(
+                serverGroup,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters),
             std::move(volumeStats)
         );
 
@@ -323,7 +332,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup, timer),
+            CreateServerRequestStats(
+                serverGroup,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters),
             std::move(volumeStats)
         );
 

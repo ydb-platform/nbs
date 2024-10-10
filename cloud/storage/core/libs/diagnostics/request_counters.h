@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/flags.h>
@@ -55,7 +56,8 @@ public:
         ui32 requestCount,
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
-        EOptions options = {});
+        EOptions options,
+        EHistogramCounterOptions histogramCounterOptions);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);

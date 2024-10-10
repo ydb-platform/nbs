@@ -51,6 +51,8 @@ namespace {
     xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\
+    xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
+    xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
@@ -173,6 +175,19 @@ TRequestThresholds TDiagnosticsConfig::GetRequestThresholds() const
 {
     return ConvertValue<TRequestThresholds>(
         DiagnosticsConfig.GetRequestThresholds());
+}
+
+EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
+{
+    EHistogramCounterOptions histogramCounterOptions;
+    if (GetReportHistogramAsMultipleCounters()) {
+        histogramCounterOptions |=
+            EHistogramCounterOption::ReportMultipleCounters;
+    }
+    if (GetReportHistogramAsSingleCounter()) {
+        histogramCounterOptions |= EHistogramCounterOption::ReportSingleCounter;
+    }
+    return histogramCounterOptions;
 }
 
 void TDiagnosticsConfig::Dump(IOutputStream& out) const

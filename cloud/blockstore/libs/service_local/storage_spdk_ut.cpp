@@ -247,7 +247,10 @@ IStoragePtr CreateSpdkStorage(
         std::make_shared<TDiagnosticsConfig>(),
         monitoring,
         CreateProfileLogStub(),
-        CreateServerRequestStats(serverGroup, CreateWallClockTimer()),
+        CreateServerRequestStats(
+            serverGroup,
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters),
         CreateVolumeStatsStub());
 
     auto storageProvider = CreateSpdkStorageProvider(

@@ -176,7 +176,10 @@ IStoragePtr CreateTestStorage(
         std::make_shared<TDiagnosticsConfig>(),
         monitoring,
         CreateProfileLogStub(),
-        CreateServerRequestStats(serverGroup, CreateWallClockTimer()),
+        CreateServerRequestStats(
+            serverGroup,
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters),
         CreateVolumeStatsStub());
 
     return CreateCompoundStorage(
@@ -700,7 +703,10 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             std::make_shared<TDiagnosticsConfig>(),
             monitoring,
             CreateProfileLogStub(),
-            CreateServerRequestStats(serverGroup, CreateWallClockTimer()),
+            CreateServerRequestStats(
+                serverGroup,
+                CreateWallClockTimer(),
+                EHistogramCounterOption::ReportMultipleCounters),
             CreateVolumeStatsStub());
 
         auto storage = CreateCompoundStorage(

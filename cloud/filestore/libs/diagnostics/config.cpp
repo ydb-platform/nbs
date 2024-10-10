@@ -35,6 +35,8 @@ namespace {
     xxx(PostponeTimePredictorMaxTime,    TDuration, TDuration::Minutes(1)     )\
     xxx(PostponeTimePredictorPercentage, double,    0.0                       )\
     xxx(MonitoringUrlData,               TMonitoringUrlData,  {}              )\
+    xxx(ReportHistogramAsMultipleCounters,  bool,            true             )\
+    xxx(ReportHistogramAsSingleCounter,     bool,            false            )\
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \
@@ -101,6 +103,19 @@ TRequestThresholds TDiagnosticsConfig::GetRequestThresholds() const
 {
     return ConvertValue<TRequestThresholds>(
         DiagnosticsConfig.GetRequestThresholds());
+}
+
+EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
+{
+    EHistogramCounterOptions histogramCounterOptions;
+    if (GetReportHistogramAsMultipleCounters()) {
+        histogramCounterOptions |=
+            EHistogramCounterOption::ReportMultipleCounters;
+    }
+    if (GetReportHistogramAsSingleCounter()) {
+        histogramCounterOptions |= EHistogramCounterOption::ReportSingleCounter;
+    }
+    return histogramCounterOptions;
 }
 
 void TDiagnosticsConfig::Dump(IOutputStream& out) const
