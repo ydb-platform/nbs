@@ -75,10 +75,10 @@ private:
 
 public:
     TReplayRequestGeneratorFs(
-        NProto::TReplaySpec spec,
-        ILoggingServicePtr logging,
-        ISessionPtr session,
-        TString filesystemId,
+            NProto::TReplaySpec spec,
+            ILoggingServicePtr logging,
+            ISessionPtr session,
+            TString filesystemId,
         NProto::THeaders headers)
         : IReplayRequestGenerator(
               std::move(spec),
@@ -108,7 +108,9 @@ public:
         }
 
         STORAGE_DEBUG(
-            "node not found " << id << " map size=" << NodesLogToLocal.size());
+            "Node not found id=%lu map size=%zu",
+            id,
+            NodesLogToLocal.size());
         return 0;
     }
 
@@ -120,8 +122,9 @@ public:
             return it->second;
         }
         STORAGE_DEBUG(
-            "handle not found " << id
-                                << " map size=" << HandlesLogToActual.size());
+            "Handle not found id=%lu map size=%zu",
+            id,
+            HandlesLogToActual.size());
         return 0;
     }
 
@@ -145,8 +148,8 @@ private:
 
         if (!node) {
             STORAGE_ERROR(
-                "access fail: " << " no node="
-                                << logRequest.GetNodeInfo().GetNodeId());
+                "Access fail: no node=%lu",
+                logRequest.GetNodeInfo().GetNodeId());
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_ACCESS_NODE,
                 Started,
@@ -156,8 +159,10 @@ private:
         auto fname = Spec.GetReplayRoot() + "/" + PathByNode(node);
         int res = access(fname.c_str(), R_OK);
         STORAGE_DEBUG(
-            "access " << node << " <- " << logRequest.GetNodeInfo().GetNodeId()
-                      << " = " << res);
+            "Access %lu <- %lu = %d ",
+            node,
+            logRequest.GetNodeInfo().GetNodeId(),
+            res);
         return MakeFuture(
             TCompletedRequest{NProto::ACTION_ACCESS_NODE, Started, {}});
     }
@@ -257,9 +262,9 @@ private:
 
             if (!parentNode) {
                 STORAGE_ERROR(
-                    "create handle fail :"
-                    << logRequest.GetNodeInfo().GetHandle() << " no parent="
-                    << logRequest.GetNodeInfo().GetParentNodeId());
+                    "Create handle %lu fail: no parent=%lu",
+                    logRequest.GetNodeInfo().GetHandle(),
+                    logRequest.GetNodeInfo().GetParentNodeId());
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     Started,
@@ -285,12 +290,13 @@ private:
             relativePathName = parentpath + nodeName;
         }
         STORAGE_DEBUG(
-            "open " << relativePathName
-                    << " handle=" << logRequest.GetNodeInfo().GetHandle()
-                    << " flags=" << logRequest.GetNodeInfo().GetFlags() << " "
-                    << HandleFlagsToString(logRequest.GetNodeInfo().GetFlags())
-                    << " mode=" << logRequest.GetNodeInfo().GetMode()
-                    << " node=" << logRequest.GetNodeInfo().GetNodeId());
+            "Open %s handle=%lu flags=%d (%s) mode=%d node=%lu",
+            relativePathName.c_str(),
+            logRequest.GetNodeInfo().GetHandle(),
+            logRequest.GetNodeInfo().GetFlags(),
+            HandleFlagsToString(logRequest.GetNodeInfo().GetFlags()).c_str(),
+            logRequest.GetNodeInfo().GetMode(),
+            logRequest.GetNodeInfo().GetNodeId());
 
         try {
             TFile fileHandle(
@@ -326,11 +332,14 @@ private:
                 NodePath[inode] = relativePathName;
             }
             STORAGE_DEBUG(
-                "Open " << fh << " <- " << logRequest.GetNodeInfo().GetHandle()
-                        << " inode=" << inode
-                        << " known handles=" << HandlesLogToActual.size()
-                        << " opened=" << OpenHandles.size()
-                        << " size=" << stat.Size);
+                "Open %d <- %lu inode=%lu known handles=%zu opened=%zu "
+                "size=%lu",
+                fh,
+                logRequest.GetNodeInfo().GetHandle(),
+                inode,
+                HandlesLogToActual.size(),
+                OpenHandles.size(),
+                stat.Size);
         } catch (const TFileError& error) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,
@@ -372,10 +381,10 @@ private:
         const auto handle = HandleIdMapped(logRequest.GetRanges(0).GetHandle());
         if (!handle) {
             STORAGE_WARN(
-                "read: no handle "
-                << logRequest.GetRanges(0).GetHandle()
-                << " ranges size=" << logRequest.GetRanges().size()
-                << " map size=" << HandlesLogToActual.size());
+                "Read: no handle %lu ranges size=%d map size=%zu",
+                logRequest.GetRanges(0).GetHandle(),
+                logRequest.GetRanges().size(),
+                HandlesLogToActual.size());
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_READ,
                 Started,
@@ -383,8 +392,10 @@ private:
         }
         auto& fh = OpenHandles[handle];
         STORAGE_DEBUG(
-            "Read from " << handle << " fh.len=" << fh.GetLength()
-                         << " fh.pos=" << fh.GetPosition());
+            "Read from %lu fh.len=%ld fh.pos=%ld ",
+            handle,
+            fh.GetLength(),
+            fh.GetPosition());
         auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
 
         /*
@@ -413,7 +424,7 @@ private:
                 return TCompletedRequest(
                     NProto::ACTION_READ,
                     started,
-                    MakeError(E_IO, TStringBuilder{} << "nothing read"));
+                    MakeError(E_IO, "nothing read"));
             });
     }
 
@@ -474,8 +485,10 @@ private:
         auto& fh = OpenHandles[handle];
 
         STORAGE_DEBUG(
-            "Write to " << handle << " fh.length=" << fh.GetLength()
-                        << " fh.pos=" << fh.GetPosition());
+            "Write to %lu fh.length=%ld fh.pos=%ld",
+            handle,
+            fh.GetLength(),
+            fh.GetPosition());
         // TODO(proller): TEST USE AFTER FREE on buffer
         TFileHandle FileHandle{fh.GetHandle()};
         const auto writeFuture = AsyncIO.Write(
@@ -545,9 +558,7 @@ private:
             case NProto::E_REGULAR_NODE: {
                 // TODO(proller): transform r.GetNodeInfo().GetMode() to correct
                 // open mode
-                TFileHandle fh(
-                    fullName,
-                    OpenAlways | RdWr);
+                TFileHandle fh(fullName, OpenAlways | RdWr);
                 if (fh) {
                     nodeid = TFileStat{fh}.INode;
                 } else {
@@ -637,13 +648,20 @@ private:
 
         const auto renameres = NFs::Rename(fullName, newFullName);
 
-        STORAGE_DEBUG(
-            "rename " << fullName << " => " << newFullName << " : " << renameres
-                      << (renameres
-                              ? (TStringBuilder{}
-                                 << " errno=" << LastSystemError() << " err="
-                                 << LastSystemErrorText(LastSystemError()))
-                              : TStringBuilder{}));
+        if (renameres) {
+            STORAGE_DEBUG(
+                "Rename fail %s => %s : %d errno=%d err=%s",
+                fullName.c_str(),
+                newFullName.c_str(),
+                renameres,
+                LastSystemError(),
+                LastSystemErrorText(LastSystemError()));
+        } else {
+            STORAGE_DEBUG(
+                "Renamed %s => %s ",
+                fullName.c_str(),
+                newFullName.c_str());
+        }
         return MakeFuture(
             TCompletedRequest{NProto::ACTION_RENAME_NODE, Started, {}});
     }
@@ -668,8 +686,8 @@ private:
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (!parentNodeId) {
             STORAGE_WARN(
-                "unlink : no parent orig="
-                << logRequest.GetNodeInfo().GetParentNodeId());
+                "Unlink : no parent orig=%lu",
+                logRequest.GetNodeInfo().GetParentNodeId());
             return MakeFuture(TCompletedRequest(
                 NProto::ACTION_REMOVE_NODE,
                 Started,
@@ -679,7 +697,7 @@ private:
                               PathByNode(parentNodeId) +
                               logRequest.GetNodeInfo().GetNodeName();
         const auto unlinkres = NFs::Remove(fullName);
-        STORAGE_DEBUG("unlink " << fullName << " = " << unlinkres);
+        STORAGE_DEBUG("Unlink %s : %d ", fullName.c_str(), unlinkres);
         // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)
@@ -718,11 +736,13 @@ private:
         OpenHandles.erase(handleid);
         HandlesLogToActual.erase(logRequest.GetNodeInfo().GetHandle());
         STORAGE_DEBUG(
-            "Close " << handleid << " <- "
-                     << logRequest.GetNodeInfo().GetHandle() << " pos=" << pos
-                     << " len=" << len
-                     << " open map size=" << OpenHandles.size()
-                     << " map size=" << HandlesLogToActual.size());
+            "Close %lu <- %lu pos=%lu len=%ld open map size=%ld map size=%zu",
+            handleid,
+            logRequest.GetNodeInfo().GetHandle(),
+            pos,
+            len,
+            OpenHandles.size(),
+            HandlesLogToActual.size());
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_DESTROY_HANDLE, Started, {}));
     }
@@ -844,9 +864,10 @@ private:
         const auto dirs = NLowLevel::ListDirAt(dir, true);
         if (logRequest.GetNodeInfo().GetSize() != dirs.size()) {
             STORAGE_DEBUG(
-                "Dir size differs "
-                << path << " log=" << logRequest.GetNodeInfo().GetSize()
-                << " local=" << dirs.size());
+                "Dir size differs %s log=%lu local=%zu",
+                path.c_str(),
+                logRequest.GetNodeInfo().GetSize(),
+                dirs.size());
         }
 
         return MakeFuture(

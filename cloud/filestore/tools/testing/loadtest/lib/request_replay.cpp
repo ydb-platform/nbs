@@ -75,7 +75,8 @@ void IReplayRequestGenerator::Advance()
         if (FileSystemIdRequest.empty() && !FileSystemId.empty()) {
             FileSystemIdRequest = FileSystemId;
             STORAGE_INFO(
-                "Using FileSystemId from profile log " << FileSystemIdRequest);
+                "Using FileSystemId from profile log %s",
+                FileSystemIdRequest.c_str());
         }
 
         EventMessageNumber = MessagePtr->GetRequests().size();
@@ -113,7 +114,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
                     STORAGE_DEBUG(
-                        "sleep=%lu timediff=%f diff=%lu",
+                        "Sleep=%lu timediff=%f diff=%lu",
                         sleep.MicroSeconds(),
                         timediff,
                         diff.MicroSeconds());
@@ -178,8 +179,9 @@ IReplayRequestGenerator::ExecuteNextRequest()
     }
 
     STORAGE_INFO(
-        "Profile log finished n=" << EventMessageNumber
-                                  << " ptr=" << !!EventPtr);
+        "Profile log finished n=%lu hasPtr=%d",
+        EventMessageNumber,
+        !!EventPtr);
 
     return MakeFuture(TCompletedRequest(true));
 }
