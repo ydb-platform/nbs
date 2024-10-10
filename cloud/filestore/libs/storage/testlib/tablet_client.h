@@ -57,7 +57,7 @@ struct TPerformanceProfile
     ui32 BoostRefillTime = 0;
     ui32 BoostPercentage = 0;
 
-    ui32 MaxPostponedWeight = 0;
+    ui64 MaxPostponedWeight = 0;
     ui32 MaxWriteCostMultiplier = 0;
     ui32 MaxPostponedTime = 0;
     ui32 MaxPostponedCount = 0;

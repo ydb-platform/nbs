@@ -89,7 +89,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         constexpr ui32 boostTime = 1'000; // 1 second
         constexpr ui32 boostRefillTime = 5'000; // 5 seconds
         constexpr ui32 boostPercentage = 75;
-        constexpr ui32 maxPostponedWeight = 16_MB;
+        constexpr ui64 maxPostponedWeight = 16_MB;
         constexpr ui32 maxWriteCostMultiplier = 15;
         constexpr ui32 maxPostponedTime = 7'000; // 7 seconds
         constexpr ui32 maxPostponedCount = 128;

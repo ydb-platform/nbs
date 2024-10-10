@@ -35,7 +35,7 @@ struct TBoostParameters
 
 struct TDefaultThresholds
 {
-    ui32 MaxPostponedWeight = 128_MB;
+    ui64 MaxPostponedWeight = 128_MB;
     ui32 MaxPostponedCount = 512;
     TDuration MaxPostponedTime = TDuration::Seconds(25);
     double MaxWriteCostMultiplier = 10.0;

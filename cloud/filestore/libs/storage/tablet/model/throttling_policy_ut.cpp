@@ -19,7 +19,7 @@ TThrottlerConfig MakeConfig(
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     TDuration maxPostponedTime,
     ui32 maxWriteCostMultiplier,
     ui32 defaultPostponedRequestWeight)

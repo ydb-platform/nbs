@@ -24,7 +24,7 @@ TFileSystemConfig MakeThrottlerConfig(
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     ui32 maxWriteCostMultiplier,
     ui32 maxPostponedTime,
     ui32 maxPostponedCount,

@@ -180,7 +180,7 @@ ui32 DefaultPostponedRequestWeight(
         fileStore.GetStorageMediaKind());
 }
 
-ui32 MaxPostponedWeight(
+ui64 MaxPostponedWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {

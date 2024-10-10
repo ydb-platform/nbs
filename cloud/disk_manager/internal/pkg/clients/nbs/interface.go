@@ -37,7 +37,7 @@ type AssignDiskParams struct {
 
 type DiskPerformanceProfile struct {
 	MaxReadBandwidth   uint64
-	MaxPostponedWeight uint32
+	MaxPostponedWeight uint64
 	ThrottlingEnabled  bool
 	MaxReadIops        uint32
 	BoostTime          uint32

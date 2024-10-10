@@ -165,7 +165,7 @@ struct TThrottlingPolicy::TImpl
     }
 
 private:
-    bool TryPostpone(ui32 weight)
+    bool TryPostpone(ui64 weight)
     {
         const auto newWeight = PostponedWeight + weight;
         if (newWeight <= Config.DefaultThresholds.MaxPostponedWeight) {
@@ -176,7 +176,7 @@ private:
         return false;
     }
 
-    ui32 PostponedRequestWeight(EOpType opType, ui32 byteCount) const
+    ui64 PostponedRequestWeight(EOpType opType, ui64 byteCount) const
     {
         return opType == EOpType::Write
             ? byteCount
