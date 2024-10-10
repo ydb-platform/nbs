@@ -105,6 +105,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         //
         // Creating another node should evict the first one from the cache
         tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
+        // Thus, the following GetNodeAttr should be a cache miss
         UNIT_ASSERT_VALUES_EQUAL(
             id,
             tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetId());
@@ -118,7 +119,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             2,
             statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
     }
@@ -670,6 +671,158 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             0,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(3, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCacheUponGetNodeAttr)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetUid(77));
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RO transaction, populates the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            77,
+            tablet.GetNodeAttr(id, "")->Record.GetNode().GetUid());
+        // RO transaction, cache hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            77,
+            tablet.GetNodeAttr(id, "")->Record.GetNode().GetUid());
+
+        // reading node by inode + name should also populate the cache:
+        // RO transaction, populates the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            77,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetUid());
+        // RO transaction, cache hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            77,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetUid());
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCacheUponGetNodeXAttr)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+        tablet.SetNodeXAttr(id, "user.test", "value");
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RO transaction, populates the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            "value",
+            tablet.GetNodeXAttr(id, "user.test")->Record.GetValue());
+
+        // RO transaction, cache hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            "value",
+            tablet.GetNodeXAttr(id, "user.test")->Record.GetValue());
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCacheUponListNodes)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(3);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(2);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id1 = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"))
+                       ->Record.GetNode()
+                       .GetId();
+        auto id2 = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"))
+                       ->Record.GetNode()
+                       .GetId();
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RO transaction, populates the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        // RO transactions, cache hits
+        tablet.GetNodeAttr(RootNodeId, "");
+        tablet.GetNodeAttr(RootNodeId, "test1");
+        tablet.GetNodeAttr(RootNodeId, "test2");
+        tablet.GetNodeAttr(id1, "");
+        tablet.GetNodeAttr(id2, "");
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount -
+        statsBefore.RWCount);
     }
 }
 
