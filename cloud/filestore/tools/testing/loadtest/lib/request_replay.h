@@ -19,7 +19,7 @@ class IReplayRequestGenerator: public IRequestGenerator
 protected:
     const ::NCloud::NFileStore::NProto::TReplaySpec Spec;
     TLog Log;
-    TString FileSystemIdRequest; // Only for GRPC
+    TString TargetFilesystemId;   // Only for GRPC
     TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
@@ -27,10 +27,12 @@ protected:
     ui64 TimestampMcs{};
     TInstant Started;
 
+    constexpr static auto MaxSleepMcs = 1000000;
+
 private:
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
-    ui64 EventMessageNumber = 0;
+    int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
 
 public:

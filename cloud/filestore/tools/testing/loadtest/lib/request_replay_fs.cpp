@@ -38,7 +38,7 @@ class TReplayRequestGeneratorFs final
     , public std::enable_shared_from_this<TReplayRequestGeneratorFs>
 {
 private:
-    TVector<std::pair<ui64, NProto::EAction>> Actions;
+    NAsyncIO::TAsyncIOService AsyncIO;
     TMutex StateLock;
 
     using THandleLog = ui64;
@@ -47,31 +47,24 @@ private:
     using TNodeLog = ui64;
     using TNodeLocal = ui64;
 
-    std::atomic<ui64> LastRequestId = 0;
+    // Map between log and actual local fs node id's
+    THashMap<TNodeLog, TNodeLocal> NodesLogToLocal{{RootNodeId, RootNodeId}};
 
+    // Relative to local root path of node. Dirs ends with /
+    THashMap<TNodeLocal, TString> NodePath{{RootNodeId, "/"}};
+
+    // Collected info for log node id's
     struct TNode
     {
         TString Name;
         TNodeLog ParentLog = 0;
     };
-
-    struct THandle
-    {
-        TString Path;
-    };
-
-    THashMap<ui64, THandle> Handles;
-    THashSet<ui64> Locks;
-    THashSet<ui64> StagedLocks;
-
-    THashMap<TNodeLog, TNodeLocal> NodesLogToLocal{{RootNodeId, RootNodeId}};
-    THashMap<TNodeLocal, TString> NodePath{{RootNodeId, "/"}};
     THashMap<TNodeLog, TNode> KnownLogNodes;
 
+    // Map between log and actual local open handle id's
     THashMap<THandleLog, THandleLocal> HandlesLogToActual;
-    THashMap<THandleLocal, TFile> OpenHandles;
 
-    NAsyncIO::TAsyncIOService AsyncIO;
+    THashMap<THandleLocal, TFile> OpenHandles;
 
 public:
     TReplayRequestGeneratorFs(
@@ -79,7 +72,7 @@ public:
             ILoggingServicePtr logging,
             ISessionPtr session,
             TString filesystemId,
-        NProto::THeaders headers)
+            NProto::THeaders headers)
         : IReplayRequestGenerator(
               std::move(spec),
               std::move(logging),
@@ -453,16 +446,18 @@ private:
         }
         TGuard<TMutex> guard(StateLock);
 
-        const auto logHandle = logRequest.GetRanges(0).GetHandle();
-        const auto handle = HandleIdMapped(logHandle);
-        if (!handle) {
+        const auto handleLog = logRequest.GetRanges(0).GetHandle();
+        const auto handleLocal = HandleIdMapped(handleLog);
+        if (!handleLocal) {
+            // TODO(proller): Suggest filename, place in __lost__ if unknown,
+            // create and open file, continue to write
             return MakeFuture(TCompletedRequest(
                 NProto::ACTION_WRITE,
                 Started,
                 MakeError(
                     E_CANCELLED,
                     TStringBuilder{} << "write cancelled: no handle ="
-                                     << logHandle)));   // todo
+                                     << handleLog)));
         }
         const auto bytes = logRequest.GetRanges(0).GetBytes();
         const auto offset = logRequest.GetRanges(0).GetOffset();
@@ -470,23 +465,23 @@ private:
         TString buffer;
 
         if (Spec.GetWriteRandom()) {
-            buffer = NUnitTest::RandomString(bytes, logHandle);
+            buffer = NUnitTest::RandomString(bytes, handleLog);
         } else if (Spec.GetWriteEmpty()) {
             buffer = TString{bytes, ' '};
         } else {
             buffer = MakeBuffer(
                 bytes,
                 offset,
-                TStringBuilder{} << "handle=" << logHandle << " node="
+                TStringBuilder{} << "handle=" << handleLog << " node="
                                  << logRequest.GetNodeInfo().GetNodeId()
                                  << " bytes=" << bytes << " offset=" << offset);
         }
 
-        auto& fh = OpenHandles[handle];
+        auto& fh = OpenHandles[handleLocal];
 
         STORAGE_DEBUG(
             "Write to %lu fh.length=%ld fh.pos=%ld",
-            handle,
+            handleLocal,
             fh.GetLength(),
             fh.GetPosition());
         // TODO(proller): TEST USE AFTER FREE on buffer
@@ -507,7 +502,7 @@ private:
                 return TCompletedRequest(
                     NProto::ACTION_WRITE,
                     started,
-                    MakeError(E_IO, TStringBuilder{} << "nothing writed"));
+                    MakeError(E_IO, TStringBuilder{} << "nothing written"));
             });
     }
 
@@ -551,7 +546,6 @@ private:
 
         auto fullName = Spec.GetReplayRoot() + "/" + PathByNode(parentNode) +
                         logRequest.GetNodeInfo().GetNewNodeName();
-
         ui64 nodeid = 0;
         bool isDir = false;
         switch (logRequest.GetNodeInfo().GetType()) {
@@ -568,11 +562,13 @@ private:
                 if (logRequest.GetNodeInfo().GetSize()) {
                     fh.Reserve(logRequest.GetNodeInfo().GetSize());
                 }
-            } break;
+                break;
+            }
             case NProto::E_DIRECTORY_NODE: {
                 isDir = true;
                 nodeid = MakeDirectoryRecursive(fullName);
-            } break;
+                break;
+            }
             case NProto::E_LINK_NODE: {
                 // {"TimestampMcs":1727703903595285,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"pack-ebe666445578da0c6157f4172ad581cd731742ec.idx","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
 
@@ -581,14 +577,16 @@ private:
                 const auto targetFullName =
                     Spec.GetReplayRoot() + "/" + PathByNode(targetNode);
                 NFs::HardLink(targetFullName, fullName);
-            } break;
+                break;
+            }
             case NProto::E_SYMLINK_NODE: {
                 const auto targetNode =
                     NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
                 const auto targetFullName =
                     Spec.GetReplayRoot() + "/" + PathByNode(targetNode);
                 NFs::SymLink(targetFullName, fullName);
-            } break;
+                break;
+            }
             case NProto::E_SOCK_NODE:
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,

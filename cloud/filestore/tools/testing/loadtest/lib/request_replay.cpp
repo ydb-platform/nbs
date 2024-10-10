@@ -20,7 +20,7 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         TString filesystemId,
         NProto::THeaders headers)
     : Spec(std::move(spec))
-    , FileSystemIdRequest(std::move(filesystemId))
+    , TargetFilesystemId(std::move(filesystemId))
     , Headers(std::move(headers))
     , Session(std::move(session))
 {
@@ -64,19 +64,19 @@ void IReplayRequestGenerator::Advance()
             return;
         }
 
-        const auto FileSystemId = TString{MessagePtr->GetFileSystemId()};
+        const TString fileSystemId{MessagePtr->GetFileSystemId()};
         if (!Spec.GetFileSystemIdFilter().empty() &&
-            FileSystemId != Spec.GetFileSystemIdFilter())
+            fileSystemId != Spec.GetFileSystemIdFilter())
         {
-            STORAGE_DEBUG("Skipped event with FileSystemId=" << FileSystemId);
+            STORAGE_DEBUG("Skipped event with FileSystemId=" << fileSystemId);
             continue;
         }
 
-        if (FileSystemIdRequest.empty() && !FileSystemId.empty()) {
-            FileSystemIdRequest = FileSystemId;
+        if (TargetFilesystemId.empty() && !fileSystemId.empty()) {
+            TargetFilesystemId = fileSystemId;
             STORAGE_INFO(
                 "Using FileSystemId from profile log %s",
-                FileSystemIdRequest.c_str());
+                TargetFilesystemId.c_str());
         }
 
         EventMessageNumber = MessagePtr->GetRequests().size();
@@ -102,8 +102,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
-
-                if (timediff > 1000000) {
+                if (timediff > MaxSleepMcs) {
                     timediff = 0;
                 }
 
@@ -126,7 +125,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%lu typename=%s type=%d name=%s json=%s",
+                "Processing message n=%d typename=%s type=%d name=%s json=%s",
                 EventMessageNumber,
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
@@ -179,7 +178,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
     }
 
     STORAGE_INFO(
-        "Profile log finished n=%lu hasPtr=%d",
+        "Profile log finished n=%d hasPtr=%d",
         EventMessageNumber,
         !!EventPtr);
 
