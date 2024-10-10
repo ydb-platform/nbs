@@ -18,7 +18,7 @@ import (
 
 const diskBlockSize uint32 = 4 * 1024
 
-var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
+var podModeControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 	{
 		Type: &csi.ControllerServiceCapability_Rpc{
 			Rpc: &csi.ControllerServiceCapability_RPC{
@@ -27,6 +27,8 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 		},
 	},
 }
+
+var vmModeControllerServiceCapabilities = []*csi.ControllerServiceCapability{}
 
 func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMediaKind {
 	kind, ok := parameters["storage-media-kind"]
@@ -61,15 +63,18 @@ type nbsServerControllerService struct {
 
 	nbsClient nbsclient.ClientIface
 	nfsClient nfsclient.ClientIface
+	vmMode    bool
 }
 
 func newNBSServerControllerService(
 	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.ClientIface) csi.ControllerServer {
+	nfsClient nfsclient.ClientIface,
+	vmMode bool) csi.ControllerServer {
 
 	return &nbsServerControllerService{
 		nbsClient: nbsClient,
 		nfsClient: nfsClient,
+		vmMode:    vmMode,
 	}
 }
 
@@ -78,6 +83,12 @@ func (c *nbsServerControllerService) CreateVolume(
 	req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 
 	log.Printf("csi.CreateVolumeRequest: %+v", req)
+
+	if c.vmMode {
+		return nil, status.Error(
+			codes.Unimplemented,
+			"CreateVolume is not implemented in vmMode")
+	}
 
 	if req.Name == "" {
 		return nil, status.Error(
@@ -191,6 +202,12 @@ func (c *nbsServerControllerService) DeleteVolume(
 
 	log.Printf("csi.DeleteVolumeRequest: %+v", req)
 
+	if c.vmMode {
+		return nil, status.Error(
+			codes.Unimplemented,
+			"DeleteVolume is not implemented in vmMode")
+	}
+
 	if req.VolumeId == "" {
 		return nil, status.Error(
 			codes.InvalidArgument,
@@ -266,7 +283,13 @@ func (c *nbsServerControllerService) ControllerGetCapabilities(
 	req *csi.ControllerGetCapabilitiesRequest,
 ) (*csi.ControllerGetCapabilitiesResponse, error) {
 
+	if c.vmMode {
+		return &csi.ControllerGetCapabilitiesResponse{
+			Capabilities: vmModeControllerServiceCapabilities,
+		}, nil
+	}
+
 	return &csi.ControllerGetCapabilitiesResponse{
-		Capabilities: nbsServerControllerServiceCapabilities,
+		Capabilities: podModeControllerServiceCapabilities,
 	}, nil
 }
