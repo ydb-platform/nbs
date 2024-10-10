@@ -553,7 +553,7 @@ public:
         request->Record.SetStartIndex(writeRange.Start);
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.BlocksCount = writeRange.Size();
-        request->Record.BlockSize = blockContent.size() / writeRange.size();
+        request->Record.BlockSize = blockContent.size() / writeRange.Size();
         return request;
     }
 
