@@ -28,36 +28,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     using namespace NCloud::NStorage;
 
-#define TABLET_TEST_HEAD(name)                                                 \
-    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
-    Y_UNIT_TEST(name)                                                          \
-    {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
-    }                                                                          \
-// TABLET_TEST_HEAD
-
-#define TABLET_TEST_IMPL(name, largeBS)                                        \
-    TABLET_TEST_HEAD(name)                                                     \
-    Y_UNIT_TEST(name##largeBS)                                                 \
-    {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
-    }                                                                          \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
-// TABLET_TEST_IMPL
-
-#define TABLET_TEST_4K_ONLY(name)                                              \
-    TABLET_TEST_HEAD(name)                                                     \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
-// TABLET_TEST_4K_ONLY
-
-#define TABLET_TEST(name)                                                      \
-    TABLET_TEST_IMPL(name, 128_KB)                                             \
-// TABLET_TEST
-
-#define TABLET_TEST_16K(name)                                                  \
-    TABLET_TEST_IMPL(name, 16_KB)                                              \
-// TABLET_TEST_16K
-
     TABLET_TEST(ShouldStoreFreshBytes)
     {
         TTestEnv env;
@@ -6067,149 +6037,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(1, perGenerationCounter);
     }
 
-    TABLET_TEST(ShouldTruncateLargeFiles)
-    {
-        const auto block = tabletConfig.BlockSize;
-
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetMaxFileBlocks(2_TB / block);
-        storageConfig.SetLargeDeletionMarkersEnabled(true);
-        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
-        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
-        storageConfig.SetLargeDeletionMarkersCleanupThreshold(3_TB / block);
-        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
-            10_TB / block);
-        const auto blobSize = 2 * block;
-        storageConfig.SetWriteBlobThreshold(blobSize);
-
-        TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        tabletConfig.BlockCount = 10_TB / block;
-
-        TIndexTabletClient tablet(
-            env.GetRuntime(),
-            nodeIdx,
-            tabletId,
-            tabletConfig);
-        tablet.InitSession("client", "session");
-
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        ui64 handle = CreateHandle(tablet, id);
-
-        tablet.WriteData(handle, 0, block, '1');
-        UNIT_ASSERT_VALUES_EQUAL(block, GetNodeAttrs(tablet, id).GetSize());
-
-        TSetNodeAttrArgs args(id);
-        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-        args.SetSize(1_TB);
-        tablet.SetNodeAttr(args);
-        UNIT_ASSERT_VALUES_EQUAL(1_TB, GetNodeAttrs(tablet, id).GetSize());
-
-        // writing some data at the beginning of the file
-        tablet.WriteData(handle, blobSize, blobSize, '2');
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(blobSize, '2'),
-            ReadData(tablet, handle, blobSize, blobSize));
-
-        // writing some data at the end of the file
-        tablet.WriteData(handle, 1_TB - blobSize, blobSize, '3');
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(blobSize, '3'),
-            ReadData(tablet, handle, blobSize, 1_TB - blobSize));
-
-        // downsizing the file and increasing its size back to 1_TB again
-        args.SetSize(512_GB);
-        tablet.SetNodeAttr(args);
-        UNIT_ASSERT_VALUES_EQUAL(512_GB, GetNodeAttrs(tablet, id).GetSize());
-
-        args.SetSize(1_TB);
-        tablet.SetNodeAttr(args);
-        UNIT_ASSERT_VALUES_EQUAL(1_TB, GetNodeAttrs(tablet, id).GetSize());
-
-        // data at the end of the file should've been erased
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(blobSize, 0),
-            ReadData(tablet, handle, blobSize, 1_TB - blobSize));
-
-        // data at the beginning should still be present
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(block, '1'),
-            ReadData(tablet, handle, block));
-        UNIT_ASSERT_VALUES_EQUAL(
-            TString(blobSize, '2'),
-            ReadData(tablet, handle, blobSize, blobSize));
-
-        tablet.DestroyHandle(handle);
-
-        // deleting the file
-        // after this point we should have 512_GB + 1_TB of deletion markers
-        tablet.UnlinkNode(RootNodeId, "test", false);
-
-        {
-            auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                (1_TB + 512_GB) / block,
-                stats.GetLargeDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                2 * blobSize / block,
-                stats.GetMixedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
-        }
-
-        // let's create a new file
-        auto id2 =
-            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        TSetNodeAttrArgs args2(id2);
-        args2.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-        args2.SetSize(1_TB + 512_GB);
-        tablet.SetNodeAttr(args2);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1_TB + 512_GB,
-            GetNodeAttrs(tablet, id2).GetSize());
-
-        // deletion marker-related stats shouldn't have changed
-        {
-            auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                (1_TB + 512_GB) / block,
-                stats.GetLargeDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                2 * blobSize / block,
-                stats.GetMixedBlocksCount());
-            // 2 new blobs
-            UNIT_ASSERT_VALUES_EQUAL(2 * blobSize, stats.GetGarbageQueueSize());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
-        }
-
-        // but after unlinking the file Cleanup op should start running
-        tablet.UnlinkNode(RootNodeId, "test", false);
-
-        // so here all large deletion markers should've been cleaned up and
-        // the corresponding mixed blobs should've been deleted
-        {
-            auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                (3_TB - 1_GB) / block,
-                stats.GetLargeDeletionMarkersCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                blobSize / block,
-                stats.GetMixedBlocksCount());
-            // 2 new blobs + 1 garbage blob
-            UNIT_ASSERT_VALUES_EQUAL(3 * blobSize, stats.GetGarbageQueueSize());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
-        }
-    }
-
     TABLET_TEST(ShouldFlushBytesWithLargeDeletionMarkers)
     {
         const auto block = tabletConfig.BlockSize;
@@ -6579,8 +6406,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT(!cleanup);
         UNIT_ASSERT(!compaction);
     }
-
-#undef TABLET_TEST
 }
 
 }   // namespace NCloud::NFileStore::NStorage
