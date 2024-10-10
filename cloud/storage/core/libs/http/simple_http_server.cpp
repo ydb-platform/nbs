@@ -27,10 +27,11 @@ bool TSimpleHttpServer::TRequest::Reply(void* /*threadSpecificResource*/)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSimpleHttpServer::TSimpleHttpServer(ui16 port, TString response)
+TSimpleHttpServer::TSimpleHttpServer(TString host, ui16 port, TString response)
     : Response(std::move(response))
 {
     THttpServer::TOptions options;
+    options.Host = std::move(host);
     options.Port = port;
     options.nThreads = 1;
     options.KeepAliveEnabled = false;
