@@ -55,7 +55,7 @@ private:
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void GetNodeAttrInFollower(const TActorContext& ctx);
+    void GetNodeAttrInShard(const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -63,7 +63,7 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TGetNodeAttrResponse followerResponse);
+        NProto::TGetNodeAttrResponse shardResponse);
     void HandleError(const TActorContext& ctx, NProto::TError error);
 };
 
@@ -107,12 +107,12 @@ void TGetNodeAttrActor::GetNodeAttrInLeader(const TActorContext& ctx)
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
-void TGetNodeAttrActor::GetNodeAttrInFollower(const TActorContext& ctx)
+void TGetNodeAttrActor::GetNodeAttrInShard(const TActorContext& ctx)
 {
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Executing GetNodeAttr in follower for %lu, %s",
+        "[%s] Executing GetNodeAttr in shard for %lu, %s",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
         GetNodeAttrRequest.GetName().Quote().c_str());
@@ -120,9 +120,9 @@ void TGetNodeAttrActor::GetNodeAttrInFollower(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record = GetNodeAttrRequest;
     request->Record.SetFileSystemId(
-        LeaderResponse.GetNode().GetFollowerFileSystemId());
+        LeaderResponse.GetNode().GetShardFileSystemId());
     request->Record.SetNodeId(RootNodeId);
-    request->Record.SetName(LeaderResponse.GetNode().GetFollowerNodeName());
+    request->Record.SetName(LeaderResponse.GetNode().GetShardNodeName());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -145,7 +145,7 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "GetNodeAttr succeeded in follower: %lu",
+            "GetNodeAttr succeeded in shard: %lu",
             msg->Record.GetNode().GetId());
 
         ReplyAndDie(ctx, std::move(msg->Record));
@@ -156,11 +156,11 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         ctx,
         TFileStoreComponents::SERVICE,
         "GetNodeAttr succeeded in leader: %s %s",
-        msg->Record.GetNode().GetFollowerFileSystemId().c_str(),
-        msg->Record.GetNode().GetFollowerNodeName().Quote().c_str());
+        msg->Record.GetNode().GetShardFileSystemId().c_str(),
+        msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
     if (!MultiTabletForwardingEnabled
-            || msg->Record.GetNode().GetFollowerFileSystemId().Empty())
+            || msg->Record.GetNode().GetShardFileSystemId().Empty())
     {
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
@@ -168,7 +168,7 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
     LeaderResponded = true;
     LeaderResponse = std::move(msg->Record);
-    GetNodeAttrInFollower(ctx);
+    GetNodeAttrInShard(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,10 +185,10 @@ void TGetNodeAttrActor::HandlePoisonPill(
 
 void TGetNodeAttrActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProto::TGetNodeAttrResponse followerResponse)
+    NProto::TGetNodeAttrResponse shardResponse)
 {
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>();
-    response->Record = std::move(followerResponse);
+    response->Record = std::move(shardResponse);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -232,8 +232,8 @@ void TStorageServiceActor::HandleGetNodeAttr(
     auto* msg = ev->Get();
 
     if (msg->Record.GetName().Empty()) {
-        // handle creation by NodeId can be handled directly by the follower
-        ForwardRequestToFollower<TEvService::TGetNodeAttrMethod>(
+        // handle creation by NodeId can be handled directly by the shard
+        ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
             ctx,
             ev,
             ExtractShardNo(msg->Record.GetNodeId()));

@@ -203,8 +203,8 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
                     ref.MaxCommitId,
                     ref.Name,
                     ref.ChildNodeId,
-                    ref.FollowerId,
-                    ref.FollowerName);
+                    ref.ShardId,
+                    ref.ShardName);
             }
 
             RemoveCheckpointNodes(db, checkpoint, args.NodeIds);

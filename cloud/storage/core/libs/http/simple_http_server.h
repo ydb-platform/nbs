@@ -28,7 +28,7 @@ private:
     std::unique_ptr<THttpServer> Server;
 
 public:
-    TSimpleHttpServer(ui16 port, TString response);
+    TSimpleHttpServer(TString host, ui16 port, TString response);
     ~TSimpleHttpServer() override;
 
     bool Start();

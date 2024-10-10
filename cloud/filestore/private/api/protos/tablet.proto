@@ -503,27 +503,27 @@ message TForcedOperationResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ConfigureFollowers request/response.
+// ConfigureShards request/response.
 
-message TConfigureFollowersRequest
+message TConfigureShardsRequest
 {
     // FileSystem identifier.
     string FileSystemId = 1;
 
-    // Follower FileSystem identifiers.
-    repeated string FollowerFileSystemIds = 2;
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
 }
 
-message TConfigureFollowersResponse
+message TConfigureShardsResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ConfigureFollowers request/response.
+// ConfigureShards request/response.
 
-message TConfigureAsFollowerRequest
+message TConfigureAsShardRequest
 {
     // FileSystem identifier.
     string FileSystemId = 1;
@@ -532,7 +532,7 @@ message TConfigureAsFollowerRequest
     uint32 ShardNo = 2;
 }
 
-message TConfigureAsFollowerResponse
+message TConfigureAsShardResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

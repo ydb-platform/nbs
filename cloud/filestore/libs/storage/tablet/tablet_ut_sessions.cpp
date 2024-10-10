@@ -868,7 +868,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         const ui64 requestId = 111;
         const ui32 shardNo = 222;
-        tablet.ConfigureAsFollower(shardNo);
+        tablet.ConfigureAsShard(shardNo);
 
         {
             tablet.SendCreateNodeRequest(

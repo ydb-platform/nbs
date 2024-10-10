@@ -92,7 +92,7 @@ struct TSessionInfo
 
     bool ShouldStop = false;
 
-    ui32 FollowerSelector = 0;
+    ui32 ShardSelector = 0;
 
     void GetInfo(NProto::TSessionInfo& info, ui64 seqNo)
     {
@@ -134,14 +134,14 @@ struct TSessionInfo
         }
     }
 
-    const TString& SelectFollower()
+    const TString& SelectShard()
     {
-        const auto& followers = FileStore.GetFollowerFileSystemIds();
-        if (followers.empty()) {
+        const auto& shards = FileStore.GetShardFileSystemIds();
+        if (shards.empty()) {
             return Default<TString>();
         }
 
-        return followers[FollowerSelector++ % followers.size()];
+        return shards[ShardSelector++ % shards.size()];
     }
 };
 

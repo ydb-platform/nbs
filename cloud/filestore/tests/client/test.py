@@ -27,7 +27,7 @@ def __process_stat(node):
     d("ATime")
     d("MTime")
     d("CTime")
-    d("FollowerNodeName")
+    d("ShardNodeName")
 
     return node
 
@@ -345,14 +345,14 @@ def test_multitablet_ls():
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": "fs0-shard",
         "ShardNo": 1,
     })
 
-    out += client.execute_action("configurefollowers", {
+    out += client.execute_action("configureshards", {
         "FileSystemId": "fs0",
-        "FollowerFileSystemIds": ["fs0-shard"],
+        "ShardFileSystemIds": ["fs0-shard"],
     })
 
     client.write("fs0", "/xxx", "--data", data_file)
@@ -406,19 +406,19 @@ def test_multitablet_findgarbage():
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": shard1_id,
         "ShardNo": 1,
     })
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": shard2_id,
         "ShardNo": 2,
     })
 
-    out += client.execute_action("configurefollowers", {
+    out += client.execute_action("configureshards", {
         "FileSystemId": fs_id,
-        "FollowerFileSystemIds": [shard1_id, shard2_id],
+        "ShardFileSystemIds": [shard1_id, shard2_id],
     })
 
     # let's generate multiple "pages" for listing
