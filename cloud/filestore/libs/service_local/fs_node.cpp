@@ -80,7 +80,13 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     }
 
     auto stat = target->Stat();
-    session->TryInsertNode(std::move(target));
+    if (!session->TryInsertNode(
+            std::move(target),
+            parent->GetNodeId(),
+            request.GetName()))
+    {
+        return TErrorResponse(ErrorNoSpaceLeft());
+    }
 
     NProto::TCreateNodeResponse response;
     ConvertStats(stat, *response.MutableNode());
@@ -192,7 +198,13 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
         if (!session->LookupNode(entry.second.INode)) {
             auto node = TryCreateChildNode(*parent, entry.first);
             if (node && node->GetNodeId() == entry.second.INode) {
-                session->TryInsertNode(std::move(node));
+                if (!session->TryInsertNode(
+                        std::move(node),
+                        parent->GetNodeId(),
+                        entry.first))
+                {
+                    return TErrorResponse(ErrorNoSpaceLeft());
+                }
             }
         }
 
