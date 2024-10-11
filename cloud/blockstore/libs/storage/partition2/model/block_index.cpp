@@ -54,8 +54,8 @@ TBlockIndex::~TBlockIndex()
     for (const auto& block: Impl->Blocks) {
         if (block.Content) {
             IAllocator::TBlock alloc{
-                const_cast<char*>(block.Content.Data()),
-                block.Content.Size()
+                const_cast<char*>(block.Content.data()),
+                block.Content.size()
             };
             Impl->Allocator->Release(alloc);
         }
@@ -73,9 +73,9 @@ bool TBlockIndex::AddBlock(
 
     TStringBuf content;
     if (blockContent) {
-        auto alloc = Impl->Allocator->Allocate(blockContent.Size());
-        std::memcpy(alloc.Data, blockContent.Data(), blockContent.Size());
-        content = {static_cast<const char*>(alloc.Data), blockContent.Size()};
+        auto alloc = Impl->Allocator->Allocate(blockContent.size());
+        std::memcpy(alloc.Data, blockContent.data(), blockContent.size());
+        content = {static_cast<const char*>(alloc.Data), blockContent.size()};
     }
 
     std::tie(it, inserted) = Impl->Blocks.emplace(
@@ -97,8 +97,8 @@ bool TBlockIndex::RemoveBlock(ui32 blockIndex, ui64 minCommitId)
     if (it != Impl->Blocks.end()) {
         if (it->Content) {
             IAllocator::TBlock alloc{
-                const_cast<char*>(it->Content.Data()),
-                it->Content.Size()
+                const_cast<char*>(it->Content.data()),
+                it->Content.size()
             };
             Impl->Allocator->Release(alloc);
         }

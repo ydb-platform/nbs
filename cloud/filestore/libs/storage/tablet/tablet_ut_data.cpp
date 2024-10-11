@@ -5154,17 +5154,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TVector<NProtoPrivate::TFreshDataRange> unalignedParts;
         {
             NProtoPrivate::TFreshDataRange part;
-            part.SetOffset(block - unalignedHead.Size());
+            part.SetOffset(block - unalignedHead.size());
             part.SetContent(unalignedHead);
             unalignedParts.push_back(part);
-            part.SetOffset(block + alignedBody.Size());
+            part.SetOffset(block + alignedBody.size());
             part.ClearContent();
             unalignedParts.push_back(part);
         }
 
-        const ui64 offset = block - unalignedHead.Size();
+        const ui64 offset = block - unalignedHead.size();
         const ui64 len =
-            unalignedHead.Size() + alignedBody.Size() + unalignedTail.Size();
+            unalignedHead.size() + alignedBody.size() + unalignedTail.size();
 
         tablet.SendAddDataRequest(
             id,
@@ -5204,7 +5204,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // AddData should correctly update file size
         auto stat = tablet.GetNodeAttr(id)->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(
-            block + alignedBody.Size() + unalignedTail.Size(),
+            block + alignedBody.size() + unalignedTail.size(),
             stat.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(
             unalignedHead + alignedBody + unalignedTail,

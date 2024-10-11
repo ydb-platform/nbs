@@ -1971,7 +1971,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto data = TString(100, 'x') + TString(200, 'y') + TString(300, 'z');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         // fresh blocks - adding multiple adjacent blocks is important here to
@@ -1979,14 +1979,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         data = TString(8_KB, 'a');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         // blobs
         data = TString(1_MB, 'b');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         readDataResult = service.ReadData(
@@ -1995,7 +1995,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId,
             handle,
             DefaultBlockSize,
-            data.Size() - DefaultBlockSize);
+            data.size() - DefaultBlockSize);
         UNIT_ASSERT_VALUES_EQUAL(
             readDataResult->Record.GetBuffer(),
             data.substr(DefaultBlockSize));
@@ -2005,8 +2005,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const ui32 patchOffset = 20_KB;
         service.WriteData(headers, fs, nodeId, handle, patchOffset, patch);
         readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
-        memcpy(data.begin() + patchOffset, patch.Data(), patch.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        memcpy(data.begin() + patchOffset, patch.data(), patch.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         auto counters = env.GetCounters()
@@ -2103,7 +2103,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TString data(4_KB, 'A');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
@@ -2187,7 +2187,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TString data(1_MB, 'A');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
@@ -2345,7 +2345,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.WriteData(headers, fs, nodeId, handle, offset, data);
             auto readDataResult =
                 service
-                    .ReadData(headers, fs, nodeId, handle, offset, data.Size());
+                    .ReadData(headers, fs, nodeId, handle, offset, data.size());
             // clang-format off
             UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
             UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
@@ -2466,7 +2466,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.WriteData(headers, fs, nodeId, handle, offset, data);
             auto readDataResult =
                 service
-                    .ReadData(headers, fs, nodeId, handle, offset, data.Size());
+                    .ReadData(headers, fs, nodeId, handle, offset, data.size());
             // clang-format off
             UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
             UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
@@ -2535,7 +2535,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId,
             handle,
             offset,
-            data.Size())->Record.GetBuffer();
+            data.size())->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data, readData);
         UNIT_ASSERT_VALUES_EQUAL(2, addData.UnalignedDataRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2550,7 +2550,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fs,
             RootNodeId,
             "file")->Record.GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(data.Size() + offset, stat.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(data.size() + offset, stat.GetSize());
     }
 
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
@@ -2608,7 +2608,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TString data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         auto& runtime = env.GetRuntime();
         // clang-format off
@@ -2636,7 +2636,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
@@ -2681,7 +2681,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         // clang-format off
@@ -3472,7 +3472,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             handle1,
             0,
-            data.Size())->Record;
+            data.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
 
         auto destroyHandleResponse = service.DestroyHandle(
@@ -3685,7 +3685,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             handle1,
             0,
-            data.Size())->Record;
+            data.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
 
         data = GenerateValidateData(1_MB);
@@ -3696,7 +3696,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId2,
             handle2,
             0,
-            data.Size())->Record;
+            data.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
 
         service.DestroyHandle(headers, fsId, nodeId1, handle1);
@@ -3754,7 +3754,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             handle1,
             0,
-            data.Size())->Record;
+            data.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
     }
 
@@ -4402,7 +4402,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             handle1r,
             0,
-            data1.Size())->Record;
+            data1.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
 
         // checking that node listing shows file3 and file2
@@ -4457,7 +4457,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             nodeId1,
             handle1r,
             0,
-            data1.Size())->Record;
+            data1.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
 
         // listing should show only file2 now
@@ -4730,7 +4730,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             linkNodeResponse->Record.GetNode().GetId(),
             handle2,
             0,
-            data.Size())->Record.GetBuffer();
+            data.size())->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data, data2);
 
         // Removal of both the file and a hardlink should remove file from both

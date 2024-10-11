@@ -153,7 +153,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
     headers->SetClientId(std::move(clientId));
 
     for (const auto blockIndex: xrange(Range)) {
-        auto* data = Buffer.Get().Data() + (blockIndex - Range.Start) * BlockSize;
+        auto* data = Buffer.Get().data() + (blockIndex - Range.Start) * BlockSize;
 
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,

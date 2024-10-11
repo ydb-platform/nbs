@@ -38,7 +38,7 @@ TStringBuf TFreshBlocks::AllocateBlock(TStringBuf content, ui32 blockSize)
     Y_ABORT_UNLESS(blockSize >= content.size());
 
     auto block = Allocator->Allocate(blockSize);
-    memcpy(block.Data, content.Data(), content.Size());
+    memcpy(block.Data, content.data(), content.size());
 
     if (content.size() < blockSize) {
         memset(static_cast<char*>(block.Data) + content.size(), 0, blockSize - content.size());
@@ -49,7 +49,7 @@ TStringBuf TFreshBlocks::AllocateBlock(TStringBuf content, ui32 blockSize)
 
 void TFreshBlocks::ReleaseBlock(TStringBuf content)
 {
-    IAllocator::TBlock block { const_cast<char*>(content.Data()), content.Size() };
+    IAllocator::TBlock block { const_cast<char*>(content.data()), content.size() };
     Allocator->Release(block);
 }
 

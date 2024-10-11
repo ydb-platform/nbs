@@ -178,7 +178,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
                 Request.GetBlocksCount(),
                 volumeParams.BlockSize,
                 Request.GetIsSystem(),
-                !Request.GetBaseDiskId().Empty()
+                !Request.GetBaseDiskId().empty()
             );
         }
         volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;

@@ -549,7 +549,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             ui64 index = 1024 + i;
             TString data(DefaultBlockSize, 'A');
             ui64 digest = *env.BlockDigestGenerator->ComputeDigest(
-                index, TBlockDataRef(data.Data(), data.Size()));
+                index, TBlockDataRef(data.data(), data.size()));
 
             UNIT_ASSERT_VALUES_EQUAL(index, response->AffectedBlockInfos[i].BlockIndex);
             UNIT_ASSERT_VALUES_EQUAL(digest, response->AffectedBlockInfos[i].Checksum);

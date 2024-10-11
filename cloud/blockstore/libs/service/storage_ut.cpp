@@ -450,14 +450,14 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             data.resize(requestByteCount, 0);
             for (ui64 offset = 0; offset < data.size(); offset += blockSize) {
                 std::memset(
-                    const_cast<char*>(data.Data() + offset),
+                    const_cast<char*>(data.data() + offset),
                     offset / blockSize,
                     blockSize);
             }
 
             auto guard = request->Sglist.Acquire();
             UNIT_ASSERT(guard);
-            SgListCopy(TBlockDataRef{data.data(), data.Size()}, guard.Get());
+            SgListCopy(TBlockDataRef{data.data(), data.size()}, guard.Get());
 
             NProto::TReadBlocksLocalResponse r;
             *r.MutableError() = MakeError(S_OK);
@@ -537,7 +537,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             auto guard = request->Sglist.Acquire();
             UNIT_ASSERT(guard);
             SgListCopy(
-                TBlockDataRef{blocks.data(), blocks.Size()},
+                TBlockDataRef{blocks.data(), blocks.size()},
                 guard.Get());
 
             NProto::TReadBlocksLocalResponse r;

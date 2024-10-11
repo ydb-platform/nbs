@@ -293,7 +293,7 @@ private:
                 } else {
                     buf = &zeroBlock;
                 }
-                checksum.Extend(buf->Data(), buf->Size());
+                checksum.Extend(buf->data(), buf->size());
             }
         }
 

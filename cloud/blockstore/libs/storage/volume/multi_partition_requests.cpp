@@ -112,8 +112,8 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
 
     ui32 bufferSize = 0;
     for (const auto& buffer: buffers) {
-        Y_ABORT_UNLESS(bufferSize == 0 || bufferSize == buffer.Size());
-        bufferSize = buffer.Size();
+        Y_ABORT_UNLESS(bufferSize == 0 || bufferSize == buffer.size());
+        bufferSize = buffer.size();
     }
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);

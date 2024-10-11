@@ -38,8 +38,8 @@ struct Y_PACKED TEntryHeader
 void WriteEntry(IOutputStream& os, TStringBuf data)
 {
     TEntryHeader eh;
-    eh.Size = data.Size();
-    eh.Checksum = Crc32c(data.Data(), data.Size());
+    eh.Size = data.size();
+    eh.Checksum = Crc32c(data.data(), data.size());
     os.Write(&eh, sizeof(eh));
     os.Write(data);
 }
@@ -99,7 +99,7 @@ private:
         }
 
         TStringBuf entry(b + sizeof(TEntryHeader), eh->Size);
-        if (entry.Data() + entry.Size() > End) {
+        if (entry.data() + entry.size() > End) {
             visitor(eh->Checksum, INVALID_MARKER);
             return INVALID_POS;
         }
@@ -218,7 +218,7 @@ public:
 
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
         TStringBuf result{b + sizeof(TEntryHeader), eh->Size};
-        if (result.Data() + result.Size() > End) {
+        if (result.data() + result.size() > End) {
             // corruption
             // TODO: report?
             return {};
@@ -234,7 +234,7 @@ public:
             return;
         }
 
-        Header()->ReadPos += sizeof(TEntryHeader) + data.Size();
+        Header()->ReadPos += sizeof(TEntryHeader) + data.size();
         --Count;
 
         SkipSlackSpace();
@@ -257,7 +257,7 @@ public:
         TVector<TBrokenFileRingBufferEntry> entries;
 
         Visit([&] (ui32 checksum, TStringBuf entry) {
-            const ui32 actualChecksum = Crc32c(entry.Data(), entry.Size());
+            const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
             if (actualChecksum != checksum) {
                 entries.push_back({
                     TString(entry),

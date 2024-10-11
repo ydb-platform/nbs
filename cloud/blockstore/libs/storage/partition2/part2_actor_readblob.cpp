@@ -237,8 +237,8 @@ void TReadBlobActor::HandleGetResult(
                     Y_ABORT_UNLESS(block.Data());
                     memcpy(
                         const_cast<char*>(block.Data()),
-                        marker.Data(),
-                        Min(block.Size(), marker.Size())
+                        marker.data(),
+                        Min(block.Size(), marker.size())
                     );
                     ++sglistIndex;
 
@@ -253,8 +253,8 @@ void TReadBlobActor::HandleGetResult(
                         Y_ABORT_UNLESS(block.Data());
                         memcpy(
                             const_cast<char*>(block.Data()),
-                            marker.Data(),
-                            Min(block.Size(), marker.Size())
+                            marker.data(),
+                            Min(block.Size(), marker.size())
                         );
 
                         ++sglistIndex;

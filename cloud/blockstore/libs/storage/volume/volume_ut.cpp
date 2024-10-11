@@ -4899,7 +4899,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto blockContent = GetBlockContent(1);
 
             TSgList sglist;
-            sglist.resize(range.Size(), {blockContent.Data(), blockContent.Size()});
+            sglist.resize(range.Size(), {blockContent.data(), blockContent.size()});
             TGuardedSgList glist(std::move(sglist));
 
             auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
@@ -6178,7 +6178,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TSgList sglist;
             sglist.resize(
                 range.Size(),
-                {blockContent.Data(), blockContent.Size()}
+                {blockContent.data(), blockContent.size()}
             );
             TGuardedSgList glist(std::move(sglist));
 
@@ -6403,7 +6403,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TSgList sglist;
             sglist.resize(
                 range.Size(),
-                {blockContent.Data(), blockContent.Size()}
+                {blockContent.data(), blockContent.size()}
             );
             TGuardedSgList glist(std::move(sglist));
 
