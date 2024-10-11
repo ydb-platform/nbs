@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 def get_unique_path_for_current_test(output_path, sub_folder):
     test_name = yatest_common.context.test_name or ""
-    test_name = test_name.replace(':', '_')
+    replacement_symbols = {':' : '_', '/' : '_'}
+    test_name = "".join([replacement_symbols.get(c, c) for c in test_name])
 
     return os.path.join(output_path, test_name, sub_folder)
 
