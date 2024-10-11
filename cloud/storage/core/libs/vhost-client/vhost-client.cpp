@@ -87,7 +87,7 @@ bool TClient::Connect()
     if (int errorCode = connect(
         sock,
         reinterpret_cast<sockaddr*>(&un),
-        sizeof(un.sun_family) + SockPath.Size()) == -1)
+        sizeof(un.sun_family) + SockPath.size()) == -1)
     {
         Logger.AddLog(
             ELogPriority::TLOG_ERR,

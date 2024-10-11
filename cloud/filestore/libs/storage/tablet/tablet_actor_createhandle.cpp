@@ -71,7 +71,7 @@ void TIndexTabletActor::HandleCreateHandle(
         if (!GetDupCacheEntry(e, response->Record)) {
             // invalid entry type - it's certainly a request id collision
             session->DropDupEntry(requestId);
-        } else if (msg->Record.GetName().Empty() && msg->Record.GetNodeId()
+        } else if (msg->Record.GetName().empty() && msg->Record.GetNodeId()
                 != response->Record.GetNodeAttr().GetId())
         {
             // this handle relates to a different node id => it's certainly a
@@ -276,7 +276,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (args.TargetNodeId == InvalidNodeId
-            && (args.ShardId.Empty() || args.IsNewShardNode))
+            && (args.ShardId.empty() || args.IsNewShardNode))
     {
         if (args.TargetNode) {
             auto message = ReportTargetNodeWithoutRef(TStringBuilder()
@@ -292,7 +292,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             return;
         }
 
-        if (args.ShardId.Empty()) {
+        if (args.ShardId.empty()) {
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
             args.TargetNodeId = CreateNode(
@@ -328,7 +328,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             parent,
             args.ParentNode->Attrs);
 
-    } else if (args.ShardId.Empty()
+    } else if (args.ShardId.empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
         auto e = Truncate(
@@ -354,7 +354,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.TargetNode->Attrs);
     }
 
-    if (args.ShardId.Empty()) {
+    if (args.ShardId.empty()) {
         auto* handle = CreateHandle(
             db,
             session,

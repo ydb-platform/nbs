@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
         const auto& fullBuffers = fullResponse->Record.GetBlocks().GetBuffers();
         const auto& unencrypted =
             fullResponse->Record.GetUnencryptedBlockMask();
-        UNIT_ASSERT_EQUAL(0, unencrypted.Size());
+        UNIT_ASSERT_EQUAL(0, unencrypted.size());
 
         // Check that the blocks marked as unused are filled with zeros.
         for (int i = 0; i < fullBuffers.size(); ++i) {

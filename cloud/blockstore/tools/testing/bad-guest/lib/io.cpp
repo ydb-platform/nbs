@@ -60,12 +60,12 @@ public:
     {
         ui64 sz = 0;
         for (const auto& data: datas) {
-            sz = Max(sz, data.Size());
+            sz = Max(sz, data.size());
         }
         sz = AlignUp<ui64>(sz);
         TAlignedBuffer buffer(sz, BlockSize);
         const auto offset = blockIndex * BlockSize;
-        memcpy(buffer.AlignedPtr, datas[0].Data(), datas[0].Size());
+        memcpy(buffer.AlignedPtr, datas[0].data(), datas[0].size());
 
         auto f = AsyncIO.Write(File, buffer.AlignedPtr, sz, offset);
         // corrupting the data buffer that we have just sent to the storage
@@ -74,7 +74,7 @@ public:
         ui32 i = 0;
         while (!f.HasValue()) {
             const auto& data = datas[++i % datas.size()];
-            memcpy(buffer.AlignedPtr, data.Data(), data.Size());
+            memcpy(buffer.AlignedPtr, data.data(), data.size());
         }
 
         Y_ABORT_UNLESS(f.GetValue() == sz);
