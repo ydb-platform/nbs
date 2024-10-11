@@ -473,6 +473,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mockCallIsMountPoint.Unset()
 
 	mounter.On("IsMountPoint", stagingTargetPath).Return(true, nil)
+	mounter.On("IsMountPoint", targetPath).Return(false, nil)
 
 	mounter.On("Mount", stagingTargetPath, targetPath, "", []string{"bind"}).Return(nil)
 

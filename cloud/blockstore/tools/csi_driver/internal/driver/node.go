@@ -634,7 +634,12 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	err := s.mounter.Mount(req.StagingTargetPath, req.TargetPath, "", mountOptions)
+	err := s.mountIfNeeded(
+		req.VolumeId,
+		req.StagingTargetPath,
+		req.TargetPath,
+		"",
+		mountOptions)
 	if err != nil {
 		return err
 	}
