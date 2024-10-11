@@ -514,8 +514,13 @@ bool TIndexTabletState::ReadNodeRefs(
     ui64* nextNodeId,
     TString* nextCookie)
 {
-    return db
-        .ReadNodeRefs(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);
+    return db.ReadNodeRefs(
+        startNodeId,
+        startCookie,
+        maxCount,
+        refs,
+        nextNodeId,
+        nextCookie);
 }
 
 bool TIndexTabletState::PrechargeNodeRefs(
