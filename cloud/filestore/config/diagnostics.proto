@@ -99,8 +99,8 @@ message TDiagnosticsConfig
     optional TMonitoringUrlData MonitoringUrlData = 22;
 
     // Report histogram as a set of manually created counters
-    optional bool ReportHistogramAsMultipleCounters = 48;
+    optional bool ReportHistogramAsMultipleCounters = 23;
 
     // Report histogram as a single counter (THistogramCounter)
-    optional bool ReportHistogramAsSingleCounter = 49;
+    optional bool ReportHistogramAsSingleCounter = 24;
 }
