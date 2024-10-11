@@ -1,5 +1,6 @@
 #include "fs_impl.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
@@ -134,12 +135,24 @@ void TFileSystem::Release(
     if (Config->GetAsyncDestroyHandleEnabled()) {
         STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
         with_lock(HandleOpsQueueLock) {
-            if (!HandleOpsQueue->AddDestroyRequest(ino, fi->fh)) {
+            const auto& res = HandleOpsQueue->AddDestroyRequest(ino, fi->fh);
+            if (res == 0) {
                 // TODO(#1541): delay request
                 STORAGE_ERROR("Failed to add destroy handle request to queue");
                 ReplyError(
                     *callContext,
                     MakeError(E_FAIL, "HandleOpsQueue overflow"),
+                    req,
+                    0);
+            }
+            if (res == -1) {
+                ReportHandleOpsQueueProcessError("Failed to serialize DestroyHandleRequest");
+                ReplyError(
+                    *callContext,
+                    MakeError(
+                        E_FAIL,
+                        "Unable to add DestroyHandleRequest to HandleOpsQueue, "
+                        "serialization failed"),
                     req,
                     0);
             }

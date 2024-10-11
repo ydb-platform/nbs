@@ -18,8 +18,8 @@ private:
 public:
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
 
-    bool AddDestroyRequest(ui64 nodeId, ui64 handle);
-    NProto::TQueueEntry Front();
+    int AddDestroyRequest(ui64 nodeId, ui64 handle);
+    std::optional<NProto::TQueueEntry> Front();
     void Pop();
     ui64 Size() const;
     bool Empty() const;

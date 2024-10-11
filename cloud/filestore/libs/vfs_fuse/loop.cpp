@@ -6,6 +6,7 @@
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -45,6 +46,10 @@ using namespace NCloud::NFileStore::NClient;
 using namespace NCloud::NFileStore::NVFS;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+static constexpr TStringBuf HandleOpsQueueFileName = "HandleOpsQueue";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -495,12 +500,15 @@ private:
     TLog Log;
 
     TString SessionState;
+    TString SessionId;
     std::unique_ptr<TSessionThread> SessionThread;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
+
+    bool HandleOpsQueueInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -601,6 +609,25 @@ public:
 
                     s.SetValue();
                 });
+
+            // We need to cleanup HandleOpsQueue file and directories
+            if (p->HandleOpsQueueInitialized) {
+                auto fsPath = TFsPath(p->Config->GetHandleOpsQueuePath()) /
+                              p->Config->GetFileSystemId();
+                TString queueFile = fsPath / p->SessionId / HandleOpsQueueFileName;
+                TString sessionDir = fsPath / p->SessionId;
+                if (!NFs::Remove(queueFile)) {
+                    ReportHandleOpsQueueCreatingOrDeletingError(
+                        TStringBuilder()
+                        << "Failed to remove file: " << queueFile
+                        << " reason: " << LastSystemError());
+                }
+                if (!NFs::Remove(fsPath / p->SessionId)) {
+                        ReportHandleOpsQueueCreatingOrDeletingError(
+                        TStringBuilder()
+                        << "Failed to remove session dir: " << sessionDir);
+                }
+            }
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
@@ -769,20 +796,21 @@ private:
                     filestoreConfig->GetFileSystemId() /
                     response.GetSession().GetSessionId();
                 if (!NFs::MakeDirectoryRecursive(path)) {
-                    STORAGE_ERROR(
-                        "[f:%s][c:%s] failed to create directory "
-                        "for handle ops queue: %s",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str(),
-                        path.c_str()
-                    );
-                } else {
-                    auto file = TFsPath(path) / "HandleOpsQueue";
-                    file.Touch();
-                    handleOpsQueue = CreateHandleOpsQueue(
-                        file.GetPath(),
-                        Config->GetHandleOpsQueueSize());
+                    TString msg = TStringBuilder()
+                                  << "Failed to create directories for "
+                                     "HandleOpsQueue, path: "
+                                  << path;
+                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
+                    return MakeError(
+                        E_FAIL,
+                        msg);
                 }
+                auto file = TFsPath(path) / HandleOpsQueueFileName;
+                file.Touch();
+                handleOpsQueue = CreateHandleOpsQueue(
+                    file.GetPath(),
+                    Config->GetHandleOpsQueueSize());
+                HandleOpsQueueInitialized = true;
             }
             FileSystem = CreateFileSystem(
                 Logging,

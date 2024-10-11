@@ -61,8 +61,6 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 static const TString FileSystemId = "fs1";
 
-static const TTempDir TempDir;
-
 TString CreateBuffer(size_t len, char fill = 0)
 {
     return TString(len, fill);
@@ -88,6 +86,8 @@ struct TBootstrap
     TString SocketPath;
 
     TPromise<void> StopTriggered = NewPromise<void>();
+
+    const TTempDir TempDir;
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -1624,6 +1624,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         responsePromise.SetValue(NProto::TDestroyHandleResponse{});
 
         scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT_EQUAL(1, handlerCalled);
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")

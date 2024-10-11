@@ -263,7 +263,17 @@ void TFileSystem::ProcessHandleOpsQueue()
         return;
     }
 
-    const auto& entry = HandleOpsQueue->Front();
+    const auto optionalEntry = HandleOpsQueue->Front();
+    if (!optionalEntry.has_value()) {
+        ReportHandleOpsQueueProcessError("Failed to get TQueueEntry from queue");
+        with_lock(HandleOpsQueueLock) {
+            HandleOpsQueue->Pop();
+        }
+        ScheduleProcessHandleOpsQueue();
+        return;
+    }
+
+    const auto& entry = optionalEntry.value();
     if (entry.HasDestroyHandleRequest()) {
         const auto& requestInfo = entry.GetDestroyHandleRequest();
         auto request = std::make_shared<NProto::TDestroyHandleRequest>(
@@ -309,14 +319,14 @@ void TFileSystem::ProcessHandleOpsQueue()
                     ScheduleProcessHandleOpsQueue();
                 }
             });
-    } else if (entry.HasCreateHandleRequest()) {
-        // TODO(#1541): process create handle
     } else {
-        ReportHandleOpsQueueCorruptedEntry(
-            "Can't parse request from HandleOpsQueue entry");
+        // TODO(#1541): process create handle
+        ReportHandleOpsQueueProcessError("Unexpected TQueueEntry in queue");
         with_lock(HandleOpsQueueLock) {
             HandleOpsQueue->Pop();
         }
+        ScheduleProcessHandleOpsQueue();
+        return;
     }
 
 }
