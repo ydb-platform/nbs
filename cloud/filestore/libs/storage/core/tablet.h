@@ -219,6 +219,16 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILESTORE_IMPLEMENT_COMMON_TRANSACTION(name, ns)                       \
+    void CompleteAndUpdateState(                                               \
+        const NActors::TActorContext& ctx,                                     \
+        ns::T##name& args)                                                     \
+    {                                                                          \
+        UpdateInMemoryIndexState(args);                                        \
+        CompleteTx_##name(ctx, args);                                          \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_COMMON_TRANSACTION
+
 #define FILESTORE_IMPLEMENT_RW_TRANSACTION(name, ns)                           \
     struct T##name                                                             \
     {                                                                          \
@@ -261,13 +271,7 @@ protected:
         const NActors::TActorContext& ctx,                                     \
         ns::T##name& args);                                                    \
                                                                                \
-    void CompleteAndUpdateState(                                               \
-        const NActors::TActorContext& ctx,                                     \
-        ns::T##name& args)                                                     \
-    {                                                                          \
-        UpdateInMemoryIndexState(args);                                        \
-        CompleteTx_##name(ctx, args);                                          \
-    }                                                                          \
+    FILESTORE_IMPLEMENT_COMMON_TRANSACTION(name, ns)                           \
 // FILESTORE_IMPLEMENT_RW_TRANSACTION
 
 // For RO transactions we allow to alternatively declare ValidateTx_, PrepareTx_
@@ -291,38 +295,37 @@ protected:
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
         static constexpr bool IsReadOnly = true;                               \
                                                                                \
-        template <typename T, typename ...Args>                                \
+        template <typename T>                                                  \
         static bool PrepareTx(                                                 \
             T& target,                                                         \
             const NActors::TActorContext& ctx,                                 \
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
-            Args&& ...args)                                                    \
+            ns::T##name& args)                                                 \
         {                                                                      \
-            if (target.ValidateTx_##name(ctx, std::forward<Args>(args)...)) {  \
-                dbType db(tx.DB);                                              \
-                return target.PrepareTx_##name(                                \
-                    ctx, db, std::forward<Args>(args)...);                     \
+            if (target.ValidateTx_##name(ctx, args)) {                         \
+                dbType db(tx.DB, args.NodeUpdates);                            \
+                return target.PrepareTx_##name(ctx, db, args);                 \
             }                                                                  \
             return true;                                                       \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
+        template <typename T>                                                  \
         static void ExecuteTx(                                                 \
             T& target,                                                         \
             const NActors::TActorContext& ctx,                                 \
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
-            Args&& ...args)                                                    \
+            ns::T##name& args)                                                 \
         {                                                                      \
-            Y_UNUSED(target, ctx, tx, std::forward<Args>(args)...);            \
+            Y_UNUSED(target, ctx, tx, args);                                   \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
+        template <typename T>                                                  \
         static void CompleteTx(                                                \
             T& target,                                                         \
             const NActors::TActorContext& ctx,                                 \
-            Args&& ...args)                                                    \
+            ns::T##name& args)                                                 \
         {                                                                      \
-            target.CompleteTx_##name(ctx, std::forward<Args>(args)...);        \
+            target.CompleteAndUpdateState(ctx, args);                          \
         }                                                                      \
     };                                                                         \
                                                                                \
@@ -351,6 +354,8 @@ protected:
         args.Clear();                                                          \
         return false;                                                          \
     }                                                                          \
+                                                                               \
+    FILESTORE_IMPLEMENT_COMMON_TRANSACTION(name, ns)                           \
 // FILESTORE_IMPLEMENT_RO_TRANSACTION
 
 }   // namespace NCloud::NFileStore::NStorage

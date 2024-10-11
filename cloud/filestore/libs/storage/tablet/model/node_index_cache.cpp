@@ -46,7 +46,10 @@ void TNodeIndexCache::RegisterGetNodeAttrResult(
     const TString& name,
     const NProto::TNodeAttr& response)
 {
-    if (AttrByParentNodeId.size() >= MaxNodes) {
+    if (MaxNodes == 0) {
+        return;
+    }
+    if (AttrByParentNodeId.size() == MaxNodes) {
         KeyByNodeId.clear();
         AttrByParentNodeId.clear();
     }
