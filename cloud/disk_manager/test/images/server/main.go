@@ -51,6 +51,13 @@ func main() {
 				},
 			)
 
+			http.HandleFunc("/use_default_image",
+				func(w http.ResponseWriter, r *http.Request) {
+					log.Printf("Using default image file %v", imageFilePath)
+					useOtherImage.Store(false)
+				},
+			)
+
 			endpoint := fmt.Sprintf(":%v", port)
 			log.Printf(
 				"Listening on %v, serving files %v %v\n",
