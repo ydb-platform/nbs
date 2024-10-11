@@ -16,6 +16,7 @@ type RetriableError struct {
 	IgnoreRetryLimit bool
 }
 
+// Or maybe we should check non-retriable error here, not in Error()?
 func NewRetriableError(err error) *RetriableError {
 	return &RetriableError{
 		Err: err,
@@ -42,6 +43,12 @@ func NewEmptyRetriableError() *RetriableError {
 }
 
 func (e *RetriableError) Error() string {
+	// TODO:_ should we do the same for other types of errors?
+	// TODO:_ comment?
+	firstNonRetriableError := getFirstNonRetriableError(e)
+	if firstNonRetriableError != nil {
+		return firstNonRetriableError.Error()
+	}
 	return fmt.Sprintf("Retriable error, IgnoreRetryLimit=%v: %v", e.IgnoreRetryLimit, e.Err)
 }
 
@@ -95,8 +102,12 @@ func newNonRetriableError(err error, silent bool) *NonRetriableError {
 }
 
 func (e *NonRetriableError) Error() string {
-	msg := fmt.Sprintf("Non retriable error, Silent=%v: %v", e.Silent, e.Err)
+	msg := e.ErrorWithoutStacktrace()
 	return appendStackTrace(msg, e.stackTrace)
+}
+
+func (e *NonRetriableError) ErrorWithoutStacktrace() string {
+	return fmt.Sprintf("Non retriable error, Silent=%v: %v", e.Silent, e.Err)
 }
 
 func (e *NonRetriableError) Unwrap() error {
@@ -403,6 +414,27 @@ func IsSilent(err error) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func GetShortError(err error) string {
+	firstNonRetriableError := getFirstNonRetriableError(err)
+	if firstNonRetriableError != nil {
+		return firstNonRetriableError.ErrorWithoutStacktrace()
+	}
+	return err.Error()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func appendStackTrace(errorMessage string, stackTrace []byte) string {
 	return fmt.Sprintf("%s\n%s", errorMessage, stackTrace)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getFirstNonRetriableError(err error) *NonRetriableError {
+	// TODO:_ should we check other types of non retriable errors?
+	var nonRetriableErr *NonRetriableError
+	if errors.As(err, nonRetriableErr) {
+		return nonRetriableErr
+	}
+	return nil
 }
