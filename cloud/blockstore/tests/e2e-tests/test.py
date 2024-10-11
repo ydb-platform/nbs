@@ -72,7 +72,11 @@ def init(with_netlink=True, with_endpoint_proxy=True):
     client_config_path.write_text(MessageToString(client_config))
 
     def run(*args, **kwargs):
-        args = [BLOCKSTORE_CLIENT_PATH, *args, "--config", str(client_config_path)]
+        args = [BLOCKSTORE_CLIENT_PATH,
+                *args,
+                "--grpc-trace",
+                "--config",
+                str(client_config_path)]
         script_input = kwargs.get("input")
         if script_input is not None:
             script_input = script_input + "\n"
