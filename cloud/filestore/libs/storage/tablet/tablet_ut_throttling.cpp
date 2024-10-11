@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             if (i == 0) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     0,
-                    readResponse->Record.GetBuffer().Size());
+                    readResponse->Record.GetBuffer().size());
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TString(4_KB, static_cast<char>('a' + i - 1)),
@@ -255,7 +255,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(
                     0,
-                    readResponse->Record.GetBuffer().Size());
+                    readResponse->Record.GetBuffer().size());
             }
         }
 
@@ -557,7 +557,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         const auto response = AssertReadDataResponse(S_OK);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            response->Record.GetBuffer().Size());
+            response->Record.GetBuffer().size());
         AssertWriteDataResponse(S_OK);
     }
 

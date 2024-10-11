@@ -323,13 +323,13 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
     };
 
     for (const auto& buffer: msg->Record.GetBlocks().GetBuffers()) {
-        if (buffer.Size() % PartConfig->GetBlockSize() != 0) {
+        if (buffer.size() % PartConfig->GetBlockSize() != 0) {
             replyError(
                 ctx,
                 *requestInfo,
                 E_ARGUMENT,
                 TStringBuilder() << "buffer not divisible by blockSize: "
-                    << buffer.Size() << " % " << PartConfig->GetBlockSize()
+                    << buffer.size() << " % " << PartConfig->GetBlockSize()
                     << " != 0");
             return;
         }

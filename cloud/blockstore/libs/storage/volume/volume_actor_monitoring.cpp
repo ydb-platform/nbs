@@ -553,7 +553,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
 
-    if (tabName.Empty() || tabName == overviewTabName) {
+    if (tabName.empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
     } else if (tabName == historyTabName) {
         historyTab = activeTab;

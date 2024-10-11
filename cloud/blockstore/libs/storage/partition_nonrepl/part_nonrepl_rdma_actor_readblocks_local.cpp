@@ -87,11 +87,11 @@ public:
             ui64 offset = 0;
             ui64 b = 0;
             bool isAllZeroes = CheckVoidBlocks;
-            while (offset < result.Data.Size()) {
+            while (offset < result.Data.size()) {
                 ui64 targetBlock = dr.StartIndexOffset + b;
                 Y_ABORT_UNLESS(targetBlock < data.size());
                 ui64 bytes =
-                    Min(result.Data.Size() - offset, data[targetBlock].Size());
+                    Min(result.Data.size() - offset, data[targetBlock].Size());
                 Y_ABORT_UNLESS(bytes);
 
                 char* dst = const_cast<char*>(data[targetBlock].Data());

@@ -349,7 +349,7 @@ private:
         const bool requireAuthorization =
             AuthMode == NProto::AUTHORIZATION_REQUIRE;
 
-        if (msg->Token.Empty()) {
+        if (msg->Token.empty()) {
             if (requireAuthorization) {
                 LOG_ERROR_S(ctx, Component,
                     "Request for authorization with empty token: "
