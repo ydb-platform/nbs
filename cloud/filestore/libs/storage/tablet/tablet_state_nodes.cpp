@@ -511,8 +511,8 @@ bool TIndexTabletState::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64& nextNodeId,
-    TString& nextCookie)
+    ui64* nextNodeId,
+    TString* nextCookie)
 {
     return db
         .ReadNodeRefs(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);

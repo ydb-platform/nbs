@@ -119,8 +119,8 @@ public:
         const TString& startCookie,
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
-        ui64& nextNodeId,
-        TString& nextCookie) override;
+        ui64* nextNodeId,
+        TString* nextCookie) override;
 
     bool PrechargeNodeRefs(
         ui64 nodeId,

@@ -212,8 +212,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& startCookie,
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
-        ui64& nextNodeId,
-        TString& nextCookie) override;
+        ui64* nextNodeId,
+        TString* nextCookie) override;
 
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
@@ -624,8 +624,8 @@ public:
         const TString& startCookie,
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
-        ui64& nextNodeId,
-        TString& nextCookie) override;
+        ui64* nextNodeId,
+        TString* nextCookie) override;
 
     void WriteNodeRef(
         ui64 nodeId,

@@ -603,8 +603,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64& nextNodeId,
-    TString& nextCookie)
+    ui64* nextNodeId,
+    TString* nextCookie)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -619,8 +619,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
             it.GetValue<TTable::NodeId>(),
             it.GetValue<TTable::Name>(),
             it.GetValue<TTable::ChildId>(),
-            it.GetValue<TTable::FollowerId>(),
-            it.GetValue<TTable::FollowerName>(),
+            it.GetValue<TTable::ShardId>(),
+            it.GetValue<TTable::ShardName>(),
             it.GetValue<TTable::CommitId>(),
             InvalidCommitId});
         --maxCount;
@@ -631,8 +631,12 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     if (it.IsValid()) {
-        nextNodeId = it.GetValue<TTable::NodeId>();
-        nextCookie = it.GetValue<TTable::Name>();
+        if (nextNodeId) {
+            *nextNodeId = it.GetValue<TTable::NodeId>();
+        }
+        if (nextCookie) {
+            *nextCookie = it.GetValue<TTable::Name>();
+        }
     }
 
     return true;
@@ -2100,8 +2104,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64& nextNodeId,
-    TString& nextCookie)
+    ui64* nextNodeId,
+    TString* nextCookie)
 {
     auto result = TIndexTabletDatabase::ReadNodeRefs(
         startNodeId,
@@ -2188,8 +2192,8 @@ TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
         .NodeRefsRow = {
             .CommitId = ref.MinCommitId,
             .ChildId = ref.ChildNodeId,
-            .FollowerId = ref.FollowerId,
-            .FollowerName = ref.FollowerName}};
+            .ShardId = ref.ShardId,
+            .ShardName = ref.ShardName}};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

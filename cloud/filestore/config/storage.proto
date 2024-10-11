@@ -365,8 +365,8 @@ message TStorageConfig
     reserved 375; // InMemoryIndexCacheNodeAttrsVerCapacity
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
     reserved 377; // InMemoryIndexCacheNodeRefsVerCapacity
-    optional bool InMemoryIndexCacheLoadOnTabletStart = 396;
-    optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 397;
+    optional bool InMemoryIndexCacheLoadOnTabletStart = 398;
+    optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 399;
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
