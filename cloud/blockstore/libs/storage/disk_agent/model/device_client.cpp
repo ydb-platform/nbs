@@ -307,7 +307,7 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     if (!acquired) {
         TStringBuilder allReaders;
         for (const auto& reader: deviceState->ReaderSessions) {
-            bool isFirst = allReaders.Empty();
+            bool isFirst = allReaders.empty();
             allReaders << reader.Id.Quote();
             if (!isFirst) {
                 allReaders << ", ";

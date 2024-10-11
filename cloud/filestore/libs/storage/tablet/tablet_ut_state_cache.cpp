@@ -237,7 +237,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             Max<ui32>(),
             &next));
         UNIT_ASSERT(refs.empty());
-        UNIT_ASSERT(next.Empty());
+        UNIT_ASSERT(next.empty());
 
         // Though the node is present in NodeRefs table, it is not visible at
         // commitId1. So read from cache is considered successful, but the node

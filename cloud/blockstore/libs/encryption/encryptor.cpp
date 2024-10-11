@@ -64,7 +64,7 @@ private:
 public:
     explicit TAesXtsEncryptor(TStringBuf key)
     {
-        memcpy(Key, key.Data(), Min<ui32>(key.size(), EVP_MAX_KEY_LENGTH));
+        memcpy(Key, key.data(), Min<ui32>(key.size(), EVP_MAX_KEY_LENGTH));
     }
 
     ~TAesXtsEncryptor() override

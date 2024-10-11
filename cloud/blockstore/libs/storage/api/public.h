@@ -30,7 +30,7 @@ inline TStringBuf GetBrokenDataMarker()
             : Magic(4096, '0')
         {
             TFastRng64 rng(1337);
-            for (ui32 i = 0; i < Magic.Size(); i += 8) {
+            for (ui32 i = 0; i < Magic.size(); i += 8) {
                 ui64 x = rng.GenRand();
                 ui8* bytes = reinterpret_cast<ui8*>(&x);
                 memcpy(Magic.begin() + i, bytes, 8);

@@ -20,7 +20,7 @@ public:
             const TString& filePath = "test_key_file")
         : File(filePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr)
     {
-        File.Write(key.Data(), key.Size());
+        File.Write(key.data(), key.size());
         File.Flush();
         File.Close();
     }

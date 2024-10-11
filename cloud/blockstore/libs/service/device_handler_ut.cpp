@@ -615,10 +615,10 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
             TSgList src(
                 request->GetBlocksCount(),
-                TBlockDataRef(zeroBlock.Data(), zeroBlock.Size()));
+                TBlockDataRef(zeroBlock.data(), zeroBlock.size()));
 
             TBlockDataRef dst(
-                device.Data() + request->GetStartIndex() * blockSize,
+                device.data() + request->GetStartIndex() * blockSize,
                 src.size() * blockSize);
 
             auto bytesCount = SgListCopy(src, dst);
@@ -638,7 +638,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             UNIT_ASSERT(request->GetStartIndex() + request->BlocksCount <= deviceBlocksCount);
 
             TBlockDataRef dst(
-                device.Data() + request->GetStartIndex() * blockSize,
+                device.data() + request->GetStartIndex() * blockSize,
                 request->BlocksCount * blockSize);
 
             auto guard = request->Sglist.Acquire();
@@ -661,7 +661,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             UNIT_ASSERT(request->GetStartIndex() + request->GetBlocksCount() <= deviceBlocksCount);
 
             TBlockDataRef src(
-                device.Data() + request->GetStartIndex() * blockSize,
+                device.data() + request->GetStartIndex() * blockSize,
                 request->GetBlocksCount() * blockSize);
 
             NProto::TReadBlocksLocalResponse response;

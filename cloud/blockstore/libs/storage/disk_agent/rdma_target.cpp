@@ -940,7 +940,7 @@ private:
 
         TBlockChecksum checksum;
         for (const auto& buffer: blocks.GetBuffers()) {
-            checksum.Extend(buffer.Data(), buffer.Size());
+            checksum.Extend(buffer.data(), buffer.size());
         }
         proto.SetChecksum(checksum.GetValue());
 

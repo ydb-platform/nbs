@@ -79,11 +79,11 @@ struct THashTableStorage final
         while (b < e) {
             auto data = Blocks.FindPtr(b);
             auto& target = sglist[b - request->GetStartIndex()];
-            if (!data || data->Empty()) {
+            if (!data || data->empty()) {
                 memset(const_cast<char*>(target.Data()), 0, target.Size());
             } else {
                 Y_ABORT_UNLESS(target.Size() == BlockSize);
-                memcpy(const_cast<char*>(target.Data()), data->Data(), BlockSize);
+                memcpy(const_cast<char*>(target.Data()), data->data(), BlockSize);
             }
 
             ++b;

@@ -164,7 +164,7 @@ private:
             << " SEND OptionReply"
             << " option:" << option
             << " type:" << type
-            << " length:" << replyData.Size());
+            << " length:" << replyData.size());
         out.WriteOptionReply(option, type, replyData);
     }
 

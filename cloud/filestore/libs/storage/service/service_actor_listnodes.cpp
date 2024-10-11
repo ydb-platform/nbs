@@ -165,7 +165,7 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
         const auto& node = Response.GetNodes(i);
         if (node.GetShardFileSystemId()) {
             auto& batch = batches[node.GetShardFileSystemId()];
-            if (batch.Record.GetHeaders().GetSessionId().Empty()) {
+            if (batch.Record.GetHeaders().GetSessionId().empty()) {
                 batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
                 batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);

@@ -171,7 +171,7 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
     {
         TStringBuilder sb;
         for (const auto channel: channels) {
-            if (sb.Size()) {
+            if (sb.size()) {
                 sb << ", ";
             }
 

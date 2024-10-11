@@ -105,7 +105,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         const auto& fullBuffers = fullResponse->Record.GetBlocks().GetBuffers();
         for (int i = 0; i < fullBuffers.size(); ++i) {
-            UNIT_ASSERT_EQUAL(fullBuffers[i].Size(), blockSize);
+            UNIT_ASSERT_EQUAL(fullBuffers[i].size(), blockSize);
             UNIT_ASSERT_EQUAL(memcmp(
                 fullBuffers[i].data(),
                 TString(blockSize, i).data(),
@@ -582,7 +582,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         const auto& fullBuffers = fullResponse->Record.GetBlocks().GetBuffers();
         for (int i = 0; i < fullBuffers.size(); ++i) {
-            UNIT_ASSERT_EQUAL(fullBuffers[i].Size(), blockSize);
+            UNIT_ASSERT_EQUAL(fullBuffers[i].size(), blockSize);
             UNIT_ASSERT_EQUAL(memcmp(
                 fullBuffers[i].data(),
                 TString(blockSize, i).data(),
