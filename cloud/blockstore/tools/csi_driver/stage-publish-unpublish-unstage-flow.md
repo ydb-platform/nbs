@@ -34,12 +34,12 @@ Possible scenarios:
 --------
 1. Volume was staged and published
 2. CSI Driver was updated
-3. Kubelet restart was happened
+3. Kubelet restart happened
 4. CSI Driver received stage and publish for the same volume again <- here we should handle stage/publish with old unix socket path
 --------
 1. CSI Driver was updated
 2. Volume was staged and published
-3. endpoint should be start with new unix socket path
+3. endpoint should start with new unix socket path
 4. Volume was unpublished and unstaged
 5. UnstageVolume should stop endpoint with new unix socket path
 --------
