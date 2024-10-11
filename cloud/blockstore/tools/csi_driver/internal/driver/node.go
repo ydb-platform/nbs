@@ -902,7 +902,7 @@ func (s *nodeService) nodeUnstageVolume(
 
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
-		//Fallback to previous implementation for already mounted volumes to
+		// Fallback to previous implementation for already mounted volumes to
 		// stop endpoint in nodeUnpublishVolume
 		// Must be removed after migration of all endpoints to the new format
 		return nil
@@ -956,7 +956,7 @@ func (s *nodeService) nodeUnpublishVolume(
 	// because the endpoint's backend service is unknown here.
 	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
 
-	//Fallback to previous implementation for already mounted volumes to
+	// Fallback to previous implementation for already mounted volumes to
 	// stop endpoint in nodeUnpublishVolume.
 	// Must be removed after migration of all endpoints to the new format
 	if s.nbsClient != nil {
@@ -1374,7 +1374,7 @@ func (s *nodeService) NodeExpandVolume(
 	nbdDevicePath := ""
 	unixSocketPath := ""
 	for _, endpoint := range listEndpointsResp.Endpoints {
-		//Fallback to previous implementation for already mounted volumes
+		// Fallback to previous implementation for already mounted volumes
 		// Must be removed after migration of all endpoints to the new format
 		if endpoint.UnixSocketPath == unixSocketPathOld {
 			nbdDevicePath = endpoint.GetNbdDeviceFile()
