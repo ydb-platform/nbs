@@ -3,6 +3,7 @@ PY3_PROGRAM()
 PY_SRCS(
     __main__.py
     image_file_server_launcher.py
+    raw_image_generator.py
     vmdk_image_generator.py
 )
 

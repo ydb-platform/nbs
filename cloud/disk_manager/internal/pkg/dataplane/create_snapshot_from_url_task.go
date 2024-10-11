@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -87,10 +88,12 @@ func (t *createSnapshotFromURLTask) Run(
 
 		t.state.ChunkCount = chunkCount
 
+		fmt.Printf("%v CHECK: saving etag: %v", time.Now(), source.ETag())
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
 		}
+		fmt.Printf("%v CHECK: saved etag: %v", time.Now(), source.ETag())
 	}
 
 	if t.state.ETag != source.ETag() {
@@ -140,6 +143,8 @@ func (t *createSnapshotFromURLTask) Run(
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("%v CHECK: transfer finished", time.Now())
 
 	t.state.MilestoneChunkIndex = t.state.ChunkCount
 	t.state.TransferredChunkCount = transferredChunkCount

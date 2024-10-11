@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -556,8 +558,23 @@ func TestImageServiceCreateQCOW2ImageFromURL(t *testing.T) {
 	testCreateQCOW2ImageFromURL(t)
 }
 
-func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+// TODO:_ do we need this struct?
+// type imageInfo struct {
+// 	URL   string // TODO:_ should not be url here
+// 	Size  uint64
+// 	Crc32 uint32 // TODO:_ names of fields from small latter?
+// }
+
+// TODO:_ default and other might be confusing
+func testImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	t *testing.T,
+	imageID string,
+	imageURL string,
+	defaultImageSize uint64,
+	defaultImageCrc32 uint32,
+	otherImageSize uint64,
+	otherImageCrc32 uint32,
+	overwriteImage func(t *testing.T),
 ) {
 
 	ctx := testcommon.NewContext()
@@ -566,13 +583,12 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := t.Name()
-
 	reqCtx := testcommon.GetRequestContext(t, ctx)
+	fmt.Printf("%v CHECK: starting image creation\n", time.Now())
 	operation, err := client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcUrl{
 			SrcUrl: &disk_manager.ImageUrl{
-				Url: testcommon.GetQCOW2ImageFileURL(),
+				Url: imageURL,
 			},
 		},
 		DstImageId: imageID,
@@ -585,29 +601,62 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
 	// Overwrites image URL contents.
-	testcommon.UseOtherQCOW2ImageFile(t)
+	fmt.Printf("%v CHECK: starting overwrite image url contents\n", time.Now())
+	overwriteImage(t)
+	fmt.Printf("%v CHECK: finished overwrite image url contents\n", time.Now())
 
 	imageResponse := disk_manager.CreateImageResponse{}
+	fmt.Printf("%v CHECK: waiting response\n", time.Now())
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse)
-	if err != nil {
-		// TODO: remove this branch after NBS-4002.
-		require.Contains(t, err.Error(), "wrong ETag")
-		return
-	}
+	fmt.Printf("%v CHECK: got response\n", time.Now())
 
-	imageSize := testcommon.GetOtherQCOW2ImageSize(t)
-	imageCrc32 := testcommon.GetOtherQCOW2ImageCrc32(t)
+	fmt.Printf("%v CHECK: PARAMS: default size = %v, other size = %v\n", time.Now(), defaultImageSize, otherImageSize)
+
+	if err != nil {
+		if strings.Contains(err.Error(), "wrong ETag") {
+			fmt.Printf("%v CHECK: RESULT: got wrong etag error\n", time.Now())
+			testcommon.CheckErrorDetails(t, err, codes.Aborted, "", true /*internal*/)
+			return
+		}
+
+		// TODO:_ comment?
+		// TODO:_ check this error only when other image is smaller? but how we check the sizes?
+		if strings.Contains(err.Error(), "http code 416") {
+			// TODO:_ check detailed
+			fmt.Printf("%v CHECK: RESULT: got http code 416 error\n", time.Now())
+			testcommon.CheckErrorDetails(t, err, codes.BadSource, "", true /*internal*/)
+			return
+		}
+
+		// fmt.Printf("%v CHECK: got error\n", time.Now())
+		// // TODO: remove this branch after NBS-4002.
+		// require.Contains(t, err.Error(), "wrong ETag")
+		// fmt.Printf("%v CHECK: RESULT: got wrong etag error\n", time.Now())
+		// // var detailedErr *tasks_errors.DetailedError
+		// // require.True(t, errors.As(err, &detailedErr))
+		// return
+	}
+	// var detailedErr *tasks_errors.DetailedError
+	// require.True(t, errors.As(err, &detailedErr))
+
+	fmt.Printf("%v CHECK: got no error\n", time.Now())
+
+	imageSize := otherImageSize
+	imageCrc32 := otherImageCrc32
 
 	if int64(imageSize) != imageResponse.Size {
 		// Default image file is also allowed, image could have already been
 		// created before we started using 'other image'.
-		imageSize = testcommon.GetQCOW2ImageSize(t)
-		imageCrc32 = testcommon.GetQCOW2ImageCrc32(t)
+		fmt.Printf("%v CHECK: RESULT: got default image\n", time.Now())
+		imageSize = defaultImageSize
+		imageCrc32 = defaultImageCrc32
 
 		require.Equal(t, int64(imageSize), imageResponse.Size)
+	} else {
+		fmt.Printf("%v CHECK: RESULT: got other image\n", time.Now())
 	}
 
-	diskID := t.Name()
+	diskID := imageID
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -640,6 +689,186 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+	t *testing.T,
+) {
+	// TODO_: still easy to mess up default and other and obtain degenerate test
+	// TODO:_ remove this
+	// qcow2ImageFirst := imageInfo{ // TODO:_ from capital letter?
+	// 	URL:   testcommon.GetQCOW2ImageFileURL(),
+	// 	Size:  testcommon.GetQCOW2ImageSize(t),
+	// 	Crc32: testcommon.GetQCOW2ImageCrc32(t),
+	// }
+	// qcow2ImageSecond := imageInfo{
+	// 	URL:   testcommon.GetQCOW2ImageFileURL(),
+	// 	Size:  testcommon.GetOtherQCOW2ImageSize(t),
+	// 	Crc32: testcommon.GetOtherQCOW2ImageCrc32(t),
+	// }
+
+	testcommon.UseDefaultQCOW2ImageFile(t)
+	testImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_qcow_16MB_32MB",
+		testcommon.GetQCOW2ImageFileURL(),
+		testcommon.GetQCOW2ImageSize(t),
+		testcommon.GetQCOW2ImageCrc32(t),
+		testcommon.GetOtherQCOW2ImageSize(t),
+		testcommon.GetOtherQCOW2ImageCrc32(t),
+		testcommon.UseOtherQCOW2ImageFile,
+	)
+
+	testcommon.UseOtherQCOW2ImageFile(t)
+	testImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_qcow_32MB_16MB",
+		testcommon.GetQCOW2ImageFileURL(),
+		testcommon.GetOtherQCOW2ImageSize(t),
+		testcommon.GetOtherQCOW2ImageCrc32(t),
+		testcommon.GetQCOW2ImageSize(t),
+		testcommon.GetQCOW2ImageCrc32(t),
+		testcommon.UseDefaultQCOW2ImageFile,
+	)
+
+	// TODO:_ remove this
+	// bigRawImageFirst := imageInfo{
+	// 	URL:   testcommon.GetBigRawImageURL(),
+	// 	Size:  testcommon.GetBigRawImageSize(t),
+	// 	Crc32: testcommon.GetBigRawImageCrc32(t),
+	// }
+	// bigRawImageSecond := imageInfo{
+	// 	URL:   testcommon.GetBigRawImageURL(),
+	// 	Size:  testcommon.GetOtherBigRawImageSize(t),
+	// 	Crc32: testcommon.GetOtherBigRawImageCrc32(t),
+	// }
+
+	testcommon.UseDefaultBigRawImageFile(t)
+	testImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess( // TODO:_ remove qcow from test name
+		t,
+		t.Name()+"_raw_512MB_1GB",
+		testcommon.GetBigRawImageURL(),
+		testcommon.GetBigRawImageSize(t),
+		testcommon.GetBigRawImageCrc32(t),
+		testcommon.GetOtherBigRawImageSize(t),
+		testcommon.GetOtherBigRawImageCrc32(t),
+		testcommon.UseOtherBigRawImageFile,
+	)
+
+	testcommon.UseOtherBigRawImageFile(t)
+	testImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_raw_1GB_512MB",
+		testcommon.GetBigRawImageURL(),
+		testcommon.GetOtherBigRawImageSize(t),
+		testcommon.GetOtherBigRawImageCrc32(t),
+		testcommon.GetBigRawImageSize(t),
+		testcommon.GetBigRawImageCrc32(t),
+		testcommon.UseDefaultBigRawImageFile,
+	)
+}
+
+// TODO:_ remove
+// func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+// 	t *testing.T,
+// ) {
+//
+// 	ctx := testcommon.NewContext()
+//
+// 	client, err := testcommon.NewClient(ctx)
+// 	require.NoError(t, err)
+// 	defer client.Close()
+//
+// 	imageID := t.Name()
+//
+// 	reqCtx := testcommon.GetRequestContext(t, ctx)
+// 	fmt.Printf("%v CHECK: starting image creation\n", time.Now())
+// 	operation, err := client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+// 		Src: &disk_manager.CreateImageRequest_SrcUrl{
+// 			SrcUrl: &disk_manager.ImageUrl{
+// 				Url: testcommon.GetQCOW2ImageFileURL(),
+// 			},
+// 		},
+// 		DstImageId: imageID,
+// 		FolderId:   "folder",
+// 		Pooled:     true,
+// 	})
+// 	require.NoError(t, err)
+// 	require.NotEmpty(t, operation)
+//
+// 	// Need to add some variance for better testing.
+// 	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
+// 	// Overwrites image URL contents.
+// 	fmt.Printf("%v CHECK: starting overwrite image url contents\n", time.Now())
+// 	testcommon.UseOtherQCOW2ImageFile(t)
+// 	fmt.Printf("%v CHECK: finished overwrite image url contents\n", time.Now())
+//
+// 	imageResponse := disk_manager.CreateImageResponse{}
+// 	fmt.Printf("%v CHECK: waiting response\n", time.Now())
+// 	err = internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse)
+// 	fmt.Printf("%v CHECK: got response\n", time.Now())
+//
+// 	if err != nil {
+// 		fmt.Printf("%v CHECK: got error\n", time.Now())
+// 		// TODO: remove this branch after NBS-4002.
+// 		require.Contains(t, err.Error(), "wrong ETag")
+// 		fmt.Printf("%v CHECK: RESULT: got wrong etag error\n", time.Now())
+// 		// var detailedErr *tasks_errors.DetailedError
+// 		// require.True(t, errors.As(err, &detailedErr))
+// 		return
+// 	}
+// 	// var detailedErr *tasks_errors.DetailedError
+// 	// require.True(t, errors.As(err, &detailedErr))
+//
+// 	fmt.Printf("%v CHECK: got no error\n", time.Now())
+//
+// 	imageSize := testcommon.GetOtherQCOW2ImageSize(t)
+// 	imageCrc32 := testcommon.GetOtherQCOW2ImageCrc32(t)
+//
+// 	if int64(imageSize) != imageResponse.Size {
+// 		// Default image file is also allowed, image could have already been
+// 		// created before we started using 'other image'.
+// 		fmt.Printf("%v CHECK: RESULT: got default image\n", time.Now())
+// 		imageSize = testcommon.GetQCOW2ImageSize(t)
+// 		imageCrc32 = testcommon.GetQCOW2ImageCrc32(t)
+//
+// 		require.Equal(t, int64(imageSize), imageResponse.Size)
+// 	} else {
+// 		fmt.Printf("%v CHECK: RESULT: got other image\n", time.Now())
+// 	}
+//
+// 	diskID := t.Name()
+//
+// 	reqCtx = testcommon.GetRequestContext(t, ctx)
+// 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+// 		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+// 			SrcImageId: imageID,
+// 		},
+// 		Size: int64(imageSize),
+// 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+// 		DiskId: &disk_manager.DiskId{
+// 			ZoneId: "zone-a",
+// 			DiskId: diskID,
+// 		},
+// 	})
+// 	require.NoError(t, err)
+// 	require.NotEmpty(t, operation)
+// 	err = internal_client.WaitOperation(ctx, client, operation.Id)
+// 	require.NoError(t, err)
+//
+// 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+//
+// 	err = nbsClient.ValidateCrc32(
+// 		ctx,
+// 		diskID,
+// 		nbs.DiskContentInfo{
+// 			ContentSize: imageSize,
+// 			Crc32:       imageCrc32,
+// 		},
+// 	)
+// 	require.NoError(t, err)
+//
+// 	testcommon.CheckConsistency(t, ctx)
+// }
 
 ////////////////////////////////////////////////////////////////////////////////
 

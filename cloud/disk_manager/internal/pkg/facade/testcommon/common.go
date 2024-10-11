@@ -116,6 +116,11 @@ func UseOtherQCOW2ImageFile(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func UseDefaultQCOW2ImageFile(t *testing.T) {
+	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
+	require.NoError(t, err)
+}
+
 func GetOtherQCOW2ImageSize(t *testing.T) uint64 {
 	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_OTHER_QCOW2_IMAGE_SIZE"), 10, 64)
 	require.NoError(t, err)
@@ -151,6 +156,45 @@ func GetGeneratedVMDKImageSize(t *testing.T) uint64 {
 
 func GetGeneratedVMDKImageCrc32(t *testing.T) uint32 {
 	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_CRC32"), 10, 32)
+	require.NoError(t, err)
+	return uint32(value)
+}
+
+func GetBigRawImageURL() string {
+	port := os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_FILE_SERVER_PORT")
+	return fmt.Sprintf("http://localhost:%v", port)
+}
+
+func GetBigRawImageSize(t *testing.T) uint64 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_SIZE"), 10, 64)
+	require.NoError(t, err)
+	return uint64(value)
+}
+
+func GetBigRawImageCrc32(t *testing.T) uint32 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_CRC32"), 10, 32)
+	require.NoError(t, err)
+	return uint32(value)
+}
+
+func UseOtherBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
+	require.NoError(t, err)
+}
+
+func UseDefaultBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
+	require.NoError(t, err)
+}
+
+func GetOtherBigRawImageSize(t *testing.T) uint64 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_SIZE"), 10, 64)
+	require.NoError(t, err)
+	return uint64(value)
+}
+
+func GetOtherBigRawImageCrc32(t *testing.T) uint32 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_CRC32"), 10, 32)
 	require.NoError(t, err)
 	return uint32(value)
 }
