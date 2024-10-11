@@ -29,7 +29,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
         for (auto c : content) {
             if (c.fill) {
                 TString tmp(c.size, *c.fill);
-                b.AddBlock({tmp.Data(), tmp.Size()});
+                b.AddBlock({tmp.data(), tmp.size()});
             } else {
                 b.AddZeroBlock(c.size);
             }

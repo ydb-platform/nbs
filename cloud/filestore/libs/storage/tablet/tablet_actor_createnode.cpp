@@ -415,7 +415,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             return false;   // not ready
         }
 
-        if (args.ShardId.Empty()) {
+        if (args.ShardId.empty()) {
             args.ChildNodeId = args.TargetNodeId;
             if (!args.ChildNode) {
                 // should exist
@@ -468,7 +468,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     }
 
     if (args.TargetNodeId == InvalidNodeId) {
-        if (args.ShardId.Empty()) {
+        if (args.ShardId.empty()) {
             args.ChildNodeId = CreateNode(
                 db,
                 args.CommitId,
@@ -500,7 +500,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
         // If the shard is set, no need to update the child node since it is
         // an external node
-        if (args.ShardId.Empty()) {
+        if (args.ShardId.empty()) {
             auto attrs =
                 CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
             UpdateNode(
@@ -534,7 +534,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.ShardId,
         args.ShardName);
 
-    if (args.ShardId.Empty()) {
+    if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
             auto message = ReportInvalidNodeIdForLocalNode(TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());

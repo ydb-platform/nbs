@@ -623,7 +623,7 @@ private:
     FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RO_TRANSACTION,
         TTxIndexTablet,
-        TIndexTabletDatabase,
+        TIndexTabletDatabaseProxy,
         IIndexTabletDatabase);
 
     STFUNC(StateBoot);

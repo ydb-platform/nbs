@@ -80,11 +80,11 @@ void TRequestWriter::WriteClientHello(ui32 flags)
 
 void TRequestWriter::WriteOption(ui32 option, TStringBuf optionData)
 {
-    Y_DEBUG_ABORT_UNLESS(optionData.Size() <= NBD_MAX_OPTION_SIZE);
+    Y_DEBUG_ABORT_UNLESS(optionData.size() <= NBD_MAX_OPTION_SIZE);
 
     Write<ui64>(NBD_OPTS_MAGIC);
     Write<ui32>(option);
-    Write<ui32>(optionData.Size());
+    Write<ui32>(optionData.size());
     Write(optionData);
 
     Flush();
@@ -148,12 +148,12 @@ void TRequestWriter::WriteOptionReply(
     ui32 type,
     TStringBuf replyData)
 {
-    Y_DEBUG_ABORT_UNLESS(replyData.Size() <= NBD_MAX_OPTION_SIZE);
+    Y_DEBUG_ABORT_UNLESS(replyData.size() <= NBD_MAX_OPTION_SIZE);
 
     Write<ui64>(NBD_REP_MAGIC);
     Write<ui32>(option);
     Write<ui32>(type);
-    Write<ui32>(replyData.Size());
+    Write<ui32>(replyData.size());
     Write(replyData);
 
     Flush();
@@ -177,7 +177,7 @@ void TRequestWriter::WriteRequest(
     Write<ui32>(request.Length);
 
     if (request.Type == NBD_CMD_WRITE) {
-        Y_DEBUG_ABORT_UNLESS(requestData.Size() == request.Length);
+        Y_DEBUG_ABORT_UNLESS(requestData.size() == request.Length);
         Write(requestData);
     } else {
         Y_DEBUG_ABORT_UNLESS(!requestData);
@@ -274,16 +274,16 @@ void TRequestWriter::WriteStructuredError(
     ui32 error,
     TStringBuf message)
 {
-    Y_DEBUG_ABORT_UNLESS(message.Size() <= NBD_MAX_BUFFER_SIZE);
+    Y_DEBUG_ABORT_UNLESS(message.size() <= NBD_MAX_BUFFER_SIZE);
 
     Write<ui32>(NBD_STRUCTURED_REPLY_MAGIC);
     Write<ui16>(NBD_REPLY_FLAG_DONE);
     Write<ui16>(NBD_REPLY_TYPE_ERROR);
     Write<ui64>(handle);
-    Write<ui32>(sizeof(TStructuredError) + message.Size());
+    Write<ui32>(sizeof(TStructuredError) + message.size());
 
     Write<ui32>(error);
-    Write<ui16>(message.Size());
+    Write<ui16>(message.size());
     Write(message);
 
     Flush();

@@ -162,7 +162,7 @@ void SendRandomRequest(ITestVhostDevice& device)
     ui64 length = dist3(eng) * 1024;
 
     TString buffer(length, '0');
-    auto sglist = TSgList{ TBlockDataRef(buffer.Data(), buffer.Size()) };
+    auto sglist = TSgList{ TBlockDataRef(buffer.data(), buffer.size()) };
 
     auto future = device.SendTestRequest(type, from, length, std::move(sglist));
     future.Apply([holder = std::move(buffer)] (const auto& f) {

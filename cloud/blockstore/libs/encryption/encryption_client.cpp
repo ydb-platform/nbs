@@ -584,10 +584,10 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     }
 
     STORAGE_VERIFY(
-        BlockSize <= ZeroBlock.Size(),
+        BlockSize <= ZeroBlock.size(),
         TWellKnownEntityTypes::DISK,
         request->GetDiskId());
-    TBlockDataRef zeroDataRef(ZeroBlock.Data(), BlockSize);
+    TBlockDataRef zeroDataRef(ZeroBlock.data(), BlockSize);
     TSgList zeroSgList(request->GetBlocksCount(), zeroDataRef);
     TGuardedSgList guardedSgList(std::move(zeroSgList));
 

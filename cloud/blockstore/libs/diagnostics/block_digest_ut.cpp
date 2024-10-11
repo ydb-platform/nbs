@@ -25,7 +25,7 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
 
         TString str("asd");
         str.resize(4_KB);
-        TBlockDataRef blockData(str.Data(), str.Size());
+        TBlockDataRef blockData(str.data(), str.size());
         UNIT_ASSERT(gen->ShouldProcess(0, 1, 4_KB));
         UNIT_ASSERT(gen->ComputeDigest(0, blockData));
         UNIT_ASSERT(gen->ShouldProcess(offset + 300, 1, 4_KB));
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         auto check = [&] () {
             TString str(bytes, sizeof(x));
             str.resize(4_KB);
-            TBlockDataRef blockData(str.Data(), str.Size());
+            TBlockDataRef blockData(str.data(), str.size());
             auto digest = gen->ComputeDigest(0, blockData);
             UNIT_ASSERT(digest.Defined());
             UNIT_ASSERT_VALUES_EQUAL(x, *digest);
@@ -85,7 +85,7 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
 
         TString str("asd");
         str.resize(4_KB);
-        TBlockDataRef blockData(str.Data(), str.Size());
+        TBlockDataRef blockData(str.data(), str.size());
         UNIT_ASSERT(!gen->ComputeDigest(0, blockData));
         UNIT_ASSERT(!gen->ComputeDigest(512, blockData));
         UNIT_ASSERT(!gen->ComputeDigest(513, blockData));
