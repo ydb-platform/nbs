@@ -106,7 +106,7 @@ public:
             "Node not found id=%lu map size=%zu",
             id,
             NodesLogToLocal.size());
-        return 0;
+        return InvalidNodeId;
     }
 
     THandleLocal HandleIdMapped(const THandleLog id)
@@ -120,7 +120,7 @@ public:
             "Handle not found id=%lu map size=%zu",
             id,
             HandlesLogToActual.size());
-        return 0;
+        return InvalidHandle;
     }
 
 private:
@@ -141,7 +141,7 @@ private:
 
         const auto node = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
 
-        if (!node) {
+        if (node == InvalidNodeId) {
             STORAGE_ERROR(
                 "Access fail: no node=%lu",
                 logRequest.GetNodeInfo().GetNodeId());
@@ -165,7 +165,9 @@ private:
     // Recursive, no infinity loop check
     TNodeLocal CreateDirIfMissingByNodeLog(TNodeLog nodeIdLog)
     {
-        if (const auto& nodeIdLocal = NodeIdMapped(nodeIdLog)) {
+        if (const auto& nodeIdLocal = NodeIdMapped(nodeIdLog);
+            nodeIdLocal != InvalidNodeId)
+        {
             return nodeIdLocal;
         }
 
@@ -175,7 +177,7 @@ private:
         }
         auto parent = NodeIdMapped(it->second.ParentLog);
 
-        if (!parent && it->second.ParentLog &&
+        if (parent == InvalidNodeId && it->second.ParentLog &&
             nodeIdLog != it->second.ParentLog)
         {
             parent = CreateDirIfMissingByNodeLog(it->second.ParentLog);
@@ -242,20 +244,21 @@ private:
         if (relativePathName.empty()) {
             auto parentNode =
                 NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
-            if (!parentNode) {
+            if (parentNode == InvalidNodeId) {
                 parentNode = NodeIdMapped(
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .ParentLog);
             }
 
-            if (!parentNode && logRequest.GetNodeInfo().GetParentNodeId() !=
-                                   logRequest.GetNodeInfo().GetNodeId())
+            if (parentNode == InvalidNodeId &&
+                logRequest.GetNodeInfo().GetParentNodeId() !=
+                    logRequest.GetNodeInfo().GetNodeId())
             {
                 parentNode = CreateDirIfMissingByNodeLog(
                     logRequest.GetNodeInfo().GetParentNodeId());
             }
 
-            if (!parentNode) {
+            if (parentNode == InvalidNodeId) {
                 STORAGE_ERROR(
                     "Create handle %lu fail: no parent=%lu",
                     logRequest.GetNodeInfo().GetHandle(),
@@ -375,7 +378,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto handle = HandleIdMapped(logRequest.GetRanges(0).GetHandle());
-        if (!handle) {
+        if (handle == InvalidHandle) {
             STORAGE_WARN(
                 "Read: no handle %lu ranges size=%d map size=%zu",
                 logRequest.GetRanges(0).GetHandle(),
@@ -451,7 +454,7 @@ private:
 
         const auto handleLog = logRequest.GetRanges(0).GetHandle();
         const auto handleLocal = HandleIdMapped(handleLog);
-        if (!handleLocal) {
+        if (handleLocal == InvalidHandle) {
             // TODO(proller): Suggest filename, place in __lost__ if unknown,
             // create and open file, continue to write
             return MakeFuture(TCompletedRequest(
@@ -541,10 +544,7 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        auto parentNode =
-            NodeIdMapped(logRequest.GetNodeInfo().GetNewParentNodeId());
-
-        parentNode = CreateDirIfMissingByNodeLog(
+        const auto parentNode = CreateDirIfMissingByNodeLog(
             logRequest.GetNodeInfo().GetNewParentNodeId());
 
         auto fullName = Spec.GetReplayRoot() + "/" + PathByNode(parentNode) +
@@ -635,16 +635,16 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto parentnodeid =
+        const auto parentNodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
 
-        auto fullName = Spec.GetReplayRoot() + PathByNode(parentnodeid) +
+        auto fullName = Spec.GetReplayRoot() + PathByNode(parentNodeId) +
                         logRequest.GetNodeInfo().GetNodeName();
 
-        const auto newparentnodeid =
+        const auto newParentNodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetNewParentNodeId());
 
-        auto newFullName = Spec.GetReplayRoot() + PathByNode(newparentnodeid) +
+        auto newFullName = Spec.GetReplayRoot() + PathByNode(newParentNodeId) +
                            logRequest.GetNodeInfo().GetNewNodeName();
 
         const auto renameres = NFs::Rename(fullName, newFullName);
@@ -685,7 +685,7 @@ private:
 
         const auto parentNodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
-        if (!parentNodeId) {
+        if (parentNodeId == InvalidNodeId) {
             STORAGE_WARN(
                 "Unlink : no parent orig=%lu",
                 logRequest.GetNodeInfo().GetParentNodeId());
@@ -785,7 +785,7 @@ private:
 
         const auto nodeid = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
 
-        if (!nodeid) {
+        if (nodeid == InvalidNodeId) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
@@ -831,7 +831,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto nodeid = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
-        if (!nodeid) {
+        if (nodeid == InvalidNodeId) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_LIST_NODES,
                 Started,
