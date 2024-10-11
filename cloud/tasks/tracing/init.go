@@ -53,7 +53,7 @@ func SpanFromContext(ctx context.Context) trace.Span {
 
 func SetError(span trace.Span, err *error) {
 	if *err != nil {
-		span.SetStatus(codes.Error, (*err).Error())
+		span.SetStatus(codes.Error, errors.GetShortError(*err))
 	}
 }
 
