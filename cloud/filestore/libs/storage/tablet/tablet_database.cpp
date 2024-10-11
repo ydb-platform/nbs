@@ -2035,8 +2035,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
             .NodeRefsRow = {
                 .CommitId = ref->MinCommitId,
                 .ChildId = ref->ChildNodeId,
-                .FollowerId = ref->FollowerId,
-                .FollowerName = ref->FollowerName}});
+                .ShardId = ref->ShardId,
+                .ShardName = ref->ShardName}});
     }
     return result;
 }
@@ -2060,8 +2060,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
                 .NodeRefsRow = {
                     .CommitId = ref.MinCommitId,
                     .ChildId = ref.ChildNodeId,
-                    .FollowerId = ref.FollowerId,
-                    .FollowerName = ref.FollowerName}});
+                    .ShardId = ref.ShardId,
+                    .ShardName = ref.ShardName}});
         }
     }
     return result;
