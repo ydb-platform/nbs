@@ -27,6 +27,7 @@ protected:
     ui64 TimestampMcs{};
     TInstant Started;
 
+    // Do not sleep too much if timestamps in log is broken
     constexpr static auto MaxSleepMcs = 1000000;
 
 private:

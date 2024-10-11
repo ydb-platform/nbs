@@ -66,6 +66,8 @@ private:
 
     THashMap<THandleLocal, TFile> OpenHandles;
 
+    const TString LostName = "__lost__";
+
 public:
     TReplayRequestGeneratorFs(
             NProto::TReplaySpec spec,
@@ -186,7 +188,7 @@ private:
             }
             if (parentPath.empty()) {
                 parentPath =
-                    "/__lost__/" + ToString(it->second.ParentLog) + "/";
+                    "/" + LostName + "/" + ToString(it->second.ParentLog) + "/";
             }
             const auto name =
                 parentPath +
@@ -292,14 +294,15 @@ private:
             logRequest.GetNodeInfo().GetNodeId());
 
         try {
+            EOpenModeFlag mode{};
+            if (Spec.GetCreateOnRead()) {
+                mode = OpenAlways;
+            } else {
+                mode = OpenExisting;
+            }
             TFile fileHandle(
                 Spec.GetReplayRoot() + relativePathName,
-                // OpenAlways | (Spec.GetNoWrite() ? RdOnly : RdWr)
-                FileOpenFlags(
-                    logRequest.GetNodeInfo().GetFlags(),
-                    Spec.GetNoWrite()        ? OpenExisting
-                    : Spec.GetCreateOnRead() ? OpenAlways
-                                             : OpenExisting));
+                FileOpenFlags(logRequest.GetNodeInfo().GetFlags(), mode));
 
             if (!fileHandle.IsOpen()) {
                 return MakeFuture(TCompletedRequest{
