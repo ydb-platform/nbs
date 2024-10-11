@@ -616,6 +616,8 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
+	// Fallback to previous implementation for already mounted volumes
+	// Must be removed after migration of all endpoints to the new format
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
 		return s.nodePublishDiskAsFilesystemDeprecated(ctx, req)
@@ -900,6 +902,9 @@ func (s *nodeService) nodeUnstageVolume(
 
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
+		//Fallback to previous implementation for already mounted volumes to
+		// stop endpoint in nodeUnpublishVolume
+		// Must be removed after migration of all endpoints to the new format
 		return nil
 	}
 
@@ -951,6 +956,9 @@ func (s *nodeService) nodeUnpublishVolume(
 	// because the endpoint's backend service is unknown here.
 	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
 
+	//Fallback to previous implementation for already mounted volumes to
+	// stop endpoint in nodeUnpublishVolume.
+	// Must be removed after migration of all endpoints to the new format
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
@@ -1366,6 +1374,8 @@ func (s *nodeService) NodeExpandVolume(
 	nbdDevicePath := ""
 	unixSocketPath := ""
 	for _, endpoint := range listEndpointsResp.Endpoints {
+		//Fallback to previous implementation for already mounted volumes
+		// Must be removed after migration of all endpoints to the new format
 		if endpoint.UnixSocketPath == unixSocketPathOld {
 			nbdDevicePath = endpoint.GetNbdDeviceFile()
 			unixSocketPath = unixSocketPathOld
