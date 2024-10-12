@@ -582,9 +582,14 @@ private:
             return false;
         }
 
-        ++CurrentIoDepth;
         auto self = weak_from_this();
-        const auto future = RequestGenerator->ExecuteNextRequest().Apply(
+        const auto future = RequestGenerator->ExecuteNextRequest();
+        if (!future.Initialized()) {
+            TestStats.Success = false;
+            return false;
+        }
+        ++CurrentIoDepth;
+        future.Apply(
             [=](const TFuture<TCompletedRequest>& future)
             {
                 if (auto ptr = self.lock()) {
@@ -636,10 +641,6 @@ private:
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
             stats.Hist.RecordValue(request->Elapsed);
-
-            if (request->Stopped) {
-                TestStats.Success = false;
-            }
         }
     }
 

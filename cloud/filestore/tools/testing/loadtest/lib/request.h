@@ -24,7 +24,6 @@ struct TCompletedRequest
     NProto::EAction Action{};
     TDuration Elapsed;
     NProto::TError Error;
-    bool Stopped = false;
 
     TCompletedRequest() = default;
 
@@ -32,10 +31,6 @@ struct TCompletedRequest
         : Action(action)
         , Elapsed(TInstant::Now() - start)
         , Error(std::move(error))
-    {}
-
-    TCompletedRequest(bool stop) noexcept
-        : Stopped(stop)
     {}
 };
 

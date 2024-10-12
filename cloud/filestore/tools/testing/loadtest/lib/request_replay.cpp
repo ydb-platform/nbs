@@ -68,7 +68,9 @@ void IReplayRequestGenerator::Advance()
         if (!Spec.GetFileSystemIdFilter().empty() &&
             fileSystemId != Spec.GetFileSystemIdFilter())
         {
-            STORAGE_DEBUG("Skipped event with FileSystemId=" << fileSystemId);
+            STORAGE_DEBUG(
+                "Skipped event with FileSystemId=%s",
+                fileSystemId.c_str());
             continue;
         }
 
@@ -88,7 +90,7 @@ NThreading::TFuture<TCompletedRequest>
 IReplayRequestGenerator::ExecuteNextRequest()
 {
     if (!HasNextRequest()) {
-        return MakeFuture(TCompletedRequest(true));
+        return {};
     }
 
     for (; EventPtr; Advance()) {
@@ -182,7 +184,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
         EventMessageNumber,
         !!EventPtr);
 
-    return MakeFuture(TCompletedRequest(true));
+    return {};
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
