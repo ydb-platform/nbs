@@ -42,11 +42,11 @@ public:
 
     bool Execute() override
     {
-        Headers.SetSessionId(SessionId);
-        Headers.SetClientId(ClientId);
-        Headers.SetSessionSeqNo(SeqNo);
-
         auto request = CreateRequest<NProto::TResetSessionRequest>();
+        auto& headers = *request->MutableHeaders();
+        headers.SetSessionId(SessionId);
+        headers.SetClientId(ClientId);
+        headers.SetSessionSeqNo(SeqNo);
         if (SessionState) {
             request->SetSessionState(Base64Decode(SessionState));
         }
