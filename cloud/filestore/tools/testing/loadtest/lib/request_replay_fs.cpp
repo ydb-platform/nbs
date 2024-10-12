@@ -130,7 +130,7 @@ private:
     {
         // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
 
-        if (Spec.GetNoRead()) {
+        if (Spec.GetSkipRead()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_ACCESS_NODE,
                 Started,
@@ -368,7 +368,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        if (Spec.GetNoRead()) {
+        if (Spec.GetSkipRead()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_READ,
                 Started,
@@ -444,7 +444,7 @@ private:
     {
         //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
 
-        if (Spec.GetNoWrite()) {
+        if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_WRITE,
                 Started,
@@ -535,7 +535,7 @@ private:
         // nfs     CreateNode      0.006404s       S_OK {new_parent_node_id=1,
         // new_node_name=home, mode=509, node_id=12526, size=0}
 
-        if (Spec.GetNoWrite()) {
+        if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_NODE,
                 Started,
@@ -626,7 +626,7 @@ private:
         // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
         // node_name=HEAD.lock, new_parent_node_id=12527, new_node_name=HEAD}
         // request->SetNodeId(NodesLogToActual[r.GetNodeInfo().GetNodeId()]);
-        if (Spec.GetNoWrite()) {
+        if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_RENAME_NODE,
                 Started,
@@ -674,7 +674,7 @@ private:
         // UnlinkNode      0.002605s       S_OK    {parent_node_id=3,
         // node_name=tfrgYZ1}
 
-        if (Spec.GetNoWrite()) {
+        if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_REMOVE_NODE,
                 Started,
@@ -752,7 +752,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        if (Spec.GetNoRead()) {
+        if (Spec.GetSkipRead()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
@@ -841,7 +841,7 @@ private:
                                      << nodeid)});
         }
 
-        if (!Spec.GetNoWrite()) {
+        if (!Spec.GetSkipWrite()) {
             CreateDirIfMissingByNodeLog(logRequest.GetNodeInfo().GetNodeId());
         }
 

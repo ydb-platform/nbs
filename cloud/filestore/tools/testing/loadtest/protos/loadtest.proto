@@ -65,10 +65,10 @@ message TReplaySpec
     string FileSystemIdFilter = 3;
 
     // Skip read operations: AccessNode ReadData GetNodeAttr
-    bool NoRead = 4;
+    bool SkipRead = 4;
 
     // Skip write operations: CreateNode CreateHandle Write RenameNode UnlinkNode
-    bool NoWrite = 5;
+    bool SkipWrite = 5;
 
     // Factor for sleeps for respect timings from log
     // Example: 0: disable sleep; 0.5: try be 2x faster; 1: keep as in log; 2: 2x times slower; 
