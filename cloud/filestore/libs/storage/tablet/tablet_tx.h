@@ -478,10 +478,10 @@ struct TTxIndexTablet
 
     struct TResetSession
     {
-        const TRequestInfoPtr RequestInfo;
+        /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
-        NProto::TResetSessionRequest Request;
+        /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
 
@@ -508,10 +508,10 @@ struct TTxIndexTablet
 
     struct TDestroySession: TIndexStateNodeUpdates
     {
-        const TRequestInfoPtr RequestInfo;
+        /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
-        NProtoPrivate::TDestroySessionRequest Request;
+        /* const */ NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
 

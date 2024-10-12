@@ -206,8 +206,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     auto actor = std::make_unique<TDestroyShardSessionsActor>(
         LogTag,
-        args.RequestInfo,
-        args.Request,
+        std::move(args.RequestInfo),
+        std::move(args.Request),
         TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 

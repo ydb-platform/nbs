@@ -201,8 +201,8 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 
     auto actor = std::make_unique<TResetShardSessionsActor>(
         LogTag,
-        args.RequestInfo,
-        args.Request,
+        std::move(args.RequestInfo),
+        std::move(args.Request),
         TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 
