@@ -481,7 +481,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
-        const TString SessionState;
+        NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
 
@@ -489,11 +489,11 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 sessionSeqNo,
-                TString sessionState)
+                NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
-            , SessionState(std::move(sessionState))
+            , Request(std::move(request))
         {}
 
         void Clear()
