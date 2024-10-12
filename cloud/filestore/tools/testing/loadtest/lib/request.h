@@ -43,6 +43,8 @@ struct IRequestGenerator
     virtual bool HasNextRequest() = 0;
     virtual NThreading::TFuture<TCompletedRequest> ExecuteNextRequest() = 0;
 
+    // With false collect request futures and process them in bulk
+    // With true process every request future immediately after ExecuteNextRequest
     virtual bool ShouldImmediatelyProcessQueue()
     {
         return false;
