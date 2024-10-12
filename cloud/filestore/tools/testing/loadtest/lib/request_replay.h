@@ -34,6 +34,8 @@ private:
     TConstEventPtr EventPtr;
     int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
+    TFuture<TCompletedRequest> ProcessRequest(
+        const NProto::TProfileLogRequestInfo& request);
 
 public:
     IReplayRequestGenerator(

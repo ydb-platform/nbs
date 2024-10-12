@@ -14,11 +14,11 @@ namespace NCloud::NFileStore::NLoadTest {
 ////////////////////////////////////////////////////////////////////////////////
 
 IReplayRequestGenerator::IReplayRequestGenerator(
-        NProto::TReplaySpec spec,
-        ILoggingServicePtr logging,
-        NClient::ISessionPtr session,
-        TString /*filesystemId*/,
-        NProto::THeaders headers)
+    NProto::TReplaySpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString /*filesystemId*/,
+    NProto::THeaders headers)
     : Spec(std::move(spec))
     , Headers(std::move(headers))
     , Session(std::move(session))
@@ -78,6 +78,52 @@ void IReplayRequestGenerator::Advance()
     }
 }
 
+TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
+    const NProto::TProfileLogRequestInfo& request)
+{
+    const auto& action = request.GetRequestType();
+    switch (static_cast<EFileStoreRequest>(action)) {
+        case EFileStoreRequest::ReadData:
+            return DoReadData(request);
+        case EFileStoreRequest::WriteData:
+            return DoWrite(request);
+        case EFileStoreRequest::CreateNode:
+            return DoCreateNode(request);
+        case EFileStoreRequest::RenameNode:
+            return DoRenameNode(request);
+        case EFileStoreRequest::UnlinkNode:
+            return DoUnlinkNode(request);
+        case EFileStoreRequest::CreateHandle:
+            return DoCreateHandle(request);
+        case EFileStoreRequest::DestroyHandle:
+            return DoDestroyHandle(request);
+        case EFileStoreRequest::GetNodeAttr:
+            return DoGetNodeAttr(request);
+        case EFileStoreRequest::AccessNode:
+            return DoAccessNode(request);
+        case EFileStoreRequest::ListNodes:
+            return DoListNodes(request);
+        case EFileStoreRequest::AcquireLock:
+            return DoAcquireLock(request);
+        case EFileStoreRequest::ReleaseLock:
+            return DoReleaseLock(request);
+
+        case EFileStoreRequest::ReadBlob:
+        case EFileStoreRequest::WriteBlob:
+        case EFileStoreRequest::GenerateBlobIds:
+        case EFileStoreRequest::PingSession:
+        case EFileStoreRequest::Ping:
+            return {};
+
+        default:
+            STORAGE_INFO(
+                "Uninmplemented action=%u %s",
+                action,
+                RequestName(request.GetRequestType()).c_str());
+            return {};
+    }
+}
+
 NThreading::TFuture<TCompletedRequest>
 IReplayRequestGenerator::ExecuteNextRequest()
 {
@@ -91,7 +137,8 @@ IReplayRequestGenerator::ExecuteNextRequest()
         }
 
         for (; EventMessageNumber > 0;) {
-            auto request = MessagePtr->GetRequests()[--EventMessageNumber];
+            NProto::TProfileLogRequestInfo request =
+                MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
@@ -119,54 +166,17 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%d typename=%s type=%d name=%s json=%s",
+                "Processing message n=%d typename=%s type=%d name=%s data=%s",
                 EventMessageNumber,
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
                 RequestName(request.GetRequestType()).c_str(),
-                ToString(request.AsJSON()).c_str());
+                request.ShortDebugString().Quote().c_str());
+
+            if (const auto future = ProcessRequest(request);
+                future.Initialized())
             {
-                const auto& action = request.GetRequestType();
-                switch (static_cast<EFileStoreRequest>(action)) {
-                    case EFileStoreRequest::ReadData:
-                        return DoReadData(request);
-                    case EFileStoreRequest::WriteData:
-                        return DoWrite(request);
-                    case EFileStoreRequest::CreateNode:
-                        return DoCreateNode(request);
-                    case EFileStoreRequest::RenameNode:
-                        return DoRenameNode(request);
-                    case EFileStoreRequest::UnlinkNode:
-                        return DoUnlinkNode(request);
-                    case EFileStoreRequest::CreateHandle:
-                        return DoCreateHandle(request);
-                    case EFileStoreRequest::DestroyHandle:
-                        return DoDestroyHandle(request);
-                    case EFileStoreRequest::GetNodeAttr:
-                        return DoGetNodeAttr(request);
-                    case EFileStoreRequest::AccessNode:
-                        return DoAccessNode(request);
-                    case EFileStoreRequest::ListNodes:
-                        return DoListNodes(request);
-                    case EFileStoreRequest::AcquireLock:
-                        return DoAcquireLock(request);
-                    case EFileStoreRequest::ReleaseLock:
-                        return DoReleaseLock(request);
-
-                    case EFileStoreRequest::ReadBlob:
-                    case EFileStoreRequest::WriteBlob:
-                    case EFileStoreRequest::GenerateBlobIds:
-                    case EFileStoreRequest::PingSession:
-                    case EFileStoreRequest::Ping:
-                        continue;
-
-                    default:
-                        STORAGE_INFO(
-                            "Uninmplemented action=%u %s",
-                            action,
-                            RequestName(request.GetRequestType()).c_str());
-                        continue;
-                }
+                return future;
             }
         }
     }

@@ -60,6 +60,8 @@ message TReplaySpec
 {
     string FileName = 1;
     string ReplayRoot = 2; // not used in grpc
+
+    // Use profile log messages only with this FileSystemId  
     string FileSystemIdFilter = 3;
 
     // Skip read operations: AccessNode ReadData GetNodeAttr
