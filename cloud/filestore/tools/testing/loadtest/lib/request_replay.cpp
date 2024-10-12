@@ -14,11 +14,11 @@ namespace NCloud::NFileStore::NLoadTest {
 ////////////////////////////////////////////////////////////////////////////////
 
 IReplayRequestGenerator::IReplayRequestGenerator(
-    NProto::TReplaySpec spec,
-    ILoggingServicePtr logging,
-    NClient::ISessionPtr session,
-    TString /*filesystemId*/,
-    NProto::THeaders headers)
+        NProto::TReplaySpec spec,
+        ILoggingServicePtr logging,
+        NClient::ISessionPtr session,
+        TString /*filesystemId*/,
+        NProto::THeaders headers)
     : Spec(std::move(spec))
     , Headers(std::move(headers))
     , Session(std::move(session))
