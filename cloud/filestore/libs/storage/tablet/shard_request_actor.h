@@ -103,8 +103,8 @@ void TShardRequestActor<TRequest, TResponse>::SendRequests(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Sending %s to shard %s",
-            Request.GetTypeName().Quote().c_str(),
             LogTag.c_str(),
+            Request.GetTypeName().Quote().c_str(),
             shardId.c_str());
 
         ctx.Send(
@@ -126,7 +126,7 @@ void TShardRequestActor<TRequest, TResponse>::HandleResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Shard %s failed for %s with error %s",
+            "%s %s failed for shard %s with error %s",
             LogTag.c_str(),
             Request.GetTypeName().Quote().c_str(),
             ShardIds[ev->Cookie].c_str(),
@@ -139,9 +139,9 @@ void TShardRequestActor<TRequest, TResponse>::HandleResponse(
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Shard %s succeeded for %s",
-        Request.GetTypeName().Quote().c_str(),
+        "%s %s succeeded for shard %s",
         LogTag.c_str(),
+        Request.GetTypeName().Quote().c_str(),
         ShardIds[ev->Cookie].c_str());
 
     if (++ProcessedShards == ShardIds.size()) {
