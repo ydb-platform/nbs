@@ -220,9 +220,9 @@ void TConfigInitializer::InitRdmaConfig()
         ParseProtoTextFromFileRobust(Options->RdmaConfig, rdmaConfig);
     } else {
         // no rdma config file is given fallback to legacy config
-        if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
+        if (DiskAgentConfig->HasRdmaTarget()) {
             rdmaConfig.SetServerEnabled(true);
-            const auto& rdmaTarget = DiskAgentConfig->DeprecatedGetRdmaTarget();
+            const auto& rdmaTarget = DiskAgentConfig->GetRdmaTarget();
             rdmaConfig.MutableServer()->CopyFrom(rdmaTarget.GetServer());
         }
     }

@@ -22,10 +22,17 @@ using namespace NActors;
 
 void TDiskAgentActor::InitAgent(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(
+        OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
+        OldRequestCounters.Already);
+
+    TRdmaTargetConfig rdmaTargetConfig(
+        Config->GetRejectLateRequestsAtDiskAgentEnabled(),
+        AgentConfig->GetRdmaTarget());
+
     State = std::make_unique<TDiskAgentState>(
         Config,
         AgentConfig,
-        RdmaConfig,
         Spdk,
         Allocator,
         StorageProvider,
@@ -33,21 +40,14 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         BlockDigestGenerator,
         Logging,
         RdmaServer,
-        NvmeManager);
-
-    Y_DEBUG_ABORT_UNLESS(
-        OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
-        OldRequestCounters.Already);
-    TRdmaTargetConfig rdmaTargetConfig{
-        RejectLateRequestsAtDiskAgentEnabled,
-        OldRequestCounters};
-
-    auto result = State->Initialize(std::move(rdmaTargetConfig));
+        NvmeManager,
+        std::move(rdmaTargetConfig),
+        OldRequestCounters);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
 
-    result.Subscribe([=] (auto future) {
+    State->Initialize().Subscribe([=] (auto future) {
         using TCompletionEvent = TEvDiskAgentPrivate::TEvInitAgentCompleted;
 
         NProto::TError error;

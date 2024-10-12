@@ -42,8 +42,11 @@ message TRdmaClient
 
 message TRdmaTarget
 {
-    TRdmaEndpoint Endpoint = 1;
-    TRdmaServer Server = 2;
+    TRdmaEndpoint Endpoint = 1;            // deprecated
+    TRdmaServer Server = 2;                // deprecated
+    string Host = 3;
+    uint32 Port = 4;
+    uint32 Threads = 5;
 }
 
 message TRdmaConfig

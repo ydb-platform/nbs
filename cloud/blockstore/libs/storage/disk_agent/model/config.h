@@ -55,17 +55,12 @@ public:
         return Config.GetNvmeTarget();
     }
 
-    const auto& GetRdmaEndpoint() const
-    {
-        return Config.GetRdmaTarget().GetEndpoint();
-    }
-
-    const auto& DeprecatedGetRdmaTarget() const
+    const auto& GetRdmaTarget() const
     {
         return Config.GetRdmaTarget();
     }
 
-    auto DeprecatedHasRdmaTarget() const
+    auto HasRdmaTarget() const
     {
         return Config.HasRdmaTarget();
     }

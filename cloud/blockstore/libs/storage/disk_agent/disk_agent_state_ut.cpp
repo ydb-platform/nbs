@@ -152,7 +152,6 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
     return std::make_unique<TDiskAgentState>(
         CreateStorageConfig(),
         std::move(config),
-        nullptr,    // rdmaConfig
         NSpdk::CreateEnvStub(),
         CreateTestAllocator(),
         nullptr,   // storageProvider
@@ -160,7 +159,9 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         CreateBlockDigestGeneratorStub(),
         CreateLoggingService("console"),
         nullptr,    // rdmaServer
-        nullptr);   // nvmeManager
+        nullptr,    // nvmeManager
+        TRdmaTargetConfig(),
+        TOldRequestCounters());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,7 +343,6 @@ struct TFiles
         return std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             std::move(config),
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -350,7 +350,9 @@ struct TFiles
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
     }
 };
 
@@ -383,7 +385,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 {
     void ShouldInitialize(TDiskAgentState& state, bool checkSerialNumbers)
     {
-        auto future = state.Initialize({});
+        auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT(r.Errors.empty());
@@ -512,7 +514,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             config,
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -523,9 +524,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
 
-        auto future = state.Initialize({});
+        auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(1, r.Errors.size());
@@ -724,7 +727,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 TDiskAgentState state(
                     CreateStorageConfig(),
                     config,
-                    nullptr,    // rdmaConfig
                     nullptr,    // spdk
                     CreateTestAllocator(),
                     std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -736,9 +738,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     CreateBlockDigestGeneratorStub(),
                     CreateLoggingService("console"),
                     nullptr,    // rdmaServer
-                    NvmeManager);
+                    NvmeManager,
+                    TRdmaTargetConfig(),
+                    TOldRequestCounters());
 
-                auto future = state.Initialize({});
+                auto future = state.Initialize();
                 const auto& r = future.GetValue(WaitTimeout);
 
                 if (checkLockedDevices) {
@@ -795,7 +799,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack"),
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -803,9 +806,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            std::make_shared<TTestNvmeManager>());
+            std::make_shared<TTestNvmeManager>(),
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
 
-        auto future = state.Initialize({});
+        auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(3, r.Errors.size());
@@ -823,7 +828,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
         );
 
-        auto future = state->Initialize({});
+        auto future = state->Initialize();
         const auto& r = future.GetValue(WaitTimeout);
         UNIT_ASSERT(r.Errors.empty());
 
@@ -1215,7 +1220,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             config,
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1223,9 +1227,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
 
-        auto future = state.Initialize({});
+        auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
@@ -1373,7 +1379,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             config,
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1381,9 +1386,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
 
-        auto future = state->Initialize({});
+        auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
@@ -1453,7 +1460,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             config,
-            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1461,9 +1467,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            TRdmaTargetConfig(),
+            TOldRequestCounters());
 
-        auto future = state->Initialize({});
+        auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
 
         UNIT_ASSERT_VALUES_EQUAL(1, result.Errors.size());
@@ -1498,7 +1506,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             TFileOutput(file).Write("<<< garbage >>>");
         }
 
-        auto future = state->Initialize({});
+        auto future = state->Initialize();
 
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             future.GetValue(),
@@ -1533,7 +1541,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     .DiscoveryConfig = discoveryConfig,
                     .CachedConfigPath = CachedConfigPath
                 }),
-                nullptr,    // rdmaConfig
                 nullptr,    // spdk
                 CreateTestAllocator(),
                 std::make_shared<TTestStorageProvider>(storageState),
@@ -1541,13 +1548,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 CreateBlockDigestGeneratorStub(),
                 CreateLoggingService("console"),
                 nullptr,    // rdmaServer
-                NvmeManager);
+                NvmeManager,
+                TRdmaTargetConfig(),
+                TOldRequestCounters());
         };
 
         {
             auto state = newState(discovery);
 
-            auto future = state->Initialize({});
+            auto future = state->Initialize();
             const auto& result = future.GetValue(WaitTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
@@ -1574,7 +1583,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         {
             auto state = newState(discovery);
 
-            auto future = state->Initialize({});
+            auto future = state->Initialize();
             const auto& result = future.GetValue(WaitTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
@@ -1627,7 +1636,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 })
             );
 
-            auto future = state->Initialize({});
+            auto future = state->Initialize();
             const auto& r = future.GetValue(WaitTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(0, r.Errors.size(), r.Errors[0]);
 

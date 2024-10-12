@@ -39,21 +39,25 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         "vol0",
         0);
 
-    NProto::TRdmaEndpoint config;
-    config.SetHost(Host);
-    config.SetPort(Port);
+    NProto::TRdmaTarget target;
+    target.SetHost(Host);
+    target.SetPort(Port);
+    target.SetThreads(poolSize);
+
+    constexpr bool rejectLateRequests = true;
 
     TRdmaTargetConfig rdmaTargetConfig{
-        true,
-        TOldRequestCounters{
-            Counters->GetCounter("Delayed"),
-            Counters->GetCounter("Rejected"),
-            Counters->GetCounter("Already")},
-        poolSize};
+        rejectLateRequests,
+        target};
+
+    TOldRequestCounters oldRequestCounters{
+        Counters->GetCounter("Delayed"),
+        Counters->GetCounter("Rejected"),
+        Counters->GetCounter("Already")};
 
     RdmaTarget = CreateRdmaTarget(
-        std::move(config),
         std::move(rdmaTargetConfig),
+        std::move(oldRequestCounters),
         Logging,
         Server,
         std::move(deviceClient),

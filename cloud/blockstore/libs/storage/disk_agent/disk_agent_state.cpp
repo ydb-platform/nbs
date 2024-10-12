@@ -239,7 +239,6 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 TDiskAgentState::TDiskAgentState(
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
-        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -247,10 +246,11 @@ TDiskAgentState::TDiskAgentState(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager)
+        NNvme::INvmeManagerPtr nvmeManager,
+        TRdmaTargetConfig rdmaTargetConfig,
+        TOldRequestCounters oldRequestCounters)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
-    , RdmaConfig(std::move(rdmaConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))
@@ -260,6 +260,8 @@ TDiskAgentState::TDiskAgentState(
     , Log(Logging->CreateLog("BLOCKSTORE_DISK_AGENT"))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
+    , RdmaTargetConfig(std::move(rdmaTargetConfig))
+    , OldRequestCounters(std::move(oldRequestCounters))
 {
 }
 
@@ -419,25 +421,21 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
         });
 }
 
-void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
+void TDiskAgentState::InitRdmaTarget()
 {
     if (RdmaServer) {
         THashMap<TString, TStorageAdapterPtr> devices;
 
-        auto endpoint = AgentConfig->GetRdmaEndpoint();
-
-        if (endpoint.GetHost().empty()) {
-            endpoint.SetHost(FQDNHostName());
-        }
-
         for (auto& [uuid, state]: Devices) {
-            state.Config.MutableRdmaEndpoint()->CopyFrom(endpoint);
+            auto* endpoint = state.Config.MutableRdmaEndpoint();
+            endpoint->SetHost(RdmaTargetConfig.Host);
+            endpoint->SetPort(RdmaTargetConfig.Port);
             devices.emplace(uuid, state.StorageAdapter);
         }
 
         RdmaTarget = CreateRdmaTarget(
-            endpoint,
-            std::move(rdmaTargetConfig),
+            RdmaTargetConfig,
+            OldRequestCounters,
             Logging,
             RdmaServer,
             DeviceClient,
@@ -447,13 +445,12 @@ void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
     }
 }
 
-TFuture<TInitializeResult> TDiskAgentState::Initialize(
-    TRdmaTargetConfig rdmaTargetConfig)
+TFuture<TInitializeResult> TDiskAgentState::Initialize()
 {
     auto future = Spdk ? InitSpdkStorage() : InitAioStorage();
 
     return future.Subscribe(
-        [this, rdmaTargetConfig = std::move(rdmaTargetConfig)](auto) mutable
+        [this](auto) mutable
         {
             TVector<TString> uuids(Reserve(Devices.size()));
             for (const auto& x: Devices) {
@@ -465,7 +462,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize(
                 std::move(uuids),
                 Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
-            InitRdmaTarget(std::move(rdmaTargetConfig));
+            InitRdmaTarget();
 
             RestoreSessions(*DeviceClient);
         });
