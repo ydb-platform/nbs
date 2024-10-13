@@ -33,8 +33,9 @@ public:
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
-        const auto resolved = ResolvePath(Path, false);
+        const auto resolved = ResolvePath(session, Path, false);
 
         Y_ENSURE(resolved.size() >= 2, "can't rm root node");
 
@@ -44,7 +45,7 @@ public:
         request->SetName(ToString(resolved.back().Name));
         request->SetUnlinkDirectory(RemoveDir);
 
-        auto response = WaitFor(Client->UnlinkNode(
+        auto response = WaitFor(session.UnlinkNode(
             PrepareCallContext(),
             std::move(request)));
 

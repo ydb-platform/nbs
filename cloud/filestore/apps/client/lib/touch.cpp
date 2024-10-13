@@ -29,8 +29,9 @@ public:
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
-        auto resolved = ResolvePath(Path, true);
+        auto resolved = ResolvePath(session, Path, true);
 
         if (resolved.size() == 1) {
             return true;
@@ -47,9 +48,9 @@ public:
             update->SetMTime(now);
             request->SetNodeId(node.GetId());
 
-            auto response = WaitFor(Client->SetNodeAttr(
-                    PrepareCallContext(),
-                    std::move(request)));
+            auto response = WaitFor(session.SetNodeAttr(
+                PrepareCallContext(),
+                std::move(request)));
 
             CheckResponse(response);
             return true;
@@ -66,7 +67,7 @@ public:
             request->SetName(ToString(resolved.back().Name));
             request->MutableFile()->SetMode(0644);
 
-            auto response = WaitFor(Client->CreateNode(
+            auto response = WaitFor(session.CreateNode(
                 PrepareCallContext(),
                 std::move(request)));
 

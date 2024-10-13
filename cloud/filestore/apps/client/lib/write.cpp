@@ -41,8 +41,9 @@ public:
         TString data = TIFStream(DataPath).ReadAll();
 
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
-        const auto resolved = ResolvePath(Path, true);
+        const auto resolved = ResolvePath(session, Path, true);
 
         Y_ENSURE(
             resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
@@ -67,7 +68,7 @@ public:
         createRequest->SetName(ToString(resolved.back().Name));
         createRequest->SetFlags(flags);
 
-        auto createResponse = WaitFor(Client->CreateHandle(
+        auto createResponse = WaitFor(session.CreateHandle(
             PrepareCallContext(),
             std::move(createRequest)));
 
@@ -80,7 +81,7 @@ public:
         writeRequest->SetOffset(Offset);
         *writeRequest->MutableBuffer() = data;
 
-        auto writeResponse = WaitFor(Client->WriteData(
+        auto writeResponse = WaitFor(session.WriteData(
             PrepareCallContext(),
             std::move(writeRequest)
         ));
