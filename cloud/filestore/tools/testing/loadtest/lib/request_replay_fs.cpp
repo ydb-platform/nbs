@@ -470,9 +470,10 @@ private:
 
         TString buffer;
 
-        if (Spec.GetWriteRandom()) {
+        if (Spec.GetWriteFill() == NProto::TReplaySpec_EWriteFill_Random) {
             buffer = NUnitTest::RandomString(bytes, handleLog);
-        } else if (Spec.GetWriteEmpty()) {
+        } else if (Spec.GetWriteFill() == NProto::TReplaySpec_EWriteFill_Empty)
+        {
             buffer = TString{bytes, ' '};
         } else {
             buffer = MakeBuffer(

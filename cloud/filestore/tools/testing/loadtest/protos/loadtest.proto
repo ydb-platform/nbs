@@ -74,14 +74,20 @@ message TReplaySpec
     // Example: 0: disable sleep; 0.5: try be 2x faster; 1: keep as in log; 2: 2x times slower; 
     double TimeScale = 7;
 
-    // Write random data
-    bool WriteRandom = 8;
+    enum EWriteFill
+    {
+        // Write info about chunk (handle, size, offset, ...)
+        Info = 0;
+        // Write random data
+        Random = 1;
+        // Write empty data
+        Empty = 2;
+    }
 
-    // Write empty data
-    bool WriteEmpty = 9;
-    
+    EWriteFill WriteFill = 8;
+
     // Create missing files in CreateHandle requests
-    bool CreateOnRead = 10;
+    bool CreateOnRead = 9;
 }
 
 message TMigrationSpec
