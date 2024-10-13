@@ -311,46 +311,38 @@ void TFileStoreCommand::Stop()
     TFileStoreServiceCommand::Stop();
 }
 
-TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateSession()
+TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateCustomSession(
+    TString fsId,
+    TString clientId)
 {
-    // TODO use ISession instead
-    auto request = std::make_shared<NProto::TCreateSessionRequest>();
-    request->SetFileSystemId(FileSystemId);
-    request->MutableHeaders()->SetClientId(ClientId);
-    request->SetRestoreClientSession(true);
-
-    TCallContextPtr ctx = MakeIntrusive<TCallContext>();
-    auto response = WaitFor(Client->CreateSession(ctx, std::move(request)));
+    NProto::TSessionConfig protoConfig;
+    protoConfig.SetFileSystemId(std::move(fsId));
+    protoConfig.SetClientId(std::move(clientId));
+    auto config = std::make_shared<TSessionConfig>(protoConfig);
+    auto session =
+        NClient::CreateSession(Logging, Timer, Scheduler, Client, config);
+    // extracting the value will break the internal state of this session object
+    auto response = WaitFor(session->CreateSession(), /* extract */ false);
     CheckResponse(response);
 
-    auto sessionId = response.GetSession().GetSessionId();
-
-    Headers.SetClientId(ClientId);
-    Headers.SetSessionId(sessionId);
-    Headers.SetDisableMultiTabletForwarding(DisableMultiTabletForwarding);
-
-    return TSessionGuard(*this);
+    return TSessionGuard(*this, std::move(session));
 }
 
-void TFileStoreCommand::DestroySession()
+TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateSession()
 {
-    if (Headers.GetSessionId().Empty()) {
-        return;
-    }
+    return CreateCustomSession(FileSystemId, ClientId);
+}
 
-    auto request = std::make_shared<NProto::TDestroySessionRequest>();
-    request->SetFileSystemId(FileSystemId);
-    request->MutableHeaders()->SetSessionId(Headers.GetSessionId());
-    request->MutableHeaders()->SetClientId(Headers.GetClientId());
-
-    TCallContextPtr ctx = MakeIntrusive<TCallContext>();
-    auto response = WaitFor(Client->DestroySession(ctx, std::move(request)));
+void TFileStoreCommand::DestroySession(ISession& session)
+{
+    auto response = WaitFor(session.DestroySession());
     CheckResponse(response);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TNodeAttr TFileStoreCommand::ResolveNode(
+    ISession& session,
     ui64 parentNodeId,
     TString name,
     bool ignoreMissing)
@@ -372,7 +364,7 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
     request->SetNodeId(parentNodeId);
     request->SetName(std::move(name));
 
-    auto response = WaitFor(Client->GetNodeAttr(
+    auto response = WaitFor(session.GetNodeAttr(
         PrepareCallContext(),
         std::move(request)));
 
@@ -387,6 +379,7 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
 }
 
 TVector<TFileStoreCommand::TPathEntry> TFileStoreCommand::ResolvePath(
+    ISession& session,
     TStringBuf path,
     bool ignoreMissing)
 {
@@ -401,10 +394,10 @@ TVector<TFileStoreCommand::TPathEntry> TFileStoreCommand::ResolvePath(
     while (it.NextTok('/', tok)) {
         if (tok) {
             auto node = ResolveNode(
+                session,
                 result.back().Node.GetId(),
                 ToString(tok),
-                ignoreMissing
-            );
+                ignoreMissing);
             result.push_back({node, tok});
         }
     }
