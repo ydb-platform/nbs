@@ -218,7 +218,7 @@ func (s *nodeService) NodeStageVolume(
 
 	if err != nil {
 		return nil, s.statusErrorf(codes.Internal,
-			"Failed to publish volume: %v", err)
+			"Failed to stage volume: %v", err)
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
