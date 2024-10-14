@@ -57,7 +57,8 @@ const TString SlowRequestsFilterId = "st_slow_requests_filter";
 
 // One can use either a service name and have the stats file inferred from it,
 // or provide the stats file explicitly.
-NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
+NCloud::NStorage::IStatsFetcherPtr BuildStatsFetcher(
+    NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitServiceName,
     const TString& cpuWaitFilename,
     const TLog& log,
@@ -65,30 +66,41 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
     IMonitoringServicePtr monitoring,
     const TString& metricsComponent)
 {
-    if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
-        const auto& Log = log;
-        STORAGE_INFO(
-            "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
-            "CgroupStatsFetcher");
-        return CreateCgroupStatsFetcherStub();
-    }
-    auto cgroupStatsFetcherMonitoringSettings =
-        TCgroupStatsFetcherMonitoringSettings{
-            .CountersGroupName = "filestore",
-            .ComponentGroupName = metricsComponent,
-            .CounterName = "CpuWaitFailure",
-        };
-    TString statsFile =
-        cpuWaitFilename.Empty()
-            ? NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName)
-            : cpuWaitFilename;
+    switch (statsFetcherType) {
+        case NProto::EStatsFetcherType::CGROUP: {
+            if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
+                const auto& Log = log;
+                STORAGE_INFO(
+                    "CpuWaitServiceName and CpuWaitFilename are empty, can't "
+                    "build "
+                    "CgroupStatsFetcher");
+                return CreateStatsFetcherStub();
+            }
+            auto cgroupStatsFetcherMonitoringSettings =
+                TCgroupStatsFetcherMonitoringSettings{
+                    .CountersGroupName = "filestore",
+                    .ComponentGroupName = metricsComponent,
+                    .CounterName = "CpuWaitFailure",
+                };
+            TString statsFile =
+                cpuWaitFilename.Empty()
+                    ? NCloud::NStorage::BuildCpuWaitStatsFilename(
+                          cpuWaitServiceName)
+                    : cpuWaitFilename;
 
-    return CreateCgroupStatsFetcher(
-        "FILESTORE_CGROUPS",
-        std::move(logging),
-        std::move(monitoring),
-        statsFile,
-        std::move(cgroupStatsFetcherMonitoringSettings));
+            return CreateCgroupStatsFetcher(
+                "FILESTORE_CGROUPS",
+                std::move(logging),
+                std::move(monitoring),
+                statsFile,
+                std::move(cgroupStatsFetcherMonitoringSettings));
+        }
+        case NProto::EStatsFetcherType::KERNEL_TASK_DELAYACCT:
+            return CreateKernelTaskDelayAcctStatsFetcher(
+                "FILESTORE_KERNEL_TASK_DELAYACCT",
+                std::move(logging),
+                std::move(monitoring));
+    }
 };
 
 } // namespace
@@ -126,7 +138,7 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
-    FILESTORE_LOG_START_COMPONENT(CgroupStatsFetcher);
+    FILESTORE_LOG_START_COMPONENT(StatsFetcher);
 
     StartComponents();
 
@@ -155,7 +167,7 @@ void TBootstrapCommon::Stop()
 
     StopComponents();
 
-    FILESTORE_LOG_STOP_COMPONENT(CgroupStatsFetcher);
+    FILESTORE_LOG_STOP_COMPONENT(StatsFetcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -306,7 +318,8 @@ void TBootstrapCommon::InitActorSystem()
 
     STORAGE_INFO("TraceSerializer initialized");
 
-    CgroupStatsFetcher = BuildCgroupStatsFetcher(
+    StatsFetcher = BuildStatsFetcher(
+        Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitServiceName(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         Log,
@@ -314,7 +327,7 @@ void TBootstrapCommon::InitActorSystem()
         monitoring,
         MetricsComponent);
 
-    STORAGE_INFO("CgroupStatsFetcher initialized");
+    STORAGE_INFO("StatsFetcher initialized");
 
     NStorage::TActorSystemArgs args;
     args.NodeId = nodeId;
@@ -326,7 +339,7 @@ void TBootstrapCommon::InitActorSystem()
     args.DiagnosticsConfig = Configs->DiagnosticsConfig;
     args.Metrics = Metrics;
     args.UserCounters = UserCounters;
-    args.CgroupStatsFetcher = CgroupStatsFetcher;
+    args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
 
     ActorSystem = NStorage::CreateActorSystem(args);

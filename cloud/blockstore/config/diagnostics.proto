@@ -76,6 +76,15 @@ message TMonitoringUrlData
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// StatsFetcher type
+
+enum EStatsFetcherType
+{
+    CGROUP = 0;
+    KERNEL_TASK_DELAYACCT = 1;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TDiagnosticsConfig
 {
@@ -203,4 +212,7 @@ message TDiagnosticsConfig
 
     // Monitoring data necessary for link generation on monpages.
     optional TMonitoringUrlData MonitoringUrlData = 47;
+
+    // Type of fetching CPU stats
+    optional EStatsFetcherType StatsFetcherType = 48;
 }

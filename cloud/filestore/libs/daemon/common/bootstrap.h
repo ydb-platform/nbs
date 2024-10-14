@@ -73,7 +73,7 @@ protected:
     ITaskQueuePtr BackgroundThreadPool;
     IProfileLogPtr ProfileLog;
     IActorSystemPtr ActorSystem;
-    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
 public:
     TBootstrapCommon(
