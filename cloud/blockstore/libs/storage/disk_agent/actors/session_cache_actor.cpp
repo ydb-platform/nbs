@@ -71,9 +71,7 @@ public:
         TDuration releaseInactiveSessionsTimeout)
         : CachePath{std::move(cachePath)}
         , ReleaseInactiveSessionsTimeout{releaseInactiveSessionsTimeout}
-    {
-        ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
