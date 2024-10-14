@@ -431,7 +431,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             env.StorageStatsServiceState->Counters.Interconnect;
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            transportCounters.CountRead.Value,
             transportCounters.ReadCount.Value,
             counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
