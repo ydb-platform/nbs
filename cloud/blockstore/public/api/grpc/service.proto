@@ -254,13 +254,6 @@ service TBlockStoreService
         };
     }
 
-    rpc ResizeDevice(TResizeDeviceRequest) returns (TResizeDeviceResponse) {
-        option (google.api.http) = {
-            post: "/resize_device"
-            body: "*"
-        };
-    }
-
     //
     // Disk Registry config.
     //
