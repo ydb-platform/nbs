@@ -1,5 +1,4 @@
 #include "tablet_actor.h"
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "shard_request_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
