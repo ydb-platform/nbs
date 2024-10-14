@@ -173,5 +173,5 @@ func TestOptimizeBaseDisksTaskShouldPanicOnIncorrectConfig(t *testing.T) {
 	err := task.Load(nil, nil)
 	require.NoError(t, err)
 
-	require.Panics(t, func() { task.Run(ctx, execCtx) }, "This task should panic")
+	require.Panics(t, func() { _ = task.Run(ctx, execCtx) }, "This task should panic")
 }
