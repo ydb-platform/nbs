@@ -944,6 +944,10 @@ private:
         const TEvVolume::TEvSmartResyncFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleUpdateSmartResyncState(
+        const TEvVolume::TEvUpdateSmartResyncState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId,

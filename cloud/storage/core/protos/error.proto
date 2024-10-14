@@ -12,12 +12,16 @@ enum EErrorFlag
     // Note: sequential flag numbers starting from one are used, not powers of two
 
     EF_NONE = 0;
+
     // Be careful using EF_SILENT with retriable errors. This flag changes error
     // kind to EErrorKind::ErrorSilent making the error non-retriable.
     EF_SILENT = 1;
 
     // Currently set if a problem with nonreplicated disk/agent was detected.
     EF_HW_PROBLEMS_DETECTED = 2;
+
+    // Flag is used to signal that a request can be retried without any timeout.
+    EF_INSTANT_RETRY_ALLOWED = 3;
 
     // TODO: EF_RETRIABLE, EF_CLIENT
 }

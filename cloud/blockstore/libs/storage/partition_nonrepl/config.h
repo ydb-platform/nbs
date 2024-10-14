@@ -29,6 +29,7 @@ struct TDeviceRequest
     const ui32 DeviceIdx;
     const TBlockRange64 BlockRange;
     const TBlockRange64 DeviceBlockRange;
+    bool Completed = false;
 
     TDeviceRequest(
             const NProto::TDeviceConfig& device,

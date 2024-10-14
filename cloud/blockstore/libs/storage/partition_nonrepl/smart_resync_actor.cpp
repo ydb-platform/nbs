@@ -128,19 +128,6 @@ void TSmartResyncActor::OnMigrationProgress(
             AgentId,
             GetProcessedBlockCount(),
             GetBlockCountNeedToBeProcessed()));
-
-    // ctx.Send(std::make_unique<IEventHandle>(
-    //     ParentActor,
-    //     ev->Sender,
-    //     request.release(),
-    //     ev->Flags,
-    //     ev->Cookie,
-    //     &ev->Sender));
-
-    // Delegate->OnMigrationProgress(
-    //     AgentId,
-    //     GetProcessedBlockCount(),
-    //     GetBlockCountNeedToBeProcessed());
 }
 
 void TSmartResyncActor::OnMigrationFinished(const NActors::TActorContext& ctx)

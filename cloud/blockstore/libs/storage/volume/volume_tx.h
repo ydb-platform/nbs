@@ -40,7 +40,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
     xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
     xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
-    xxx(UpdateIncompleteMirrorIOMode,   __VA_ARGS__)                           \
+    xxx(AddLaggingAgent,                __VA_ARGS__)                           \
+    xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -674,22 +675,36 @@ struct TTxVolume
         }
     };
 
-    struct TUpdateIncompleteMirrorIOMode
+    struct TAddLaggingAgent
     {
         const TRequestInfoPtr RequestInfo;
-        NProto::TUnavailableDevicesInfo Info;
+        NProto::TUnavailableAgent Agent;
 
-        TUpdateIncompleteMirrorIOMode(
+        TAddLaggingAgent(
             TRequestInfoPtr requestInfo,
-            NProto::TUnavailableDevicesInfo info)
-            : RequestInfo(std::move(requestInfo))
-            , Info(std::move(info))
+            NProto::TUnavailableAgent agent)
+                : RequestInfo(std::move(requestInfo))
+                , Agent(std::move(agent))
         {}
 
         void Clear()
-        {
+        {}
+    };
 
-        }
+    struct TRemoveLaggingAgent
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString AgentId;
+
+        NProto::TUnavailableAgent UnavailableAgent;
+
+        TRemoveLaggingAgent(TRequestInfoPtr requestInfo, TString agentId)
+            : RequestInfo(std::move(requestInfo))
+            , AgentId(std::move(agentId))
+        {}
+
+        void Clear()
+        {}
     };
 };
 

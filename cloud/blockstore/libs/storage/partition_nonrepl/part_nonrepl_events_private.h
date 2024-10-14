@@ -167,6 +167,20 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // CancelRequest
+    //
+
+    struct TCancelRequest
+    {
+        enum class EReason {
+            Timeouted,
+            Canceled
+        };
+
+        EReason Reason = EReason::Timeouted;
+    };
+
+    //
     // Events declaration
     //
 
@@ -186,6 +200,7 @@ struct TEvNonreplPartitionPrivate
         EvResyncNextRange,
         EvRangeResynced,
         EvReadResyncFastPathResponse,
+        EvCancelRequest,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -231,6 +246,8 @@ struct TEvNonreplPartitionPrivate
         TReadResyncFastPathResponse,
         EvReadResyncFastPathResponse
     >;
+
+    using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 

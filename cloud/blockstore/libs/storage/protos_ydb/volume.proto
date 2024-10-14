@@ -68,7 +68,7 @@ message TVolumeMeta
     // in order to prevent data corruption during disk filling.
     uint64 FillSeqNumber = 16;
 
-    repeated TUnavailableDevicesInfo UnavailableDevicesInfo = 17;
+    TLaggingAgentsInfo LaggingAgentsInfo = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -12,12 +12,15 @@
 
 #include <util/generic/string.h>
 #include <util/string/builder.h>
+#include <util/string/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
+
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -56,7 +59,7 @@ public:
 private:
     void WriteBlocks(const TActorContext& ctx);
 
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
+    void HandleError(const TActorContext& ctx, NProto::TError error);
 
     void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
 
@@ -73,9 +76,13 @@ private:
         const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
+    void HandleCancelRequest(
+        const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
         const TActorContext& ctx);
+
+    // void HandleTimeout(
+    //     const TEvents::TEvWakeup::TPtr& ev,
+    //     const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,18 +156,13 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
     }
 }
 
-bool TDiskAgentWriteActor::HandleError(
+void TDiskAgentWriteActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    if (FAILED(error.GetCode())) {
-        ProcessError(ctx, *PartConfig, error);
-
-        Done(ctx, CreateResponse(std::move(error)), true);
-        return true;
-    }
-
-    return false;
+    Y_DEBUG_ABORT_UNLESS(FAILED(error.GetCode()));
+    ProcessError(ctx, *PartConfig, error);
+    Done(ctx, CreateResponse(std::move(error)), true);
 }
 
 IEventBasePtr TDiskAgentWriteActor::CreateResponse(NProto::TError error)
@@ -227,21 +229,59 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     // Ignore undelivered event. Wait for TEvWakeup.
 }
 
-void TDiskAgentWriteActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
+void TDiskAgentWriteActor::HandleCancelRequest(
+    const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks request #"
-            << GetRequestId(Request) << " timed out. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+    const auto* msg = ev->Get();
 
+    TVector<TString> devices;
+    for (const auto& reuqest: DeviceRequests) {
+        devices.push_back(reuqest.Device.GetDeviceUUID());
+    }
+
+    switch (msg->Reason) {
+        case EReason::Timeouted:
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "WriteBlocks request #"
+                    << GetRequestId(Request) << " timed out. Disk id: "
+                    << PartConfig->GetName() << " Devices: ["
+                    << JoinVectorIntoString(devices, ", ") << "]");
+
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    E_TIMEOUT,
+                    "WriteBlocks request timed out"));
+            return;
+        case EReason::Canceled:
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "WriteBlocks request #" << GetRequestId(Request)
+                                       << " is canceled from outside. Disk id: "
+                                       << PartConfig->GetName() << " Devices: ["
+                                       << JoinVectorIntoString(devices, ", ")
+                                       << "]");
+
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    E_CANCELLED,
+                    "WriteBlocks request is canceled"));
+            return;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(false);
     HandleError(
         ctx,
-        PartConfig->MakeError(E_TIMEOUT, "WriteBlocks request timed out"));
+        PartConfig->MakeError(
+            E_CANCELLED,
+            TStringBuilder()
+                << "WriteBlocks request got an unknown cancel reason: "
+                << static_cast<int>(msg->Reason)));
 }
 
 void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
@@ -250,7 +290,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (FAILED(msg->GetError().GetCode())) {
+        HandleError(ctx, msg->GetError());
         return;
     }
 
@@ -266,14 +307,16 @@ STFUNC(TDiskAgentWriteActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
-
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksRequest,
             HandleWriteDeviceBlocksUndelivery);
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksResponse,
             HandleWriteDeviceBlocksResponse);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvCancelRequest,
+            HandleCancelRequest);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);

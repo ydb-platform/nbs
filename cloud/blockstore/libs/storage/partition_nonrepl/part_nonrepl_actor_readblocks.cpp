@@ -13,12 +13,15 @@
 
 #include <util/generic/string.h>
 #include <util/string/builder.h>
+#include <util/string/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
+
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -59,7 +62,7 @@ public:
 private:
     void ReadBlocks(const TActorContext& ctx);
 
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
+    void HandleError(const TActorContext& ctx, NProto::TError error);
 
     void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
 
@@ -74,8 +77,8 @@ private:
         const TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
+    void HandleCancelRequest(
+        const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -152,22 +155,17 @@ void TDiskAgentReadActor::ReadBlocks(const TActorContext& ctx)
     }
 }
 
-bool TDiskAgentReadActor::HandleError(
+void TDiskAgentReadActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    if (FAILED(error.GetCode())) {
-        ProcessError(ctx, *PartConfig, error);
+    Y_DEBUG_ABORT_UNLESS(FAILED(error.GetCode()));
 
-        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(
-            std::move(error)
-        );
+    ProcessError(ctx, *PartConfig, error);
 
-        Done(ctx, std::move(response), true);
-        return true;
-    }
-
-    return false;
+    auto response =
+        std::make_unique<TEvService::TEvReadBlocksResponse>(std::move(error));
+    Done(ctx, std::move(response), true);
 }
 
 void TDiskAgentReadActor::Done(
@@ -226,22 +224,77 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(
     // Ignore undelivered event. Wait for TEvWakeup.
 }
 
-void TDiskAgentReadActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
+void TDiskAgentReadActor::HandleCancelRequest(
+    const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks request #"
-            << GetRequestId(Request) << " timed out. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+    const auto* msg = ev->Get();
 
+    TVector<TString> devices;
+    for (const auto& reuqest: DeviceRequests) {
+        devices.push_back(reuqest.Device.GetDeviceUUID());
+    }
+
+    switch (msg->Reason) {
+        case EReason::Timeouted:
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "ReadBlocks request #"
+                    << GetRequestId(Request) << " timed out. Disk id: "
+                    << PartConfig->GetName() << " Devices: ["
+                    << JoinVectorIntoString(devices, ", ") << "]");
+
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    E_TIMEOUT,
+                    "ReadBlocks request timed out"));
+            return;
+        case EReason::Canceled:
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "ReadBlocks request #" << GetRequestId(Request)
+                                       << " is canceled from outside. Disk id: "
+                                       << PartConfig->GetName() << " Devices: ["
+                                       << JoinVectorIntoString(devices, ", ")
+                                       << "]");
+
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    E_CANCELLED,
+                    "ReadBlocks request is canceled"));
+            return;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(false);
     HandleError(
         ctx,
-        PartConfig->MakeError(E_TIMEOUT, "ReadBlocks request timed out"));
+        PartConfig->MakeError(
+            E_CANCELLED,
+            TStringBuilder()
+                << "ReadBlocks request got an unknown cancel reason: "
+                << static_cast<int>(msg->Reason)));
 }
+
+// void TDiskAgentReadActor::HandleTimeout(
+//     const TEvents::TEvWakeup::TPtr& ev,
+//     const TActorContext& ctx)
+// {
+//     const auto& device = DeviceRequests[ev->Cookie].Device;
+//     LOG_WARN_S(
+//         ctx,
+//         TBlockStoreComponents::PARTITION_WORKER,
+//         "ReadBlocks request #"
+//             << GetRequestId(Request) << " timed out. Disk id: "
+//             << PartConfig->GetName() << " Device: " << LogDevice(device));
+
+//     HandleError(
+//         ctx,
+//         PartConfig->MakeError(E_TIMEOUT, "ReadBlocks request timed out"));
+// }
 
 void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
@@ -249,7 +302,8 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (FAILED(msg->GetError().GetCode())) {
+        HandleError(ctx, msg->GetError());
         return;
     }
 
@@ -288,10 +342,15 @@ STFUNC(TDiskAgentReadActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
-
-        HFunc(TEvDiskAgent::TEvReadDeviceBlocksRequest, HandleReadDeviceBlocksUndelivery);
-        HFunc(TEvDiskAgent::TEvReadDeviceBlocksResponse, HandleReadDeviceBlocksResponse);
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksRequest,
+            HandleReadDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksResponse,
+            HandleReadDeviceBlocksResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvCancelRequest,
+            HandleCancelRequest);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);

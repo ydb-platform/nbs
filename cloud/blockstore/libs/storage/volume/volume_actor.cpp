@@ -872,6 +872,10 @@ void TVolumeActor::HandleDeviceTimeouted(
     // What if resyncing?
     // small resyncs (new feature) ?
 
+    // Device list can change (resize, migrations, freshes, reallocates).
+    // If lagging device is removed -> we need to remove it from DB.
+    // If device is added, maybe should check that it belongs to some lagging agent.
+
     // It's safer to do nothing.
     // ??????????????????????
     // if (UpdateVolumeConfigInProgress) {
@@ -921,11 +925,10 @@ void TVolumeActor::HandleDeviceTimeouted(
 
     STORAGE_CHECK_PRECONDITION(!timeoutedAgentDevicesIndexes.empty());
 
-    TVector<ui32> unavailableAgentDevicesIndexes;
-    for (const auto& info: meta.GetUnavailableDevicesInfo()) {
+    for (const auto& agent: meta.GetLaggingAgentsInfo().GetAgents()) {
         // Whether the agent is lagging already.
-        if (info.GetAgentId() == timeoutedDeviceConfig->GetAgentId()) {
-            STORAGE_CHECK_PRECONDITION(info.GetDevicesIndexes().size() == timeoutedAgentDevicesIndexes.ysize());
+        if (agent.GetAgentId() == timeoutedDeviceConfig->GetAgentId()) {
+            STORAGE_CHECK_PRECONDITION(agent.GetDevicesIndexes().size() == timeoutedAgentDevicesIndexes.ysize());
 
             const auto& partActorId =
                 State->GetDiskRegistryBasedPartitionActor();
@@ -943,12 +946,12 @@ void TVolumeActor::HandleDeviceTimeouted(
         }
 
         STORAGE_CHECK_PRECONDITION(IsSorted(timeoutedAgentDevicesIndexes.begin(), timeoutedAgentDevicesIndexes.end()));
-        STORAGE_CHECK_PRECONDITION(IsSorted(info.GetDevicesIndexes().begin(), info.GetDevicesIndexes().end()));
+        STORAGE_CHECK_PRECONDITION(IsSorted(agent.GetDevicesIndexes().begin(), agent.GetDevicesIndexes().end()));
 
         TVector<ui32> intersection;
-        SetIntersection(timeoutedAgentDevicesIndexes.begin(), timeoutedAgentDevicesIndexes.end(), info.GetDevicesIndexes().begin(), info.GetDevicesIndexes().end(), std::back_inserter(intersection));
+        SetIntersection(timeoutedAgentDevicesIndexes.begin(), timeoutedAgentDevicesIndexes.end(), agent.GetDevicesIndexes().begin(), agent.GetDevicesIndexes().end(), std::back_inserter(intersection));
 
-        if (info.GetReplicaIndex() == replicaIndex) {
+        if (agent.GetReplicaIndex() == replicaIndex) {
             // "intersection" should be empty since new lagging agent can't have mutual devices with some other lagging agent.
             STORAGE_CHECK_PRECONDITION(intersection.empty());
         } else if (!intersection.empty()) {
@@ -964,20 +967,22 @@ void TVolumeActor::HandleDeviceTimeouted(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    NProto::TUnavailableDevicesInfo newInfo;
-    newInfo.SetAgentId(timeoutedDeviceConfig->GetAgentId());
-    newInfo.SetReplicaIndex(replicaIndex);
-    newInfo.MutableDevicesIndexes()->Assign(timeoutedAgentDevicesIndexes.begin(), timeoutedAgentDevicesIndexes.end());
-    ExecuteTx<TUpdateIncompleteMirrorIOMode>(
+    NProto::TUnavailableAgent unavailableAgent;
+    unavailableAgent.SetAgentId(timeoutedDeviceConfig->GetAgentId());
+    unavailableAgent.SetReplicaIndex(replicaIndex);
+    unavailableAgent.MutableDevicesIndexes()->Assign(
+        timeoutedAgentDevicesIndexes.begin(),
+        timeoutedAgentDevicesIndexes.end());
+    ExecuteTx<TAddLaggingAgent>(
         ctx,
         std::move(requestInfo),
-        std::move(newInfo));
+        std::move(unavailableAgent));
 }
 
-bool TVolumeActor::PrepareUpdateIncompleteMirrorIOMode(
+bool TVolumeActor::PrepareAddLaggingAgent(
     const TActorContext& ctx,
     ITransactionBase::TTransactionContext& tx,
-    TTxVolume::TUpdateIncompleteMirrorIOMode& args)
+    TTxVolume::TAddLaggingAgent& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -986,21 +991,21 @@ bool TVolumeActor::PrepareUpdateIncompleteMirrorIOMode(
     return true;
 }
 
-void TVolumeActor::ExecuteUpdateIncompleteMirrorIOMode(
+void TVolumeActor::ExecuteAddLaggingAgent(
     const TActorContext& ctx,
     ITransactionBase::TTransactionContext& tx,
-    TTxVolume::TUpdateIncompleteMirrorIOMode& args)
+    TTxVolume::TAddLaggingAgent& args)
 {
     Y_UNUSED(ctx);
 
     TVolumeDatabase db(tx.DB);
-    State->UpdateIncompleteMirrorIOMode(args.Info);
+    State->AddLaggingAgent(args.Agent);
     db.WriteMeta(State->GetMeta());
 }
 
-void TVolumeActor::CompleteUpdateIncompleteMirrorIOMode(
+void TVolumeActor::CompleteAddLaggingAgent(
     const TActorContext& ctx,
-    TTxVolume::TUpdateIncompleteMirrorIOMode& args)
+    TTxVolume::TAddLaggingAgent& args)
 {
     auto response =
                 std::make_unique<TEvVolume::TEvDeviceTimeoutedResponse>();
@@ -1029,26 +1034,87 @@ void TVolumeActor::CompleteUpdateIncompleteMirrorIOMode(
         partActorId,
         std::make_unique<
             NPartition::TEvPartition::TEvEnterIncompleteMirrorRWModeRequest>(
-            args.Info.GetReplicaIndex(), args.Info.GetAgentId()));
+            args.Agent.GetReplicaIndex(), args.Agent.GetAgentId()));
 
     // Send new mode to partition.
 
     // Set timeout here, in case DR will not notify us about missing replica?
 }
 
-void TVolumeActor::HandleDeviceTimeouted(
+void TVolumeActor::HandleUpdateSmartResyncState(
+    const TEvVolume::TEvUpdateSmartResyncState::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    // TODO: UPDATE PROGREESS ON MON PAGE.
+}
+
+void TVolumeActor::HandleSmartResyncFinished(
     const TEvVolume::TEvSmartResyncFinished::TPtr& ev,
     const TActorContext& ctx)
- {
-    // TODO: STUFF
+{
+    // TODO: STUFF??
 
-     const auto* msg = ev->Get();
-     const auto& partActorId = State->GetDiskRegistryBasedPartitionActor();
-     NCloud::Send(
-         ctx,
-         partActorId,
-         std::make_unique<TEvVolume::TEvSmartResyncFinished>(msg->AgentId));
- }
+    const auto* msg = ev->Get();
+    ExecuteTx<TRemoveLaggingAgent>(
+        ctx,
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        msg->AgentId);
+}
+
+bool TVolumeActor::PrepareRemoveLaggingAgent(
+    const TActorContext& ctx,
+    ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TRemoveLaggingAgent& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+
+    auto agentIdPred = [agentId = args.AgentId](const auto& info)
+    {
+        return info.GetAgentId() == agentId;
+    };
+
+    const auto& laggingAgents =
+        State->GetMeta().GetLaggingAgentsInfo().GetAgents();
+    Y_DEBUG_ABORT_UNLESS(CountIf(laggingAgents, agentIdPred) <= 1);
+    const auto* info = FindIfPtr(laggingAgents, agentIdPred);
+
+    if (!info) {
+        return false;
+    }
+
+    args.UnavailableAgent = *info;
+    return true;
+}
+
+void TVolumeActor::ExecuteRemoveLaggingAgent(
+    const TActorContext& ctx,
+    ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TRemoveLaggingAgent& args)
+{
+    Y_UNUSED(ctx);
+
+    TVolumeDatabase db(tx.DB);
+    State->RemoveLaggingAgent(args.AgentId);
+    db.WriteMeta(State->GetMeta());
+}
+
+void TVolumeActor::CompleteRemoveLaggingAgent(
+    const TActorContext& ctx,
+    TTxVolume::TRemoveLaggingAgent& args)
+{
+    // Reply to args.requestinfo?
+
+    NCloud::Send(
+        ctx,
+        State->GetDiskRegistryBasedPartitionActor(),
+        std::make_unique<
+            NPartition::TEvPartition::TEvExitIncompleteMirrorRWModeRequest>(
+            args.UnavailableAgent.GetReplicaIndex(),
+            args.UnavailableAgent.GetAgentId()));
+}
 
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
@@ -1259,6 +1325,7 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
         HFunc(TEvVolume::TEvDeviceTimeoutedRequest, HandleDeviceTimeouted);
+        HFunc(TEvVolume::TEvUpdateSmartResyncState, HandleUpdateSmartResyncState);
         HFunc(TEvVolume::TEvSmartResyncFinished, HandleSmartResyncFinished);
 
 

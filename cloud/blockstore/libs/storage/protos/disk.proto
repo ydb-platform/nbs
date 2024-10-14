@@ -175,16 +175,19 @@ message TDeviceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TUnavailableDevicesInfo
+message TUnavailableAgent
 {
-    // repeated string DeviceUUIDs = 1;
+    string AgentId = 1;
 
     // 0 for main devices, 1 and 2 for miror replicas.
-    uint32 ReplicaIndex = 1;
+    uint32 ReplicaIndex = 2;
 
-    string AgentId = 3;
+    repeated uint32 DevicesIndexes = 3;
+}
 
-    repeated uint32 DevicesIndexes = 4;
+message TLaggingAgentsInfo
+{
+    repeated TUnavailableAgent Agents = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

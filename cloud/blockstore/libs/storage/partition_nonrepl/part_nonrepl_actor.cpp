@@ -307,13 +307,17 @@ void TNonreplicatedPartitionActor::HandleWakeup(
 
     const auto now = ctx.Now();
 
-    for (const auto& [id, requestInfo]: RequestsInProgress.AllRequests()) {
+    for (const auto& [actorId, requestInfo]: RequestsInProgress.AllRequests()) {
         const auto& request = requestInfo.Value;
         if (now - request.Ts < request.Timeout) {
             continue;
         }
 
-        NCloud::Send<TEvents::TEvWakeup>(ctx, id);
+        NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
+            ctx,
+            actorId,
+            0,  // cookie
+            TEvNonreplPartitionPrivate::TCancelRequest::EReason::Timeouted);
 
         for (const auto i: request.DeviceIndices) {
             auto& deviceStat = DeviceStats[i];
@@ -373,6 +377,18 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
     for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
         if (PartConfig->GetDevices().at(i).GetAgentId() == msg->AgentId) {
             DeviceStats[i].DeviceIsUnavailable = true;
+        }
+    }
+
+    for (const auto& [actorId, requestInfo]: RequestsInProgress.AllRequests()) {
+        for (int deviceIndex : requestInfo.Value.DeviceIndices) {
+            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() == msg->AgentId) {
+
+                // Reject the request.
+                // TODO: implement fast reject (via error flags).
+                NCloud::Send<TEvents::TEvWakeup>(ctx, actorId);
+                break;
+            }
         }
     }
 }
@@ -501,6 +517,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        IgnoreFunc(TEvVolume::TEvDeviceTimeoutedResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:
@@ -543,6 +560,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
+        IgnoreFunc(TEvVolume::TEvDeviceTimeoutedResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:
