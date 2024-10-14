@@ -101,10 +101,9 @@ consteval auto MakeMetaWithTag(TStringBuf name, TStringBuf tag)
     TMemberMetaWithTag<decltype(NDetail::ExtractMemberPtr<TMemberPtr>())>
         result;
     result.Name = name;
-
-    // Store member ptr.
-    result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
     result.Tag = tag;
+
+    result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
     return result;
 }
 
