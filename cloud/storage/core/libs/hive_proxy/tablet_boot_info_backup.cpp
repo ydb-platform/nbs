@@ -5,7 +5,7 @@
 
 #include <ydb/core/base/tablet.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <library/cpp/actors/core/log.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
