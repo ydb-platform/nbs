@@ -1,6 +1,5 @@
 #include "tablet_actor.h"
-
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include "shard_request_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -13,158 +12,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyShardSessionsActor final
-    : public TActorBootstrapped<TDestroyShardSessionsActor>
-{
-private:
-    const TString LogTag;
-    const TRequestInfoPtr RequestInfo;
-    const NProtoPrivate::TDestroySessionRequest Request;
-    const google::protobuf::RepeatedPtrField<TString> ShardIds;
-    std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> Response;
-    int DestroyedSessions = 0;
-
-    NProto::TProfileLogRequestInfo ProfileLogRequest;
-
-public:
-    TDestroyShardSessionsActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TDestroySessionRequest request,
-        google::protobuf::RepeatedPtrField<TString> shardIds,
-        std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void SendRequests(const TActorContext& ctx);
-
-    void HandleDestroySessionResponse(
-        const TEvIndexTablet::TEvDestroySessionResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDestroyShardSessionsActor::TDestroyShardSessionsActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TDestroySessionRequest request,
-        google::protobuf::RepeatedPtrField<TString> shardIds,
-        std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response)
-    : LogTag(std::move(logTag))
-    , RequestInfo(std::move(requestInfo))
-    , Request(std::move(request))
-    , ShardIds(std::move(shardIds))
-    , Response(std::move(response))
-{}
-
-void TDestroyShardSessionsActor::Bootstrap(const TActorContext& ctx)
-{
-    SendRequests(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TDestroyShardSessionsActor::SendRequests(const TActorContext& ctx)
-{
-    ui32 cookie = 0;
-    for (const auto& shardId: ShardIds) {
-        auto request =
-            std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
-        request->Record = Request;
-        request->Record.SetFileSystemId(shardId);
-
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Sending DestroySessionRequest to shard %s",
-            LogTag.c_str(),
-            shardId.c_str());
-
-        ctx.Send(
-            MakeIndexTabletProxyServiceId(),
-            request.release(),
-            {}, // flags
-            cookie++);
-    }
-}
-
-void TDestroyShardSessionsActor::HandleDestroySessionResponse(
-    const TEvIndexTablet::TEvDestroySessionResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Shard session destruction  failed for %s with error %s",
-            LogTag.c_str(),
-            ShardIds[ev->Cookie].c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Shard session destroyed for %s",
-        LogTag.c_str(),
-        ShardIds[ev->Cookie].c_str());
-
-    if (++DestroyedSessions == ShardIds.size()) {
-        ReplyAndDie(ctx, {});
-    }
-}
-
-void TDestroyShardSessionsActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-}
-
-void TDestroyShardSessionsActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    if (HasError(error)) {
-        Response =
-            std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(error);
-    }
-    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
-
-    Die(ctx);
-}
-
-STFUNC(TDestroyShardSessionsActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(
-            TEvIndexTablet::TEvDestroySessionResponse,
-            HandleDestroySessionResponse);
-
-        default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
-            break;
-    }
-}
+using TDestroyShardSessionsActor = TShardRequestActor<
+    TEvIndexTablet::TEvDestroySessionRequest,
+    TEvIndexTablet::TEvDestroySessionResponse>;
 
 }   // namespace
 
@@ -355,9 +205,9 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     auto actor = std::make_unique<TDestroyShardSessionsActor>(
         LogTag,
-        args.RequestInfo,
-        args.Request,
-        shardIds,
+        std::move(args.RequestInfo),
+        std::move(args.Request),
+        TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 
     NCloud::Register(ctx, std::move(actor));

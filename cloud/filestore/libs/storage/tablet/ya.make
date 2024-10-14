@@ -9,6 +9,7 @@ SRCS(
     profile_log_events.cpp
     rebase_logic.cpp
     session.cpp
+    shard_request_actor.cpp
     subsessions.cpp
     tablet.cpp
     tablet_actor.cpp
