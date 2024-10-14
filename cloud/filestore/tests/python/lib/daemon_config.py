@@ -119,6 +119,10 @@ class NfsDaemonConfigGenerator:
     def ic_port(self):
         return self.__ic_port
 
+    @property
+    def log_config(self):
+        return self.__generate_log_txt()
+
     def __generate_domains_txt(self, domains_txt):
         config = TDomainsConfig()
         if domains_txt is not None:
