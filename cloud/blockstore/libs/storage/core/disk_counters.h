@@ -59,6 +59,12 @@ struct TMemberMeta
     }
 };
 
+template <typename TMemberPtr>
+struct TMemberMetaWithTag: public TMemberMeta<TMemberPtr>
+{
+    TStringBuf Tag;
+};
+
 namespace NDetail {
 
 template <auto TMemberPtr>
@@ -86,6 +92,18 @@ consteval auto MakeMeta()
 
     // Store member ptr.
     result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
+    return result;
+}
+
+template <auto TMemberPtr>
+consteval auto MakeMetaWithTag(TStringBuf tag, TStringBuf name)
+{
+    TMemberMetaWithTag<decltype(NDetail::ExtractMemberPtr<TMemberPtr>())>
+        result;
+    result.Name = name;
+
+    result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
+    result.Tag = tag;
     return result;
 }
 
@@ -639,7 +657,7 @@ static_assert(
 struct TTransportRequestCounters
 {
     using TCounter = TMemberWithMeta<TCumulativeCounter>;
-    using TMeta = TMemberMeta<TCounter TTransportRequestCounters::*>;
+    using TMeta = TMemberMetaWithTag<TCounter TTransportRequestCounters::*>;
 
     TCounter ReadBlocks{EPublishingPolicy::All};
     TCounter WriteBlocks{EPublishingPolicy::All};
@@ -647,10 +665,18 @@ struct TTransportRequestCounters
     TCounter CountWrite{EPublishingPolicy::All};
 
     static constexpr TMeta AllCounters[] = {
-        MakeMeta<&TTransportRequestCounters::ReadBlocks>(),
-        MakeMeta<&TTransportRequestCounters::WriteBlocks>(),
-        MakeMeta<&TTransportRequestCounters::CountRead>(),
-        MakeMeta<&TTransportRequestCounters::CountWrite>(),
+        MakeMetaWithTag<&TTransportRequestCounters::ReadBlocks>(
+            "ReadBlocks",
+            "RequestBytes"),
+        MakeMetaWithTag<&TTransportRequestCounters::WriteBlocks>(
+            "WriteBlocks",
+            "RequestBytes"),
+        MakeMetaWithTag<&TTransportRequestCounters::CountRead>(
+            "ReadBlocks",
+            "Count"),
+        MakeMetaWithTag<&TTransportRequestCounters::CountWrite>(
+            "WriteBlocks",
+            "Count"),
 
     };
 };
@@ -679,10 +705,6 @@ struct TPartitionDiskCounters
     void Add(const TPartitionDiskCounters& source);
     void AggregateWith(const TPartitionDiskCounters& source);
     void Register(NMonitoring::TDynamicCountersPtr counters, bool aggregate);
-    void RegisterTTransportRequestCounters(
-        NMonitoring::TDynamicCountersPtr& counters,
-        TTransportRequestCounters& requestCounters,
-        TString subGroupName);
     void Publish(TInstant now);
     void Reset();
 };

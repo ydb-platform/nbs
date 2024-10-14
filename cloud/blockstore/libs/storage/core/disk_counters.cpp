@@ -159,62 +159,6 @@ void TPartitionDiskCounters::Publish(TInstant now)
     Reset();
 }
 
-void TPartitionDiskCounters::RegisterTTransportRequestCounters(
-    NMonitoring::TDynamicCountersPtr& counters,
-    TTransportRequestCounters& requestCounters,
-    TString subGroupName)
-{
-    auto meta = TTransportRequestCounters::AllCounters[0];
-    auto& readCounter = meta.GetValue(requestCounters);
-    if (Policy == EPublishingPolicy::DiskRegistryBased ||
-        readCounter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
-        Policy == readCounter.PublishingPolicy)
-    {
-        readCounter.Register(
-            counters->GetSubgroup("request", "ReadBlocks")
-                ->GetSubgroup("transport", subGroupName),
-            "RequestBytes");
-    }
-
-    meta = TTransportRequestCounters::AllCounters[1];
-    auto& writeCounter = meta.GetValue(requestCounters);
-    if (Policy == EPublishingPolicy::DiskRegistryBased ||
-        writeCounter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
-        Policy == writeCounter.PublishingPolicy)
-    {
-        writeCounter.Register(
-            counters->GetSubgroup("request", "WriteBlocks")
-                ->GetSubgroup("transport", subGroupName),
-            "RequestBytes");
-    }
-
-    meta = TTransportRequestCounters::AllCounters[2];
-    auto& readCounterCount = meta.GetValue(requestCounters);
-    if (Policy == EPublishingPolicy::DiskRegistryBased ||
-        readCounterCount.PublishingPolicy ==
-            EPublishingPolicy::DiskRegistryBased ||
-        Policy == readCounterCount.PublishingPolicy)
-    {
-        readCounterCount.Register(
-            counters->GetSubgroup("request", "ReadBlocks")
-                ->GetSubgroup("transport", subGroupName),
-            "Count");
-    }
-
-    meta = TTransportRequestCounters::AllCounters[3];
-    auto& writeCounterCount = meta.GetValue(requestCounters);
-    if (Policy == EPublishingPolicy::DiskRegistryBased ||
-        writeCounterCount.PublishingPolicy ==
-            EPublishingPolicy::DiskRegistryBased ||
-        Policy == writeCounterCount.PublishingPolicy)
-    {
-        writeCounterCount.Register(
-            counters->GetSubgroup("request", "WriteBlocks")
-                ->GetSubgroup("transport", subGroupName),
-            "Count");
-    }
-}
-
 void TPartitionDiskCounters::Register(
     NMonitoring::TDynamicCountersPtr counters,
     bool aggregate)
@@ -281,8 +225,31 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-    RegisterTTransportRequestCounters(counters, Rdma, "RDMA");
-    RegisterTTransportRequestCounters(counters, Interconnect, "Interconnect");
+    for (auto meta: TTransportRequestCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
+        if (Policy == EPublishingPolicy::DiskRegistryBased ||
+            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", TString(meta.Tag))
+                    ->GetSubgroup("transport", "Interconnect"),
+                TString(meta.Name));
+        }
+    }
+
+    for (auto meta: TTransportRequestCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        if (Policy == EPublishingPolicy::DiskRegistryBased ||
+            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", TString(meta.Tag))
+                    ->GetSubgroup("transport", "RDMA"),
+                TString(meta.Name));
+        }
+    }
 }
 
 void TPartitionDiskCounters::Reset()
