@@ -373,7 +373,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
 
-    PartCounters->Interconnect.ReadBlocks.Increment(requestBytes);
+    PartCounters->Interconnect.ReadBytes.Increment(requestBytes);
     PartCounters->Interconnect.CountRead.Increment(1);
 
     PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
