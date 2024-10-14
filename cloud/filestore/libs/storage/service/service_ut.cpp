@@ -2915,6 +2915,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 headers.ClientId,
                 sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("", sessions[0].GetSessionState());
+        }
+
+        const TString sessionState = "some_state";
+        service.ResetSession(headers, sessionState);
+
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(shardId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                sessionState,
+                sessions[0].GetSessionState());
         }
 
         service.DestroySession(headers);
