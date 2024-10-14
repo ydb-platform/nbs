@@ -444,7 +444,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            transportCounters.CountWrite.Value,
+            transportCounters.WriteCount.Value,
             counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * (
