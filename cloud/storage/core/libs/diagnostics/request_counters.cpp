@@ -36,7 +36,7 @@ struct THistBase
     THistogramPtr Hist;
     std::array<TDynamicCounters::TCounterPtr, TDerived::BUCKETS_COUNT> Counters;
 
-    explicit THistBase(EHistogramCounterOptions counterOptions = {})
+    explicit THistBase(EHistogramCounterOptions counterOptions)
         : HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
@@ -296,8 +296,8 @@ struct TRequestCounters::TStatCounters
     TAtomic FullyInitialized = false;
 
     explicit TStatCounters(
-        ITimerPtr timer,
-        EHistogramCounterOptions histogramCounterOptions)
+            ITimerPtr timer,
+            EHistogramCounterOptions histogramCounterOptions)
         : SizeHist(histogramCounterOptions)
         , TimeHist(histogramCounterOptions)
         , TimeHistUnaligned(histogramCounterOptions)
