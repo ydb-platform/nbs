@@ -73,8 +73,13 @@ EErrorKind GetErrorKind(const NProto::TError& e)
     }
 
     if (FACILITY_FROM_CODE(code) == FACILITY_SYSTEM) {
-        // system/network errors should be retriable
-        return EErrorKind::ErrorRetriable;
+        switch (code) {
+            case EIO:
+                return EErrorKind::ErrorFatal;
+            default:
+                // system/network errors should be retriable
+                return EErrorKind::ErrorRetriable;
+        }
     }
 
     if (FACILITY_FROM_CODE(code) == FACILITY_KIKIMR) {
