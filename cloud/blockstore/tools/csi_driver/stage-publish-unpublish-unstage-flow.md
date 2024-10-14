@@ -52,7 +52,7 @@ Possible scenarios:
 Migration is splitted for differnt modes
 VM mode: https://github.com/ydb-platform/nbs/pull/1982
 Mount mode: https://github.com/ydb-platform/nbs/pull/2195
-Block mode: is not implemented yet
+Block mode: https://github.com/ydb-platform/nbs/pull/2269
 
 After migration of all volumes to the new endpoints we can remove backward compatibility
 with old format of endpoints.
