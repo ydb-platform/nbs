@@ -58,7 +58,8 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 	}
 
 	if deviceSize == 0 {
-		return false, fmt.Errorf("size of device %q is empty", device)
+		return false, fmt.Errorf("size of device %q is empty. blockdev output is %q",
+			device, out)
 	}
 
 	out, err = exec.Command("blkid", device).CombinedOutput()
