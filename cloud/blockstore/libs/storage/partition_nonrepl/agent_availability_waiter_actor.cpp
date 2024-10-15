@@ -59,6 +59,10 @@ void TAgentAvailabilityWaiterActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
+    LOG_INFO(ctx, TBlockStoreComponents::PARTITION_WORKER,
+        "TAgentAvailabilityWaiterActor wakeup ",
+        AgentId.c_str());
+
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
     request->Record.SetStartIndex(ReadBlockIndex);

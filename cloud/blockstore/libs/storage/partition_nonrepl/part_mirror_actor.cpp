@@ -480,6 +480,14 @@ void TMirrorPartitionActor::HandleEnterIncompleteMirrorRWMode(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] EnterIncompleteMirrorRWMode %s, ReplicaIndex: %u",
+        DiskId.c_str(),
+        msg->AgentId.c_str(),
+        msg->ReplicaIndex);
+
     // if (State.GetIncompleteIOReplicaIndex() &&
     //           State.GetIncompleteIOReplicaIndex() != msg->ReplicaIndex)
     // {
@@ -530,6 +538,12 @@ void TMirrorPartitionActor::HandleEnterIncompleteMirrorRWMode(
                 std::make_unique<
                     TEvPartition::TEvEnterIncompleteMirrorRWModeResponse>(
                     error));
+
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Cant set replica proxy.",
+                DiskId.c_str());
             return;
         }
     }
@@ -544,6 +558,34 @@ void TMirrorPartitionActor::HandleEnterIncompleteMirrorRWMode(
         ctx,
         *ev,
         std::make_unique<TEvPartition::TEvEnterIncompleteMirrorRWModeResponse>());
+}
+
+void TMirrorPartitionActor::HandleExitIncompleteMirrorRWMode(
+    const TEvPartition::TEvExitIncompleteMirrorRWModeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] ExitIncompleteMirrorRWMode %s, ReplicaIndex: %u",
+        DiskId.c_str(),
+        msg->AgentId.c_str(),
+        msg->ReplicaIndex);
+
+    if (State.GetReplicaActors().size() <= msg->ReplicaIndex) {
+        Y_DEBUG_ABORT_UNLESS(false);
+        return;
+    }
+
+    // TODO: What happens with in-flight requests?
+    // DO NOT POISON IF THERE IS MORE THAT ONE UNAVAILABLE AGENT.
+    if (State.IsProxySet(msg->ReplicaIndex)) {
+        auto proxy = State.GetReplicaActors()[msg->ReplicaIndex];
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, proxy);
+        auto error = State.ResetReplicaProxy(msg->ReplicaIndex);
+        Y_DEBUG_ABORT_UNLESS(!HasError(error));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -617,6 +659,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
 
         HFunc(TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(TEvPartition::TEvEnterIncompleteMirrorRWModeRequest, HandleEnterIncompleteMirrorRWMode);
+        HFunc(TEvPartition::TEvExitIncompleteMirrorRWModeRequest, HandleExitIncompleteMirrorRWMode);
 
         HFunc(
             TEvService::TEvGetChangedBlocksRequest,

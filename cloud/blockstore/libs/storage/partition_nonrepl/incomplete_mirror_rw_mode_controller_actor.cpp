@@ -338,51 +338,65 @@ bool TIncompleteMirrorRWModeControllerActor::ShouldSplitWriteRequest(
     return states.size() != 1;
 }
 
-// void TIncompleteMirrorRWModeControllerActor::OnMigrationProgress(
-//     const TString& agentId,
-//     ui64 processedBlockCount,
-//     ui64 blockCountNeedToBeProcessed)
-// {
-//     Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
-//     auto& state = AgentState[agentId];
-//     Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
+void TIncompleteMirrorRWModeControllerActor::OnMigrationProgress(
+    const TString& agentId,
+    ui64 processedBlockCount,
+    ui64 blockCountNeedToBeProcessed)
+{
+    Y_UNUSED(agentId);
+    Y_UNUSED(processedBlockCount);
+    Y_UNUSED(blockCountNeedToBeProcessed);
+    Y_DEBUG_ABORT_UNLESS(false);
+    // Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
+    // auto& state = AgentState[agentId];
+    // Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
 
-//     NCloud::Send(
-//         ActorContext(),
-//         PartConfig->GetParentActorId(),
-//         std::make_unique<TEvVolume::TEvUpdateSmartResyncState>(
-//             processedBlockCount,
-//             blockCountNeedToBeProcessed));
-// }
+    // NCloud::Send(
+    //     ActorContext(),
+    //     PartConfig->GetParentActorId(),
+    //     std::make_unique<TEvVolume::TEvUpdateSmartResyncState>(
+    //         processedBlockCount,
+    //         blockCountNeedToBeProcessed));
+}
 
-// void TIncompleteMirrorRWModeControllerActor::OnMigrationFinished(
-//     const TString& agentId)
-// {
-//     Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
-//     auto& state = AgentState[agentId];
-//     Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
+void TIncompleteMirrorRWModeControllerActor::OnMigrationFinished(
+    const TString& agentId)
+{
+    Y_UNUSED(agentId);
+    Y_DEBUG_ABORT_UNLESS(false);
+    // Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
+    // auto& state = AgentState[agentId];
+    // Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
 
-//     NCloud::Send(
-//         ActorContext(),
-//         PartConfig->GetParentActorId(),
-//         std::make_unique<TEvVolume::TEvSmartResyncFinished>(agentId));
-// }
+    // NCloud::Send(
+    //     ActorContext(),
+    //     PartConfig->GetParentActorId(),
+    //     std::make_unique<TEvVolume::TEvSmartResyncFinished>(agentId));
+}
 
-// void TIncompleteMirrorRWModeControllerActor::OnMigrationError(
-//     const TString& agentId)
-// {
-//     Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
-//     auto& state = AgentState[agentId];
-//     Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
+void TIncompleteMirrorRWModeControllerActor::OnMigrationError(
+    const TString& agentId)
+{
+    Y_UNUSED(agentId);
+    Y_DEBUG_ABORT_UNLESS(false);
+    // Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
+    // auto& state = AgentState[agentId];
+    // Y_DEBUG_ABORT_UNLESS(state.SmartResyncActor);
 
-//     // TODO: Abort this and start real resync?
-// }
+    // // TODO: Abort this and start real resync?
+}
 
 void TIncompleteMirrorRWModeControllerActor::HandleAgentIsUnavailable(
     const NPartition::TEvPartition::TEvAgentIsUnavailable::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "HandleAgentIsUnavailable %s",
+        msg->AgentId.c_str());
 
     TAgentState* state = AgentState.FindPtr(msg->AgentId);
     if (!state || state->State == EAgentState::Resyncing) {
@@ -428,6 +442,12 @@ void TIncompleteMirrorRWModeControllerActor::HandleAgentIsBackOnline(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "HandleAgentIsBackOnline %s",
+        msg->AgentId.c_str());
 
     Y_DEBUG_ABORT_UNLESS(AgentState.contains(msg->AgentId));
     if (!AgentState.contains(msg->AgentId)) {

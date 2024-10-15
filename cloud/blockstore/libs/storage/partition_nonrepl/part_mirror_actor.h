@@ -150,6 +150,10 @@ private:
         const NPartition::TEvPartition::TEvEnterIncompleteMirrorRWModeRequest::
             TPtr& ev,
         const NActors::TActorContext& ctx);
+    void HandleExitIncompleteMirrorRWMode(
+        const NPartition::TEvPartition::TEvExitIncompleteMirrorRWModeRequest::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,

@@ -121,6 +121,15 @@ void TSmartResyncActor::OnMigrationProgress(
 {
     Y_UNUSED(migrationIndex);
 
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "TSmartResyncActor::OnMigrationProgress %s, GetProcessedBlockCount = %lu, "
+        "GetBlockCountNeedToBeProcessed = %lu",
+        AgentId.c_str(),
+        GetProcessedBlockCount(),
+        GetBlockCountNeedToBeProcessed());
+
     // Straight to volume!
     ctx.Send(
         PartConfig->GetParentActorId(),
@@ -134,6 +143,12 @@ void TSmartResyncActor::OnMigrationFinished(const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ctx);
 
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "TSmartResyncActor::OnMigrationFinished %s",
+        AgentId.c_str());
+
     // Straight to volume mb?
     ctx.Send(
         PartConfig->GetParentActorId(),
@@ -145,6 +160,12 @@ void TSmartResyncActor::OnMigrationFinished(const NActors::TActorContext& ctx)
 void TSmartResyncActor::OnMigrationError(const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ctx);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "TSmartResyncActor::OnMigrationError %s",
+        AgentId.c_str());
 
     // Abort this and start real resync?
 

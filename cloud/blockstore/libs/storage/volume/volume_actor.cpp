@@ -853,6 +853,15 @@ void TVolumeActor::HandleDeviceTimeouted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Device \"%s\" timeouted. DeviceIndex: %u",
+        TabletID(),
+        msg->DeviceUUID.c_str(),
+        msg->DeviceIndex);
+
     const auto& meta = State->GetMeta();
     const auto& config = meta.GetVolumeConfig();
     const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
@@ -918,6 +927,13 @@ void TVolumeActor::HandleDeviceTimeouted(
     }
 
     if (!timeoutedDeviceConfig) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Could not find config with device %s among replicas",
+            TabletID(),
+            msg->DeviceUUID.c_str());
+
         auto response = std::make_unique<TEvVolume::TEvDeviceTimeoutedResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -955,6 +971,28 @@ void TVolumeActor::HandleDeviceTimeouted(
             // "intersection" should be empty since new lagging agent can't have mutual devices with some other lagging agent.
             STORAGE_CHECK_PRECONDITION(intersection.empty());
         } else if (!intersection.empty()) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "[%lu] Will not add a lagging agent %s, devices: [%s]. Agent's "
+                "devices intersect with already lagging %s, devices: [%s]. "
+                "Intersection: [%s]",
+                TabletID(),
+                timeoutedDeviceConfig->GetAgentId().c_str(),
+                JoinStrings(
+                    timeoutedAgentDevicesIndexes.begin(),
+                    timeoutedAgentDevicesIndexes.end(),
+                    ", ")
+                    .c_str(),
+                agent.GetAgentId().c_str(),
+                JoinStrings(
+                    agent.GetDevicesIndexes().begin(),
+                    agent.GetDevicesIndexes().end(),
+                    ", ")
+                    .c_str(),
+                JoinStrings(intersection.begin(), intersection.end(), ", ")
+                    .c_str());
+
             // Can't disable RW on more than one replica.
             auto response = std::make_unique<TEvVolume::TEvDeviceTimeoutedResponse>();
             NCloud::Reply(ctx, *ev, std::move(response));
@@ -996,7 +1034,18 @@ void TVolumeActor::ExecuteAddLaggingAgent(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TAddLaggingAgent& args)
 {
-    Y_UNUSED(ctx);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Add lagging agent: %s, replicaIndex: %u, devicesIndexes: [%s]",
+        TabletID(),
+        args.Agent.GetAgentId().c_str(),
+        args.Agent.GetReplicaIndex(),
+        JoinStrings(
+            args.Agent.GetDevicesIndexes().begin(),
+            args.Agent.GetDevicesIndexes().end(),
+            ", ")
+            .c_str());
 
     TVolumeDatabase db(tx.DB);
     State->AddLaggingAgent(args.Agent);
@@ -1047,6 +1096,14 @@ void TVolumeActor::HandleUpdateSmartResyncState(
 {
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] UpdateSmartResyncState %s",
+        TabletID(),
+        ev->Get()->AgentId.c_str());
+
     // TODO: UPDATE PROGREESS ON MON PAGE.
 }
 
@@ -1057,6 +1114,13 @@ void TVolumeActor::HandleSmartResyncFinished(
     // TODO: STUFF??
 
     const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] SmartResyncFinished %s",
+        TabletID(),
+        msg->AgentId.c_str());
+
     ExecuteTx<TRemoveLaggingAgent>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -1082,6 +1146,12 @@ bool TVolumeActor::PrepareRemoveLaggingAgent(
     const auto* info = FindIfPtr(laggingAgents, agentIdPred);
 
     if (!info) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Could not find an agent %s in lagging agents list.",
+            TabletID(),
+            args.AgentId.c_str());
         return false;
     }
 
