@@ -17,33 +17,75 @@ from github import Auth as GithubAuth
 from github import Github
 from nebius.common.v1.metadata_pb2 import ResourceMetadata
 from nebius.compute.v1.disk_pb2 import Disk, DiskSpec
-from nebius.compute.v1.disk_service_pb2 import (CreateDiskRequest,
-                                                DeleteDiskRequest,
-                                                ListDisksRequest)
-from nebius.compute.v1.disk_service_pb2_grpc import DiskServiceStub
-from nebius.compute.v1.instance_pb2 import (AttachedDiskSpec, ExistingDisk,
-                                            Instance, InstanceSpec,
-                                            ResourcesSpec)
-from nebius.compute.v1.instance_service_pb2 import (CreateInstanceRequest,
-                                                    DeleteInstanceRequest,
-                                                    GetInstanceRequest)
-from nebius.compute.v1.instance_service_pb2_grpc import InstanceServiceStub
-from nebius.compute.v1.network_interface_pb2 import (IPAddress,
-                                                     NetworkInterfaceSpec,
-                                                     PublicIPAddress)
-from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
+from nebius.compute.v1.disk_service_pb2 import (
+    CreateDiskRequest,
+    DeleteDiskRequest,
+    ListDisksRequest,
 )
+from nebius.compute.v1.disk_service_pb2_grpc import DiskServiceStub
+from nebius.compute.v1.instance_pb2 import (
+    AttachedDiskSpec,
+    ExistingDisk,
+    Instance,
+    InstanceSpec,
+    ResourcesSpec,
+)
+from nebius.compute.v1.instance_service_pb2 import (
+    CreateInstanceRequest,
+    DeleteInstanceRequest,
+    GetInstanceRequest,
+)
+from nebius.compute.v1.instance_service_pb2_grpc import InstanceServiceStub
+from nebius.compute.v1.network_interface_pb2 import (
+    IPAddress,
+    NetworkInterfaceSpec,
+    PublicIPAddress,
+)
+from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
+from nebiusai.operations import OperationError
 
-logger = logging.getLogger(__name__)
+SENSITIVE_DATA_VALUES = {
+    "passwd": os.environ.get("VM_USER_PASSWD"),
+    "github_token": os.environ.get("GITHUB_TOKEN"),
+    "password": r"password=[^&\s]+",
+}
+
+
+class MaskingFormatter(logging.Formatter):
+    @staticmethod
+    def mask_sensitive_data(msg):
+        # Iterate over the patterns and replace sensitive data with '***'
+        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
+            msg = msg.replace(pattern, f"[{pattern_name}=***]")
+        return msg
+
+    def format(self, record):
+        original = logging.Formatter.format(self, record)
+        return self.mask_sensitive_data(original)
+
+
+formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.addHandler(console_handler)
+logger.setLevel(logging.INFO)
+
 
 DISK_NAME_PREFIX = "disk-"
 PRESETS = [
-    "2vcpu-8gb", "4vcpu-16gb", "8vcpu-32gb", "16vcpu-64gb",
-    "32vcpu-128gb", "48vcpu-192gb", "64vcpu-256gb", "80vcpu-320gb"
+    "2vcpu-8gb",
+    "4vcpu-16gb",
+    "8vcpu-32gb",
+    "16vcpu-64gb",
+    "32vcpu-128gb",
+    "48vcpu-192gb",
+    "64vcpu-256gb",
+    "80vcpu-320gb",
 ]
+
 
 def github_output(key: str, value: str, is_secret: bool = False):
     GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
@@ -173,9 +215,7 @@ done
         cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
 
     logger.info(
-        f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
-            token, "****"
-        )
+        f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}"
     )
     return (
         "#cloud-config\n"
@@ -203,6 +243,7 @@ def get_runner_token(
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
+        SENSITIVE_DATA_VALUES["runner_token"] = token
         logger.debug(
             "Got runner registration token: %s (valid till: %s)", (token, expires_at)
         )
@@ -255,27 +296,27 @@ def find_runner_by_name(
     logger.info("Runner with name %s found", vm_id)
     return runner_id
 
+
 def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     try:
         request = CreateDiskRequest(
             metadata=ResourceMetadata(
-                parent_id=args.folder_id,
+                parent_id=args.parent_id,
                 name=DISK_NAME_PREFIX + args.name,
             ),
             spec=DiskSpec(
                 type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
                 size_gibibytes=93,
-                source_image_id=args.image_id
-            )
+                source_image_id=args.image_id,
+            ),
         )
     except TypeError as e:
         logger.error("Failed to create disk request")
-        raise
+        raise e
 
     if not args.apply:
         logger.info("Would create disk with request %s", request)
         return "0"
-
 
     result = sdk.create_operation_and_get_result(
         request=request,
@@ -289,6 +330,7 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     )
 
     return result
+
 
 def create_vm(sdk: SDK, args: argparse.Namespace):
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
@@ -310,9 +352,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
         )
 
     if args.platform_id == "cpu-e2" and args.preset not in PRESETS:
-        raise ValueError(
-            f"Preset must be {', '.join(PRESETS)} for cpu-e2 platform"
-        )
+        raise ValueError(f"Preset must be {', '.join(PRESETS)} for cpu-e2 platform")
 
     if (
         args.disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
@@ -337,69 +377,74 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
     labels = args.labels
     labels["runner-label"] = runner_github_label
 
-
     disk_id = create_disk(sdk, args)
     try:
         request = CreateInstanceRequest(
             metadata=ResourceMetadata(
-                parent_id=args.folder_id,
+                parent_id=args.parent_id,
                 name=args.name,
                 labels=labels,
             ),
             spec=InstanceSpec(
                 stopped=False,
                 cloud_init_user_data=user_data,
-                resources=ResourcesSpec(
-                    platform=args.platform_id,
-                    preset=args.preset
-
-                ),
+                resources=ResourcesSpec(platform=args.platform_id, preset=args.preset),
                 boot_disk=AttachedDiskSpec(
                     attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
                     existing_disk=ExistingDisk(id=disk_id),
-                    device_id="boot"
+                    device_id="boot",
                 ),
                 network_interfaces=[
                     NetworkInterfaceSpec(
                         name="eth0",
                         subnet_id=args.subnet_id,
                         ip_address=IPAddress(),
-                        public_ip_address=PublicIPAddress()
+                        public_ip_address=PublicIPAddress(),
                     ),
                 ],
-            )
-
+            ),
         )
     except TypeError as e:
         logger.error("Failed to create VM, removing created disk")
         remove_disk_by_id(sdk, args, disk_id)
-        raise
-
+        raise e
 
     # Create the VM
     if not args.apply:
         logger.info("Would create VM with request: %s", request)
         return
 
-    result = sdk.create_operation_and_get_result(
-        request=request,
-        service=InstanceServiceStub,
-        service_ctor=instance_service_pb2,
-        method_name="Create",
-        response_type=Instance,
-        meta_type=ResourceMetadata,
-        timeout=args.timeout,
-        logger=logger,
-    )
+    try:
+        result = sdk.create_operation_and_get_result(
+            request=request,
+            service=InstanceServiceStub,
+            service_ctor=instance_service_pb2,
+            method_name="Create",
+            response_type=Instance,
+            meta_type=ResourceMetadata,
+            timeout=args.timeout,
+            logger=logger,
+        )
+    except OperationError as e:
+        logger.error("Failed to create VM with request: %s", request)
+        logger.error("Response: %s", e)
+        resource_id = e.operation_result.operation.resource_id
+        if resource_id is not None:
+            logger.error("Removing created instance with ID %s", resource_id)
+            remove_vm_by_id(sdk, args, resource_id)
+
+        remove_disk_by_id(sdk, args, disk_id)
+
+        raise
     instance_id = result
     instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
     instance = instance_client.Get(GetInstanceRequest(id=instance_id))
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
 
-    network_interface = instance.spec.network_interfaces[0]
-    external_ipv4 = network_interface.public_ip_address
-    local_ipv4 = network_interface.ip_address
+    network_interface = instance.status.network_interfaces[0]
+    external_ipv4 = network_interface.public_ip_address.address.replace("/32", "")
+    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
     if instance_id:
         logger.info(
             "Created VM %s with ID %s and label %s",
@@ -418,7 +463,6 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
             gh, instance_id, args.github_repo_owner, args.github_repo, 10, 60
         )
 
-
         if runner_id is not None:
             logger.info("VM registered as Github Runner %s", runner_id)
         else:
@@ -427,7 +471,6 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
     else:
         logger.error("Failed to create VM with request: %s", request)
         logger.error("Response: %s", result)
-
 
 
 def remove_runner_from_github(
@@ -470,6 +513,7 @@ def remove_runner_from_github(
     else:
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
+
 def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
     if not args.apply:
         logger.info("Would delete disk with name %s", DISK_NAME_PREFIX + instance_name)
@@ -478,22 +522,27 @@ def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
     disk_id = None
     try:
         disk_client = sdk.client(disk_service_pb2, DiskServiceStub)
-        result = disk_client.List(ListDisksRequest(parent_id=args.folder_id))
+        result = disk_client.List(ListDisksRequest(parent_id=args.parent_id))
         for disk in result.items:
-            if disk.name == DISK_NAME_PREFIX + instance_name:
-                disk_id = disk.id
+            if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
+                disk_id = disk.metadata.id
                 break
 
         if disk_id is None:
-            logger.error("Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name)
+            logger.error(
+                "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
+            )
             return
 
     except Exception as e:
-        logger.exception("Failed to get Disk with name %s", instance_name, exc_info=True)
+        logger.exception(
+            "Failed to get Disk with name %s", instance_name, exc_info=True
+        )
         logger.error("Response: %s", result)
         raise e
 
     remove_disk_by_id(sdk, args, disk_id)
+
 
 def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = None):
     if not args.apply:
@@ -513,11 +562,40 @@ def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = None):
             logger=logger,
         )
 
-        logger.info("Deleted Disk with ID %s", args.id)
+        logger.info("Deleted Disk with ID %s", disk_id)
     except Exception as e:
         logger.exception("Failed to delete Disk with ID %s", disk_id, exc_info=True)
         logger.error("Response: %s", result)
         raise e
+
+
+def remove_vm_by_id(sdk: SDK, args: argparse.Namespace, instance_id: int = None) -> str:
+    instance_name = None
+    try:
+        instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
+        instance_name = instance_client.Get(
+            GetInstanceRequest(id=instance_id)
+        ).metadata.name
+        result = sdk.create_operation_and_get_result(
+            request=DeleteInstanceRequest(id=instance_id),
+            service=InstanceServiceStub,
+            service_ctor=instance_service_pb2,
+            method_name="Delete",
+            response_type=Instance,
+            meta_type=ResourceMetadata,
+            timeout=args.timeout,
+            logger=logger,
+        )
+
+        logger.info("Deleted VM with ID %s", instance_id)
+
+    except Exception as e:
+        logger.exception("Failed to delete VM with ID %s", instance_id, exc_info=True)
+        logger.error("Response: %s", result)
+        raise e
+
+    return instance_name
+
 
 def remove_vm(sdk: SDK, args: argparse.Namespace):
     remove_runner_from_github(
@@ -528,35 +606,16 @@ def remove_vm(sdk: SDK, args: argparse.Namespace):
         logger.info("Would delete VM with ID %s", args.id)
         return
 
-
-    instance_name = None
-    try:
-        instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
-        instance_name = instance_client.Get(GetInstanceRequest(id=args.id)).name
-        result = sdk.create_operation_and_get_result(
-            request=DeleteInstanceRequest(id=args.id),
-            service=InstanceServiceStub,
-            service_ctor=instance_service_pb2,
-            method_name="Delete",
-            response_type=Instance,
-            meta_type=ResourceMetadata,
-            timeout=args.timeout,
-            logger=logger,
-        )
-
-        logger.info("Deleted VM with ID %s", args.id)
-
-        remove_disk_by_name(sdk, args, instance_name)
-    except Exception as e:
-        logger.exception("Failed to delete VM with ID %s", args.id, exc_info=True)
-        logger.error("Response: %s", result)
-        raise e
+    instance_name = remove_vm_by_id(sdk, args, args.id)
 
     if instance_name is None:
-        logger.error("Failed to get instance name for ID %s, therefore we can't find disk", args.id)
+        logger.error(
+            "Failed to get instance name for ID %s, therefore we can't find disk",
+            args.id,
+        )
         return
 
-
+    remove_disk_by_name(sdk, args, instance_name)
 
 
 if __name__ == "__main__":
@@ -608,15 +667,20 @@ if __name__ == "__main__":
         help="Path to the service account key file",
     )
     create.add_argument(
-        "--folder-id",
+        "--parent-id",
         required=True,
-        default="bjeuq5o166dq4ukv3eec",
-        help="Folder ID where the VM will be created",
+        default="project-e00gg2f58gw75edn7x",
+        help="Parent ID where the VM will be created",
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
     create.add_argument(
-        "--preset", type=str, choices=PRESETS, default="2vcpu-8gb", required=True, help="Instance preset"
+        "--preset",
+        type=str,
+        choices=PRESETS,
+        default="2vcpu-8gb",
+        required=True,
+        help="Instance preset",
     )
     create.add_argument(
         "--disk-type",
@@ -655,6 +719,12 @@ if __name__ == "__main__":
         "--service-account-key",
         required=True,
         help="Path to the service account key file",
+    )
+    remove.add_argument(
+        "--parent-id",
+        required=True,
+        default="project-e00gg2f58gw75edn7x",
+        help="Parent ID where the VM will be created",
     )
     remove.add_argument("--id", required=True, help="ID of the VM to remove")
 
