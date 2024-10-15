@@ -88,13 +88,15 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
+          org: ydb-platform
+          team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: project-e00gg2f58gw75edn7x
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_preset: "80vcpu-320gb"
+          vm_preset: ${{ vars.NEBIUS_VM_PRESET }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
           vm_subnet: vpcsubnet-e00a6jtgksfcn4m30m
