@@ -285,6 +285,7 @@ jobs:
         vm_image: ${{ steps.build.outputs.IMAGE_ID_2204 }}
         vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
         vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+    # there is no nebius runner here, because we can't build images yet
     - name: Stop runner
       uses: ./.github/actions/runner_remove
       if: always() && env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
