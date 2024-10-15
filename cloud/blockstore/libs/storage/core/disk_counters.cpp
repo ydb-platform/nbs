@@ -34,6 +34,16 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
         auto& counter = meta.GetValue(Histogram);
         counter.Add(meta.GetValue(source.Histogram));
     }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        counter.Add(meta.GetValue(source.Rdma));
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
+        counter.Add(meta.GetValue(source.Interconnect));
+    }
 }
 
 void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
@@ -61,6 +71,16 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
     for (auto meta: THistogramCounters::AllCounters) {
         auto& counter = meta.GetValue(Histogram);
         counter.AggregateWith(meta.GetValue(source.Histogram));
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        counter.AggregateWith(meta.GetValue(source.Rdma));
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
+        counter.AggregateWith(meta.GetValue(source.Interconnect));
     }
 }
 
@@ -113,6 +133,26 @@ void TPartitionDiskCounters::Publish(TInstant now)
             Policy == counter.PublishingPolicy)
         {
             counter.Publish();
+        }
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
+        }
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
         }
     }
 
@@ -184,6 +224,32 @@ void TPartitionDiskCounters::Register(
                 aggregate);
         }
     }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
+        if (Policy == EPublishingPolicy::DiskRegistryBased ||
+            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", TString(meta.Tag))
+                    ->GetSubgroup("transport", "Interconnect"),
+                TString(meta.Name));
+        }
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        if (Policy == EPublishingPolicy::DiskRegistryBased ||
+            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", TString(meta.Tag))
+                    ->GetSubgroup("transport", "RDMA"),
+                TString(meta.Name));
+        }
+    }
 }
 
 void TPartitionDiskCounters::Reset()
@@ -210,6 +276,16 @@ void TPartitionDiskCounters::Reset()
 
     for (auto meta: THistogramCounters::AllCounters) {
         auto& counter = meta.GetValue(Histogram);
+        counter.Reset();
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Rdma);
+        counter.Reset();
+    }
+
+    for (auto meta: TTransportCounters::AllCounters) {
+        auto& counter = meta.GetValue(Interconnect);
         counter.Reset();
     }
 }
