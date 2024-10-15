@@ -45,7 +45,8 @@ const auto REQUEST_COUNTERS_OPTIONS =
 TRequestCountersPtr MakeRequestCounters(
     ITimerPtr timer,
     TDynamicCounters& counters,
-    TRequestCounters::EOptions options)
+    TRequestCounters::EOptions options,
+    EHistogramCounterOptions histogramCounterOptions)
 {
     auto requestCounters = std::make_shared<TRequestCounters>(
         std::move(timer),
@@ -56,7 +57,8 @@ TRequestCountersPtr MakeRequestCounters(
         [] (TRequestCounters::TRequestType t) {
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
-        options
+        options,
+        histogramCounterOptions
     );
     requestCounters->Register(counters);
     return requestCounters;
@@ -158,21 +160,25 @@ public:
             TDynamicCountersPtr counters,
             ITimerPtr timer,
             TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold)
+            TDuration totalTimeThreshold,
+            EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(
             timer,
             *RootCounters,
-            REQUEST_COUNTERS_OPTIONS))
+            REQUEST_COUNTERS_OPTIONS,
+            histogramCounterOptions))
         , SsdCounters(MakeRequestCounters(
             timer,
             *RootCounters->GetSubgroup("type", "ssd"),
-            REQUEST_COUNTERS_OPTIONS))
+            REQUEST_COUNTERS_OPTIONS,
+            histogramCounterOptions))
         , HddCounters(MakeRequestCounters(
             timer,
             *RootCounters->GetSubgroup("type", "hdd"),
-            REQUEST_COUNTERS_OPTIONS))
+            REQUEST_COUNTERS_OPTIONS,
+            histogramCounterOptions))
     {
         auto revisionGroup =
             RootCounters->GetSubgroup("revision", GetFullVersionString());
@@ -425,7 +431,8 @@ public:
             TDynamicCountersPtr counters,
             IPostponeTimePredictorPtr predictor,
             TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold)
+            TDuration totalTimeThreshold,
+            EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
@@ -433,7 +440,8 @@ public:
             timer,
             *counters,
             REQUEST_COUNTERS_OPTIONS
-            | TRequestCounters::EOption::LazyRequestInitialization)}
+                | TRequestCounters::EOption::LazyRequestInitialization,
+            histogramCounterOptions)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
     {}
@@ -699,7 +707,8 @@ public:
             std::move(totalCounters),
             Timer,
             DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
-            DiagnosticsConfig->GetSlowTotalTimeRequestThreshold());
+            DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
+            DiagnosticsConfig->GetHistogramCounterOptions());
 
         FsCounters = RootCounters
             ->GetSubgroup("component", component + "_fs")
@@ -729,7 +738,8 @@ public:
                 DiagnosticsConfig->GetPostponeTimePredictorPercentage(),
                 DiagnosticsConfig->GetPostponeTimePredictorMaxTime(),
                 DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
-                DiagnosticsConfig->GetSlowTotalTimeRequestThreshold());
+                DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
+                DiagnosticsConfig->GetHistogramCounterOptions());
             it = StatsMap.emplace(key, stats).first;
             stats->Subscribe(RequestStats->GetTotalCounters());
         }
@@ -837,7 +847,8 @@ private:
         double delayWindowPercentage,
         TMaybe<TDuration> delayMaxTime,
         TDuration executionTimeThreshold,
-        TDuration totalTimeThreshold) const
+        TDuration totalTimeThreshold,
+        EHistogramCounterOptions histogramCounterOptions) const
     {
         auto predictor = CreatePostponeTimePredictor(
             timer,
@@ -852,7 +863,8 @@ private:
             std::move(counters),
             std::move(predictor),
             executionTimeThreshold,
-            totalTimeThreshold);
+            totalTimeThreshold,
+            histogramCounterOptions);
     }
 };
 

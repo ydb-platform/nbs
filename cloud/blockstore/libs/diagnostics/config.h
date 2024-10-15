@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/diagnostics.pb.h>
-
+#include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 
 #include <util/generic/string.h>
@@ -146,7 +146,11 @@ public:
     TDuration GetMirror3SSDDowntimeThreshold() const;
     TDuration GetMirror2SSDDowntimeThreshold() const;
     TDuration GetLocalSSDDowntimeThreshold() const;
+    bool GetReportHistogramAsMultipleCounters() const;
+    bool GetReportHistogramAsSingleCounter() const;
+
     TRequestThresholds GetRequestThresholds() const;
+    EHistogramCounterOptions GetHistogramCounterOptions() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

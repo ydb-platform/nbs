@@ -270,12 +270,14 @@ public:
     TVolumeInfo(
             std::shared_ptr<TVolumeInfoBase> volumeBase,
             ITimerPtr timer,
-            TRealInstanceId realInstanceId)
+            TRealInstanceId realInstanceId,
+            EHistogramCounterOptions histogramCounterOptions)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
             std::move(timer),
-            GetRequestCountersOptions(*VolumeBase)))
+            GetRequestCountersOptions(*VolumeBase),
+            histogramCounterOptions))
     {}
 
     const NProto::TVolume& GetInfo() const override
@@ -858,7 +860,8 @@ private:
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
-            realInstanceId);
+            realInstanceId,
+            DiagnosticsConfig->GetHistogramCounterOptions());
 
         if (!Counters) {
             InitCounters();

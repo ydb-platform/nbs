@@ -30,65 +30,69 @@ namespace {
 template <typename TDerived>
 struct THistBase
 {
-    struct TBucket
+    const TBucketBounds HistBounds;
+    const EHistogramCounterOptions CounterOptions;
+
+    THistogramPtr Hist;
+    std::array<TDynamicCounters::TCounterPtr, TDerived::BUCKETS_COUNT> Counters;
+
+    explicit THistBase(EHistogramCounterOptions counterOptions)
+        : HistBounds(ConvertToHistBounds(TDerived::Buckets))
+        , CounterOptions(counterOptions)
+        , Hist(
+            new THistogramCounter(NMonitoring::ExplicitHistogram(HistBounds)))
     {
-        double Value;
-        TDynamicCounters::TCounterPtr Counter;
-
-        TBucket(double value = 0)
-            : Value(value)
-            , Counter(new TCounterForPtr(true))
-        {}
-    };
-
-    std::array<TBucket, TDerived::BUCKETS_COUNT> Buckets;
-
-    THistBase()
-    {
-        std::copy(
-            TDerived::Buckets.begin(),
-            TDerived::Buckets.end(),
-            Buckets.begin());
+        std::fill(Counters.begin(), Counters.end(), new TCounterForPtr(true));
     }
 
     void Register(
         TDynamicCounters& counters,
+        const TString& name,
         TCountableBase::EVisibility vis = TCountableBase::EVisibility::Public)
     {
-        const auto names = TDerived::MakeNames();
-        for (size_t i = 0; i < Buckets.size(); ++i) {
-            Buckets[i].Counter = counters.GetCounter(names[i], true, vis);
+        auto subgroup = MakeVisibilitySubgroup(
+            counters,
+            "histogram",
+            name,
+            vis);
+        if (CounterOptions & EHistogramCounterOption::ReportSingleCounter) {
+            Hist = subgroup->GetHistogram(name,
+                NMonitoring::ExplicitHistogram(HistBounds),
+                true,
+                vis);
+        }
+        if (CounterOptions & EHistogramCounterOption::ReportMultipleCounters) {
+            const auto names = TDerived::MakeNames();
+            for (size_t i = 0; i < Counters.size(); ++i) {
+                Counters[i] = subgroup->GetCounter(names[i], true, vis);
+            }
         }
     }
 
-    void Increment(double value, ui64 count = 1)
+    void Increment(double value, ui64 count)
     {
-        auto comparer = [] (const TBucket& bucket, double value) {
-            return bucket.Value < value;
-        };
+        Hist->Collect(value, count);
 
         auto it = LowerBound(
-            Buckets.begin(),
-            Buckets.end(),
-            value,
-            comparer);
+            TDerived::Buckets.begin(),
+            TDerived::Buckets.end(),
+            value);
         STORAGE_VERIFY(
-            it != Buckets.end(),
+            it != TDerived::Buckets.end(),
             "Bucket",
             value);
-
-        it->Counter->Add(count);
+        size_t index = std::distance(TDerived::Buckets.begin(), it);
+        Counters[index]->Add(count);
     }
 
     TVector<TBucketInfo> GetBuckets() const
     {
-        TVector<TBucketInfo> result(Reserve(Buckets.size()));
-        for (const auto& bucket: Buckets) {
-            result.emplace_back(
-                bucket.Value,
-                bucket.Counter->Val());
-        }
+        const auto snapshot = Hist->Snapshot();
 
+        TVector<TBucketInfo> result(snapshot->Count());
+        for (size_t i = 0; i < snapshot->Count(); ++i) {
+            result.emplace_back(snapshot->UpperBound(i), snapshot->Value(i));
+        }
         return result;
     }
 };
@@ -98,6 +102,11 @@ struct THistBase
 struct TTimeHist
     : public THistBase<TRequestMsTimeBuckets>
 {
+    explicit TTimeHist(EHistogramCounterOptions counterOptions)
+        : THistBase(counterOptions)
+    {
+    }
+
     void Increment(TDuration requestTime, ui64 count = 1)
     {
         THistBase::Increment(requestTime.MicroSeconds() / 1000., count);
@@ -109,6 +118,11 @@ struct TTimeHist
 struct TSizeHist
     : public THistBase<TKbSizeBuckets>
 {
+    explicit TSizeHist(EHistogramCounterOptions counterOptions)
+        : THistBase(counterOptions)
+    {
+    }
+
     void Increment(double requestBytes, ui64 count = 1)
     {
         THistBase::Increment(requestBytes / 1024, count);
@@ -281,8 +295,17 @@ struct TRequestCounters::TStatCounters
     TMutex FullInitLock;
     TAtomic FullyInitialized = false;
 
-    explicit TStatCounters(ITimerPtr timer)
-        : MaxTimeCalc(timer)
+    explicit TStatCounters(
+            ITimerPtr timer,
+            EHistogramCounterOptions histogramCounterOptions)
+        : SizeHist(histogramCounterOptions)
+        , TimeHist(histogramCounterOptions)
+        , TimeHistUnaligned(histogramCounterOptions)
+        , ExecutionTimeHist(histogramCounterOptions)
+        , ExecutionTimeHistUnaligned(histogramCounterOptions)
+        , RequestCompletionTimeHist(histogramCounterOptions)
+        , PostponedTimeHist(histogramCounterOptions)
+        , MaxTimeCalc(timer)
         , MaxTotalTimeCalc(timer)
         , MaxSizeCalc(timer)
         , MaxInProgressCalc(timer)
@@ -363,12 +386,10 @@ struct TRequestCounters::TStatCounters
             if (ReportDataPlaneHistogram) {
                 auto unalignedClassGroup = counters.GetSubgroup("sizeclass", "Unaligned");
 
-                SizeHist.Register(*counters.GetSubgroup("histogram", "Size"));
-                TimeHistUnaligned.Register(*unalignedClassGroup->GetSubgroup("histogram", "Time"));
-                ExecutionTimeHist.Register(
-                    *counters.GetSubgroup("histogram", "ExecutionTime"));
-                ExecutionTimeHistUnaligned.Register(
-                    *unalignedClassGroup->GetSubgroup("histogram", "ExecutionTime"));
+                SizeHist.Register(counters, "Size");
+                TimeHistUnaligned.Register(*unalignedClassGroup, "Time");
+                ExecutionTimeHist.Register(counters, "ExecutionTime");
+                ExecutionTimeHistUnaligned.Register(*unalignedClassGroup, "ExecutionTime");
             } else {
                 SizePercentiles.Register(*counters.GetSubgroup("percentiles", "Size"));
                 ExecutionTimePercentiles.Register(
@@ -382,24 +403,13 @@ struct TRequestCounters::TStatCounters
                 ? TCountableBase::EVisibility::Public
                 : TCountableBase::EVisibility::Private;
 
-            PostponedTimeHist.Register(*MakeVisibilitySubgroup(
-                counters,
-                "histogram",
-                "ThrottlerDelay",
-                visibleHistogram), visibleHistogram);
-
-            TimeHist.Register(*MakeVisibilitySubgroup(
-                counters,
-                "histogram",
-                "Time",
-                visibleHistogram), visibleHistogram);
+            PostponedTimeHist.Register(counters, "ThrottlerDelay", visibleHistogram);
+            TimeHist.Register(counters, "Time", visibleHistogram);
 
             // Always enough only percentiles.
-            RequestCompletionTimeHist.Register(*MakeVisibilitySubgroup(
-                    counters,
-                    "histogram",
-                    "RequestCompletionTime",
-                    TCountableBase::EVisibility::Private),
+            RequestCompletionTimeHist.Register(
+                counters,
+                "RequestCompletionTime",
                 TCountableBase::EVisibility::Private);
             RequestCompletionTimePercentiles.Register(
                 *counters.GetSubgroup("percentiles", "RequestCompletionTime"));
@@ -418,9 +428,7 @@ struct TRequestCounters::TStatCounters
             FastPathHits = counters.GetCounter("FastPathHits", true);
         } else {
             if (ReportControlPlaneHistogram) {
-                TimeHist.Register(*counters.GetSubgroup(
-                    "histogram",
-                    "Time"));
+                TimeHist.Register(counters, "Time");
             } else {
                 TimePercentiles.Register(
                     *counters.GetSubgroup("percentiles", "Time"));
@@ -688,7 +696,8 @@ TRequestCounters::TRequestCounters(
         ui32 requestCount,
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
-        EOptions options)
+        EOptions options,
+        EHistogramCounterOptions histogramCounterOptions)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)
@@ -699,7 +708,7 @@ TRequestCounters::TRequestCounters(
 
     CountersByRequest.reserve(requestCount);
     for (ui32 i = 0; i < requestCount; ++i) {
-        CountersByRequest.emplace_back(timer);
+        CountersByRequest.emplace_back(timer, histogramCounterOptions);
     }
 }
 

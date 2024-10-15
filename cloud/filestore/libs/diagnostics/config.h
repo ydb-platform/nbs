@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/filestore/config/diagnostics.pb.h>
+#include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 
 #include <util/datetime/base.h>
@@ -65,6 +66,10 @@ public:
     double GetPostponeTimePredictorPercentage() const;
 
     TMonitoringUrlData GetMonitoringUrlData() const;
+
+    bool GetReportHistogramAsMultipleCounters() const;
+    bool GetReportHistogramAsSingleCounter() const;
+    EHistogramCounterOptions GetHistogramCounterOptions() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
