@@ -50,6 +50,9 @@ on:
         default: "no"
         description: "Run on new nebius runners"
 
+env:
+  nebius: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'nebius') || inputs.run_on_nebius == 'yes' }}
+
 jobs:
   provide-runner:
     name: Start self-hosted runner
@@ -84,7 +87,7 @@ jobs:
           submodules: true
       - name: Start runner
         id: start-runner
-        if: always() && !contains(github.event.pull_request.labels.*.name, 'nebius')
+        if: always() && !env.nebius
         uses: ./.github/actions/runner_create
         timeout-minutes: 60
         with:
@@ -105,7 +108,7 @@ jobs:
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
       - name: Start runner (nebius)
         id: start-runner-nebius
-        if: always() && contains(github.event.pull_request.labels.*.name, 'nebius')
+        if: always() && env.nebius
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
@@ -187,7 +190,7 @@ jobs:
           submodules: true
       - name: Stop runner
         uses: ./.github/actions/runner_remove
-        if: always() && !contains(github.event.pull_request.labels.*.name, 'nebius')
+        if: always() && !env.nebius
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -197,7 +200,7 @@ jobs:
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}
       - name: Stop runner (nebius)
         uses: ./.github/actions/nebius_runner_remove
-        if: always() && contains(github.event.pull_request.labels.*.name, 'nebius')
+        if: always() && env.nebius
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
