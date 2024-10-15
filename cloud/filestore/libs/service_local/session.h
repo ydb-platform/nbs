@@ -4,6 +4,8 @@
 
 #include "index.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/persistent_table.h>
@@ -12,6 +14,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/string/builder.h>
 #include <util/stream/file.h>
 #include <util/system/file.h>
 #include <util/system/rwlock.h>
@@ -48,12 +51,13 @@ private:
         int Flags = 0;
     };
 
-    using THandleTable = TPersistentTable<THandleTableHeader, THandleTableRecord>;
+    using THandleTable =
+        TPersistentTable<THandleTableHeader, THandleTableRecord>;
 
     THashMap<TString, TString> Attrs;
     THashMap<ui64, THandle> Handles;
     std::unique_ptr<THandleTable> HandleTable;
-    std::atomic<ui64> nextHandleId = 0;
+    std::atomic<ui64> NextHandleId = 0;
     TString FuseState;
     TRWMutex Lock;
 
@@ -82,7 +86,9 @@ public:
     {
         auto handlesPath = StatePath / "handles";
 
-        if (!restoreClientSession || !HasStateFile("session") || !HasStateFile("fuse_state")) {
+        if (!restoreClientSession || !HasStateFile("session") ||
+            !HasStateFile("fuse_state"))
+        {
             DeleteStateFile("session");
             DeleteStateFile("fuse_state");
             handlesPath.DeleteIfExists();
@@ -123,15 +129,20 @@ public:
                 STORAGE_ERROR(
                     "Handle with missing node, HandleId=" << it->HandleId <<
                     ", NodeId" << it->NodeId);
+                ReportLocalFsMissingHandleNode();
                 HandleTable->DeleteRecord(it.GetIndex());
                 continue;
             }
 
             try {
                 auto handle = node->OpenHandle(it->Flags);
-                auto [_, inserted] =
-                    Handles.emplace(it->HandleId, THandle{std::move(handle), it.GetIndex()});
-                Y_ABORT_UNLESS(inserted, "dup file handle for: %lu", it->HandleId);
+                auto [_, inserted] = Handles.emplace(
+                    it->HandleId,
+                    THandle{std::move(handle), it.GetIndex()});
+                Y_ABORT_UNLESS(
+                    inserted,
+                    "dup file handle for: %lu",
+                    it->HandleId);
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to open Handle, HandleId=" << it->HandleId <<
@@ -142,19 +153,19 @@ public:
             }
         }
 
-        nextHandleId = maxHandleId + 1;
+        NextHandleId = maxHandleId + 1;
     }
 
-    [[nodiscard]] std::optional<ui64>
+    [[nodiscard]] TResultOrError<ui64>
     InsertHandle(TFileHandle handle, ui64 nodeId, int flags)
     {
         TWriteGuard guard(Lock);
 
-        const auto handleId = nextHandleId++;
+        const auto handleId = NextHandleId++;
 
         const auto recordIndex = HandleTable->AllocRecord();
         if (recordIndex == THandleTable::InvalidIndex) {
-            return {};
+            return ErrorNoSpaceLeft();
         }
 
         auto* state = HandleTable->RecordData(recordIndex);
@@ -162,11 +173,16 @@ public:
         state->NodeId = nodeId;
         state->Flags = flags;
 
-        auto [_, inserted] =
-            Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
-        Y_ABORT_UNLESS(inserted, "dup file handle for: %lu", handleId);
+        if (Handles.find(handleId) != Handles.end()) {
+            ReportLocalFsDuplicateFileHandle(TStringBuilder() <<
+                "HandleId=" << handleId <<
+                ", HandlesCount=" << Handles.size());
+            return ErrorInvalidHandle(handleId);
+        }
 
+        Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         HandleTable->CommitRecord(recordIndex);
+
         return handleId;
     }
 
@@ -285,7 +301,8 @@ private:
 
     void WriteStateFile(const TString &fileName, const TString& value)
     {
-        TFsPath tmpFilePath(MakeTempName(nullptr, fileName.c_str()));
+        TFsPath tmpFilePath(
+            MakeTempName(StatePath.GetPath().c_str(), fileName.c_str()));
         TFileOutput(tmpFilePath).Write(value);
         tmpFilePath.ForceRenameTo(StatePath / fileName);
     }

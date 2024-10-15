@@ -2,6 +2,7 @@
 
 #include "lowlevel.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <util/string/builder.h>
@@ -47,6 +48,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
                 node->GetNodeId(),
                 pathname))
         {
+            ReportLocalFsMaxSessionNodesInUse();
             return TErrorResponse(ErrorNoSpaceLeft());
         }
     } else {
@@ -58,14 +60,15 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     // Don't persist flags that only make sense on initial open
     flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
 
-    auto handleId =
+    auto [handleId, error] =
         session->InsertHandle(std::move(handle), nodeId, flags);
-    if (!handleId) {
-        return TErrorResponse(ErrorNoSpaceLeft());
+    if (HasError(error)) {
+        ReportLocalFsMaxSessionFileHandlesInUse();
+        return TErrorResponse(error);
     }
 
     NProto::TCreateHandleResponse response;
-    response.SetHandle(*handleId);
+    response.SetHandle(handleId);
     ConvertStats(stat, *response.MutableNodeAttr());
 
     return response;

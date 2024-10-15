@@ -1,5 +1,7 @@
 #include "fs.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NFileStore {
@@ -85,6 +87,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
             parent->GetNodeId(),
             request.GetName()))
     {
+        ReportLocalFsMaxSessionNodesInUse();
         return TErrorResponse(ErrorNoSpaceLeft());
     }
 
@@ -203,6 +206,7 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
                         parent->GetNodeId(),
                         entry.first))
                 {
+                    ReportLocalFsMaxSessionNodesInUse();
                     return TErrorResponse(ErrorNoSpaceLeft());
                 }
             }

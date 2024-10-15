@@ -12,7 +12,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     STORAGE_INFO("CreateSession " << DumpMessage(request));
 
     const auto& clientId = GetClientId(request);
-    auto sessionId = GetSessionId(request);
+    const auto& sessionId = GetSessionId(request);
     const auto sessionSeqNo = request.GetMountSeqNumber();
     const auto readOnly = request.GetReadOnly();
 

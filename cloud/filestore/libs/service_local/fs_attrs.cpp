@@ -1,5 +1,7 @@
 #include "fs.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <optional>
 
 namespace NCloud::NFileStore {
@@ -92,6 +94,7 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
                     node->GetNodeId(),
                     name))
             {
+                ReportLocalFsMaxSessionNodesInUse();
                 return TErrorResponse(ErrorNoSpaceLeft());
             }
         }
