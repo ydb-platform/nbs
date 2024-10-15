@@ -67,29 +67,6 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
     return MakeTabletID(domainUid, domainUid, UniqPartFromTabletID(tabletId));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig)
-{
-    if (!storageConfig.GetSchemeShardDir()) {
-        storageConfig.SetSchemeShardDir("local");
-    }
-
-    storageConfig.SetHDDSystemChannelPoolKind("pool-kind-1");
-    storageConfig.SetHDDLogChannelPoolKind("pool-kind-1");
-    storageConfig.SetHDDIndexChannelPoolKind("pool-kind-1");
-    storageConfig.SetHDDFreshChannelPoolKind("pool-kind-1");
-    storageConfig.SetHDDMixedChannelPoolKind("pool-kind-1");
-
-    storageConfig.SetSSDSystemChannelPoolKind("pool-kind-2");
-    storageConfig.SetSSDLogChannelPoolKind("pool-kind-2");
-    storageConfig.SetSSDIndexChannelPoolKind("pool-kind-2");
-    storageConfig.SetSSDFreshChannelPoolKind("pool-kind-2");
-    storageConfig.SetSSDMixedChannelPoolKind("pool-kind-2");
-
-    return std::make_shared<TStorageConfig>(storageConfig);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -900,6 +877,29 @@ void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired)
 
     UNIT_ASSERT(!forkRequired || forkSeen);
     UNIT_ASSERT_VALUES_EQUAL(0, forkBudget);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig)
+{
+    if (!storageConfig.GetSchemeShardDir()) {
+        storageConfig.SetSchemeShardDir("local");
+    }
+
+    storageConfig.SetHDDSystemChannelPoolKind("pool-kind-1");
+    storageConfig.SetHDDLogChannelPoolKind("pool-kind-1");
+    storageConfig.SetHDDIndexChannelPoolKind("pool-kind-1");
+    storageConfig.SetHDDFreshChannelPoolKind("pool-kind-1");
+    storageConfig.SetHDDMixedChannelPoolKind("pool-kind-1");
+
+    storageConfig.SetSSDSystemChannelPoolKind("pool-kind-2");
+    storageConfig.SetSSDLogChannelPoolKind("pool-kind-2");
+    storageConfig.SetSSDIndexChannelPoolKind("pool-kind-2");
+    storageConfig.SetSSDFreshChannelPoolKind("pool-kind-2");
+    storageConfig.SetSSDMixedChannelPoolKind("pool-kind-2");
+
+    return std::make_shared<TStorageConfig>(storageConfig);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

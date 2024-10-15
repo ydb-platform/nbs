@@ -96,7 +96,7 @@ private:
         }
 
         Reply(ctx, std::move(response));
-        TThis::Die(ctx);
+        Die(ctx);
     }
 
 private:

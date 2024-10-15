@@ -1,12 +1,12 @@
 #include "ss_proxy_actor.h"
 
-#include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 
 #include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
-namespace NCloud::NFileStore::NStorage {
+namespace NCloud::NStorage {
 
 using namespace NActors;
 
@@ -21,16 +21,20 @@ class TDescribeSchemeActor final
     : public TActorBootstrapped<TDescribeSchemeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    const int LogComponent;
+    const TSSProxyActor::TRequestInfo RequestInfo;
 
-    const TStorageConfigPtr Config;
+    const TString SchemeShardDir;
     const TString Path;
+    TActorId PathDescriptionBackup;
 
 public:
     TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString path);
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
+        TString schemeShardDir,
+        TString path,
+        TActorId pathDescriptionBackup);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -54,12 +58,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString path)
-    : RequestInfo(std::move(requestInfo))
-    , Config(std::move(config))
+        int logComponent,
+        TSSProxyActor::TRequestInfo requestInfo,
+        TString schemeShardDir,
+        TString path,
+        TActorId pathDescriptionBackup)
+    : LogComponent(logComponent)
+    , RequestInfo(std::move(requestInfo))
+    , SchemeShardDir(std::move(schemeShardDir))
     , Path(std::move(path))
+    , PathDescriptionBackup(std::move(pathDescriptionBackup))
 {}
 
 void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
@@ -72,7 +80,7 @@ void TDescribeSchemeActor::DescribeScheme(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvTxUserProxy::TEvNavigate>();
     request->Record.MutableDescribePath()->SetPath(Path);
-    request->Record.SetDatabaseName(Config->GetSchemeShardDir());
+    request->Record.SetDatabaseName(SchemeShardDir);
 
     NCloud::Send(ctx, MakeTxProxyID(), std::move(request));
 }
@@ -94,7 +102,7 @@ void TDescribeSchemeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvSSProxy::TEvDescribeSchemeResponse> response)
 {
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(ctx, RequestInfo, std::move(response));
     Die(ctx);
 }
 
@@ -111,6 +119,15 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
         return;
     }
 
+    if (PathDescriptionBackup) {
+        auto updateRequest =
+            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
+                record.GetPath(),
+                record.GetPathDescription()
+            );
+        NCloud::Send(ctx, PathDescriptionBackup, std::move(updateRequest));
+    }
+
     auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
         record.GetPath(),
         record.GetPathDescription());
@@ -124,7 +141,7 @@ STFUNC(TDescribeSchemeActor::StateWork)
         HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(ev, LogComponent);
             break;
     }
 }
@@ -139,17 +156,13 @@ void TSSProxyActor::HandleDescribeScheme(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    NCloud::Register(
+    NCloud::Register<TDescribeSchemeActor>(
         ctx,
-        std::make_unique<TDescribeSchemeActor>(
-            std::move(requestInfo),
-            Config,
-            msg->Path));
+        Config.LogComponent,
+        TRequestInfo(ev->Sender, ev->Cookie),
+        Config.SchemeShardDir,
+        msg->Path,
+        PathDescriptionBackup);
 }
 
-}   // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NStorage

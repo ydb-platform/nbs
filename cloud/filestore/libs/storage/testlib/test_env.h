@@ -227,4 +227,8 @@ private:
     static TString LabelsToString(const TVector<TLabel>& labels);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
+
 }   // namespace NCloud::NFileStore::NStorage

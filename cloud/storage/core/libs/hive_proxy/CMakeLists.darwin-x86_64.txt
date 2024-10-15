@@ -14,7 +14,6 @@ target_link_libraries(core-libs-hive_proxy PUBLIC
   contrib-libs-cxxsupp
   yutil
   core-libs-actors
-  core-libs-aio
   core-libs-api
   libs-hive_proxy-protos
   ydb-core-base

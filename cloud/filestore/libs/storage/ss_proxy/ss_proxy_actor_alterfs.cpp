@@ -40,7 +40,7 @@ private:
 
     void ModifyScheme(const TActorContext& ctx);
     void HandleModifySchemeResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void ReplyAndDie(
@@ -94,14 +94,14 @@ void TAlterFileStoreActor::ModifyScheme(const TActorContext& ctx)
         workingDir.Quote().c_str(),
         name.Quote().c_str());
 
-    auto request = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+    auto request = std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
         std::move(modifyScheme));
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
 void TAlterFileStoreActor::HandleModifySchemeResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -133,7 +133,7 @@ void TAlterFileStoreActor::ReplyAndDie(
 STFUNC(TAlterFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);

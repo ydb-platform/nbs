@@ -26,6 +26,7 @@ target_link_libraries(blockstore-libs-disk_agent PUBLIC
   libs-storage-core
   storage-init-disk_agent
   storage-core-config
+  core-libs-aio
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics
