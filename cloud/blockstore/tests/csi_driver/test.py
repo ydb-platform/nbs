@@ -499,9 +499,9 @@ def test_restart_kubelet_with_old_format_endpoint():
         pod_name1 = "example-pod-1"
         pod_id1 = "deadbeef1"
         env.csi.create_volume(name=volume_name, size=volume_size)
-
         # skip stage to create endpoint with old format
         env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        # run stage/publish again to simulate kubelet restart
         env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id1, volume_name, pod_name1)
     except subprocess.CalledProcessError as e:
@@ -527,6 +527,7 @@ def test_restart_kubelet_with_new_format_endpoint():
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        # run stage/publish again to simulate kubelet restart
         env.csi.stage_volume(volume_name)
         env.csi.publish_volume(pod_id1, volume_name, pod_name1)
     except subprocess.CalledProcessError as e:
