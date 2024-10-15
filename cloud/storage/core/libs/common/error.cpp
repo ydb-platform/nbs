@@ -72,8 +72,10 @@ EErrorKind GetErrorKind(const NProto::TError& e)
         return EErrorKind::ErrorRetriable;
     }
 
+    // FACILITY_SYSTEM error codes are obtained from "errno". The list of all
+    // possible errors: contrib/libs/linux-headers/asm-generic/errno-base.h
     if (FACILITY_FROM_CODE(code) == FACILITY_SYSTEM) {
-        switch (code) {
+        switch (STATUS_FROM_CODE(code)) {
             case EIO:
                 return EErrorKind::ErrorFatal;
             default:
