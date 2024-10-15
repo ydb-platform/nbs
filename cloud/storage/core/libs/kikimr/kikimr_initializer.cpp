@@ -21,7 +21,8 @@ void TKikimrServicesInitializer::InitializeServices(
         NGRpcService::CreateGRpcRequestProxyId(0),
         TActorSetupCmd(
             grpcReqProxy.release(),
-            TMailboxType::ReadAsFilled,appData->UserPoolId));
+            TMailboxType::ReadAsFilled,
+            appData->UserPoolId));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
