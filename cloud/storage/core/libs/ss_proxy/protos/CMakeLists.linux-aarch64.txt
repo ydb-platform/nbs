@@ -21,6 +21,7 @@ get_built_tool_path(
 
 add_library(libs-ss_proxy-protos)
 target_link_libraries(libs-ss_proxy-protos PUBLIC
+  contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
   ydb-core-protos
