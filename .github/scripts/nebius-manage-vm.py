@@ -33,11 +33,34 @@ from nebius.compute.v1.network_interface_pb2 import (IPAddress,
                                                      PublicIPAddress)
 from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
-)
+SENSITIVE_DATA_VALUES = {
+    'passwd': os.environ.get('VM_USER_PASSWD'),
+    'github_token': os.environ.get('GITHUB_TOKEN'),
+    'password': r'password=[^&\s]+'
+}
 
-logger = logging.getLogger(__name__)
+
+
+class MaskingFormatter(logging.Formatter):
+    @staticmethod
+    def mask_sensitive_data(msg):
+        # Iterate over the patterns and replace sensitive data with '***'
+        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
+            msg = msg.replace(pattern, f'[{pattern_name}=***]')
+        return msg
+    def format(self, record):
+        original = logging.Formatter.format(self, record)
+        return self.mask_sensitive_data(original)
+
+formatter = MaskingFormatter('%(asctime)s: %(levelname)s: %(message)s')
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.addHandler(console_handler)
+logger.setLevel(logging.INFO)
+
 
 DISK_NAME_PREFIX = "disk-"
 PRESETS = [
@@ -173,9 +196,7 @@ done
         cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
 
     logger.info(
-        f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
-            token, "****"
-        )
+        f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}"
     )
     return (
         "#cloud-config\n"
@@ -203,6 +224,7 @@ def get_runner_token(
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
+        SENSITIVE_DATA_VALUES["runner_token"] = token
         logger.debug(
             "Got runner registration token: %s (valid till: %s)", (token, expires_at)
         )
@@ -259,7 +281,7 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     try:
         request = CreateDiskRequest(
             metadata=ResourceMetadata(
-                parent_id=args.folder_id,
+                parent_id=args.parent_id,
                 name=DISK_NAME_PREFIX + args.name,
             ),
             spec=DiskSpec(
@@ -342,7 +364,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
     try:
         request = CreateInstanceRequest(
             metadata=ResourceMetadata(
-                parent_id=args.folder_id,
+                parent_id=args.parent_id,
                 name=args.name,
                 labels=labels,
             ),
@@ -397,9 +419,9 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
 
-    network_interface = instance.spec.network_interfaces[0]
-    external_ipv4 = network_interface.public_ip_address
-    local_ipv4 = network_interface.ip_address
+    network_interface = instance.status.network_interfaces[0]
+    external_ipv4 = network_interface.public_ip_address.address.replace("/32", "")
+    local_ipv4 = network_interface.ip_address.address.replace("/32", "")
     if instance_id:
         logger.info(
             "Created VM %s with ID %s and label %s",
@@ -478,10 +500,10 @@ def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
     disk_id = None
     try:
         disk_client = sdk.client(disk_service_pb2, DiskServiceStub)
-        result = disk_client.List(ListDisksRequest(parent_id=args.folder_id))
+        result = disk_client.List(ListDisksRequest(parent_id=args.parent_id))
         for disk in result.items:
-            if disk.name == DISK_NAME_PREFIX + instance_name:
-                disk_id = disk.id
+            if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
+                disk_id = disk.metadata.id
                 break
 
         if disk_id is None:
@@ -532,7 +554,7 @@ def remove_vm(sdk: SDK, args: argparse.Namespace):
     instance_name = None
     try:
         instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
-        instance_name = instance_client.Get(GetInstanceRequest(id=args.id)).name
+        instance_name = instance_client.Get(GetInstanceRequest(id=args.id)).metadata.name
         result = sdk.create_operation_and_get_result(
             request=DeleteInstanceRequest(id=args.id),
             service=InstanceServiceStub,
@@ -608,10 +630,10 @@ if __name__ == "__main__":
         help="Path to the service account key file",
     )
     create.add_argument(
-        "--folder-id",
+        "--parent-id",
         required=True,
-        default="bjeuq5o166dq4ukv3eec",
-        help="Folder ID where the VM will be created",
+        default="project-e00gg2f58gw75edn7x",
+        help="Parent ID where the VM will be created",
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
@@ -655,6 +677,12 @@ if __name__ == "__main__":
         "--service-account-key",
         required=True,
         help="Path to the service account key file",
+    )
+    remove.add_argument(
+        "--parent-id",
+        required=True,
+        default="project-e00gg2f58gw75edn7x",
+        help="Parent ID where the VM will be created",
     )
     remove.add_argument("--id", required=True, help="ID of the VM to remove")
 

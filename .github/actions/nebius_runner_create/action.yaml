@@ -1,5 +1,5 @@
 name: Create runner VM
-description: Create runner VM using manage-vm.py
+description: Create runner VM using nebius-manage-vm.py
 inputs:
   org:
     required: false
@@ -19,21 +19,18 @@ inputs:
   token:
     required: true
     description: "GITHUB_TOKEN"
-  vm_folder:
+  vm_parent_id:
     required: true
-    description: "vm folder"
+    description: "vm parent id"
   vm_name:
     required: true
     description: "vm name"
   vm_zone:
     required: true
     description: "vm zone"
-  vm_cpu:
+  vm_preset:
     required: true
     description: "vm cpu"
-  vm_memory:
-    required: true
-    description: "vm memory"
   vm_disk_type:
     required: true
     description: "vm disk type"
@@ -92,19 +89,19 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install yandexcloud==0.258.0 PyGithub==2.2.0
+        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.0/nebiusai-0.1.0-py3-none-any.whl
+        pip install PyGithub==2.2.0
     - name: create vm
       id: create-vm
       shell: bash
       run: |
-        python .github/scripts/manage-vm.py create ${ORG} ${TEAM} \
+        python .github/scripts/nebius-manage-vm.py create ${ORG} ${TEAM} \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --name "${VM_NAME}" \
-          --folder-id "${VM_FOLDER}" \
-          --zone-id "${VM_ZONE}" \
-          --cpu "${VM_CPU}" --ram "${VM_MEMORY}" --disk-size "${VM_DISK_SIZE}" \
+          --parent-id "${VM_PARENT_ID}" \
+          --preset "${VM_CPU}" --disk-size "${VM_DISK_SIZE}" \
           --disk-type "${VM_DISK_TYPE}" \
           --subnet-id "${VM_SUBNET}" \
           --image-id "$VM_IMAGE" \
@@ -117,10 +114,9 @@ runs:
         REPO_OWNER: ${{ inputs.repo_owner }}
         REPO: ${{ inputs.repo }}
         VM_NAME: ${{ inputs.vm_name }}
-        VM_FOLDER: ${{ inputs.vm_folder }}
+        VM_PARENT_ID: ${{ inputs.vm_parent_id }}
         VM_ZONE: ${{ inputs.vm_zone }}
-        VM_CPU: ${{ inputs.vm_cpu }}
-        VM_MEMORY: ${{ inputs.vm_memory }}
+        VM_PRESET: ${{ inputs.vm_preset }}
         VM_DISK_SIZE: ${{ inputs.vm_disk_size }}
         VM_DISK_TYPE: ${{ inputs.vm_disk_type }}
         VM_SUBNET: ${{ inputs.vm_subnet }}
