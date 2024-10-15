@@ -16,9 +16,15 @@ private:
     TFileRingBuffer RequestsToProcess;
 
 public:
+    enum class EResult{
+        Ok,
+        QueueOveflow,
+        SerializationError,
+    };
+
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
 
-    int AddDestroyRequest(ui64 nodeId, ui64 handle);
+    EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
     void Pop();
     ui64 Size() const;

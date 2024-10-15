@@ -608,26 +608,23 @@ public:
                         p->Config->GetClientId());
 
                     s.SetValue();
-                });
 
-            // We need to cleanup HandleOpsQueue file and directories
-            if (p->HandleOpsQueueInitialized) {
-                auto fsPath = TFsPath(p->Config->GetHandleOpsQueuePath()) /
-                              p->Config->GetFileSystemId();
-                TString queueFile = fsPath / p->SessionId / HandleOpsQueueFileName;
-                TString sessionDir = fsPath / p->SessionId;
-                if (!NFs::Remove(queueFile)) {
-                    ReportHandleOpsQueueCreatingOrDeletingError(
-                        TStringBuilder()
-                        << "Failed to remove file: " << queueFile
-                        << " reason: " << LastSystemError());
-                }
-                if (!NFs::Remove(fsPath / p->SessionId)) {
-                        ReportHandleOpsQueueCreatingOrDeletingError(
-                        TStringBuilder()
-                        << "Failed to remove session dir: " << sessionDir);
-                }
-            }
+                    // We need to cleanup HandleOpsQueue file and directories
+                    if (p->HandleOpsQueueInitialized) {
+                        auto fsPath =
+                            TFsPath(p->Config->GetHandleOpsQueuePath()) /
+                            p->Config->GetFileSystemId();
+                        TString sessionDir = fsPath / p->SessionId;
+                        try {
+                            NFs::RemoveRecursive(sessionDir);
+                        } catch (TSystemError& err) {
+                            ReportHandleOpsQueueCreatingOrDeletingError(
+                                TStringBuilder()
+                                << "Failed to remove session's HandleOpsQueue"
+                                << " reason: " << err.AsStrBuf());
+                        }
+                    }
+                });
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
@@ -810,6 +807,7 @@ private:
                 handleOpsQueue = CreateHandleOpsQueue(
                     file.GetPath(),
                     Config->GetHandleOpsQueueSize());
+                SessionId = response.GetSession().GetSessionId();
                 HandleOpsQueueInitialized = true;
             }
             FileSystem = CreateFileSystem(

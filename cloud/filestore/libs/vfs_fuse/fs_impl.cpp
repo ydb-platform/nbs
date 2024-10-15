@@ -264,11 +264,9 @@ void TFileSystem::ProcessHandleOpsQueue()
     }
 
     const auto optionalEntry = HandleOpsQueue->Front();
-    if (!optionalEntry.has_value()) {
+    if (!optionalEntry) {
         ReportHandleOpsQueueProcessError("Failed to get TQueueEntry from queue");
-        with_lock(HandleOpsQueueLock) {
-            HandleOpsQueue->Pop();
-        }
+        HandleOpsQueue->Pop();
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -322,9 +320,7 @@ void TFileSystem::ProcessHandleOpsQueue()
     } else {
         // TODO(#1541): process create handle
         ReportHandleOpsQueueProcessError("Unexpected TQueueEntry in queue");
-        with_lock(HandleOpsQueueLock) {
-            HandleOpsQueue->Pop();
-        }
+        HandleOpsQueue->Pop();
         ScheduleProcessHandleOpsQueue();
         return;
     }

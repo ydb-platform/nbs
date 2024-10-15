@@ -136,7 +136,7 @@ void TFileSystem::Release(
         STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
         with_lock(HandleOpsQueueLock) {
             const auto& res = HandleOpsQueue->AddDestroyRequest(ino, fi->fh);
-            if (res == 0) {
+            if (res == THandleOpsQueue::EResult::QueueOveflow) {
                 // TODO(#1541): delay request
                 STORAGE_ERROR("Failed to add destroy handle request to queue");
                 ReplyError(
@@ -144,9 +144,11 @@ void TFileSystem::Release(
                     MakeError(E_FAIL, "HandleOpsQueue overflow"),
                     req,
                     0);
+                return;
             }
-            if (res == -1) {
-                ReportHandleOpsQueueProcessError("Failed to serialize DestroyHandleRequest");
+            if (res == THandleOpsQueue::EResult::SerializationError) {
+                ReportHandleOpsQueueProcessError(
+                    "Failed to serialize DestroyHandleRequest");
                 ReplyError(
                     *callContext,
                     MakeError(
@@ -155,6 +157,7 @@ void TFileSystem::Release(
                         "serialization failed"),
                     req,
                     0);
+                return;
             }
         }
         ReplyError(*callContext, {}, req, 0);

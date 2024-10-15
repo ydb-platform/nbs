@@ -9,7 +9,9 @@ THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
 {
 }
 
-int THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
+THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
+    ui64 nodeId,
+    ui64 handle)
 {
     NProto::TQueueEntry request;
     request.MutableDestroyHandleRequest()->SetHandle(handle);
@@ -17,10 +19,14 @@ int THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
 
     TString result;
     if (!request.SerializeToString(&result)) {
-        return -1;
+        return THandleOpsQueue::EResult::SerializationError;
     }
 
-    return RequestsToProcess.Push(result);
+    if (!RequestsToProcess.Push(result)) {
+        return THandleOpsQueue::EResult::QueueOveflow;
+    }
+
+    return THandleOpsQueue::EResult::Ok;
 }
 
 std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
