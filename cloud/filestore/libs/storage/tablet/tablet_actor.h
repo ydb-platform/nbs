@@ -259,7 +259,7 @@ private:
 
     struct TLoadNodeRefsStatus
     {
-        enum class EState
+        enum EState
         {
             NOT_STARTED,
             LOADING,

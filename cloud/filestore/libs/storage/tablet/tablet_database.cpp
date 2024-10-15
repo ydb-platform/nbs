@@ -2092,7 +2092,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
-        for (const auto& ref : refs) {
+        for (const auto& ref: refs) {
             NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
         }
     }

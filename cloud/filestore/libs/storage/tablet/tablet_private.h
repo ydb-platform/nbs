@@ -547,7 +547,8 @@ struct TEvIndexTabletPrivate
 
     using TLoadNodeRefsResponse = TEmpty;
 
-    struct TLoadNodeRefsCompleted {
+    struct TLoadNodeRefsCompleted
+    {
         const ui64 NextNodeId;
         const TString NextCookie;
 
