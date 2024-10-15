@@ -338,7 +338,9 @@ struct TTestBootstrap
         Cwd->List(dirs);
 
         for (auto& d: dirs) {
-            if (d.IsDirectory() && d.GetName().StartsWith(".state") && d.GetName().EndsWith(id)) {
+            if (d.IsDirectory() && d.GetName().StartsWith(".state") &&
+                d.GetName().EndsWith(id))
+            {
                 return d;
             }
         }
@@ -346,7 +348,9 @@ struct TTestBootstrap
         return {};
     }
 
-    std::optional<TFsPath> GetClientFsStateDir(const TString& id, const TString& client = "client")
+    std::optional<TFsPath> GetClientFsStateDir(
+        const TString& id,
+        const TString& client = "client")
     {
         auto fsStateDir = GetFsStateDir(id);
         if (!fsStateDir) {
@@ -357,7 +361,9 @@ struct TTestBootstrap
         fsStateDir->List(dirs);
 
         for (auto& d: dirs) {
-            if (d.IsDirectory() && d.GetName().StartsWith("client_") && d.GetName().EndsWith(client)) {
+            if (d.IsDirectory() && d.GetName().StartsWith("client_") &&
+                d.GetName().EndsWith(client))
+            {
                 return d;
             }
         }

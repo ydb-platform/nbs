@@ -338,6 +338,11 @@ private:
         const NProto::TFileStore& store);
 
     TLocalFileSystemPtr FindFileSystem(const TString& id);
+
+    TFsPath GetStatePath(const TString name)
+    {
+        return Concat(Config->GetStatePath(), ".state_" + name);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -360,8 +365,7 @@ void TLocalFileStore::Start()
                 continue;
             }
 
-            TFsPath statePath =
-                Concat(Config->GetStatePath(), ".state_" + child.GetName());
+            TFsPath statePath = GetStatePath(child.GetName());
             statePath.MkDir(Config->GetDefaultPermissions());
 
             STORAGE_INFO("restoring local store " << id.Quote());
@@ -416,7 +420,7 @@ NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     TFsPath root = Concat(Config->GetRootPath(), name);
     root.MkDir(Config->GetDefaultPermissions());
 
-    TFsPath statePath = Concat(Config->GetStatePath(), ".state_" + name);
+    TFsPath statePath = GetStatePath(name);
     statePath.MkDir(Config->GetDefaultPermissions());
 
     InitFileSystem(id, root, statePath, store);
@@ -450,7 +454,7 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
     TFsPath path = Concat(Config->GetRootPath(), name);
     path.ForceDelete();
 
-    TFsPath statePath = Concat(Config->GetStatePath(), ".state_" + name);
+    TFsPath statePath = GetStatePath(name);
     statePath.ForceDelete();
 
     FileSystems.erase(it);

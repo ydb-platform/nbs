@@ -125,9 +125,8 @@ private:
     {
         ui64 NodeId = 0;
         ui64 ParentNodeId = 0;
-        char Name[NAME_MAX + 1];
+        char Name[NAME_MAX + 1] = {};
     };
-
 
 private:
     using TNodeMap = THashSet<TIndexNodePtr, THash, TEqual>;
@@ -136,15 +135,15 @@ private:
     TNodeMap Nodes;
     std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
-    const TLog& Log;
+    TLog Log;
 
 public:
     TLocalIndex(
             const TFsPath& root,
             const TFsPath& statePath,
             ui32 maxNodeCount,
-            const TLog& log)
-        : Log(log)
+            TLog log)
+        : Log(std::move(log))
     {
         Init(root, statePath, maxNodeCount);
     }
@@ -168,6 +167,8 @@ public:
 
         auto it = Nodes.find(node->GetNodeId());
         if (it != Nodes.end()) {
+            // TODO: we can find existing node id for hard link since it has the
+            // same node id
             return true;
         }
 
@@ -222,7 +223,6 @@ private:
             maxNodeCount);
 
         RecoverNodesFromPersistentTable();
-
     }
 
     void RecoverNodesFromPersistentTable()
