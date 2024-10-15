@@ -60,10 +60,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+      label: ${{ steps.start-runner.outputs.label || steps.start-runner-nebius.outputs.label }}
+      instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
+      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
+      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
