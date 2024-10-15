@@ -158,7 +158,10 @@ void TBootstrap::Init()
         false);
     *versionCounter = 1;
 
-    RequestStats = CreateClientRequestStats(clientGroup, Timer);
+    RequestStats = CreateClientRequestStats(
+        clientGroup,
+        Timer,
+        EHistogramCounterOption::ReportMultipleCounters);
 
     VolumeStats = CreateVolumeStats(
         Monitoring,

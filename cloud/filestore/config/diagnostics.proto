@@ -97,4 +97,10 @@ message TDiagnosticsConfig
 
     // Monitoring data necessary for link generation on monpages.
     optional TMonitoringUrlData MonitoringUrlData = 22;
+
+    // Report histogram as a set of manually created counters
+    optional bool ReportHistogramAsMultipleCounters = 24;
+
+    // Report histogram as a single counter (THistogramCounter)
+    optional bool ReportHistogramAsSingleCounter = 25;
 }
