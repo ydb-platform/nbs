@@ -209,10 +209,6 @@ func (f *factory) initClients(
 					tracing.SpanFromContext(ctx).AddEvent(
 						"Retriable error in blockstore SDK",
 						tracing.WithAttributes(
-							tracing.AttributeString(
-								"delay_duration",
-								durableClientTimeout.String(),
-							),
 							tracing.AttributeString("error", err.Error()),
 						),
 					)
