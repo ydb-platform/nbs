@@ -1,32 +1,33 @@
-#include "unsensitivifier.h"
+#include "mask.h"
 
 #include <library/cpp/digest/md5/md5.h>
 
-namespace NCloud::NFileStore::NUnsensitivifier {
+#include <util/generic/guid.h>
 
-TUnsensitivifier::TUnsensitivifier(TBootstrap& bootstrap)
-    : Bootstrap{bootstrap} {};
+namespace NCloud::NFileStore::NMaskSensitiveData {
 
-void TUnsensitivifier::Advance()
+TMaskSensitiveData::TMaskSensitiveData(const TOptions& options)
+    : Options{options} {};
+
+bool TMaskSensitiveData::Advance()
 {
-    for (EventPtr = CurrentEvent->Next(); EventPtr;
-         EventPtr = CurrentEvent->Next())
-    {
+    while (EventPtr = CurrentEvent->Next()) {
         MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
             EventPtr->GetProto());
 
         if (!MessagePtr) {
-            return;
+            continue;
         }
 
         EventMessageNumber = MessagePtr->GetRequests().size();
-        return;
+        return true;
     }
+    return false;
 }
 
-TString TUnsensitivifier::Transform(const TString& str, const ui64 nodeId)
+TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
 {
-    switch (Bootstrap.GetOptions()->Mode) {
+    switch (Options.Mode) {
         case TOptions::EMode::Empty: {
             return "";
         }
@@ -39,10 +40,11 @@ TString TUnsensitivifier::Transform(const TString& str, const ui64 nodeId)
     }
 }
 
-void TUnsensitivifier::Unsensitivifie(const TString& in, const TString& out)
+void TMaskSensitiveData::MaskSensitiveData(
+    const TString& in,
+    const TString& out)
 {
-    Seed = ToString(random()) + ToString(random()) + ToString(random()) +
-           ToString(random());
+    Seed = CreateGuidAsString();
 
     NEventLog::TOptions options;
     options.FileName = in;
@@ -53,11 +55,7 @@ void TUnsensitivifier::Unsensitivifie(const TString& in, const TString& out)
 
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
-    for (Advance(); EventPtr; Advance()) {
-        if (!MessagePtr) {
-            continue;
-        }
-
+    while (Advance()) {
         NProto::TProfileLogRecord recordOut;
         recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
 
@@ -80,4 +78,4 @@ void TUnsensitivifier::Unsensitivifie(const TString& in, const TString& out)
     }
 }
 
-}   // namespace NCloud::NFileStore::NUnsensitivifier
+}   // namespace NCloud::NFileStore::NMaskSensitiveData

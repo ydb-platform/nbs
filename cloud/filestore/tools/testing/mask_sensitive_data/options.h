@@ -2,7 +2,7 @@
 
 #include <util/generic/string.h>
 
-namespace NCloud::NFileStore::NUnsensitivifier {
+namespace NCloud::NFileStore::NMaskSensitiveData {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -24,4 +24,4 @@ struct TOptions
 
 using TOptionsPtr = std::shared_ptr<TOptions>;
 
-}   // namespace NCloud::NFileStore::NUnsensitivifier
+}   // namespace NCloud::NFileStore::NMaskSensitiveData

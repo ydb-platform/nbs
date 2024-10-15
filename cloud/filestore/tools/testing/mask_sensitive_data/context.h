@@ -4,7 +4,7 @@
 
 #include <util/generic/noncopyable.h>
 
-namespace NCloud::NFileStore::NUnsensitivifier {
+namespace NCloud::NFileStore::NMaskSensitiveData {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,4 +14,4 @@ struct TAppContext: TNonCopyable
     TAtomic ExitCode = 0;
 };
 
-}   // namespace NCloud::NFileStore::NUnsensitivifier
+}   // namespace NCloud::NFileStore::NMaskSensitiveData

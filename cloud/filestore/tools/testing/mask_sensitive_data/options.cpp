@@ -4,7 +4,7 @@
 
 #include <util/stream/file.h>
 
-namespace NCloud::NFileStore::NUnsensitivifier {
+namespace NCloud::NFileStore::NMaskSensitiveData {
 
 using namespace NLastGetopt;
 
@@ -40,4 +40,4 @@ void TOptions::Parse(int argc, char** argv)
     }
 }
 
-}   // namespace NCloud::NFileStore::NUnsensitivifier
+}   // namespace NCloud::NFileStore::NMaskSensitiveData

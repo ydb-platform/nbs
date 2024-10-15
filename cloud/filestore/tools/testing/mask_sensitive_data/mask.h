@@ -1,32 +1,33 @@
 #pragma once
 
+#include "options.h"
+
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
-#include <cloud/filestore/tools/testing/unsensitivifier/bootstrap.h>
 
 #include <library/cpp/eventlog/eventlog.h>
 #include <library/cpp/eventlog/iterator.h>
 
-namespace NCloud::NFileStore::NUnsensitivifier {
+namespace NCloud::NFileStore::NMaskSensitiveData {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUnsensitivifier
+class TMaskSensitiveData
 {
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
     int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
 
-    const TBootstrap& Bootstrap;
+    const TOptions& Options;
 
     // Some random string but stable in one session
     TString Seed;
 
 public:
-    explicit TUnsensitivifier(TBootstrap& bootstrap);
-    void Advance();
+    explicit TMaskSensitiveData(const TOptions& options);
+    bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
-    void Unsensitivifie(const TString& in, const TString& out);
+    void MaskSensitiveData(const TString& in, const TString& out);
 };
 
-}   // namespace NCloud::NFileStore::NUnsensitivifier
+}   // namespace NCloud::NFileStore::NMaskSensitiveData
