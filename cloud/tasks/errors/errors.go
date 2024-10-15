@@ -11,12 +11,18 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type diskManagerError interface {
+	error
+	CustomError(printStacktraces bool) string
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type RetriableError struct {
 	Err              error
 	IgnoreRetryLimit bool
 }
 
-// Or maybe we should check non-retriable error here, not in Error()?
 func NewRetriableError(err error) *RetriableError {
 	return &RetriableError{
 		Err: err,
@@ -43,13 +49,22 @@ func NewEmptyRetriableError() *RetriableError {
 }
 
 func (e *RetriableError) Error() string {
-	// TODO:_ should we do the same for other types of errors?
-	// TODO:_ comment?
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e *RetriableError) CustomError(printStacktraces bool) string {
+	// We don't want to mention retriable errors created over non-retriable
+	// errors.
 	firstNonRetriableError := getFirstNonRetriableError(e)
 	if firstNonRetriableError != nil {
-		return firstNonRetriableError.Error()
+		return firstNonRetriableError.CustomError(printStacktraces)
 	}
-	return fmt.Sprintf("Retriable error, IgnoreRetryLimit=%v: %v", e.IgnoreRetryLimit, e.Err)
+
+	return fmt.Sprintf(
+		"Retriable error, IgnoreRetryLimit=%v: %v",
+		e.IgnoreRetryLimit,
+		ErrorMessage(e.Err, printStacktraces),
+	)
 }
 
 func (e *RetriableError) Unwrap() error {
@@ -102,12 +117,20 @@ func newNonRetriableError(err error, silent bool) *NonRetriableError {
 }
 
 func (e *NonRetriableError) Error() string {
-	msg := e.ErrorWithoutStacktrace()
-	return appendStackTrace(msg, e.stackTrace)
+	return e.CustomError(true /*printStacktraces*/)
 }
 
-func (e *NonRetriableError) ErrorWithoutStacktrace() string {
-	return fmt.Sprintf("Non retriable error, Silent=%v: %v", e.Silent, e.Err)
+func (e *NonRetriableError) CustomError(printStacktraces bool) string {
+	msg := fmt.Sprintf(
+		"Non retriable error, Silent=%v: %v",
+		e.Silent,
+		ErrorMessage(e.Err, printStacktraces),
+	)
+	if printStacktraces {
+		msg = appendStackTrace(msg, e.stackTrace)
+	}
+
+	return msg
 }
 
 func (e *NonRetriableError) Unwrap() error {
@@ -143,7 +166,14 @@ func NewEmptyAbortedError() *AbortedError {
 }
 
 func (e *AbortedError) Error() string {
-	return fmt.Sprintf("Aborted error: %v", e.Err)
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e *AbortedError) CustomError(printStacktraces bool) string {
+	return fmt.Sprintf(
+		"Aborted error: %v",
+		ErrorMessage(e.Err, printStacktraces),
+	)
 }
 
 func (e *AbortedError) Unwrap() error {
@@ -182,8 +212,19 @@ func NewEmptyNonCancellableError() *NonCancellableError {
 }
 
 func (e *NonCancellableError) Error() string {
-	msg := fmt.Sprintf("Non cancellable error: %v", e.Err)
-	return appendStackTrace(msg, e.stackTrace)
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e *NonCancellableError) CustomError(printStacktraces bool) string {
+	msg := fmt.Sprintf(
+		"Non cancellable error: %v",
+		ErrorMessage(e.Err, printStacktraces),
+	)
+	if printStacktraces {
+		msg = appendStackTrace(msg, e.stackTrace)
+	}
+
+	return msg
 }
 
 func (e *NonCancellableError) Unwrap() error {
@@ -207,7 +248,11 @@ func NewWrongGenerationError() *WrongGenerationError {
 	return &WrongGenerationError{}
 }
 
-func (WrongGenerationError) Error() string {
+func (e WrongGenerationError) Error() string {
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (WrongGenerationError) CustomError( /*printStacktraces*/ bool) string {
 	return "Wrong generation"
 }
 
@@ -219,7 +264,11 @@ func NewInterruptExecutionError() *InterruptExecutionError {
 	return &InterruptExecutionError{}
 }
 
-func (InterruptExecutionError) Error() string {
+func (e InterruptExecutionError) Error() string {
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (InterruptExecutionError) CustomError( /*printStacktraces*/ bool) string {
 	return "Interrupt execution"
 }
 
@@ -244,8 +293,16 @@ func (e PanicError) Reraise() {
 }
 
 func (e PanicError) Error() string {
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e PanicError) CustomError(printStacktraces bool) string {
 	msg := fmt.Sprintf("panic: %v", e.value)
-	return appendStackTrace(msg, e.stackTrace)
+	if printStacktraces {
+		msg = appendStackTrace(msg, e.stackTrace)
+	}
+
+	return msg
 }
 
 func IsPanicError(err error) bool {
@@ -280,6 +337,10 @@ func newNotFoundError(taskID, idempotencyKey string) *NotFoundError {
 }
 
 func (e NotFoundError) Error() string {
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e NotFoundError) CustomError( /*printStacktraces*/ bool) string {
 	return fmt.Sprintf(
 		"No task with ID=%v, IdempotencyKey=%v",
 		e.TaskID,
@@ -331,11 +392,15 @@ func NewEmptyDetailedError() *DetailedError {
 }
 
 func (e *DetailedError) Error() string {
+	return e.CustomError(true /*printStacktraces*/)
+}
+
+func (e *DetailedError) CustomError(printStacktraces bool) string {
 	return fmt.Sprintf(
 		"Detailed error, Details=%v, Silent=%v: %v",
 		e.Details,
 		e.Silent,
-		e.Err,
+		ErrorMessage(e.Err, printStacktraces),
 	)
 }
 
@@ -414,10 +479,9 @@ func IsSilent(err error) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetShortError(err error) string {
-	firstNonRetriableError := getFirstNonRetriableError(err)
-	if firstNonRetriableError != nil {
-		return firstNonRetriableError.ErrorWithoutStacktrace()
+func ErrorMessage(err error, printStacktraces bool) string {
+	if dmError, ok := err.(diskManagerError); ok {
+		return dmError.CustomError(printStacktraces)
 	}
 	return err.Error()
 }
@@ -428,12 +492,9 @@ func appendStackTrace(errorMessage string, stackTrace []byte) string {
 	return fmt.Sprintf("%s\n%s", errorMessage, stackTrace)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func getFirstNonRetriableError(err error) *NonRetriableError {
-	// TODO:_ should we check other types of non retriable errors?
 	var nonRetriableErr *NonRetriableError
-	if errors.As(err, nonRetriableErr) {
+	if As(err, nonRetriableErr) {
 		return nonRetriableErr
 	}
 	return nil
