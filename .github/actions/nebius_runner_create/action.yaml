@@ -101,7 +101,7 @@ runs:
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --name "${VM_NAME}" \
           --parent-id "${VM_PARENT_ID}" \
-          --preset "${VM_CPU}" --disk-size "${VM_DISK_SIZE}" \
+          --preset "${VM_PRESET}" --disk-size "${VM_DISK_SIZE}" \
           --disk-type "${VM_DISK_TYPE}" \
           --subnet-id "${VM_SUBNET}" \
           --image-id "$VM_IMAGE" \
