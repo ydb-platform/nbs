@@ -699,7 +699,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.nodeID, req.VolumeId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(ctx, "", req.VolumeId, req.VolumeContext)
 	if err != nil {
 		if s.IsMountConflictError(err) {
 			localEndpoint, err := s.hasLocalEndpoint(ctx, req.VolumeId)
@@ -804,12 +804,17 @@ func (s *nodeService) startNbsEndpointForNBD(
 		deviceName = volumeId
 	}
 
+	nbsInstanceId := instanceId
+	if nbsInstanceId == "" {
+		nbsInstanceId = s.nodeID
+	}
+
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           volumeId,
-		InstanceId:       instanceId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
+		InstanceId:       nbsInstanceId,
+		ClientId:         fmt.Sprintf("%s-%s", s.clientID, nbsInstanceId),
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
@@ -912,7 +917,7 @@ func (s *nodeService) nodeUnstageVolume(
 		return err
 	}
 
-	endpointDir := s.getEndpointDir(s.nodeID, req.VolumeId)
+	endpointDir := s.getEndpointDir("", req.VolumeId)
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
@@ -1360,7 +1365,7 @@ func (s *nodeService) NodeExpandVolume(
 	endpointDirOld := s.getEndpointDir(podId, req.VolumeId)
 	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
 
-	endpointDirNew := s.getEndpointDir(s.nodeID, req.VolumeId)
+	endpointDirNew := s.getEndpointDir("", req.VolumeId)
 	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(

@@ -17,7 +17,7 @@ The tricky part here is using different UnixSocketPath/InstanceId/ClientId
 for already bounded volumes and "new" volumes.
 
 Current format of UnixSocketPath: socketsDir/podId/volumeId
-New format of UnixSocketPath: socketsDir/nodeId/volumeId
+New format of UnixSocketPath: socketsDir/volumeId
 
 Current format of InstanceId: podId
 New format of InstanceId: nodeId
