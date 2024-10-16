@@ -11,15 +11,19 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/filestore/tests/loadtest/service-kikimr-nemesis-test
+    arcadia/cloud/filestore/tests/loadtest/service-kikimr-emergency-test
 )
 
 PEERDIR(
     cloud/filestore/tests/python/lib
 )
 
-SET(NFS_RESTART_INTERVAL 10)
-SET(NFS_FORCE_VERBOSE 1)
+SET(
+    NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/loadtest/service-kikimr-emergency-test/nfs-storage.txt
+)
+
+SET(NFS_BS_CACHE_FILE_PATH "bs_cache.txt")
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

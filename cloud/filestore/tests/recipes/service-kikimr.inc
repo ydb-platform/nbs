@@ -15,6 +15,7 @@ SET(RECIPE_ARGS
     --use-log-files
     --in-memory-pdisks
     --restart-interval $NFS_RESTART_INTERVAL
+    --bs-cache-file-path $NFS_BS_CACHE_FILE_PATH
 )
 
 IF (NFS_STORAGE_CONFIG_PATCH)

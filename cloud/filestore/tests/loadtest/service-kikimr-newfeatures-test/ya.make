@@ -11,7 +11,7 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/filestore/tests/loadtest/service-kikimr-test
+    arcadia/cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test
 )
 
 PEERDIR(
