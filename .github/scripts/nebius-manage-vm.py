@@ -44,8 +44,7 @@ from nebius.compute.v1.network_interface_pb2 import (
 from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
 from nebiusai.operations import OperationError
 
-SENSITIVE_DATA_VALUES = {
-}
+SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
     SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
 if os.environ.get("VM_USER_PASSWD"):
