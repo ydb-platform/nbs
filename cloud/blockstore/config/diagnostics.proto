@@ -209,4 +209,11 @@ message TDiagnosticsConfig
 
     // Report histogram as a single counter (THistogramCounter)
     optional bool ReportHistogramAsSingleCounter = 49;
+
+    // Request duration after which it should show up in max
+    // request time alert. Measured in milliseconds.
+    optional uint32 LocalHDDDowntimeThreshold = 50;
+
+    // Performance measurements coefficients for local HDD disks.
+    optional TVolumePerfSettings LocalHDDPerfSettings = 51;
 }

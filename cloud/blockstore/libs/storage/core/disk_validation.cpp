@@ -9,8 +9,8 @@ NCloud::NProto::TError ValidateBlockSize(
     NProto::EStorageMediaKind mediaKind)
 {
     const auto minBlockSize = mediaKind != NProto::STORAGE_MEDIA_SSD_LOCAL
-        ? 4_KB
-        : 512;
+                                  ? DefaultBlockSize
+                                  : DefaultLocalSSDBlockSize;
 
     const auto maxBlockSize = 128_KB;
     if (blockSize < minBlockSize || blockSize > maxBlockSize) {
