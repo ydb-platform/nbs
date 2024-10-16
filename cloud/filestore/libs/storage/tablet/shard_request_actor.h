@@ -16,7 +16,7 @@ class TShardRequestActor final
 private:
     const TString LogTag;
     const TRequestInfoPtr RequestInfo;
-    const TRequest::ProtoRecordType Request;
+    const typename TRequest::ProtoRecordType Request;
     const TVector<TString> ShardIds;
     std::unique_ptr<TResponse> Response;
     ui32 ProcessedShards = 0;
@@ -30,7 +30,7 @@ public:
     TShardRequestActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
-        TRequest::ProtoRecordType request,
+        typename TRequest::ProtoRecordType request,
         TVector<TString> shardIds,
         std::unique_ptr<TResponse> response);
 
@@ -53,7 +53,7 @@ private:
     void SendRequests(const NActors::TActorContext& ctx);
 
     void HandleResponse(
-        const TResponse::TPtr& ev,
+        const typename TResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -71,7 +71,7 @@ template <typename TRequest, typename TResponse>
 TShardRequestActor<TRequest, TResponse>::TShardRequestActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
-        TRequest::ProtoRecordType request,
+        typename TRequest::ProtoRecordType request,
         TVector<TString> shardIds,
         std::unique_ptr<TResponse> response)
     : LogTag(std::move(logTag))
@@ -117,7 +117,7 @@ void TShardRequestActor<TRequest, TResponse>::SendRequests(
 
 template <typename TRequest, typename TResponse>
 void TShardRequestActor<TRequest, TResponse>::HandleResponse(
-    const TResponse::TPtr& ev,
+    const typename TResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
