@@ -192,38 +192,55 @@ public:
     TRequestStats(
             TDynamicCountersPtr counters,
             bool isServerSide,
-            ITimerPtr timer)
+            ITimerPtr timer,
+            EHistogramCounterOptions histogramCounterOptions)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
-        , Total(MakeRequestCounters(timer,
+        , Total(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters))
-        , TotalSSD(MakeRequestCounters(timer,
+                TRequestCounters::EOption::AddSpecialCounters,
+            histogramCounterOptions))
+        , TotalSSD(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalHDD(MakeRequestCounters(timer,
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalHDD(MakeRequestCounters(
+            timer,
+                TRequestCounters::EOption::ReportDataPlaneHistogram |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalSSDNonrepl(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalSSDNonrepl(MakeRequestCounters(timer,
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalSSDMirror2(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalSSDMirror2(MakeRequestCounters(timer,
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalSSDMirror3(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalSSDMirror3(MakeRequestCounters(timer,
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalSSDLocal(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalSSDLocal(MakeRequestCounters(timer,
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
+        , TotalHDDNonrepl(MakeRequestCounters(
+            timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
-        , TotalHDDNonrepl(MakeRequestCounters(timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-            TRequestCounters::EOption::AddSpecialCounters |
-            TRequestCounters::EOption::OnlyReadWriteRequests))
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
     {
         Total.Register(*Counters);
 
@@ -650,22 +667,26 @@ struct TRequestStatsStub final
 
 IRequestStatsPtr CreateClientRequestStats(
     TDynamicCountersPtr counters,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    EHistogramCounterOptions histogramCounterOptions)
 {
     return std::make_shared<TRequestStats>(
         std::move(counters),
         false,
-        std::move(timer));
+        std::move(timer),
+        histogramCounterOptions);
 }
 
 IRequestStatsPtr CreateServerRequestStats(
     TDynamicCountersPtr counters,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    EHistogramCounterOptions histogramCounterOptions)
 {
     return std::make_shared<TRequestStats>(
         std::move(counters),
         true,
-        std::move(timer));
+        std::move(timer),
+        histogramCounterOptions);
 }
 
 IRequestStatsPtr CreateRequestStatsStub()

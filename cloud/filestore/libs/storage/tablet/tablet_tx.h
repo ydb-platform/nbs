@@ -77,6 +77,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
+                                                                               \
+    xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -478,10 +480,10 @@ struct TTxIndexTablet
 
     struct TResetSession
     {
-        const TRequestInfoPtr RequestInfo;
+        /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
-        const TString SessionState;
+        /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
 
@@ -489,11 +491,11 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 sessionSeqNo,
-                TString sessionState)
+                NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
-            , SessionState(std::move(sessionState))
+            , Request(std::move(request))
         {}
 
         void Clear()
@@ -508,10 +510,10 @@ struct TTxIndexTablet
 
     struct TDestroySession: TIndexStateNodeUpdates
     {
-        const TRequestInfoPtr RequestInfo;
+        /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
-        NProtoPrivate::TDestroySessionRequest Request;
+        /* const */ NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
 
@@ -2097,6 +2099,44 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
+        }
+    };
+
+    //
+    // LoadNodeRefs
+    //
+
+    // The whole point of this transaction is to observe some data in the
+    // NodeRefs table and populate the contents of TIndexStateNodeUpdates with it
+
+    struct TLoadNodeRefs: TIndexStateNodeUpdates
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+
+        const ui64 NodeId;
+        const TString Cookie;
+        const ui64 MaxNodeRefs;
+
+        ui64 NextNodeId = 0;
+        TString NextCookie;
+
+        TLoadNodeRefs(
+                ui64 nodeId,
+                TString cookie,
+                ui64 maxNodeRefs)
+            : NodeId(nodeId)
+            , Cookie(std::move(cookie))
+            , MaxNodeRefs(maxNodeRefs)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+
+            NextNodeId = 0;
+            NextCookie.clear();
         }
     };
 };

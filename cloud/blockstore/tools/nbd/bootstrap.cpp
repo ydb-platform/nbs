@@ -386,7 +386,10 @@ void TBootstrap::InitControlClient()
 
     auto clientGroup = rootGroup->GetSubgroup("component", "client");
 
-    RequestStats = CreateClientRequestStats(clientGroup, Timer);
+    RequestStats = CreateClientRequestStats(
+        clientGroup,
+        Timer,
+        EHistogramCounterOption::ReportMultipleCounters);
 
     VolumeStats = CreateVolumeStats(
         Monitoring,

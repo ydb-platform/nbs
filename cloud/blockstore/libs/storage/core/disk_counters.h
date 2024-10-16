@@ -59,6 +59,12 @@ struct TMemberMeta
     }
 };
 
+template <typename TMemberPtr>
+struct TMemberMetaWithTag: public TMemberMeta<TMemberPtr>
+{
+    TStringBuf Tag;
+};
+
 namespace NDetail {
 
 template <auto TMemberPtr>
@@ -85,6 +91,18 @@ consteval auto MakeMeta()
     result.Name = raw.substr(start + left.size(), end - start - left.size());
 
     // Store member ptr.
+    result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
+    return result;
+}
+
+template <auto TMemberPtr>
+consteval auto MakeMetaWithTag(TStringBuf name, TStringBuf tag)
+{
+    TMemberMetaWithTag<decltype(NDetail::ExtractMemberPtr<TMemberPtr>())>
+        result;
+    result.Name = name;
+    result.Tag = tag;
+
     result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
     return result;
 }
@@ -636,6 +654,37 @@ static_assert(
     sizeof(TVolumeSelfRequestCounters::TCounter) *
         std::size(TVolumeSelfRequestCounters::AllCounters));
 
+struct TTransportCounters
+{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TMeta = TMemberMetaWithTag<TCounter TTransportCounters::*>;
+
+    TCounter ReadBytes{EPublishingPolicy::All};
+    TCounter WriteBytes{EPublishingPolicy::All};
+    TCounter ReadCount{EPublishingPolicy::All};
+    TCounter WriteCount{EPublishingPolicy::All};
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMetaWithTag<&TTransportCounters::ReadBytes>(
+            "RequestBytes",
+            "ReadBlocks"),
+        MakeMetaWithTag<&TTransportCounters::WriteBytes>(
+            "RequestBytes",
+            "WriteBlocks"),
+        MakeMetaWithTag<&TTransportCounters::ReadCount>(
+            "Count",
+            "ReadBlocks"),
+        MakeMetaWithTag<&TTransportCounters::WriteCount>(
+            "Count",
+            "WriteBlocks"),
+
+    };
+};
+
+static_assert(
+    sizeof(TTransportCounters) ==
+    (sizeof(TTransportCounters::TCounter) *
+     std::size(TTransportCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionDiskCounters
@@ -644,6 +693,8 @@ struct TPartitionDiskCounters
     TCumulativeDiskCounters Cumulative;
     THistogramRequestCounters RequestCounters;
     THistogramCounters Histogram;
+    TTransportCounters Rdma;
+    TTransportCounters Interconnect;
 
     EPublishingPolicy Policy;
 

@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include "cloud/storage/core/libs/diagnostics/histogram_types.h"
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -96,24 +97,32 @@ auto IsReadWriteRequest(TRequestCounters::TRequestType t)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto MakeRequestCounters(TRequestCounters::EOption options = {})
+auto MakeRequestCounters(
+    TRequestCounters::EOption options = {},
+    EHistogramCounterOptions histogramCounterOptions =
+        EHistogramCounterOption::ReportMultipleCounters)
 {
     return TRequestCounters(
         CreateWallClockTimer(),
         2,
         RequestType2Name,
         IsReadWriteRequest,
-        options);
+        options,
+        histogramCounterOptions);
 }
 
-auto MakeRequestCountersPtr(TRequestCounters::EOption options = {})
+auto MakeRequestCountersPtr(
+    TRequestCounters::EOption options = {},
+    EHistogramCounterOptions histogramCounterOptions =
+        EHistogramCounterOption::ReportMultipleCounters)
 {
     return std::make_shared<TRequestCounters>(
         CreateWallClockTimer(),
         2,
         RequestType2Name,
         IsReadWriteRequest,
-        options);
+        options,
+        histogramCounterOptions);
 }
 
 }   // namespace
@@ -668,6 +677,127 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
             UNIT_ASSERT_VALUES_EQUAL(time->Val(), 2);
         }
+    }
+
+    Y_UNIT_TEST(ShouldReportHistogramAsMultipleSensors)
+    {
+        auto warmupTimer = GetCyclesPerMillisecond();
+        Y_UNUSED(warmupTimer);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr(
+            TRequestCounters::EOption::ReportDataPlaneHistogram,
+            EHistogramCounterOption::ReportMultipleCounters);
+        counters->Register(*monitoring->GetCounters());
+
+        AddRequestStats(*counters, WriteRequestType, {
+            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
+        });
+
+        TMap<TString, uint64_t> expectedHistogramValues;
+        for (const auto& bucketName : TRequestMsTimeBuckets::MakeNames()) {
+            expectedHistogramValues[bucketName] = 0;
+        }
+        expectedHistogramValues["1000ms"] = 1;
+        expectedHistogramValues["2000ms"] = 2;
+        expectedHistogramValues["10000ms"] = 1;
+        expectedHistogramValues["Inf"] = 2;
+
+        counters->UpdateStats();
+        const auto group = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetSubgroup("histogram", "Time");
+
+        for (const auto& [name, value]: expectedHistogramValues) {
+            const auto counter = group->FindCounter(name);
+            UNIT_ASSERT(counter);
+            UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportHistogramAsSingleSensor)
+    {
+        auto warmupTimer = GetCyclesPerMillisecond();
+        Y_UNUSED(warmupTimer);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr(
+            TRequestCounters::EOption::ReportDataPlaneHistogram,
+            EHistogramCounterOption::ReportSingleCounter);
+        counters->Register(*monitoring->GetCounters());
+
+        AddRequestStats(*counters, WriteRequestType, {
+            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
+        });
+
+        const TMap<size_t, uint64_t> expectedHistogramValues = {
+            { 19, 1 }, // 1000ms
+            { 20, 2 }, // 2000ms
+            { 22, 1 }, // 10000ms
+            { 24, 2 }, // Inf
+        };
+
+        counters->UpdateStats();
+
+        const auto histogram = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetSubgroup("histogram", "Time")
+            ->FindHistogram("Time");
+        UNIT_ASSERT(histogram);
+
+        const auto snapshot = histogram->Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(snapshot->Count(), TRequestMsTimeBuckets::Buckets.size());
+        for (size_t bucketId = 0; bucketId < snapshot->Count(); bucketId++) {
+            auto expectedValue = expectedHistogramValues.contains(bucketId) ?
+                expectedHistogramValues.at(bucketId) : 0;
+            UNIT_ASSERT_VALUES_EQUAL(snapshot->Value(bucketId), expectedValue);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportHistogramIfOptionIsNotSet)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr(
+            TRequestCounters::EOption::ReportDataPlaneHistogram,
+            {});
+        counters->Register(*monitoring->GetCounters());
+
+        AddRequestStats(*counters, WriteRequestType, {
+            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
+            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
+        });
+
+        auto counter = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetSubgroup("histogram", "Time")
+            ->FindCounter("1ms");
+
+        UNIT_ASSERT(!counter);
+
+        auto histogram = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetSubgroup("histogram", "Time")
+            ->FindHistogram("Time");
+
+        UNIT_ASSERT(!histogram);
     }
 }
 

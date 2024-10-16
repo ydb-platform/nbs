@@ -9,6 +9,7 @@ SRCS(
     profile_log_events.cpp
     rebase_logic.cpp
     session.cpp
+    shard_request_actor.cpp
     subsessions.cpp
     tablet.cpp
     tablet_actor.cpp
@@ -46,6 +47,7 @@ SRCS(
     tablet_actor_listnodes.cpp
     tablet_actor_listnodexattr.cpp
     tablet_actor_loadstate.cpp
+    tablet_actor_loadstate_noderefs.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_oplog.cpp
     tablet_actor_readblob.cpp
