@@ -362,6 +362,17 @@ private:
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
+    /**
+     * @brief If necessary, code can iteratively call ReadNodeRefs for all
+     * nodes. This will populate cache with node refs and allow us to perform
+     * ListNodes using in-memory index state by knowing that the nodeRefs cache
+     * is exhaustive.
+     */
+    void LoadNodeRefs(
+        const NActors::TActorContext& ctx,
+        ui64 nodeId,
+        const TString& name);
+
     void AddTransaction(
         TRequestInfo& transaction,
         TRequestInfo::TCancelRoutine cancelRoutine);
@@ -600,6 +611,10 @@ private:
 
     void HandleNodeUnlinkedInShard(
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLoadCompactionMapChunkResponse(
+        const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

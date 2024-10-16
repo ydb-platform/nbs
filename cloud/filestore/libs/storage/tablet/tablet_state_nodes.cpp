@@ -505,6 +505,24 @@ bool TIndexTabletState::ReadNodeRefs(
     return ready;
 }
 
+bool TIndexTabletState::ReadNodeRefs(
+    IIndexTabletDatabase& db,
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    return db.ReadNodeRefs(
+        startNodeId,
+        startCookie,
+        maxCount,
+        refs,
+        nextNodeId,
+        nextCookie);
+}
+
 bool TIndexTabletState::PrechargeNodeRefs(
     IIndexTabletDatabase& db,
     ui64 nodeId,
@@ -594,6 +612,11 @@ void TIndexTabletState::UpdateInMemoryIndexState(
     TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
 {
     Impl->InMemoryIndexState.UpdateState(nodeUpdates);
+}
+
+void TIndexTabletState::MarkNodeRefsLoadComplete()
+{
+    Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

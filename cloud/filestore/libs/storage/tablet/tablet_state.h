@@ -530,6 +530,15 @@ public:
         ui32 maxBytes,
         TString* next = nullptr);
 
+    bool ReadNodeRefs(
+        IIndexTabletDatabase& db,
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie);
+
     bool PrechargeNodeRefs(
         IIndexTabletDatabase& db,
         ui64 nodeId,
@@ -1287,6 +1296,7 @@ public:
     IIndexTabletDatabase& AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+    void MarkNodeRefsLoadComplete();
 };
 
 }   // namespace NCloud::NFileStore::NStorage
