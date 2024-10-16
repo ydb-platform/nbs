@@ -311,7 +311,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     if (Config->GetInMemoryIndexCacheEnabled() &&
         Config->GetInMemoryIndexCacheLoadOnTabletStart())
     {
-        LoadNodeRefsIfNeeded(ctx, 0, "");
+        LoadNodeRefs(ctx, 0, "");
     }
 
     ScheduleSyncSessions(ctx);
@@ -380,8 +380,8 @@ void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
-    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted::TPtr& ev,
+void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -495,7 +495,7 @@ void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
     }
 
     using TNotification =
-        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted;
+        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
     auto notification = std::make_unique<TNotification>(
         args.FirstRangeId,
         args.LastRangeId);

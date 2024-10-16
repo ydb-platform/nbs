@@ -378,7 +378,7 @@ private:
      * ListNodes using in-memory index state by knowing that the nodeRefs cache
      * is exhaustive.
      */
-    void LoadNodeRefsIfNeeded(
+    void LoadNodeRefs(
         const NActors::TActorContext& ctx,
         ui64 nodeId,
         const TString& name);
@@ -621,6 +621,10 @@ private:
 
     void HandleNodeUnlinkedInShard(
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLoadCompactionMapChunkResponse(
+        const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

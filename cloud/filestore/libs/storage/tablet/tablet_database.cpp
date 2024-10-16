@@ -608,6 +608,10 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
+    if (!startNodeId && startCookie.empty()) {
+        Table<TTable>().Precharge();
+    }
+
     auto it = Table<TTable>().GreaterOrEqual(startNodeId, startCookie).Select();
 
     if (!it.IsReady()) {

@@ -6,27 +6,14 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::LoadNodeRefsIfNeeded(
+void TIndexTabletActor::LoadNodeRefs(
     const NActors::TActorContext& ctx,
     ui64 nodeId,
     const TString& name)
 {
     LoadNodeRefsStatus.State = TLoadNodeRefsStatus::EState::LOADING;
-    ctx.Send(
-        SelfId(),
-        new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
-            nodeId,
-            name,
-            Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx()));
-}
 
-////////////////////////////////////////////////////////////////////////////////
-
-void TIndexTabletActor::HandleLoadNodeRefs(
-    const TEvIndexTabletPrivate::TEvLoadNodeRefsRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
+    const ui64 maxNodeRefs = Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
 
     LOG_INFO(
         ctx,
@@ -34,50 +21,15 @@ void TIndexTabletActor::HandleLoadNodeRefs(
         "%s LoadNodeRefs iteration started (nodeId: %lu, name: %s, "
         "maxNodeRefs: %lu)",
         LogTag.c_str(),
-        msg->NodeId,
-        msg->Name.c_str(),
-        msg->MaxNodeRefs);
-
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+        nodeId,
+        name.c_str(),
+        maxNodeRefs);
 
     ExecuteTx<TLoadNodeRefs>(
         ctx,
-        std::move(requestInfo),
-        msg->NodeId,
-        msg->Name,
-        msg->MaxNodeRefs);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TIndexTabletActor::HandleLoadNodeRefsCompleted(
-    const TEvIndexTabletPrivate::TEvLoadNodeRefsCompleted::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s LoadNodeRefs iteration completed, next nodeId: %lu, next cookie: "
-        "%s",
-        LogTag.c_str(),
-        msg->NextNodeId,
-        msg->NextCookie.c_str());
-
-    if (msg->NextCookie || msg->NextNodeId) {
-        LoadNodeRefsIfNeeded(ctx, msg->NextNodeId, msg->NextCookie);
-    } else {
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s LoadNodeRefs completed",
-            LogTag.c_str());
-
-        MarkNodeRefsLoadComplete();
-        LoadNodeRefsStatus.State = TLoadNodeRefsStatus::EState::COMPLETED;
-    }
+        nodeId,
+        name,
+        maxNodeRefs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,12 +83,28 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodeRefs& args)
 {
-    NCloud::Send(
+    LOG_INFO(
         ctx,
-        SelfId(),
-        std::make_unique<TEvIndexTabletPrivate::TEvLoadNodeRefsCompleted>(
-            args.NextNodeId,
-            args.NextCookie));
+        TFileStoreComponents::TABLET,
+        "%s LoadNodeRefs iteration completed, next nodeId: %lu, next cookie: "
+        "%s",
+        LogTag.c_str(),
+        args.NextNodeId,
+        args.NextCookie.c_str());
+
+    if (args.NextCookie || args.NextNodeId) {
+        LoadNodeRefs(ctx, args.NextNodeId, args.NextCookie);
+    } else {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s LoadNodeRefs completed",
+            LogTag.c_str());
+
+        MarkNodeRefsLoadComplete();
+        LoadNodeRefsStatus.State = TLoadNodeRefsStatus::EState::COMPLETED;
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NStorage
