@@ -913,9 +913,10 @@ private:
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume) const
     {
-        return volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL
-            && request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL
-            && request.GetIpcType() == NProto::IPC_VHOST;
+        return (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL ||
+                volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD_LOCAL) &&
+               request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL &&
+               request.GetIpcType() == NProto::IPC_VHOST;
     }
 
     bool IsFastPathMode(
