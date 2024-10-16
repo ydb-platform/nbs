@@ -3113,14 +3113,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         agents[0].MutableDevices(1)->SetBlocksCount(1);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agents[0],
-                changeStateTs,
-                &affectedDisks,
-                &disksToReallocate));
+            UNIT_ASSERT_SUCCESS(
+                state.RegisterAgent(db, agents[0], changeStateTs).GetError());
         });
 
         diskInfo = {};

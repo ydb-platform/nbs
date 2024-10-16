@@ -103,15 +103,13 @@ void TDiskRegistryActor::ExecuteAddAgent(
     TTransactionContext& tx,
     TTxDiskRegistry::TAddAgent& args)
 {
-    Y_UNUSED(ctx);
-
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->RegisterAgent(
-        db,
-        args.Config,
-        args.Timestamp,
-        &args.AffectedDisks,
-        &args.NotifiedDisks);
+
+    auto [r, error] = State->RegisterAgent(db, args.Config, args.Timestamp);
+
+    args.Error = std::move(error);
+    args.AffectedDisks = std::move(r.AffectedDisks);
+    args.NotifiedDisks = std::move(r.DisksToReallocate);
 
     if (!HasError(args.Error)) {
         for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
