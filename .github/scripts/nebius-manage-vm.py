@@ -306,7 +306,7 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
             ),
             spec=DiskSpec(
                 type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
-                size_gibibytes=93,
+                size_gibibytes=args.disk_size,
                 source_image_id=args.image_id,
             ),
         )
