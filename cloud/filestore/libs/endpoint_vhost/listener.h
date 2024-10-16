@@ -17,7 +17,7 @@ namespace NCloud::NFileStore::NVhost {
 struct THandleOpsQueueConfig
 {
     TString PathPrefix;
-    ui32 MaxQueueSize;
+    ui32 MaxQueueSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
