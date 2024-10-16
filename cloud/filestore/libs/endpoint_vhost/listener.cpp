@@ -76,7 +76,7 @@ public:
             ISchedulerPtr scheduler,
             IFileStoreEndpointsPtr filestoreEndpoints,
             IFileSystemLoopFactoryPtr loopFactory,
-            THandleOpsQueueConfig  handleOpsQueueConfig)
+            THandleOpsQueueConfig handleOpsQueueConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))

@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "fuse.h"
-#include "handle_ops_queue.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/context.h>

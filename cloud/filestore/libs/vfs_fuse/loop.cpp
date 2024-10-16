@@ -3,6 +3,7 @@
 #include "config.h"
 #include "fs.h"
 #include "fuse.h"
+#include "handle_ops_queue.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -49,7 +50,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static constexpr TStringBuf HandleOpsQueueFileName = "HandleOpsQueue";
+static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -617,11 +618,11 @@ public:
                         TString sessionDir = fsPath / p->SessionId;
                         try {
                             NFs::RemoveRecursive(sessionDir);
-                        } catch (TSystemError& err) {
+                        } catch (const TSystemError& err) {
                             ReportHandleOpsQueueCreatingOrDeletingError(
                                 TStringBuilder()
                                 << "Failed to remove session's HandleOpsQueue"
-                                << " reason: " << err.AsStrBuf());
+                                << ", reason: " << err.AsStrBuf());
                         }
                     }
                 });

@@ -147,14 +147,17 @@ void TFileSystem::Release(
                 return;
             }
             if (res == THandleOpsQueue::EResult::SerializationError) {
-                ReportHandleOpsQueueProcessError(
-                    "Failed to serialize DestroyHandleRequest");
+                TStringBuilder msg;
+                msg << "Unable to add DestroyHandleRequest to HandleOpsQueue #"
+                    << ino << " @" << fi->fh << ". Serialization failed";
+
+                ReportHandleOpsQueueProcessError(msg);
+
                 ReplyError(
                     *callContext,
                     MakeError(
                         E_FAIL,
-                        "Unable to add DestroyHandleRequest to HandleOpsQueue, "
-                        "serialization failed"),
+                        msg),
                     req,
                     0);
                 return;

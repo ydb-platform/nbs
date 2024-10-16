@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include "file_ring_buffer.h"
 
 #include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
@@ -16,7 +18,8 @@ private:
     TFileRingBuffer RequestsToProcess;
 
 public:
-    enum class EResult{
+    enum class EResult
+    {
         Ok,
         QueueOveflow,
         SerializationError,
@@ -32,8 +35,6 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-using THandleOpsQueuePtr = std::unique_ptr<THandleOpsQueue>;
 
 THandleOpsQueuePtr CreateHandleOpsQueue(
     const TString& filePath,
