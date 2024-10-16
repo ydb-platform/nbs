@@ -12,8 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
+	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -94,8 +94,7 @@ func (t *createSnapshotFromURLTask) Run(
 	}
 
 	if t.state.ETag != source.ETag() {
-		// TODO: NBS-4002: use AbortedError here.
-		return errors.NewNonRetriableErrorf(
+		return url_common.NewWrongETagError(
 			"task with id %v has wrong ETag, expected %v, actual %v",
 			selfTaskID,
 			t.state.ETag,
