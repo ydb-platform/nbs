@@ -13,10 +13,10 @@ namespace NCloud {
  *  for requestSize=4KiB and requestSize=4MiB respectively
  */
 
-ui32 CalculateThrottlerC1(double maxIops, double maxBandwidth);
-ui32 CalculateThrottlerC2(double maxIops, double maxBandwidth);
+ui64 CalculateThrottlerC1(double maxIops, double maxBandwidth);
+ui64 CalculateThrottlerC2(double maxIops, double maxBandwidth);
 
 TDuration SecondsToDuration(double seconds);
-TDuration CostPerIO(ui32 maxIops, ui32 maxBandwidth, ui32 byteCount);
+TDuration CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount);
 
 }   // namespace NCloud

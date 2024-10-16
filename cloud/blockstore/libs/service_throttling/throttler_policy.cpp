@@ -39,7 +39,7 @@ public:
             return TDuration::Zero();
         }
 
-        ui32 maxBandwidth = 0;
+        ui64 maxBandwidth = 0;
         ui32 maxIops = 0;
 
         switch (requestType) {

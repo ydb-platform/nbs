@@ -52,7 +52,7 @@ THROTTLING_PARAM(MaxWriteIops);
 
 #undef THROTTLING_PARAM
 
-ui32 ReadBandwidth(
+ui64 ReadBandwidth(
     const TStorageConfig& config,
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
@@ -65,7 +65,7 @@ ui32 ReadBandwidth(
     );
 }
 
-ui32 WriteBandwidth(
+ui64 WriteBandwidth(
     const TStorageConfig& config,
     const ui32 unitCount,
     const TVolumeParams& volumeParams)

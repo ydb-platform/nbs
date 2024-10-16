@@ -8,15 +8,15 @@ namespace NCloud::NBlockStore {
 
 struct TThrottlingServiceConfig
 {
-    const ui32 MaxReadBandwidth;
-    const ui32 MaxWriteBandwidth;
+    const ui64 MaxReadBandwidth;
+    const ui64 MaxWriteBandwidth;
     const ui32 MaxReadIops;
     const ui32 MaxWriteIops;
     const TDuration MaxBurstTime;
 
     TThrottlingServiceConfig(
-            ui32 maxReadBandwidth,
-            ui32 maxWriteBandwidth,
+            ui64 maxReadBandwidth,
+            ui64 maxWriteBandwidth,
             ui32 maxReadIops,
             ui32 maxWriteIops,
             TDuration maxBurstTime)

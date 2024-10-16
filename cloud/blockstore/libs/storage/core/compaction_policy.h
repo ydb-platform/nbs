@@ -98,9 +98,9 @@ struct TLoadOptimizationCompactionPolicyConfig
     ui32 MaxBlobSize;
     ui32 BlockSize;
     ui32 MaxReadIops;
-    ui32 MaxReadBandwidth;
+    ui64 MaxReadBandwidth;
     ui32 MaxWriteIops;
-    ui32 MaxWriteBandwidth;
+    ui64 MaxWriteBandwidth;
     ui32 MaxBlobsPerRange;
 };
 
