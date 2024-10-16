@@ -5821,11 +5821,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         break;
                     }
                     case TEvIndexTabletPrivate::
-                        EvLoadCompactionMapChunkCompleted: {
+                        EvLoadCompactionMapChunkResponse: {
                         lastCompactionMapRangeId = Max(
                             event
                                 ->Get<TEvIndexTabletPrivate::
-                                        TEvLoadCompactionMapChunkCompleted>()
+                                          TEvLoadCompactionMapChunkResponse>()
                                 ->LastRangeId,
                             lastCompactionMapRangeId);
                         break;

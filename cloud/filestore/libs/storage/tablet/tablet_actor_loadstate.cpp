@@ -307,6 +307,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
+
+    if (Config->GetInMemoryIndexCacheEnabled() &&
+        Config->GetInMemoryIndexCacheLoadOnTabletStart())
+    {
+        LoadNodeRefs(ctx, 0, "");
+    }
+
     ScheduleSyncSessions(ctx);
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
@@ -373,8 +380,8 @@ void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
-    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted::TPtr& ev,
+void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
+    const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -488,18 +495,11 @@ void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
     }
 
     using TNotification =
-        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkCompleted;
+        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
     auto notification = std::make_unique<TNotification>(
         args.FirstRangeId,
         args.LastRangeId);
     NCloud::Send(ctx, SelfId(), std::move(notification));
-
-    if (args.RequestInfo->Sender != ctx.SelfID) {
-        using TResponse =
-            TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
-        auto response = std::make_unique<TResponse>();
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
