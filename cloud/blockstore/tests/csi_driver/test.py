@@ -205,7 +205,7 @@ class NbsCsiDriverRunner:
             volume_id,
         )
 
-    def publish_volume(self, pod_id: str, volume_id: str, pod_name: str):
+    def publish_volume(self, pod_id: str, volume_id: str, pod_name: str, fs_type: str = ""):
         return self._node_run(
             "publishvolume",
             "--pod-id",
@@ -214,6 +214,8 @@ class NbsCsiDriverRunner:
             volume_id,
             "--pod-name",
             pod_name,
+            "--fs-type",
+            fs_type,
         )
 
     def unpublish_volume(self, pod_id: str, volume_id: str):
@@ -424,7 +426,8 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
         cleanup_after_test(env)
 
 
-def test_node_volume_expand():
+@pytest.mark.parametrize('fs_type', ["ext4", "xfs"])
+def test_node_volume_expand(fs_type):
     env, run = init()
     try:
         volume_name = "example-disk"
@@ -433,7 +436,7 @@ def test_node_volume_expand():
         pod_id = "deadbeef"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id, volume_name, pod_name)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, fs_type)
 
         new_volume_size = 2 * volume_size
         env.csi.expand_volume(pod_id, volume_name, new_volume_size)
@@ -462,8 +465,9 @@ def test_node_volume_expand():
         cleanup_after_test(env)
 
 
-def test_publish_volume_twice_on_the_same_node():
-    env, run = init(vm_mode=True)
+@pytest.mark.parametrize('vm_mode', [True, False])
+def test_publish_volume_twice_on_the_same_node(vm_mode):
+    env, run = init(vm_mode=vm_mode)
     try:
         volume_name = "example-disk"
         volume_size = 1024 ** 3
@@ -483,6 +487,58 @@ def test_publish_volume_twice_on_the_same_node():
             env.csi.unpublish_volume(pod_id1, volume_name)
         with called_process_error_logged():
             env.csi.unpublish_volume(pod_id2, volume_name)
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
+            env.csi.delete_volume(volume_name)
+        cleanup_after_test(env)
+
+
+def test_restart_kubelet_with_old_format_endpoint():
+    env, run = init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_id1 = "deadbeef1"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        # skip stage to create endpoint with old format
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        # run stage/publish again to simulate kubelet restart
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id1, volume_name)
+        with called_process_error_logged():
+            env.csi.unstage_volume(volume_name)
+        with called_process_error_logged():
+            env.csi.delete_volume(volume_name)
+        cleanup_after_test(env)
+
+
+def test_restart_kubelet_with_new_format_endpoint():
+    env, run = init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name1 = "example-pod-1"
+        pod_id1 = "deadbeef1"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        # run stage/publish again to simulate kubelet restart
+        env.csi.stage_volume(volume_name)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id1, volume_name)
         with called_process_error_logged():
             env.csi.unstage_volume(volume_name)
         with called_process_error_logged():

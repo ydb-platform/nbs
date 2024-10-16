@@ -75,10 +75,12 @@ struct IRequestStats
 
 IRequestStatsPtr CreateClientRequestStats(
     NMonitoring::TDynamicCountersPtr counters,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    EHistogramCounterOptions histogramCounterOptions);
 IRequestStatsPtr CreateServerRequestStats(
     NMonitoring::TDynamicCountersPtr counters,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    EHistogramCounterOptions histogramCounterOptions);
 IRequestStatsPtr CreateRequestStatsStub();
 
 }   // namespace NCloud::NBlockStore

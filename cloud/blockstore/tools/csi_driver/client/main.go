@@ -253,7 +253,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 }
 
 func newPublishVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId, stagingTargetPath, podName string
+	var volumeId, podId, stagingTargetPath, podName, fsType string
 	var readOnly bool
 	cmd := cobra.Command{
 		Use:   "publishvolume",
@@ -283,6 +283,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"csi.storage.k8s.io/pod.name":                  podName,
 				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
 				"instanceId": "example-instance-id",
+				"fsType":     fsType,
 			}
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 
@@ -339,6 +340,13 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		false,
 		"volume is read only",
 	)
+	cmd.Flags().StringVar(
+		&fsType,
+		"fs-type",
+		"",
+		"filesystem type: ext4, xfs",
+	)
+
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)

@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+#include "shard_request_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -6,6 +7,16 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TResetShardSessionsActor = TShardRequestActor<
+    TEvService::TEvResetSessionRequest,
+    TEvService::TEvResetSessionResponse>;
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,12 +54,14 @@ void TIndexTabletActor::HandleResetSession(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TResetSessionMethod>(*requestInfo);
+
     ExecuteTx<TResetSession>(
         ctx,
         std::move(requestInfo),
         sessionId,
         seqNo,
-        msg->Record.GetSessionState());
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,7 +87,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         LogTag.c_str(),
         args.SessionId.c_str(),
         args.SessionSeqNo,
-        args.SessionState.size());
+        args.Request.GetSessionState().size());
 
     TIndexTabletDatabase db(tx.DB);
 
@@ -157,7 +170,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         }
     }
 
-    ResetSession(db, session, args.SessionState);
+    ResetSession(db, session, args.Request.GetSessionState());
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -166,8 +179,34 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     const TActorContext& ctx,
     TTxIndexTablet::TResetSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvResetSessionResponse>();
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (shardIds.empty()) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s ResetSession completed",
+            LogTag.c_str());
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s ResetSession completed - local"
+        ", resetting shard sessions (%s)",
+        LogTag.c_str(),
+        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
+
+    auto actor = std::make_unique<TResetShardSessionsActor>(
+        LogTag,
+        std::move(args.RequestInfo),
+        std::move(args.Request),
+        TVector<TString>(shardIds.begin(), shardIds.end()),
+        std::move(response));
+
+    NCloud::Register(ctx, std::move(actor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

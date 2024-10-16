@@ -12,6 +12,7 @@ import (
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -204,7 +205,13 @@ func (f *factory) initClients(
 			},
 			&nbs_client.DurableClientOpts{
 				Timeout: &durableClientTimeout,
-				OnError: func(err nbs_client.ClientError) {
+				OnError: func(ctx context.Context, err nbs_client.ClientError) {
+					tracing.SpanFromContext(ctx).AddEvent(
+						"Retriable error in blockstore SDK",
+						tracing.WithAttributes(
+							tracing.AttributeString("error", err.Error()),
+						),
+					)
 					f.metrics.OnError(err)
 				},
 			},
