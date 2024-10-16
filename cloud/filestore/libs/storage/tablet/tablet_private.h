@@ -523,41 +523,6 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // LoadNodeRefs
-    //
-
-    struct TLoadNodeRefsRequest
-    {
-        const ui64 NodeId;
-        const TString Name;
-        const ui64 MaxNodeRefs;
-
-        TLoadNodeRefsRequest(
-                ui64 nodeId,
-                TString name,
-                ui64 maxNodeRefs)
-            : NodeId(nodeId)
-            , Name(std::move(name))
-            , MaxNodeRefs(maxNodeRefs)
-        {}
-    };
-
-    using TLoadNodeRefsResponse = TEmpty;
-
-    struct TLoadNodeRefsCompleted
-    {
-        const ui64 NextNodeId;
-        const TString NextCookie;
-
-        TLoadNodeRefsCompleted(
-                ui64 nextNodeId,
-                TString nextCookie)
-            : NextNodeId(nextNodeId)
-            , NextCookie(std::move(nextCookie))
-        {}
-    };
-
-    //
     // ForcedRangeOperation
     //
 

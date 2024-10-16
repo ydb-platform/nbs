@@ -257,16 +257,6 @@ private:
         bool Finished = false;
     } CompactionStateLoadStatus;
 
-    struct TLoadNodeRefsStatus
-    {
-        enum EState
-        {
-            NOT_STARTED,
-            LOADING,
-            COMPLETED
-        } State = EState::NOT_STARTED;
-    } LoadNodeRefsStatus;
-
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
 

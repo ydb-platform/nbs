@@ -11,8 +11,6 @@ void TIndexTabletActor::LoadNodeRefs(
     ui64 nodeId,
     const TString& name)
 {
-    LoadNodeRefsStatus.State = TLoadNodeRefsStatus::EState::LOADING;
-
     const ui64 maxNodeRefs = Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
 
     LOG_INFO(
@@ -102,9 +100,7 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
             LogTag.c_str());
 
         MarkNodeRefsLoadComplete();
-        LoadNodeRefsStatus.State = TLoadNodeRefsStatus::EState::COMPLETED;
     }
-
 }
 
 }   // namespace NCloud::NFileStore::NStorage

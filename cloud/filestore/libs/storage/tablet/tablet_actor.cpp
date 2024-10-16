@@ -875,7 +875,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
-        HFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse, HandleLoadCompactionMapChunkResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse,
+            HandleLoadCompactionMapChunkResponse);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
