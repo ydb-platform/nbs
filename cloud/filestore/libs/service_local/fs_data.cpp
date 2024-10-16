@@ -106,7 +106,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     auto b = std::make_shared<TAlignedBuffer>(request.GetLength(), align);
     NSan::Unpoison(b->Begin(), b->Size());
 
-    TArrayRef<char> data((char*)b->Begin(), (char*)b->End());
+    TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
         [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
@@ -114,7 +114,8 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
             try {
                 auto bytesRead = f.GetValue();
                 b->TrimSize(bytesRead);
-                response.SetBuffer(std::move(b->GetBuffer()));
+                response.SetBufferOffset(b->AlignedDataOffset());
+                response.SetBuffer(std::move(b->AccessBuffer()));
             } catch (const TServiceError& e) {
                 *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
                     ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
@@ -139,10 +140,9 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-
-    auto b = std::make_shared<TAlignedBuffer>(std::move(*request.MutableBuffer()), align);
-    TArrayRef<char> data((char*)b->Begin(), (char*)b->End());
+    auto b = std::move(*request.MutableBuffer());
+    auto offset = request.GetBufferOffset();
+    TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
     FileIOService->AsyncWrite(*handle, request.GetOffset(), data).Subscribe(
         [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {

@@ -1,5 +1,7 @@
 #include "aligned_buffer.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/maybe.h>
@@ -34,6 +36,11 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
                     0,
                     "size=" << size << " ,align=" << align
                             << " ,buffer=" << (void*)buffer.Begin());
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    buffer.AlignedDataOffset(),
+                    buffer.Begin() - buffer.AccessBuffer().begin(),
+                    "size=" << size << " ,align=" << align
+                            << " ,buffer=" << (void*)buffer.Begin());
                 buffers.push_back(std::move(buffer));
             }
         }
@@ -55,8 +62,8 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
 
         auto* buffer1Mem = buffer1.Begin();
 
-        TAlignedBuffer buffer2(std::move(buffer1.GetBuffer()), align);
-        UNIT_ASSERT_VALUES_EQUAL(0, buffer1.GetBuffer().size());
+        TAlignedBuffer buffer2(std::move(buffer1.AccessBuffer()), align);
+        UNIT_ASSERT_VALUES_EQUAL(0, buffer1.AccessBuffer().size());
         UNIT_ASSERT_VALUES_EQUAL(size, buffer2.Size());
 
         auto* buffer2Mem = buffer2.Begin();
@@ -67,7 +74,6 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
     {
         ui32 align = 1 << 21;
         ui32 size = 5678;
-
 
         TAlignedBuffer buffer0(size, align);
         UNIT_ASSERT_VALUES_EQUAL(buffer0.Size(), size);
@@ -87,7 +93,6 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
         UNIT_ASSERT_VALUES_EQUAL(buffer2.Size(), size);
         UNIT_ASSERT_VALUES_EQUAL(0, buffer.Size());
 
-
         TAlignedBuffer buffer3 = std::move(buffer2);
         UNIT_ASSERT_PTR_EQUAL(bufferMem, buffer3.Begin());
         UNIT_ASSERT_VALUES_EQUAL(buffer3.Size(), size);
@@ -98,7 +103,6 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
     {
         ui32 align = 1 << 21;
         ui32 size = 5678;
-
 
         TAlignedBuffer buffer(size, align);
         UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), size);
@@ -119,14 +123,13 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
         ui32 align = 1 << 21;
         ui32 size = 5678;
 
-
         TAlignedBuffer buffer(size, align);
         UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), size);
 
-        auto [extractedAlignedData, extractedSize] =
-            TAlignedBuffer::ExtractAlignedData(buffer.GetBuffer(), align);
-        UNIT_ASSERT_PTR_EQUAL(buffer.Begin(), extractedAlignedData);
-        UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), extractedSize);
+        auto extractedBuf =
+            TAlignedBuffer::ExtractAlignedData(buffer.AccessBuffer(), align);
+        UNIT_ASSERT_PTR_EQUAL(buffer.Begin(), extractedBuf.Data());
+        UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), extractedBuf.Size());
 
         TString buffer1 = "abcdefg";
 

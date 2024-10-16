@@ -220,16 +220,14 @@ void TFileSystem::Read(
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-                auto [alignedData, size] = TAlignedBuffer::ExtractAlignedData(
-                    response.GetBuffer(),
-                    align);
+                const auto& buffer = response.GetBuffer();
+                ui32 bufferOffset = response.GetBufferOffset();
                 self->ReplyBuf(
                     *callContext,
                     response.GetError(),
                     req,
-                    alignedData,
-                    size);
+                    buffer.Data() + bufferOffset,
+                    buffer.Size() - bufferOffset);
             }
         });
 }
@@ -263,7 +261,8 @@ void TFileSystem::Write(
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
+    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+    request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -327,7 +326,8 @@ void TFileSystem::WriteBuf(
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
+    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+    request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;

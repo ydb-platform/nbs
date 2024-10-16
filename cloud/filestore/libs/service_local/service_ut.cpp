@@ -767,24 +767,6 @@ struct TTestBootstrap
 
 #undef FILESTORE_DECLARE_METHOD
 
-    NProto::TReadDataResponse
-    ReadDataAligned(ui64 handle, ui64 offset, ui32 len, ui32 align)
-    {
-        auto request = CreateReadDataRequest(handle, offset, len);
-        auto dbg = request->ShortDebugString();
-        auto response = Store->ReadData(Ctx, std::move(request)).GetValueSync();
-
-        UNIT_ASSERT_C(
-            SUCCEEDED(response.GetError().GetCode()),
-            response.GetError().GetMessage() + "@" + dbg);
-
-        TAlignedBuffer alignedBuffer(
-            std::move(*response.MutableBuffer()),
-            align);
-        response.SetBuffer(alignedBuffer.Begin(), alignedBuffer.Size());
-        return response;
-    }
-
     NProto::TWriteDataResponse WriteDataAligned(
         ui64 handle,
         ui64 offset,
@@ -800,7 +782,8 @@ struct TTestBootstrap
             (void*)(alignedBuffer.Begin()),
             (void*)buffer.data(),
             buffer.size());
-        request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
 
         auto dbg = request->ShortDebugString();
         auto response =
@@ -828,7 +811,8 @@ struct TTestBootstrap
             (void*)(alignedBuffer.Begin()),
             (void*)buffer.data(),
             buffer.size());
-        request->SetBuffer(std::move(alignedBuffer.GetBuffer()));
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
 
         auto dbg = request->ShortDebugString();
         auto response =
@@ -2052,7 +2036,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                     "file",
                     TCreateHandleArgs::CREATE | TCreateHandleArgs::DIRECT)
                 .GetHandle();
-        auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        auto readRsp = bootstrap.ReadData(handle, 0, 100);
+        auto data = readRsp.GetBuffer().substr(readRsp.GetBufferOffset());
         UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
 
         data = "aaaabbbbcccccdddddeeee";
@@ -2070,26 +2055,23 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         data.append(directIoAlign, 'y');
         bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
 
+        auto readDataWithOffset =
+            [&bootstrap](ui64 handle, ui64 offset, ui32 len)
+        {
+            auto rsp = bootstrap.ReadData(handle, offset, len);
+            return rsp.GetBuffer().substr(rsp.GetBufferOffset());
+        };
+
         // read [0, 2*align]
-        auto buffer =
-            bootstrap.ReadDataAligned(handle, 0, data.size(), directIoAlign)
-                .GetBuffer();
+        auto buffer = readDataWithOffset(handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(buffer, data);
 
         // read [0, align]
-        buffer =
-            bootstrap.ReadDataAligned(handle, 0, directIoAlign, directIoAlign)
-                .GetBuffer();
+        buffer = readDataWithOffset(handle, 0, directIoAlign);
         UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(0, directIoAlign));
 
         // read [align, align]
-        buffer = bootstrap
-                     .ReadDataAligned(
-                         handle,
-                         directIoAlign,
-                         directIoAlign,
-                         directIoAlign)
-                     .GetBuffer();
+        buffer = readDataWithOffset(handle, directIoAlign, directIoAlign);
         UNIT_ASSERT_VALUES_EQUAL(
             buffer,
             data.substr(directIoAlign, directIoAlign));
