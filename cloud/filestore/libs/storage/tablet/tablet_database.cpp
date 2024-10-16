@@ -603,8 +603,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64* nextNodeId,
-    TString* nextCookie)
+    ui64& nextNodeId,
+    TString& nextCookie)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -635,12 +635,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     if (it.IsValid()) {
-        if (nextNodeId) {
-            *nextNodeId = it.GetValue<TTable::NodeId>();
-        }
-        if (nextCookie) {
-            *nextCookie = it.GetValue<TTable::Name>();
-        }
+        nextNodeId = it.GetValue<TTable::NodeId>();
+        nextCookie = it.GetValue<TTable::Name>();
     }
 
     return true;
@@ -2108,8 +2104,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64* nextNodeId,
-    TString* nextCookie)
+    ui64& nextNodeId,
+    TString& nextCookie)
 {
     auto result = TIndexTabletDatabase::ReadNodeRefs(
         startNodeId,

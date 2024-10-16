@@ -278,8 +278,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     const TString& startCookie,
     ui64 maxCount,
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    ui64* nextNodeId,
-    TString* nextCookie)
+    ui64& nextNodeId,
+    TString& nextCookie)
 {
     Y_UNUSED(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);
     // This method is supposed to be called only upon tablet load in order to

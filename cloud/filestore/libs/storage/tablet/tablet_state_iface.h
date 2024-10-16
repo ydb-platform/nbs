@@ -126,8 +126,8 @@ public:
         const TString& startCookie,
         ui64 maxCount,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
-        ui64* nextNodeId,
-        TString* nextCookie) = 0;
+        ui64& nextNodeId,
+        TString& nextCookie) = 0;
 
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,

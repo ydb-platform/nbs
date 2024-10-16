@@ -61,8 +61,8 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         args.Cookie,
         args.MaxNodeRefs,
         nodeRefs,
-        &args.NextNodeId,
-        &args.NextCookie);
+        args.NextNodeId,
+        args.NextCookie);
 
     LOG_INFO(
         ctx,
