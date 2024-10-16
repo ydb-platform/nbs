@@ -80,6 +80,7 @@ psutil
 yandexcloud==0.258.0
 PyGithub==2.2.0
 cryptography
+pyOpenSSL==24.2.1
 packaging
 rapidgzip
 EOF
