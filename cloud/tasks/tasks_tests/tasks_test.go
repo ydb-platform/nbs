@@ -714,7 +714,7 @@ func TestTasksRunningLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	tasksIds := []string{}
-	scheduledLongTaskCount := 3 * inflightLongTaskPerNodeLimit
+	scheduledLongTaskCount := 6 * inflightLongTaskPerNodeLimit
 	for i := 0; i < scheduledLongTaskCount; i++ {
 		reqCtx := getRequestContext(t, ctx)
 		id, err := scheduleLongTask(reqCtx, s.scheduler)
@@ -752,7 +752,12 @@ func TestTasksRunningLimit(t *testing.T) {
 					runningLongTaskCount++
 				}
 			}
-			require.LessOrEqual(t, runningLongTaskCount, inflightLongTaskPerNodeLimit)
+
+			// We have separate inflight per node limit for each lister.
+			// So long tasks can be taken by listerReadyToRun or
+			// listerStallingWhileRunning lister.
+			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
+			require.LessOrEqual(t, runningLongTaskCount, 2*inflightLongTaskPerNodeLimit)
 		case err := <-errs:
 			require.NoError(t, err)
 			endedLongTaskCount++
