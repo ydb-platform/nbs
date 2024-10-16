@@ -87,6 +87,7 @@ namespace NCloud::NBlockStore {
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
+    xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

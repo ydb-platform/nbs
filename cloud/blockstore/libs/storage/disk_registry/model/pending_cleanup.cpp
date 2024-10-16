@@ -1,32 +1,73 @@
 #include "pending_cleanup.h"
 
 #include <util/generic/algorithm.h>
+#include <util/string/builder.h>
+#include <util/string/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPendingCleanup::Insert(const TString& diskId, TVector<TString> uuids)
+NProto::TError TPendingCleanup::Insert(
+    const TString& diskId,
+    TVector<TString> uuids)
 {
-    if (uuids.empty()) {
-        return;
+    auto error = ValidateInsertion(diskId, uuids);
+    if (HasError(error)) {
+        return error;
     }
 
     DiskToDeviceCount[diskId] += static_cast<int>(uuids.size());
 
     for (auto& uuid: uuids) {
-        DeviceToDisk.emplace(std::move(uuid), diskId);
+        Y_DEBUG_ABORT_UNLESS(!uuid.empty());
+        auto [_, success] = DeviceToDisk.emplace(std::move(uuid), diskId);
+        Y_DEBUG_ABORT_UNLESS(success);
     }
+
+    return {};
 }
 
-void TPendingCleanup::Insert(const TString& diskId, TString uuid)
+NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid)
 {
-    if (uuid.empty()) {
-        return;
+    return Insert(diskId, TVector{std::move(uuid)});
+}
+
+[[nodiscard]] NProto::TError TPendingCleanup::ValidateInsertion(
+    const TString& diskId,
+    const TVector<TString>& uuids) const
+{
+    if (diskId.empty() || uuids.empty()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Invalid arguments. DiskId: " << diskId << "; deviceIds: ["
+                << JoinStrings(uuids, ", ") << "]");
     }
 
-    DiskToDeviceCount[diskId] += 1;
-    DeviceToDisk.emplace(std::move(uuid), diskId);
+    for (const auto& uuid: uuids) {
+        if (uuid.empty()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Invalid arguments. One of the devices is "
+                                    "empty. DiskId: "
+                                 << diskId << "; deviceIds: ["
+                                 << JoinStrings(uuids, ", ") << "]");
+        }
+
+        const auto* foundDiskId = DeviceToDisk.FindPtr(uuid);
+        if (foundDiskId) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Could not insert device: " << uuid
+                                 << "; diskId: " << diskId
+                                 << " to PendingCleanup. It was already "
+                                    "inserted with the diskId: "
+                                 << *foundDiskId);
+        }
+    }
+
+    return {};
 }
 
 TString TPendingCleanup::EraseDevice(const TString& uuid)
@@ -39,7 +80,8 @@ TString TPendingCleanup::EraseDevice(const TString& uuid)
     auto diskId = std::move(it->second);
     DeviceToDisk.erase(it);
 
-    if (--DiskToDeviceCount[diskId]) {
+    Y_DEBUG_ABORT_UNLESS(DiskToDeviceCount.contains(diskId));
+    if (--DiskToDeviceCount[diskId] > 0) {
         return {};
     }
 
