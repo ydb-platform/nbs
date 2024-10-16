@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
@@ -42,6 +43,16 @@ inline auto GetDefaultMaxFileBlocks()
     // ui32 domain
     static const ui64 VALUE = TStorageConfig().GetMaxFileBlocks();
     return VALUE;
+}
+
+inline auto CompactionRangeToString(
+    const NProtoPrivate::TCompactionRangeStats& rs)
+{
+    return Sprintf(
+        "r=%u b=%u d=%u",
+        rs.GetRangeId(),
+        rs.GetBlobCount(),
+        rs.GetDeletionCount());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,5 +241,37 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define TABLET_TEST_HEAD(name)                                                 \
+    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
+    Y_UNIT_TEST(name)                                                          \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
+    }                                                                          \
+// TABLET_TEST_HEAD
+
+#define TABLET_TEST_IMPL(name, largeBS)                                        \
+    TABLET_TEST_HEAD(name)                                                     \
+    Y_UNIT_TEST(name##largeBS)                                                 \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
+    }                                                                          \
+    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+// TABLET_TEST_IMPL
+
+#define TABLET_TEST_4K_ONLY(name)                                              \
+    TABLET_TEST_HEAD(name)                                                     \
+    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+// TABLET_TEST_4K_ONLY
+
+#define TABLET_TEST(name)                                                      \
+    TABLET_TEST_IMPL(name, 128_KB)                                             \
+// TABLET_TEST
+
+#define TABLET_TEST_16K(name)                                                  \
+    TABLET_TEST_IMPL(name, 16_KB)                                              \
+// TABLET_TEST_16K
 
 }   // namespace NCloud::NFileStore::NStorage

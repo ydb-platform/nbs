@@ -57,12 +57,12 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateReassignTabletActionActor
         },
         {
-            "configurefollowers",
-            &TStorageServiceActor::CreateConfigureFollowersActionActor
+            "configureshards",
+            &TStorageServiceActor::CreateConfigureShardsActionActor
         },
         {
-            "configureasfollower",
-            &TStorageServiceActor::CreateConfigureAsFollowerActionActor
+            "configureasshard",
+            &TStorageServiceActor::CreateConfigureAsShardActionActor
         },
         {
             "getstorageconfig",

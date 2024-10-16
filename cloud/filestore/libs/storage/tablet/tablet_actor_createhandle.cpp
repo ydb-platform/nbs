@@ -61,7 +61,7 @@ void TIndexTabletActor::HandleCreateHandle(
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
         const bool shouldStoreHandles =
-            GetFileSystem().GetFollowerFileSystemIds().empty();
+            GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
@@ -100,10 +100,10 @@ void TIndexTabletActor::HandleCreateHandle(
         }
     }
 
-    if (msg->Record.GetFollowerFileSystemId()) {
+    if (msg->Record.GetShardFileSystemId()) {
         bool found = false;
-        for (const auto& f: GetFileSystem().GetFollowerFileSystemIds()) {
-            if (f == msg->Record.GetFollowerFileSystemId()) {
+        for (const auto& f: GetFileSystem().GetShardFileSystemIds()) {
+            if (f == msg->Record.GetShardFileSystemId()) {
                 found = true;
                 break;
             }
@@ -111,8 +111,8 @@ void TIndexTabletActor::HandleCreateHandle(
 
         if (!found) {
             auto error = MakeError(E_ARGUMENT, TStringBuilder() <<
-                "invalid follower id: "
-                << msg->Record.GetFollowerFileSystemId());
+                "invalid shard id: "
+                << msg->Record.GetShardFileSystemId());
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::TABLET,
@@ -203,10 +203,10 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            if (args.RequestFollowerId) {
-                args.FollowerId = args.RequestFollowerId;
-                args.FollowerName = CreateGuidAsString();
-                args.IsNewFollowerNode = true;
+            if (args.RequestShardId) {
+                args.ShardId = args.RequestShardId;
+                args.ShardName = CreateGuidAsString();
+                args.IsNewShardNode = true;
             }
         } else {
             // if yes check whether O_EXCL was specified, assume O_CREAT is also specified
@@ -216,16 +216,16 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             args.TargetNodeId = ref->ChildNodeId;
-            args.FollowerId = ref->FollowerId;
-            args.FollowerName = ref->FollowerName;
+            args.ShardId = ref->ShardId;
+            args.ShardName = ref->ShardName;
         }
     } else {
         args.TargetNodeId = args.NodeId;
-        if (args.RequestFollowerId) {
+        if (args.RequestShardId) {
             args.Error = MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "CreateHandle request without Name and with"
-                " FollowerId is not supported");
+                " ShardId is not supported");
             return true;
         }
     }
@@ -276,7 +276,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     if (args.TargetNodeId == InvalidNodeId
-            && (args.FollowerId.Empty() || args.IsNewFollowerNode))
+            && (args.ShardId.Empty() || args.IsNewShardNode))
     {
         if (args.TargetNode) {
             auto message = ReportTargetNodeWithoutRef(TStringBuilder()
@@ -292,7 +292,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             return;
         }
 
-        if (args.FollowerId.Empty()) {
+        if (args.ShardId.Empty()) {
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
             args.TargetNodeId = CreateNode(
@@ -315,8 +315,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             args.Name,
             args.TargetNodeId,
-            args.FollowerId,
-            args.FollowerName);
+            args.ShardId,
+            args.ShardName);
 
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -328,7 +328,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             parent,
             args.ParentNode->Attrs);
 
-    } else if (args.FollowerId.Empty()
+    } else if (args.ShardId.Empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
         auto e = Truncate(
@@ -354,7 +354,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.TargetNode->Attrs);
     }
 
-    if (args.FollowerId.Empty()) {
+    if (args.ShardId.Empty()) {
         auto* handle = CreateHandle(
             db,
             session,
@@ -373,23 +373,23 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         auto* node = args.Response.MutableNodeAttr();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
     } else {
-        args.Response.SetFollowerFileSystemId(args.FollowerId);
-        args.Response.SetFollowerNodeName(args.FollowerName);
+        args.Response.SetShardFileSystemId(args.ShardId);
+        args.Response.SetShardNodeName(args.ShardName);
     }
 
-    if (args.IsNewFollowerNode) {
+    if (args.IsNewShardNode) {
         // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
         // use CommitId here in order not to generate some other unique ui64
         args.OpLogEntry.SetEntryId(args.WriteCommitId);
-        auto* followerRequest = args.OpLogEntry.MutableCreateNodeRequest();
-        *followerRequest->MutableHeaders() = args.Request.GetHeaders();
-        followerRequest->MutableFile()->SetMode(args.Mode);
-        followerRequest->SetUid(args.Uid);
-        followerRequest->SetGid(args.Gid);
-        followerRequest->SetFileSystemId(args.FollowerId);
-        followerRequest->SetNodeId(RootNodeId);
-        followerRequest->SetName(args.FollowerName);
-        followerRequest->ClearFollowerFileSystemId();
+        auto* shardRequest = args.OpLogEntry.MutableCreateNodeRequest();
+        *shardRequest->MutableHeaders() = args.Request.GetHeaders();
+        shardRequest->MutableFile()->SetMode(args.Mode);
+        shardRequest->SetUid(args.Uid);
+        shardRequest->SetGid(args.Gid);
+        shardRequest->SetFileSystemId(args.ShardId);
+        shardRequest->SetNodeId(RootNodeId);
+        shardRequest->SetName(args.ShardName);
+        shardRequest->ClearShardFileSystemId();
 
         db.WriteOpLogEntry(args.OpLogEntry);
     }
@@ -420,12 +420,12 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s Creating node in follower upon CreateHandle: %s, %s",
+            "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
-            args.FollowerId.c_str(),
-            args.FollowerName.c_str());
+            args.ShardId.c_str(),
+            args.ShardName.c_str());
 
-        RegisterCreateNodeInFollowerActor(
+        RegisterCreateNodeInShardActor(
             ctx,
             args.RequestInfo,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),

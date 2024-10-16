@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
+#include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -96,7 +97,7 @@ protected:
     }
 
     template <typename T>
-    T WaitFor(NThreading::TFuture<T> future)
+    T WaitFor(NThreading::TFuture<T> future, bool extract = true)
     {
         if (!future.HasValue()) {
             auto* ptr = reinterpret_cast<NThreading::TFuture<void>*>(&future);
@@ -104,7 +105,7 @@ protected:
                 return TErrorResponse(E_REJECTED, "request cancelled");
             }
         }
-        return future.ExtractValue();
+        return extract ? future.ExtractValue() : future.GetValue();
     }
 
 private:
@@ -122,8 +123,6 @@ protected:
     bool DisableMultiTabletForwarding = false;
 
     IFileStoreServicePtr Client;
-
-    NProto::THeaders Headers;
 
 public:
     TFileStoreServiceCommand() = default;
@@ -152,13 +151,14 @@ protected:
     {
         auto request = std::make_shared<T>();
         request->SetFileSystemId(FileSystemId);
-        request->MutableHeaders()->CopyFrom(Headers);
+        request->MutableHeaders()->SetDisableMultiTabletForwarding(
+            DisableMultiTabletForwarding);
 
         return request;
     }
 
     template <typename T>
-    void CheckResponse(const T& response)
+    static void CheckResponse(const T& response)
     {
         if (HasError(response)) {
             throw TServiceError(response.GetError());
@@ -172,21 +172,25 @@ protected:
     };
 
     NProto::TNodeAttr ResolveNode(
+        ISession& session,
         ui64 parentNodeId,
         TString name,
         bool ignoreMissing);
     TVector<TPathEntry> ResolvePath(
+        ISession& session,
         TStringBuf path,
         bool ignoreMissing);
 
     class TSessionGuard final
     {
         TFileStoreCommand& FileStoreCmd;
+        ISessionPtr Session;
         TLog& Log;
 
     public:
-        explicit TSessionGuard(TFileStoreCommand& fileStoreCmd)
+        TSessionGuard(TFileStoreCommand& fileStoreCmd, ISessionPtr session)
             : FileStoreCmd(fileStoreCmd)
+            , Session(std::move(session))
             , Log(FileStoreCmd.AccessLog())
         {
         }
@@ -194,17 +198,25 @@ protected:
         ~TSessionGuard()
         {
             try {
-                FileStoreCmd.DestroySession();
+                FileStoreCmd.DestroySession(*Session);
             } catch (...) {
                 STORAGE_ERROR("~TSessionGuard: " << CurrentExceptionMessage());
             }
         }
+
+        ISession& AccessSession()
+        {
+            return *Session;
+        }
     };
 
     [[nodiscard]] TSessionGuard CreateSession();
+    [[nodiscard]] TSessionGuard CreateCustomSession(
+        TString fsId,
+        TString clientId);
 
 private:
-    void DestroySession();
+    void DestroySession(ISession& session);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

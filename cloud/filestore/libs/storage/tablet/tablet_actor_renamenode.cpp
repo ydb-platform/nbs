@@ -121,7 +121,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return true;
     }
 
-    if (args.ChildRef->FollowerId.Empty()) {
+    if (args.ChildRef->ShardId.Empty()) {
         if (!ReadNode(
                 db,
                 args.ChildRef->ChildNodeId,
@@ -175,7 +175,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             return true;
         }
 
-        if (args.NewChildRef->FollowerId.Empty()) {
+        if (args.NewChildRef->ShardId.Empty()) {
             // read new child node to unlink it
             if (!ReadNode(
                     db,
@@ -200,10 +200,10 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         // rename() does nothing
         const bool isSameNode = args.ChildNode && args.NewChildNode
             && args.ChildNode->NodeId == args.NewChildNode->NodeId;
-        const bool isSameExternalNode = args.ChildRef->FollowerId
-            && args.NewChildRef->FollowerId
-            && args.ChildRef->FollowerId == args.NewChildRef->FollowerId
-            && args.ChildRef->FollowerName == args.NewChildRef->FollowerName;
+        const bool isSameExternalNode = args.ChildRef->ShardId
+            && args.NewChildRef->ShardId
+            && args.ChildRef->ShardId == args.NewChildRef->ShardId
+            && args.ChildRef->ShardName == args.NewChildRef->ShardName;
         if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
@@ -288,8 +288,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.CommitId,
         args.Name,
         args.ChildRef->ChildNodeId,
-        args.ChildRef->FollowerId,
-        args.ChildRef->FollowerName);
+        args.ChildRef->ShardId,
+        args.ChildRef->ShardName);
 
     if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
@@ -301,8 +301,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.CommitId,
                 args.NewName,
                 args.NewChildRef->NodeId,
-                args.NewChildRef->FollowerId,
-                args.NewChildRef->FollowerName);
+                args.NewChildRef->ShardId,
+                args.NewChildRef->ShardName);
 
             // create source ref to target node
             CreateNodeRef(
@@ -311,9 +311,9 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.CommitId,
                 args.Name,
                 args.NewChildRef->ChildNodeId,
-                args.NewChildRef->FollowerId,
-                args.NewChildRef->FollowerName);
-        } else if (args.NewChildRef->FollowerId.Empty()) {
+                args.NewChildRef->ShardId,
+                args.NewChildRef->ShardName);
+        } else if (args.NewChildRef->ShardId.Empty()) {
             if (!args.NewChildNode) {
                 auto message = ReportNewChildNodeIsNull(TStringBuilder()
                     << "RenameNode: " << args.Request.ShortDebugString());
@@ -344,8 +344,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 db,
                 args.NewParentNode->NodeId,
                 args.NewName,
-                args.NewChildRef->FollowerId,
-                args.NewChildRef->FollowerName,
+                args.NewChildRef->ShardId,
+                args.NewChildRef->ShardName,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
@@ -353,12 +353,12 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // to use CommitId here in order not to generate some other unique
             // ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
-            auto* followerRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
-            followerRequest->MutableHeaders()->CopyFrom(
+            auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+            shardRequest->MutableHeaders()->CopyFrom(
                 args.Request.GetHeaders());
-            followerRequest->SetFileSystemId(args.NewChildRef->FollowerId);
-            followerRequest->SetNodeId(RootNodeId);
-            followerRequest->SetName(args.NewChildRef->FollowerName);
+            shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
+            shardRequest->SetNodeId(RootNodeId);
+            shardRequest->SetName(args.NewChildRef->ShardName);
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -381,8 +381,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.CommitId,
         args.NewName,
         args.ChildRef->ChildNodeId,
-        args.ChildRef->FollowerId,
-        args.ChildRef->FollowerName);
+        args.ChildRef->ShardId,
+        args.ChildRef->ShardName);
 
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
@@ -425,12 +425,12 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeRequest()) {
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s Unlinking node in follower upon RenameNode: %s, %s",
+                "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),
                 op.GetUnlinkNodeRequest().GetFileSystemId().c_str(),
                 op.GetUnlinkNodeRequest().GetName().c_str());
 
-            RegisterUnlinkNodeInFollowerActor(
+            RegisterUnlinkNodeInShardActor(
                 ctx,
                 args.RequestInfo,
                 std::move(*op.MutableUnlinkNodeRequest()),

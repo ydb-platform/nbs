@@ -49,7 +49,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
-    xxx(SyncFollowerSessions,                   __VA_ARGS__)                   \
+    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -160,11 +160,11 @@ struct TWriteRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCreateNodeInFollowerResult = std::variant<
+using TCreateNodeInShardResult = std::variant<
     NProto::TCreateNodeResponse,
     NProto::TCreateHandleResponse>;
 
-using TUnlinkNodeInFollowerResult = std::variant<
+using TUnlinkNodeInShardResult = std::variant<
     NProto::TUnlinkNodeResponse,
     NProto::TRenameNodeResponse>;
 
@@ -194,9 +194,9 @@ struct TEvIndexTabletPrivate
     // SyncSessions
     //
 
-    struct TFollowerSessionsInfo
+    struct TShardSessionsInfo
     {
-        TString FollowerId;
+        TString ShardId;
         ui32 SessionCount = 0;
     };
 
@@ -210,18 +210,18 @@ struct TEvIndexTabletPrivate
 
     struct TSyncSessionsCompleted
     {
-        TVector<TFollowerSessionsInfo> FollowerSessionsInfos;
+        TVector<TShardSessionsInfo> ShardSessionsInfos;
     };
 
-    struct TSyncFollowerSessionsRequest
+    struct TSyncShardSessionsRequest
     {
-        TString FollowerId;
+        TString ShardId;
         NProtoPrivate::TDescribeSessionsResponse Sessions;
     };
 
-    struct TSyncFollowerSessionsResponse
+    struct TSyncShardSessionsResponse
     {
-        TFollowerSessionsInfo Info;
+        TShardSessionsInfo Info;
     };
 
     //
@@ -565,23 +565,23 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // NodeCreatedInFollower
+    // NodeCreatedInShard
     //
 
-    struct TNodeCreatedInFollower
+    struct TNodeCreatedInShard
     {
         const TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
-        TCreateNodeInFollowerResult Result;
+        TCreateNodeInShardResult Result;
 
-        TNodeCreatedInFollower(
+        TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
-                TCreateNodeInFollowerResult result)
+                TCreateNodeInShardResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -592,23 +592,23 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // NodeUnlinkedInFollower
+    // NodeUnlinkedInShard
     //
 
-    struct TNodeUnlinkedInFollower
+    struct TNodeUnlinkedInShard
     {
         const TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
-        TUnlinkNodeInFollowerResult Result;
+        TUnlinkNodeInShardResult Result;
 
-        TNodeUnlinkedInFollower(
+        TNodeUnlinkedInShard(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
-                TUnlinkNodeInFollowerResult result)
+                TUnlinkNodeInShardResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -834,8 +834,8 @@ struct TEvIndexTabletPrivate
 
         EvForcedRangeOperationProgress,
 
-        EvNodeCreatedInFollower,
-        EvNodeUnlinkedInFollower,
+        EvNodeCreatedInShard,
+        EvNodeUnlinkedInShard,
 
         EvEnd
     };
@@ -859,11 +859,11 @@ struct TEvIndexTabletPrivate
     using TEvForcedRangeOperationProgress =
         TRequestEvent<TForcedRangeOperationProgress, EvForcedRangeOperationProgress>;
 
-    using TEvNodeCreatedInFollower =
-        TRequestEvent<TNodeCreatedInFollower, EvNodeCreatedInFollower>;
+    using TEvNodeCreatedInShard =
+        TRequestEvent<TNodeCreatedInShard, EvNodeCreatedInShard>;
 
-    using TEvNodeUnlinkedInFollower =
-        TRequestEvent<TNodeUnlinkedInFollower, EvNodeUnlinkedInFollower>;
+    using TEvNodeUnlinkedInShard =
+        TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

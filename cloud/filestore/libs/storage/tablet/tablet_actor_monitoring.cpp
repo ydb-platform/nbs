@@ -1019,8 +1019,8 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         }
         DIV() { out << "Tablet host: " << FQDNHostName(); }
 
-        const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
-        if (followerIds.size()) {
+        const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+        if (shardIds.size()) {
             TAG(TH3) { out << "Shards"; }
             TABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
@@ -1031,13 +1031,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                 }
 
                 ui32 shardNo = 0;
-                for (const auto& followerId: followerIds) {
+                for (const auto& shardId: shardIds) {
                     TABLER() {
                         TABLED() { out << ++shardNo; }
                         TABLED() {
                             out << "<a href='../filestore/service?action=search"
-                                << "&Filesystem=" << followerId << "'>"
-                                << followerId << "</a>";
+                                << "&Filesystem=" << shardId << "'>"
+                                << shardId << "</a>";
                         }
                     }
                 }

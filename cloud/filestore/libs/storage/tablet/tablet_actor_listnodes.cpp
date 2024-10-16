@@ -26,13 +26,13 @@ void AddNode(
 void AddExternalNode(
     NProto::TListNodesResponse& record,
     TString name,
-    const TString& followerId,
-    const TString& followerName)
+    const TString& shardId,
+    const TString& shardName)
 {
     record.AddNames(std::move(name));
     auto* node = record.AddNodes();
-    node->SetFollowerFileSystemId(followerId);
-    node->SetFollowerNodeName(followerName);
+    node->SetShardFileSystemId(shardId);
+    node->SetShardNodeName(shardName);
 }
 
 NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
@@ -64,7 +64,9 @@ void TIndexTabletActor::HandleListNodes(
 
     AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
-    auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
+    auto maxBytes = Min(
+        Config->GetMaxResponseEntries() * MaxName,
+        Config->GetMaxResponseBytes());
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
     }
@@ -154,7 +156,7 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     // get actual nodes
     args.ChildNodes.reserve(args.ChildRefs.size());
     for (const auto& ref: args.ChildRefs) {
-        if (ref.FollowerId) {
+        if (ref.ShardId) {
             continue;
         }
 
@@ -188,12 +190,12 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         size_t j = 0;
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
             const auto& ref = args.ChildRefs[i];
-            if (ref.FollowerId) {
+            if (ref.ShardId) {
                 AddExternalNode(
                     record,
                     ref.Name,
-                    ref.FollowerId,
-                    ref.FollowerName);
+                    ref.ShardId,
+                    ref.ShardName);
 
                 continue;
             }

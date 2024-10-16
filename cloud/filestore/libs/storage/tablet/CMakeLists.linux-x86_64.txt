@@ -63,6 +63,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/profile_log_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/rebase_logic.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/session.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/shard_request_actor.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/subsessions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor.cpp

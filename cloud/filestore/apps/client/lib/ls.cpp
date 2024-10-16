@@ -225,7 +225,10 @@ public:
         Opts.MutuallyExclusive(LimitOptionName, AllOptionName);
     }
 
-    TPageInfo FetchNodesInfo(const NProto::TNodeAttr& node, TStringBuf name = TStringBuf())
+    TPageInfo FetchNodesInfo(
+        ISession& session,
+        const NProto::TNodeAttr& node,
+        TStringBuf name = TStringBuf())
     {
         if (node.GetType() != NProto::E_DIRECTORY_NODE) {
             return TPageInfo{
@@ -233,10 +236,10 @@ public:
                 .Cookie = {},
             };
         }
-        return FetchNodesInfo(node.GetId());
+        return FetchNodesInfo(session, node.GetId());
     }
 
-    TPageInfo FetchNodesInfo(TNodeId nodeId)
+    TPageInfo FetchNodesInfo(ISession& session, TNodeId nodeId)
     {
         TPageInfo page;
         page.Cookie = CliArgs.Cookie;
@@ -246,7 +249,7 @@ public:
             request->SetNodeId(nodeId);
             request->SetCookie(page.Cookie);
 
-            auto response = WaitFor(Client->ListNodes(
+            auto response = WaitFor(session.ListNodes(
                 PrepareCallContext(),
                 std::move(request)));
 
@@ -267,16 +270,16 @@ public:
         return page;
     }
 
-    TPageInfo HandlePathMode(TStringBuf path)
+    TPageInfo HandlePathMode(ISession& session, TStringBuf path)
     {
         Y_ENSURE(!path.empty(), "Path must be set");
 
-        const auto resolvedPath = ResolvePath(path, false).back();
+        const auto resolvedPath = ResolvePath(session, path, false).back();
 
-        return FetchNodesInfo(resolvedPath.Node, resolvedPath.Name);
+        return FetchNodesInfo(session, resolvedPath.Node, resolvedPath.Name);
     }
 
-    TPageInfo HandleNodeMode(TNodeId nodeId)
+    TPageInfo HandleNodeMode(ISession& session, TNodeId nodeId)
     {
         Y_ENSURE(nodeId != NProto::E_INVALID_NODE_ID, "Path must be set");
 
@@ -284,11 +287,11 @@ public:
         request->SetNodeId(nodeId);
         request->SetName(TString{});
 
-        auto node = WaitFor(Client->GetNodeAttr(
+        auto node = WaitFor(session.GetNodeAttr(
             PrepareCallContext(),
             std::move(request))).GetNode();
 
-        return FetchNodesInfo(node);
+        return FetchNodesInfo(session, node);
     }
 
     bool Execute() override
@@ -296,14 +299,15 @@ public:
         Y_ENSURE(CliArgs.Mode != EModeType::Unknown, "Mode type is not set");
 
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
         TPageInfo page;
         switch (CliArgs.Mode) {
             case EModeType::Path:
-                page = HandlePathMode(CliArgs.Path);
+                page = HandlePathMode(session, CliArgs.Path);
                 break;
             case EModeType::Node:
-                page = HandleNodeMode(CliArgs.NodeId);
+                page = HandleNodeMode(session, CliArgs.NodeId);
                 break;
             case EModeType::Unknown:
                 break;

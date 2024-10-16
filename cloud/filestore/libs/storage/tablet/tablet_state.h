@@ -407,8 +407,8 @@ public:
         TIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
-        const TString& followerId,
-        const TString& followerName,
+        const TString& shardId,
+        const TString& shardName,
         ui64 minCommitId,
         ui64 maxCommitId);
 
@@ -501,8 +501,8 @@ public:
         ui64 commitId,
         const TString& childName,
         ui64 childNodeId,
-        const TString& followerId,
-        const TString& followerName);
+        const TString& shardId,
+        const TString& shardName);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,
@@ -511,8 +511,8 @@ public:
         ui64 maxCommitId,
         const TString& childName,
         ui64 prevChildNodeId,
-        const TString& followerId,
-        const TString& followerName);
+        const TString& shardId,
+        const TString& shardName);
 
     bool ReadNodeRef(
         IIndexTabletDatabase& db,
@@ -543,8 +543,8 @@ public:
         ui64 maxCommitId,
         const TString& childName,
         ui64 childNodeId,
-        const TString& followerId,
-        const TString& followerName);
+        const TString& shardId,
+        const TString& shardName);
 
     //
     // Sessions
@@ -884,7 +884,7 @@ public:
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 
-    void UpdateBlockLists(
+    bool UpdateBlockLists(
         TIndexTabletDatabase& db,
         TMixedBlobMeta& blob);
 

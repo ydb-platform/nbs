@@ -42,7 +42,7 @@ message TFileSystem
     // Performance profile, used for throttling.
     TFileStorePerformanceProfile PerformanceProfile = 12;
 
-    repeated string FollowerFileSystemIds = 13;
+    repeated string ShardFileSystemIds = 13;
     uint32 ShardNo = 14;
 }
 

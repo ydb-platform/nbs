@@ -27,7 +27,7 @@ def __process_stat(node):
     d("ATime")
     d("MTime")
     d("CTime")
-    d("FollowerNodeName")
+    d("ShardNodeName")
 
     return node
 
@@ -345,14 +345,14 @@ def test_multitablet_ls():
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": "fs0-shard",
         "ShardNo": 1,
     })
 
-    out += client.execute_action("configurefollowers", {
+    out += client.execute_action("configureshards", {
         "FileSystemId": "fs0",
-        "FollowerFileSystemIds": ["fs0-shard"],
+        "ShardFileSystemIds": ["fs0-shard"],
     })
 
     client.write("fs0", "/xxx", "--data", data_file)
@@ -375,6 +375,11 @@ def test_multitablet_findgarbage():
     data_file = os.path.join(common.output_path(), "data.txt")
     with open(data_file, "w") as f:
         f.write("some data")
+
+    big_data_file = os.path.join(common.output_path(), "big_data.txt")
+    with open(big_data_file, "w") as f:
+        for i in range(1024):
+            f.write("some big data %s\n" % i)
 
     fs_id = "fs0"
     shard1_id = fs_id + "-shard1"
@@ -401,29 +406,30 @@ def test_multitablet_findgarbage():
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": shard1_id,
         "ShardNo": 1,
     })
 
-    out += client.execute_action("configureasfollower", {
+    out += client.execute_action("configureasshard", {
         "FileSystemId": shard2_id,
         "ShardNo": 2,
     })
 
-    out += client.execute_action("configurefollowers", {
+    out += client.execute_action("configureshards", {
         "FileSystemId": fs_id,
-        "FollowerFileSystemIds": [shard1_id, shard2_id],
+        "ShardFileSystemIds": [shard1_id, shard2_id],
     })
 
-    client.write(fs_id, "/xxx", "--data", data_file)
-    client.write(fs_id, "/xxx1", "--data", data_file)
-    client.write(fs_id, "/xxx2", "--data", data_file)
+    # let's generate multiple "pages" for listing
+    for i in range(100):
+        client.write(fs_id, "/xxx%s" % i, "--data", data_file)
     client.write(shard1_id, "/garbage1_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_1", "--data", data_file)
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
+    client.write(shard2_id, "/garbage2_3", "--data", big_data_file)
     # TODO: teach the client to fetch shard list by itself
-    out += client.find_garbage(fs_id, [shard1_id, shard2_id])
+    out += client.find_garbage(fs_id, [shard1_id, shard2_id], page_size=1024)
 
     client.destroy(fs_id)
     client.destroy(shard1_id)

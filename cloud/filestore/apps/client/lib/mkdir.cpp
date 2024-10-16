@@ -34,6 +34,7 @@ public:
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
         auto makeDir = [&] (ui64 nodeId, TStringBuf name) {
             auto request = CreateRequest<NProto::TCreateNodeRequest>();
@@ -41,7 +42,7 @@ public:
             request->SetName(ToString(name));
             request->MutableDirectory()->SetMode(MODE0777);
 
-            auto response = WaitFor(Client->CreateNode(
+            auto response = WaitFor(session.CreateNode(
                 PrepareCallContext(),
                 std::move(request)));
 
@@ -50,7 +51,7 @@ public:
             return response.GetNode();
         };
 
-        auto resolved = ResolvePath(Path, true);
+        auto resolved = ResolvePath(session, Path, true);
 
         if (resolved.size() == 1) {
             return true;

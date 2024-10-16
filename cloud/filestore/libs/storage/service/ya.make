@@ -5,8 +5,8 @@ SRCS(
     service.cpp
     service_actor.cpp
     service_actor_actions_change_storage_config.cpp
-    service_actor_actions_configure_as_follower.cpp
-    service_actor_actions_configure_followers.cpp
+    service_actor_actions_configure_as_shard.cpp
+    service_actor_actions_configure_shards.cpp
     service_actor_actions_describe_sessions.cpp
     service_actor_actions_drain_tablets.cpp
     service_actor_actions_forced_operation.cpp

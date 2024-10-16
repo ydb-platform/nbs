@@ -39,8 +39,9 @@ public:
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
-        const auto resolved = ResolvePath(Path, false);
+        const auto resolved = ResolvePath(session, Path, false);
 
         Y_ENSURE(
             resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
@@ -58,7 +59,7 @@ public:
         createRequest->SetName(ToString(resolved.back().Name));
         createRequest->SetFlags(flags);
 
-        auto createResponse = WaitFor(Client->CreateHandle(
+        auto createResponse = WaitFor(session.CreateHandle(
             PrepareCallContext(),
             std::move(createRequest)));
 
@@ -76,7 +77,7 @@ public:
         readRequest->SetOffset(Offset);
         readRequest->SetLength(Length);
 
-        auto readResponse = WaitFor(Client->ReadData(
+        auto readResponse = WaitFor(session.ReadData(
             PrepareCallContext(),
             std::move(readRequest)
         ));

@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <sys/stat.h>
 
 namespace NCloud::NFileStore::NClient {
@@ -14,8 +16,8 @@ struct TNode
 {
     ui64 Id = 0;
     TString Name;
-    TString FollowerFileSystemId;
-    TString FollowerNodeName;
+    TString ShardFileSystemId;
+    TString ShardNodeName;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +27,7 @@ class TFindGarbageCommand final
 {
 private:
     TVector<TString> Shards;
+    ui32 PageSize = 0;
 
 public:
     TFindGarbageCommand()
@@ -32,9 +35,16 @@ public:
         Opts.AddLongOption("shard")
             .RequiredArgument("STR")
             .AppendTo(&Shards);
+
+        Opts.AddLongOption("page-size")
+            .RequiredArgument("NUM")
+            .StoreResult(&PageSize);
     }
 
-    NProto::TListNodesResponse ListAll(const TString& fsId, ui64 parentId)
+    NProto::TListNodesResponse ListAll(
+        ISession& session,
+        const TString& fsId,
+        ui64 parentId)
     {
         NProto::TListNodesResponse fullResult;
         TString cookie;
@@ -43,10 +53,13 @@ public:
             request->SetFileSystemId(fsId);
             request->SetNodeId(parentId);
             request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
-            // TODO: traverse all pages
+            if (PageSize) {
+                request->SetMaxBytes(PageSize);
+            }
+            request->SetCookie(cookie);
             // TODO: async listing
 
-            auto response = WaitFor(Client->ListNodes(
+            auto response = WaitFor(session.ListNodes(
                 PrepareCallContext(),
                 std::move(request)));
 
@@ -72,42 +85,47 @@ public:
     }
 
     void FetchAll(
+        ISession& session,
         const TString& fsId,
         ui64 parentId,
         TVector<TNode>* nodes)
     {
         // TODO: async listing
-        auto response = ListAll(fsId, parentId);
+        auto response = ListAll(session, fsId, parentId);
 
         for (ui32 i = 0; i < response.NodesSize(); ++i) {
             const auto& node = response.GetNodes(i);
             const auto& name = response.GetNames(i);
             if (node.GetType() == NProto::E_DIRECTORY_NODE) {
-                FetchAll(fsId, node.GetId(), nodes);
+                FetchAll(session, fsId, node.GetId(), nodes);
             } else {
                 nodes->push_back({
                     node.GetId(),
                     name,
-                    node.GetFollowerFileSystemId(),
-                    node.GetFollowerNodeName(),
+                    node.GetShardFileSystemId(),
+                    node.GetShardNodeName(),
                 });
             }
         }
     }
 
-    bool Exists(const TString& fsId, ui64 parentId, const TString& name)
+    TMaybe<NProto::TNodeAttr> Stat(
+        ISession& session,
+        const TString& fsId,
+        ui64 parentId,
+        const TString& name)
     {
         auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
         request->SetFileSystemId(fsId);
         request->SetNodeId(parentId);
         request->SetName(name);
 
-        auto response = WaitFor(Client->GetNodeAttr(
+        auto response = WaitFor(session.GetNodeAttr(
             PrepareCallContext(),
             std::move(request)));
 
         if (response.GetError().GetCode() == E_FS_NOENT) {
-            return false;
+            return {};
         }
 
         Y_ENSURE_EX(
@@ -115,37 +133,73 @@ public:
             yexception() << "GetNodeAttr error: "
                 << FormatError(response.GetError()));
 
-        return true;
+        return std::move(*response.MutableNode());
     }
 
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
         TMap<TString, TVector<TNode>> shard2Nodes;
         for (const auto& shard: Shards) {
-            FetchAll(shard, RootNodeId, &shard2Nodes[shard]);
+            auto shardSessionGuard =
+                CreateCustomSession(shard, shard + "::" + ClientId);
+            auto& shardSession = shardSessionGuard.AccessSession();
+            FetchAll(shardSession, shard, RootNodeId, &shard2Nodes[shard]);
         }
 
         TVector<TNode> leaderNodes;
-        FetchAll(FileSystemId, RootNodeId, &leaderNodes);
+        FetchAll(session, FileSystemId, RootNodeId, &leaderNodes);
 
-        THashSet<TString> followerNames;
+        THashSet<TString> shardNames;
         for (const auto& node: leaderNodes) {
-            if (!node.FollowerFileSystemId) {
+            if (!node.ShardFileSystemId) {
                 continue;
             }
 
-            followerNames.insert(node.FollowerNodeName);
+            shardNames.insert(node.ShardNodeName);
         }
 
+        struct TResult
+        {
+            TString Shard;
+            TString Name;
+            ui64 Size = 0;
+
+            bool operator<(const TResult& rhs) const
+            {
+                const auto s = Max<ui64>() - Size;
+                const auto rs = Max<ui64>() - rhs.Size;
+                return std::tie(Shard, s, Name)
+                    < std::tie(rhs.Shard, rs, rhs.Name);
+            }
+        };
+
+        TVector<TResult> results;
+
         for (const auto& [shard, nodes]: shard2Nodes) {
+            auto shardSessionGuard =
+                CreateCustomSession(shard, shard + "::" + ClientId);
+            auto& shardSession = shardSessionGuard.AccessSession();
             for (const auto& node: nodes) {
-                if (!followerNames.contains(node.Name)) {
-                    if (Exists(shard, RootNodeId, node.Name)) {
-                        Cout << shard << "\t" << node.Name << "\n";
+                if (!shardNames.contains(node.Name)) {
+                    auto stat =
+                        Stat(shardSession, shard, RootNodeId, node.Name);
+
+                    if (stat) {
+                        results.push_back({shard, node.Name, stat->GetSize()});
                     }
                 }
             }
+        }
+
+        Sort(results.begin(), results.end());
+        for (const auto& result: results) {
+            Cout << result.Shard
+                << "\t" << result.Name
+                << "\t" << FormatByteSize(result.Size)
+                << " (" << result.Size << ")"
+                << "\n";
         }
 
         return true;

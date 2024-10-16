@@ -180,13 +180,14 @@ class NfsCliClient:
 
         return common.execute(cmd).stdout
 
-    def find_garbage(self, fs, shards):
+    def find_garbage(self, fs, shards, page_size):
         shard_params = []
         for shard in shards:
             shard_params += ["--shard", shard]
         cmd = [
             self.__binary_path, "findgarbage",
             "--filesystem", fs,
+            "--page-size", str(page_size),
         ] + shard_params + self.__cmd_opts()
 
         return common.execute(cmd).stdout

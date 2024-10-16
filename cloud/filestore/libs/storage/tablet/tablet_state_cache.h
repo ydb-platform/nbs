@@ -121,8 +121,8 @@ private:
         ui64 commitId,
         const TString& name,
         ui64 childNode,
-        const TString& followerId,
-        const TString& followerName);
+        const TString& shardId,
+        const TString& shardName);
 
     void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -238,8 +238,8 @@ private:
     {
         ui64 CommitId = 0;
         ui64 ChildId = 0;
-        TString FollowerId;
-        TString FollowerName;
+        TString ShardId;
+        TString ShardName;
     };
 
     THashMap<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash> NodeRefs;

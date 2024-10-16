@@ -65,6 +65,7 @@ public:
     bool Execute() override
     {
         auto sessionGuard = CreateSession();
+        auto& session = sessionGuard.AccessSession();
 
         auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
         request->SetNodeId(NodeId);
@@ -112,7 +113,7 @@ public:
         }
 
         auto response = WaitFor(
-            Client->SetNodeAttr(PrepareCallContext(), std::move(request)));
+            session.SetNodeAttr(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
         return true;

@@ -1,6 +1,6 @@
 #include "tablet_actor.h"
+#include "shard_request_actor.h"
 
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <util/string/join.h>
@@ -106,173 +106,15 @@ void Convert(
     // TODO need set ConfigVersion?
     fileStore.SetNodesCount(fileSystem.GetNodesCount());
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
-    fileStore.MutableFollowerFileSystemIds()->CopyFrom(
-        fileSystem.GetFollowerFileSystemIds());
+    fileStore.MutableShardFileSystemIds()->CopyFrom(
+        fileSystem.GetShardFileSystemIds());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateFollowerSessionsActor final
-    : public TActorBootstrapped<TCreateFollowerSessionsActor>
-{
-private:
-    const TString LogTag;
-    const TRequestInfoPtr RequestInfo;
-    const NProtoPrivate::TCreateSessionRequest Request;
-    const TVector<TString> FollowerIds;
-    using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
-    std::unique_ptr<TResponse> Response;
-    ui32 CreatedSessions = 0;
-
-    NProto::TProfileLogRequestInfo ProfileLogRequest;
-
-public:
-    TCreateFollowerSessionsActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TCreateSessionRequest request,
-        TVector<TString> followerIds,
-        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void SendRequests(const TActorContext& ctx);
-
-    void HandleCreateSessionResponse(
-        const TEvIndexTablet::TEvCreateSessionResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TCreateFollowerSessionsActor::TCreateFollowerSessionsActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TCreateSessionRequest request,
-        TVector<TString> followerIds,
-        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response)
-    : LogTag(std::move(logTag))
-    , RequestInfo(std::move(requestInfo))
-    , Request(std::move(request))
-    , FollowerIds(std::move(followerIds))
-    , Response(std::move(response))
-{}
-
-void TCreateFollowerSessionsActor::Bootstrap(const TActorContext& ctx)
-{
-    SendRequests(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TCreateFollowerSessionsActor::SendRequests(const TActorContext& ctx)
-{
-    ui32 cookie = 0;
-    for (const auto& followerId: FollowerIds) {
-        auto request =
-            std::make_unique<TEvIndexTablet::TEvCreateSessionRequest>();
-        request->Record = Request;
-        request->Record.SetFileSystemId(followerId);
-
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Sending CreateSessionRequest to follower %s",
-            LogTag.c_str(),
-            followerId.c_str());
-
-        ctx.Send(
-            MakeIndexTabletProxyServiceId(),
-            request.release(),
-            {}, // flags
-            cookie++);
-    }
-}
-
-void TCreateFollowerSessionsActor::HandleCreateSessionResponse(
-    const TEvIndexTablet::TEvCreateSessionResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s Follower session creation failed for %s with error %s",
-            LogTag.c_str(),
-            FollowerIds[ev->Cookie].c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Follower session created for %s",
-        LogTag.c_str(),
-        FollowerIds[ev->Cookie].c_str());
-
-    if (++CreatedSessions == FollowerIds.size()) {
-        ReplyAndDie(ctx, {});
-    }
-}
-
-void TCreateFollowerSessionsActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-}
-
-void TCreateFollowerSessionsActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    if (RequestInfo) {
-        if (HasError(error)) {
-            // TODO(#1350): properly rollback session creation in the leader
-            // tablet and in the followers
-            Response = std::make_unique<TResponse>(error);
-        }
-
-        if (Response) {
-            NCloud::Reply(ctx, *RequestInfo, std::move(Response));
-        } else {
-            Y_DEBUG_ABORT_UNLESS(0);
-        }
-    }
-
-    Die(ctx);
-}
-
-STFUNC(TCreateFollowerSessionsActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(
-            TEvIndexTablet::TEvCreateSessionResponse,
-            HandleCreateSessionResponse);
-
-        default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
-            break;
-    }
-}
+using TCreateShardSessionsActor = TShardRequestActor<
+    TEvIndexTablet::TEvCreateSessionRequest,
+    TEvIndexTablet::TEvCreateSessionResponse>;
 
 }   // namespace
 
@@ -469,11 +311,11 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     Convert(GetFileSystem(), fileStore);
     FillFeatures(*Config, fileStore);
 
-    TVector<TString> followerIds;
-    for (const auto& followerId: GetFileSystem().GetFollowerFileSystemIds()) {
-        followerIds.push_back(followerId);
+    TVector<TString> shardIds;
+    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+        shardIds.push_back(shardId);
     }
-    if (followerIds.empty()) {
+    if (shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s CreateSession completed (%s)",
             LogTag.c_str(),
@@ -488,62 +330,62 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         LogTag.c_str(),
         FormatError(args.Error).c_str());
 
-    CreateSessionsInFollowers(
+    CreateSessionsInShards(
         ctx,
         std::move(args.RequestInfo),
         std::move(args.Request),
         std::move(response),
-        std::move(followerIds));
+        std::move(shardIds));
 }
 
-void TIndexTabletActor::HandleSyncFollowerSessions(
-    const TEvIndexTabletPrivate::TEvSyncFollowerSessionsRequest::TPtr& ev,
+void TIndexTabletActor::HandleSyncShardSessions(
+    const TEvIndexTabletPrivate::TEvSyncShardSessionsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     THashSet<TString> filter;
     for (auto& s: *ev->Get()->Sessions.MutableSessions()) {
         filter.insert(*s.MutableSessionId());
     }
-    TEvIndexTabletPrivate::TFollowerSessionsInfo info;
-    info.FollowerId = std::move(ev->Get()->FollowerId);
+    TEvIndexTabletPrivate::TShardSessionsInfo info;
+    info.ShardId = std::move(ev->Get()->ShardId);
     for (auto& request: BuildCreateSessionRequests(filter)) {
-        CreateSessionsInFollowers(
+        CreateSessionsInShards(
             ctx,
             nullptr, // requestInfo
             std::move(request),
             nullptr, // response
-            {info.FollowerId});
+            {info.ShardId});
 
         ++info.SessionCount;
     }
 
-    using TResponse = TEvIndexTabletPrivate::TEvSyncFollowerSessionsResponse;
+    using TResponse = TEvIndexTabletPrivate::TEvSyncShardSessionsResponse;
     auto response = std::make_unique<TResponse>();
     response->Info = std::move(info);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TIndexTabletActor::CreateSessionsInFollowers(
+void TIndexTabletActor::CreateSessionsInShards(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProtoPrivate::TCreateSessionRequest request,
     std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
-    TVector<TString> followerIds)
+    TVector<TString> shardIds)
 {
     TString logTag = TStringBuilder() << LogTag
         << " s=" << request.GetHeaders().GetSessionId()
         << " c=" << request.GetHeaders().GetClientId();
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Creating follower sessions (%s)",
+        "%s Creating shard sessions (%s)",
         logTag.c_str(),
-        JoinSeq(",", followerIds).c_str());
+        JoinSeq(",", shardIds).c_str());
 
-    auto actor = std::make_unique<TCreateFollowerSessionsActor>(
+    auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),
         std::move(requestInfo),
         std::move(request),
-        std::move(followerIds),
+        std::move(shardIds),
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

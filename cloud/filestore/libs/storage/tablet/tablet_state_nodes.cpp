@@ -172,8 +172,8 @@ NProto::TError TIndexTabletState::UnlinkNode(
         maxCommitId,
         name,
         node.NodeId,
-        "", // followerId
-        "" // followerName
+        "", // shardId
+        "" // shardName
     );
 
     return {};
@@ -183,8 +183,8 @@ void TIndexTabletState::UnlinkExternalNode(
     TIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
-    const TString& followerId,
-    const TString& followerName,
+    const TString& shardId,
+    const TString& shardName,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -195,8 +195,8 @@ void TIndexTabletState::UnlinkExternalNode(
         maxCommitId,
         name,
         InvalidNodeId, // prevChildNodeId
-        followerId,
-        followerName);
+        shardId,
+        shardName);
 }
 
 bool TIndexTabletState::ReadNode(
@@ -416,16 +416,16 @@ void TIndexTabletState::CreateNodeRef(
     ui64 commitId,
     const TString& childName,
     ui64 childNodeId,
-    const TString& followerId,
-    const TString& followerName)
+    const TString& shardId,
+    const TString& shardName)
 {
     db.WriteNodeRef(
         nodeId,
         commitId,
         childName,
         childNodeId,
-        followerId,
-        followerName);
+        shardId,
+        shardName);
 }
 
 void TIndexTabletState::RemoveNodeRef(
@@ -435,8 +435,8 @@ void TIndexTabletState::RemoveNodeRef(
     ui64 maxCommitId,
     const TString& childName,
     ui64 prevChildNodeId,
-    const TString& followerId,
-    const TString& followerName)
+    const TString& shardId,
+    const TString& shardName)
 {
     db.DeleteNodeRef(nodeId, childName);
 
@@ -449,8 +449,8 @@ void TIndexTabletState::RemoveNodeRef(
             maxCommitId,
             childName,
             prevChildNodeId,
-            followerId,
-            followerName);
+            shardId,
+            shardName);
 
         AddCheckpointNode(db, checkpointId, nodeId);
     }
@@ -521,8 +521,8 @@ void TIndexTabletState::RewriteNodeRef(
     ui64 maxCommitId,
     const TString& childName,
     ui64 childNodeId,
-    const TString& followerId,
-    const TString& followerName)
+    const TString& shardId,
+    const TString& shardName)
 {
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, minCommitId);
     if (checkpointId != InvalidCommitId) {
@@ -533,8 +533,8 @@ void TIndexTabletState::RewriteNodeRef(
             maxCommitId,
             childName,
             childNodeId,
-            followerId,
-            followerName);
+            shardId,
+            shardName);
 
         AddCheckpointNode(db, checkpointId, nodeId);
     } else {
