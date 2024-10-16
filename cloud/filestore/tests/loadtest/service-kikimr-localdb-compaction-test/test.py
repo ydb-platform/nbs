@@ -132,3 +132,5 @@ def test_load(test_case, ops):
     # On the test completion, revert the changes back
     if new_compaction_policy_enabled:
         set_new_compaction_policy(False)
+
+    logging.info(os.system("ss -tpn"))
