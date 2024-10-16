@@ -138,7 +138,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	csi.RegisterControllerServer(
 		grpcServer,
-		newNBSServerControllerService(nbsClient, nfsClient))
+		newNBSServerControllerService(nbsClient, nfsClient, cfg.VMMode))
 
 	csi.RegisterNodeServer(
 		grpcServer,
