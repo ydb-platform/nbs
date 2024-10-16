@@ -3374,11 +3374,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     ++requests;
                     break;
                 }
-                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkCompleted: {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkResponse: {
                     lastCompactionMapRangeId = Max(
                         event->Get<
                             TEvIndexTabletPrivate
-                            ::TEvLoadCompactionMapChunkCompleted>()->LastRangeId,
+                            ::TEvLoadCompactionMapChunkResponse>()->LastRangeId,
                         lastCompactionMapRangeId);
                     break;
                 }

@@ -37,7 +37,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
     xxx(WriteBatch,                             __VA_ARGS__)                   \
-    xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
@@ -50,6 +49,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
     xxx(SyncShardSessions,                      __VA_ARGS__)                   \
+    xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -84,7 +84,7 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_IGNORE_COMPLETION(name, ns)                                  \
     IgnoreFunc(ns::TEv##name##Completed);                                      \
-// FILESTORE_HANDLE_COMPLETION
+// FILESTORE_IGNORE_COMPLETION
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -509,14 +509,12 @@ struct TEvIndexTabletPrivate
 
     struct TLoadCompactionMapChunkResponse
     {
-    };
+        const ui32 FirstRangeId = 0;
+        const ui32 LastRangeId = 0;
 
-    struct TLoadCompactionMapChunkCompleted
-    {
-        const ui32 FirstRangeId;
-        const ui32 LastRangeId;
+        TLoadCompactionMapChunkResponse() = default;
 
-        TLoadCompactionMapChunkCompleted(
+        TLoadCompactionMapChunkResponse(
                 ui32 firstRangeId,
                 ui32 lastRangeId)
             : FirstRangeId(firstRangeId)

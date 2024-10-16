@@ -101,6 +101,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_listnodes.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_listnodexattr.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_loadstate.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_loadstate_noderefs.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_monitoring.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_oplog.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_readblob.cpp
