@@ -754,7 +754,7 @@ func TestTasksRunningLimit(t *testing.T) {
 			}
 
 			// We have separate inflight per node limit for each lister.
-			// In this case long tasks can be taken by listerReadyToRun lister or
+			// So long tasks can be taken by listerReadyToRun or
 			// listerStallingWhileRunning lister.
 			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
 			require.LessOrEqual(t, runningLongTaskCount, 2*inflightLongTaskPerNodeLimit)
