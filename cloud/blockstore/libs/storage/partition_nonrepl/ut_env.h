@@ -143,6 +143,7 @@ private:
             HFunc(TEvDiskRegistry::TEvFinishMigrationRequest, HandleFinishMigration);
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
+            HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -218,6 +219,16 @@ private:
             *ev,
             std::make_unique<TEvVolume::TEvPreparePartitionMigrationResponse>(
                 MigrationState ? MigrationState->IsMigrationAllowed : true));
+    }
+
+    void HandleUpdateMigrationState(
+        const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
     }
 };
 

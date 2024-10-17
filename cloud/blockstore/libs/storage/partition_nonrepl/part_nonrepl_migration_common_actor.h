@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -99,17 +100,18 @@ private:
     bool MigrationEnabled = false;
     bool RangeMigrationScheduled = false;
     TInstant LastRangeMigrationStartTs;
-    TMap<ui64, TBlockRange64> MigrationsInProgress;
-    TMap<ui64, TBlockRange64> DeferredMigrations;
+
+    TDisjointRangeSet MigrationsInProgress;
+    TDisjointRangeSet DeferredMigrations;
 
     TChangedRangesMap ChangedRangesMap;
 
-    // When we migrated a block whose range contains or exceeds a persistently
-    // stored offset of the progress of the entire migration, we remember this
-    // offset and wait for all blocks with addresses less than this offset to
-    // migrate. After that, we save the execution progress persistently by
+    // Current migration progress is persistently stored inside a volume tablet.
+    // Once we migrated a range that exceeds currently stored one by configured
+    // interval, we remember this fact and wait for all ranges with addresses
+    // less than this offset to migrate. After that, we notify the volume by
     // calling MigrationOwner->OnMigrationProgress().
-    std::optional<ui64> CachedMigrationProgressAchieved;
+    bool MigrationThresholdAchieved = false;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
         EAllowedRequests::WriteOnly};
