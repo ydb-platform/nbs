@@ -97,8 +97,8 @@ def list_files_for_deletion(s3, bucket, prefix, ttl_config, now):
         return [d["Prefix"] for d in dirs], files_to_delete
 
 
-def generate_absolute_url(bucket, key):
-    return f"https://{bucket}.website.nemax.nebius.cloud/{key}"
+def generate_absolute_url(bucket, key, website_prefix):
+    return f"https://{bucket}.{website_prefix}/{key}"
 
 
 def get_ttl_for_prefix(prefix, ttl_config):
@@ -111,7 +111,9 @@ def get_ttl_for_prefix(prefix, ttl_config):
     return False
 
 
-def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
+def generate_index_html(
+    bucket, files, dirs, current_prefix, website_prefix, ttl_config, now
+):
     # Setup Jinja environment
     env = Environment(
         loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
@@ -127,7 +129,8 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
         entries.append(
             {
                 "name": "../",
-                "url": generate_absolute_url(bucket, parent_dir),
+                "url": generate_absolute_url(bucket, parent_dir, website_prefix)
+                + "index.html",
                 "type": "directory",
                 "date": "",
                 "size": "",  # Directories don't have a size
@@ -140,7 +143,8 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
         dir_name = d["Prefix"]
         if dir_name != current_prefix:
             dir_url = (
-                generate_absolute_url(bucket, unquote_plus(dir_name)) + "index.html"
+                generate_absolute_url(bucket, unquote_plus(dir_name), website_prefix)
+                + "index.html"
             )
             entries.append(
                 {
@@ -154,7 +158,9 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
     for f in files:
         file_key = f["Key"]
         if file_key != current_prefix + "index.html":
-            file_url = generate_absolute_url(bucket, unquote_plus(file_key))
+            file_url = generate_absolute_url(
+                bucket, unquote_plus(file_key), website_prefix
+            )
             file_date = datetime.fromtimestamp(f["LastModified"].timestamp()).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
@@ -193,7 +199,9 @@ def upload_index_html(s3, bucket, prefix, html_content):
         logging.error(f"Error uploading index.html to {bucket}/{prefix}: {e}")
 
 
-def process_directory(s3, bucket, prefix, ttl_config, now, apply_changes):
+def process_directory(
+    s3, bucket, prefix, website_prefix, ttl_config, now, apply_changes
+):
     dirs, files = list_files(s3, bucket, prefix)
     # Filter out the 'index.html' file if present
     files_without_index = [
@@ -243,6 +251,7 @@ def main(
     s3,
     bucket_name,
     base_prefix,
+    website_prefix,
     ttl_config,
     now,
     max_workers,
@@ -294,6 +303,7 @@ def main(
                     s3,
                     bucket_name,
                     base_prefix,
+                    website_prefix,
                     ttl_config,
                     now,
                     apply_changes,
@@ -310,6 +320,7 @@ def main(
                                 s3,
                                 bucket_name,
                                 new_prefix,
+                                website_prefix,
                                 ttl_config,
                                 now,
                                 apply_changes,
@@ -333,6 +344,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--apply", action="store_true", help="Apply changes, without it is a dry run"
+    )
+    parser.add_argument(
+        "--website-prefix",
+        default=os.environ.get("S3_WEBSITE_PREFIX", "website.nemax.nebius.cloud"),
+        help="Prefix for website URL in index.html",
     )
 
     parser.add_argument(
@@ -400,6 +416,7 @@ if __name__ == "__main__":
         s3,
         bucket_name,
         base_prefix,
+        args.website_prefix,
         ttl_config_converted,
         now,
         args.max_workers,
