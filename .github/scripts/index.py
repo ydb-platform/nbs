@@ -97,8 +97,8 @@ def list_files_for_deletion(s3, bucket, prefix, ttl_config, now):
         return [d["Prefix"] for d in dirs], files_to_delete
 
 
-def generate_absolute_url(bucket, key):
-    return f"https://{bucket}.website.nemax.nebius.cloud/{key}"
+def generate_absolute_url(bucket, key, website_suffix):
+    return f"https://{bucket}.{website_suffix}/{key}"
 
 
 def get_ttl_for_prefix(prefix, ttl_config):
@@ -111,7 +111,9 @@ def get_ttl_for_prefix(prefix, ttl_config):
     return False
 
 
-def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
+def generate_index_html(
+    bucket, files, dirs, current_prefix, website_suffix, ttl_config, now
+):
     # Setup Jinja environment
     env = Environment(
         loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
@@ -124,10 +126,11 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
         parent_dir = os.path.dirname(current_prefix.rstrip("/"))
         if parent_dir != "":
             parent_dir += "/"
+        url = generate_absolute_url(bucket, parent_dir, website_suffix) + "index.html"
         entries.append(
             {
                 "name": "../",
-                "url": generate_absolute_url(bucket, parent_dir),
+                "url": url,
                 "type": "directory",
                 "date": "",
                 "size": "",  # Directories don't have a size
@@ -139,7 +142,11 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
     for d in dirs:
         dir_name = d["Prefix"]
         if dir_name != current_prefix:
-            dir_url = generate_absolute_url(bucket, unquote_plus(dir_name))
+            dir_url = generate_absolute_url(
+                bucket, unquote_plus(dir_name), website_suffix
+            )
+            dir_url = dir_url + "index.html"
+
             entries.append(
                 {
                     "name": os.path.basename(dir_name[:-1]) + "/",
@@ -152,7 +159,9 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
     for f in files:
         file_key = f["Key"]
         if file_key != current_prefix + "index.html":
-            file_url = generate_absolute_url(bucket, unquote_plus(file_key))
+            file_url = generate_absolute_url(
+                bucket, unquote_plus(file_key), website_suffix
+            )
             file_date = datetime.fromtimestamp(f["LastModified"].timestamp()).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
@@ -191,7 +200,9 @@ def upload_index_html(s3, bucket, prefix, html_content):
         logging.error(f"Error uploading index.html to {bucket}/{prefix}: {e}")
 
 
-def process_directory(s3, bucket, prefix, ttl_config, now, apply_changes):
+def process_directory(
+    s3, bucket, prefix, website_suffix, ttl_config, now, apply_changes
+):
     dirs, files = list_files(s3, bucket, prefix)
     # Filter out the 'index.html' file if present
     files_without_index = [
@@ -213,7 +224,9 @@ def process_directory(s3, bucket, prefix, ttl_config, now, apply_changes):
             pass
     else:
         # The directory is not empty, generate/update 'index.html'
-        html_content = generate_index_html(bucket, files, dirs, prefix, ttl_config, now)
+        html_content = generate_index_html(
+            bucket, files, dirs, prefix, website_suffix, ttl_config, now
+        )
         if apply_changes:
             upload_index_html(s3, bucket, prefix, html_content)
         else:
@@ -241,6 +254,7 @@ def main(
     s3,
     bucket_name,
     base_prefix,
+    website_suffix,
     ttl_config,
     now,
     max_workers,
@@ -292,6 +306,7 @@ def main(
                     s3,
                     bucket_name,
                     base_prefix,
+                    website_suffix,
                     ttl_config,
                     now,
                     apply_changes,
@@ -308,6 +323,7 @@ def main(
                                 s3,
                                 bucket_name,
                                 new_prefix,
+                                website_suffix,
                                 ttl_config,
                                 now,
                                 apply_changes,
@@ -331,6 +347,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--apply", action="store_true", help="Apply changes, without it is a dry run"
+    )
+    parser.add_argument(
+        "--website-suffix",
+        default=os.environ.get("S3_WEBSITE_SUFFIX", "website.nemax.nebius.cloud"),
+        help="Suffix for website domain",
     )
 
     parser.add_argument(
@@ -398,6 +419,7 @@ if __name__ == "__main__":
         s3,
         bucket_name,
         base_prefix,
+        args.website_suffix,
         ttl_config_converted,
         now,
         args.max_workers,

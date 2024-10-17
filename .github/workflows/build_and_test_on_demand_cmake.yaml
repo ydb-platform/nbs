@@ -142,6 +142,7 @@ jobs:
       run_build: ${{ inputs.run_build }}
       run_tests: ${{ inputs.run_tests }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
+      nebius: ${{ contains(github.event.pull_request.labels.*.name, 'nebius') && 'yes' || (inputs.run_on_nebius == 'yes' && 'yes' || 'no') }}
     secrets: inherit
 
   sleep-if-needed:
