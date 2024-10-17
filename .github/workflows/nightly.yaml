@@ -64,6 +64,11 @@ on:
         options:
           - 'yes'
           - 'no'
+      test_threads:
+        description: 'Test threads count'
+        type: string
+        required: false
+        default: '32'
 
 
 jobs:
@@ -79,7 +84,7 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: 32
+      test_threads: ${{ inputs.test_threads }}
       disk_type: ${{ inputs.disk_type }}
       use_network_cache: ${{ inputs.use_network_cache }}
       upload_ya_dir: ${{ inputs.upload_ya_dir }}
