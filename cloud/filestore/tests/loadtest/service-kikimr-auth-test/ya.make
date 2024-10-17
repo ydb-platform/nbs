@@ -16,7 +16,7 @@ DEPENDS(
 DATA(
     arcadia/cloud/filestore/tests/certs/server.crt
     arcadia/cloud/filestore/tests/certs/server.key
-    arcadia/cloud/filestore/tests/loadtest/local-auth
+    arcadia/cloud/filestore/tests/loadtest/service-kikimr-auth-test
 )
 
 PEERDIR(

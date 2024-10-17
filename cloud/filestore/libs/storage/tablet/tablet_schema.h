@@ -420,16 +420,20 @@ struct TIndexTabletSchema
 
     struct CompactionMap: TTableSchema<20>
     {
-        struct RangeId          : Column<1, NKikimr::NScheme::NTypeIds::Uint32> {};
-        struct BlobsCount       : Column<2, NKikimr::NScheme::NTypeIds::Uint32> {};
-        struct DeletionsCount   : Column<3, NKikimr::NScheme::NTypeIds::Uint32> {};
+        // TODO: migrate to a new table with Uint16 fields - 16 bits are enough
+        // for BlobsCount, DeletionsCount and GarbageBlocksCount
+        struct RangeId              : Column<1, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct BlobsCount           : Column<2, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct DeletionsCount       : Column<3, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct GarbageBlocksCount   : Column<4, NKikimr::NScheme::NTypeIds::Uint32> {};
 
         using TKey = TableKey<RangeId>;
 
         using TColumns = TableColumns<
             RangeId,
             BlobsCount,
-            DeletionsCount
+            DeletionsCount,
+            GarbageBlocksCount
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
