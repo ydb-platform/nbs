@@ -191,11 +191,13 @@ class NbsCsiDriverRunner:
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
 
-    def stage_volume(self, volume_id: str):
+    def stage_volume(self, volume_id: str, access_type: str):
         return self._node_run(
             "stagevolume",
             "--volume-id",
             volume_id,
+            "--access-type",
+            access_type,
         )
 
     def unstage_volume(self, volume_id: str):
@@ -205,7 +207,13 @@ class NbsCsiDriverRunner:
             volume_id,
         )
 
-    def publish_volume(self, pod_id: str, volume_id: str, pod_name: str, fs_type: str = ""):
+    def publish_volume(
+            self,
+            pod_id: str,
+            volume_id: str,
+            pod_name: str,
+            access_type: str,
+            fs_type: str = ""):
         return self._node_run(
             "publishvolume",
             "--pod-id",
@@ -216,15 +224,19 @@ class NbsCsiDriverRunner:
             pod_name,
             "--fs-type",
             fs_type,
+            "--access-type",
+            access_type,
         )
 
-    def unpublish_volume(self, pod_id: str, volume_id: str):
+    def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
         return self._node_run(
             "unpublishvolume",
             "--pod-id",
             pod_id,
             "--volume-id",
             volume_id,
+            "--access-type",
+            access_type,
         )
 
     def stop(self):
@@ -244,7 +256,7 @@ class NbsCsiDriverRunner:
         )
         return json.loads(ret)
 
-    def expand_volume(self, pod_id: str, volume_id: str, size: int):
+    def expand_volume(self, pod_id: str, volume_id: str, size: int, access_type: str):
         return self._node_run(
             "expandvolume",
             "--pod-id",
@@ -253,6 +265,8 @@ class NbsCsiDriverRunner:
             volume_id,
             "--size",
             str(size),
+            "--access-type",
+            access_type,
         )
 
 
@@ -266,7 +280,11 @@ def log_called_process_error(exc):
     )
 
 
-def cleanup_after_test(env: CsiLoadTest, volume_name: str = "", pods: list[str] = []):
+def cleanup_after_test(
+        env: CsiLoadTest,
+        volume_name: str = "",
+        access_type: str = "mount",
+        pods: list[str] = []):
     if env is None:
         return
 
@@ -275,7 +293,7 @@ def cleanup_after_test(env: CsiLoadTest, volume_name: str = "", pods: list[str] 
 
     for pod_id in pods:
         with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id, volume_name)
+            env.csi.unpublish_volume(pod_id, volume_name, access_type)
 
     with called_process_error_logged():
         env.csi.unstage_volume(volume_name)
@@ -300,9 +318,10 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         volume_size = 10 * 1024 ** 3
         pod_name = "example-pod"
         pod_id = "deadbeef"
+        access_type = "mount"
         env.csi.create_volume(name=volume_name, size=volume_size)
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id, volume_name, pod_name)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type)
         result = run(
             "destroyvolume",
             "--disk-id",
@@ -319,7 +338,7 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id])
+        cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
 def test_nbs_csi_driver_volume_stat():
@@ -336,9 +355,10 @@ def test_nbs_csi_driver_volume_stat():
         volume_size = 1024 ** 3
         pod_name = "example-pod"
         pod_id = "deadbeef"
+        access_type = "mount"
         env.csi.create_volume(name=volume_name, size=volume_size)
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id, volume_name, pod_name)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type)
         stats1 = env.csi.volumestats(pod_id, volume_name)
 
         assert "usage" in stats1
@@ -377,7 +397,7 @@ def test_nbs_csi_driver_volume_stat():
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id])
+        cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
 @pytest.mark.parametrize('mount_path,volume_access_type,vm_mode',
@@ -434,12 +454,16 @@ def test_node_volume_expand(fs_type):
         volume_size = 1024 ** 3
         pod_name = "example-pod"
         pod_id = "deadbeef"
+        access_type = "mount"
         env.csi.create_volume(name=volume_name, size=volume_size)
-        env.csi.stage_volume(volume_name)
+
+        env.csi.stage_volume(volume_name, access_type)
         env.csi.publish_volume(pod_id, volume_name, pod_name, fs_type)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, fs_type)
 
         new_volume_size = 2 * volume_size
-        env.csi.expand_volume(pod_id, volume_name, new_volume_size)
+        env.csi.expand_volume(pod_id, volume_name, new_volume_size, access_type)
 
         stats = env.csi.volumestats(pod_id, volume_name)
         assert "usage" in stats
@@ -451,16 +475,16 @@ def test_node_volume_expand(fs_type):
         assert bytes_usage["total"] // 1000 ** 3 == 2
 
         # check that expand_volume is idempotent method
-        env.csi.expand_volume(pod_id, volume_name, new_volume_size)
+        env.csi.expand_volume(pod_id, volume_name, new_volume_size, access_type)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id])
+        cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
-@pytest.mark.parametrize('vm_mode', [True, False])
-def test_publish_volume_twice_on_the_same_node(vm_mode):
+@pytest.mark.parametrize('access_type,vm_mode', [("mount", True), ("mount", False), ("block", True)])
+def test_publish_volume_twice_on_the_same_node(access_type, vm_mode):
     env, run = init(vm_mode=vm_mode)
     try:
         volume_name = "example-disk"
@@ -470,17 +494,19 @@ def test_publish_volume_twice_on_the_same_node(vm_mode):
         pod_id1 = "deadbeef1"
         pod_id2 = "deadbeef2"
         env.csi.create_volume(name=volume_name, size=volume_size)
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
-        env.csi.publish_volume(pod_id2, volume_name, pod_name2)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
+        env.csi.publish_volume(pod_id2, volume_name, pod_name2, access_type)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id1, pod_id2])
+        cleanup_after_test(env, volume_name, access_type, [pod_id1, pod_id2])
 
 
-def test_restart_kubelet_with_old_format_endpoint():
+# test can be removed after migration of all endpoints to the new format
+@pytest.mark.parametrize('access_type', ["mount", "block"])
+def test_restart_kubelet_with_old_format_endpoint(access_type):
     env, run = init()
     try:
         volume_name = "example-disk"
@@ -489,18 +515,19 @@ def test_restart_kubelet_with_old_format_endpoint():
         pod_id1 = "deadbeef1"
         env.csi.create_volume(name=volume_name, size=volume_size)
         # skip stage to create endpoint with old format
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
         # run stage/publish again to simulate kubelet restart
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id1])
+        cleanup_after_test(env, volume_name, access_type, [pod_id1])
 
 
-def test_restart_kubelet_with_new_format_endpoint():
+@pytest.mark.parametrize('access_type', ["mount", "block"])
+def test_restart_kubelet_with_new_format_endpoint(access_type):
     env, run = init()
     try:
         volume_name = "example-disk"
@@ -508,13 +535,13 @@ def test_restart_kubelet_with_new_format_endpoint():
         pod_name1 = "example-pod-1"
         pod_id1 = "deadbeef1"
         env.csi.create_volume(name=volume_name, size=volume_size)
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
         # run stage/publish again to simulate kubelet restart
-        env.csi.stage_volume(volume_name)
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env, volume_name, [pod_id1])
+        cleanup_after_test(env, volume_name, access_type, [pod_id1])
