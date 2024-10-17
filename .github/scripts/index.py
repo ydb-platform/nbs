@@ -126,11 +126,11 @@ def generate_index_html(
         parent_dir = os.path.dirname(current_prefix.rstrip("/"))
         if parent_dir != "":
             parent_dir += "/"
+        url = generate_absolute_url(bucket, parent_dir, website_suffix) + "index.html"
         entries.append(
             {
                 "name": "../",
-                "url": generate_absolute_url(bucket, parent_dir, website_suffix)
-                + "index.html",
+                "url": url,
                 "type": "directory",
                 "date": "",
                 "size": "",  # Directories don't have a size
@@ -142,10 +142,11 @@ def generate_index_html(
     for d in dirs:
         dir_name = d["Prefix"]
         if dir_name != current_prefix:
-            dir_url = (
-                generate_absolute_url(bucket, unquote_plus(dir_name), website_suffix)
-                + "index.html"
+            dir_url = generate_absolute_url(
+                bucket, unquote_plus(dir_name), website_suffix
             )
+            dir_url = dir_url + "index.html"
+
             entries.append(
                 {
                     "name": os.path.basename(dir_name[:-1]) + "/",
