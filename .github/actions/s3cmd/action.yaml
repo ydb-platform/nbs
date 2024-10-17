@@ -118,6 +118,7 @@ runs:
         echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_WEBSITE_SUFFIX=${{ inputs.s3_website_suffix }}" >> $GITHUB_ENV
       env:
         s3_key_id: ${{ inputs.s3_key_id }}
         s3_secret_access_key: ${{ inputs.s3_key_secret }}
