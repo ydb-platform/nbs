@@ -404,7 +404,8 @@ void TDiskRegistryState::AllowNotifications(
 
     if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_NONREPLICATED ||
         disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED ||
-        disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL)
+        disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_LOCAL)
     {
         NotificationSystem.AllowNotifications(diskId);
     }
@@ -582,8 +583,9 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
-    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL
-            || disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_LOCAL ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         return;
     }
@@ -1959,7 +1961,10 @@ NProto::TError TDiskRegistryState::ValidateDiskLocation(
     const TVector<NProto::TDeviceConfig>& diskDevices,
     const TAllocateDiskParams& params) const
 {
-    if (params.MediaKind != NProto::STORAGE_MEDIA_SSD_LOCAL || diskDevices.empty()) {
+    if ((params.MediaKind != NProto::STORAGE_MEDIA_SSD_LOCAL &&
+         params.MediaKind != NProto::STORAGE_MEDIA_HDD_LOCAL) ||
+        diskDevices.empty())
+    {
         return {};
     }
 
@@ -2023,7 +2028,9 @@ TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocat
         ? NProto::DEVICE_POOL_KIND_DEFAULT
         : NProto::DEVICE_POOL_KIND_GLOBAL;
 
-    if (params.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+    if (params.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL ||
+        params.MediaKind == NProto::STORAGE_MEDIA_HDD_LOCAL)
+    {
         poolKind = NProto::DEVICE_POOL_KIND_LOCAL;
     }
 
@@ -6965,6 +6972,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     bool force,
     const TDiskId& diskId,
     ui32 blockSize,
+    NProto::EStorageMediaKind mediaKind,
     const TVector<NProto::TDeviceConfig>& devices,
     TAllocateDiskResult* result)
 {
@@ -7045,9 +7053,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
     disk.State = CalculateDiskState(disk);
-    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-        disk.MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
-    }
+    disk.MediaKind = mediaKind;
 
     for (auto& uuid: deviceIds) {
         DeviceList.MarkDeviceAllocated(diskId, uuid);

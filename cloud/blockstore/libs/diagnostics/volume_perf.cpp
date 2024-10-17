@@ -35,6 +35,7 @@ TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
             return diagnosticsConfig->GetMirror3PerfSettings();
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
             return diagnosticsConfig->GetLocalSSDPerfSettings();
         }
@@ -240,9 +241,14 @@ void TSufferCounters::PublishCounters()
         "ssd_local",
         RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL]);
 
-    auto hddCount = RunCounters[NCloud::NProto::STORAGE_MEDIA_DEFAULT]
-        + RunCounters[NCloud::NProto::STORAGE_MEDIA_HYBRID]
-        + RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD];
+    total += UpdateCounter(
+        HddLocal,
+        "hdd_local",
+        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL]);
+
+    ui64 hddCount = RunCounters[NCloud::NProto::STORAGE_MEDIA_DEFAULT] +
+                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HYBRID] +
+                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD];
 
     total += UpdateCounter(Hdd, "hdd", hddCount);
 
