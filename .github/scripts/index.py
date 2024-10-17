@@ -223,7 +223,9 @@ def process_directory(
             pass
     else:
         # The directory is not empty, generate/update 'index.html'
-        html_content = generate_index_html(bucket, files, dirs, prefix, ttl_config, now)
+        html_content = generate_index_html(
+            bucket, files, dirs, prefix, website_suffix, ttl_config, now
+        )
         if apply_changes:
             upload_index_html(s3, bucket, prefix, html_content)
         else:
