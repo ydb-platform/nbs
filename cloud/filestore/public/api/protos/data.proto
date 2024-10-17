@@ -27,11 +27,11 @@ message TCreateHandleRequest
         E_NOFOLLOW = 9;
         E_NONBLOCK = 10;
         E_PATH = 11;
+        E_DIRECT = 12;
 
         // TODO: these flags have no meaning or only useful for the local svc
         // E_ASYNC
         // E_CLOEXEC
-        // E_DIRECT
         // E_DSYNC
         // E_LARGEFILE
         // E_NOCTTY
@@ -145,6 +145,9 @@ message TReadDataResponse
     // Buffer with bytes read.
     bytes Buffer = 2;
 
+    // Bytes read start at buffer offset.
+    uint32 BufferOffset = 3;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -171,6 +174,9 @@ message TWriteDataRequest
 
     // Buffer with bytes to write.
     bytes Buffer = 6;
+
+    // Bytes to write start at buffer offset.
+    uint32 BufferOffset = 7;
 }
 
 message TWriteDataResponse
