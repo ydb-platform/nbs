@@ -227,6 +227,7 @@ jobs:
       upload_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
       clean_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
       use_network_cache: ${{ github.event == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
+      nebius: ${{ contains(github.event.pull_request.labels.*.name, 'nebius') && 'yes' || (inputs.run_on_nebius == 'yes' && 'yes' || 'no') }}
     secrets: inherit
 
   sleep-if-needed:
