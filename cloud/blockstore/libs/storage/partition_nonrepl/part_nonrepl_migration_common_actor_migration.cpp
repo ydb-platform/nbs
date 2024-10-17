@@ -81,8 +81,13 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
         DiskId.c_str(),
         DescribeRange(range).c_str());
 
-    auto [_, inserted] = MigrationsInProgress.emplace(range);
-    Y_DEBUG_ABORT_UNLESS(inserted);
+    const bool inserted = MigrationsInProgress.TryInsert(range);
+    if (!inserted) {
+        ReportOverlappingRangesDuringMigrationDetected(
+            TStringBuilder() << "An error occurred while inserting a range to "
+                                "the container. Range: "
+                             << range << ", diskId: " << DiskId);
+    }
 
     NCloud::Register<TCopyRangeActor>(
         ctx,
@@ -107,14 +112,14 @@ bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const
 {
-    return !ProcessingBlocks.IsProcessing() && MigrationsInProgress.empty() &&
-           DeferredMigrations.empty();
+    return !ProcessingBlocks.IsProcessing() && MigrationsInProgress.Empty() &&
+           DeferredMigrations.Empty();
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
 {
-    Y_DEBUG_ABORT_UNLESS(MigrationsInProgress.size() <= MaxIoDepth);
-    return MigrationsInProgress.size() >= MaxIoDepth;
+    Y_DEBUG_ABORT_UNLESS(MigrationsInProgress.Size() <= MaxIoDepth);
+    return MigrationsInProgress.Size() >= MaxIoDepth;
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::
@@ -142,8 +147,8 @@ TNonreplicatedPartitionMigrationCommonActor::GetNextMigrationRange() const
 
     // First of all, we are trying to continue the migration range from
     // DeferredMigrations.
-    if (!DeferredMigrations.empty()) {
-        return *DeferredMigrations.begin();
+    if (!DeferredMigrations.Empty()) {
+        return DeferredMigrations.LeftmostRange();
     }
 
     // Secondly, we are trying to migrate a new range.
@@ -165,13 +170,16 @@ TNonreplicatedPartitionMigrationCommonActor::TakeNextMigrationRange(
         return std::nullopt;
     }
 
+    TDisjointRangeSetIterator deferredIterator{DeferredMigrations};
     // First of all, we are trying to continue the migration range from
     // DeferredMigrations.
-    for (auto range: DeferredMigrations) {
+    while (deferredIterator.HasNext()) {
+        auto range = deferredIterator.Next();
         // We can only perform migration that does not overlap with user
         // requests.
         if (!OverlapsWithInflightWriteAndZero(range)) {
-            DeferredMigrations.erase(range);
+            const bool removed = DeferredMigrations.Remove(range);
+            Y_DEBUG_ABORT_UNLESS(removed);
             return range;
         }
     }
@@ -242,8 +250,8 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         });
     }
 
-    size_t erasedCount = MigrationsInProgress.erase(msg->Range);
-    Y_DEBUG_ABORT_UNLESS(erasedCount == 1);
+    const bool erased = MigrationsInProgress.Remove(msg->Range);
+    Y_DEBUG_ABORT_UNLESS(erased);
 
     if (HasError(msg->GetError())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
@@ -258,7 +266,13 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         }
 
         // Schedule to retry the migration of the failed range.
-        DeferredMigrations.emplace(msg->Range);
+        const bool inserted = DeferredMigrations.TryInsert(msg->Range);
+        if (!inserted) {
+            ReportOverlappingRangesDuringMigrationDetected(
+                TStringBuilder()
+                << "Can't defer a range to migrate later. Range: " << msg->Range
+                << ", diskId: " << DiskId);
+        }
         ScheduleRangeMigration(ctx);
         return;
     }
@@ -295,15 +309,13 @@ void TNonreplicatedPartitionMigrationCommonActor::
         return;
     }
 
-    // Active migrations are ordered in the ascending order. So the first one is
-    // a leftmost one.
-    if (!MigrationsInProgress.empty() &&
-        MigrationsInProgress.begin()->End < nextCachedProgress)
+    if (!MigrationsInProgress.Empty() &&
+        MigrationsInProgress.LeftmostRange().End < nextCachedProgress)
     {
         return;
     }
-    if (!DeferredMigrations.empty() &&
-        DeferredMigrations.begin()->End < nextCachedProgress)
+    if (!DeferredMigrations.Empty() &&
+        DeferredMigrations.LeftmostRange().End < nextCachedProgress)
     {
         return;
     }

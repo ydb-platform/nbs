@@ -12,16 +12,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-bool TNonreplicatedPartitionMigrationCommonActor::TBlockRangeComparator::
-operator()(const TBlockRange64& lhs, const TBlockRange64& rhs) const
-{
-    auto tie = [](const TBlockRange64& blockRange)
-    {
-        return std::tie(blockRange.Start, blockRange.End);
-    };
-    return tie(lhs) < tie(rhs);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionMigrationCommonActor::
