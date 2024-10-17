@@ -33,6 +33,10 @@ on:
         type: string
         default: "0"
         description: "Amount of time to sleep after tests"
+      nebius:
+        type: string
+        default: "no"
+        description: "Run on nebius runners"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
