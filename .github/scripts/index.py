@@ -139,7 +139,9 @@ def generate_index_html(bucket, files, dirs, current_prefix, ttl_config, now):
     for d in dirs:
         dir_name = d["Prefix"]
         if dir_name != current_prefix:
-            dir_url = generate_absolute_url(bucket, unquote_plus(dir_name))
+            dir_url = (
+                generate_absolute_url(bucket, unquote_plus(dir_name)) + "index.html"
+            )
             entries.append(
                 {
                     "name": os.path.basename(dir_name[:-1]) + "/",
