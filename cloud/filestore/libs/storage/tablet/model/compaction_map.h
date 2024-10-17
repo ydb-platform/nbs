@@ -21,6 +21,7 @@ struct TCompactionStats
 {
     ui32 BlobsCount = 0;
     ui32 DeletionsCount = 0;
+    ui32 GarbageBlocksCount = 0;
 };
 
 struct TCompactionRangeInfo
@@ -35,9 +36,11 @@ struct TCompactionMapStats
     ui64 AllocatedRangesCount = 0;
     ui64 TotalBlobsCount = 0;
     ui64 TotalDeletionsCount = 0;
+    ui64 TotalGarbageBlocksCount = 0;
 
-    TVector<TCompactionRangeInfo> TopRangesByCleanupScore;
     TVector<TCompactionRangeInfo> TopRangesByCompactionScore;
+    TVector<TCompactionRangeInfo> TopRangesByCleanupScore;
+    TVector<TCompactionRangeInfo> TopRangesByGarbageScore;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,16 +58,25 @@ public:
     TCompactionMap(IAllocator* alloc);
     ~TCompactionMap();
 
-    void Update(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void Update(
+        ui32 rangeId,
+        ui32 blobsCount,
+        ui32 deletionsCount,
+        ui32 garbageBlocksCount);
     void Update(const TVector<TCompactionRangeInfo>& ranges);
 
     TCompactionStats Get(ui32 rangeId) const;
 
     TCompactionCounter GetTopCompactionScore() const;
     TCompactionCounter GetTopCleanupScore() const;
+    TCompactionCounter GetTopGarbageScore() const;
 
-    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByGarbageScore(
+        ui32 topSize) const;
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
