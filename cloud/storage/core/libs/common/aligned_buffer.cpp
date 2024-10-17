@@ -54,7 +54,9 @@ TAlignedBuffer::TAlignedBuffer(ui32 size, ui32 align)
     if (align) {
         Y_DEBUG_ABORT_UNLESS(IsPowerOf2(align));   // align should be power of 2
         AlignedData = AlignUp(Buffer.data(), align);
+        auto* bufferMem = Buffer.data();
         Buffer.resize(AlignedData + size - Buffer.begin());
+        Y_ABORT_UNLESS(Buffer.data() == bufferMem);
     }
 }
 
