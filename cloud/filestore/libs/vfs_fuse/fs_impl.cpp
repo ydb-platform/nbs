@@ -265,7 +265,10 @@ void TFileSystem::ProcessHandleOpsQueue()
 
     const auto optionalEntry = HandleOpsQueue->Front();
     if (!optionalEntry) {
-        ReportHandleOpsQueueProcessError("Failed to get TQueueEntry from queue");
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder()
+            << "Failed to get TQueueEntry from queue, filesystem: "
+            << Config->GetFileSystemId());
         HandleOpsQueue->Pop();
         ScheduleProcessHandleOpsQueue();
         return;
@@ -319,7 +322,9 @@ void TFileSystem::ProcessHandleOpsQueue()
             });
     } else {
         // TODO(#1541): process create handle
-        ReportHandleOpsQueueProcessError("Unexpected TQueueEntry in queue");
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
+                             << Config->GetFileSystemId());
         HandleOpsQueue->Pop();
         ScheduleProcessHandleOpsQueue();
         return;
