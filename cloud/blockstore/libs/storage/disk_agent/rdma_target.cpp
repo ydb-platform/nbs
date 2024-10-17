@@ -105,13 +105,13 @@ struct TDeviceData
 
 THashMap<TString, TDeviceData> MakeDevices(
     THashMap<TString, TStorageAdapterPtr> devices,
-    const TRdmaTargetConfig& rdmaTargetConfig)
+    TOldRequestCounters oldRequestCounters)
 {
     THashMap<TString, TDeviceData> result;
     for (auto& [deviceUUID, storageAdapter]: devices) {
         TSynchronizedData synchronizedData{
             TRecentBlocksTracker{deviceUUID},
-            rdmaTargetConfig.OldRequestCounters};
+            oldRequestCounters};
 
         TDeviceData device{
             std::move(storageAdapter),
@@ -144,19 +144,20 @@ private:
     const NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreProtocol::Serializer();
 
-    const bool RejectLateRequestsAtDiskAgentEnabled;
+    const bool RejectLateRequests;
 
 public:
     TRequestHandler(
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
-            TRdmaTargetConfig rdmaTargetConfig)
-        : Devices(MakeDevices(std::move(devices), rdmaTargetConfig))
+            TOldRequestCounters oldRequestCounters,
+            bool rejectLateRequests)
+        : Devices(
+            MakeDevices(std::move(devices), std::move(oldRequestCounters)))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
-        , RejectLateRequestsAtDiskAgentEnabled(
-              rdmaTargetConfig.RejectLateRequestsAtDiskAgentEnabled)
+        , RejectLateRequests(rejectLateRequests)
     {}
 
     void Init(NRdma::IServerEndpointPtr endpoint, TLog log)
@@ -393,7 +394,7 @@ private:
                 requestDetails.Range);
         if (overlapsWithInflightRequests) {
             synchronizedData.OldRequestCounters.Delayed->Inc();
-            if (!RejectLateRequestsAtDiskAgentEnabled) {
+            if (!RejectLateRequests) {
                 // Monitoring mode. Don't change the behavior.
                 return ECheckRange::NotOverlapped;
             }
@@ -415,7 +416,7 @@ private:
                 Y_DEBUG_ABORT_UNLESS(false);
             }
 
-            if (!RejectLateRequestsAtDiskAgentEnabled) {
+            if (!RejectLateRequests) {
                 // Monitoring mode. Don't change the behavior.
                 return ECheckRange::NotOverlapped;
             }
@@ -961,7 +962,7 @@ class TRdmaTarget final
     : public IRdmaTarget
 {
 private:
-    const NProto::TRdmaEndpoint Config;
+    const TRdmaTargetConfigPtr Config;
 
     std::shared_ptr<TRequestHandler> Handler;
     ILoggingServicePtr Logging;
@@ -972,13 +973,13 @@ private:
 
 public:
     TRdmaTarget(
-            NProto::TRdmaEndpoint config,
+            TRdmaTargetConfigPtr config,
+            TOldRequestCounters oldRequestCounters,
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             THashMap<TString, TStorageAdapterPtr> devices,
-            ITaskQueuePtr taskQueue,
-            TRdmaTargetConfig rdmaTargetConfig)
+            ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Server(std::move(server))
@@ -988,7 +989,8 @@ public:
             std::move(devices),
             std::move(taskQueue),
             std::move(deviceClient),
-            std::move(rdmaTargetConfig));
+            std::move(oldRequestCounters),
+            Config->RejectLateRequests);
     }
 
     void Start() override
@@ -996,8 +998,8 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
         auto endpoint = Server->StartEndpoint(
-            Config.GetHost(),
-            Config.GetPort(),
+            Config->Host,
+            Config->Port,
             Handler);
 
         if (endpoint == nullptr) {
@@ -1030,24 +1032,24 @@ public:
 }   // namespace
 
 IRdmaTargetPtr CreateRdmaTarget(
-    NProto::TRdmaEndpoint config,
-    TRdmaTargetConfig rdmaTargetConfig,
+    TRdmaTargetConfigPtr config,
+    TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
-    auto threadPool = CreateThreadPool("RDMA", rdmaTargetConfig.PoolSize);
+    auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
     threadPool->Start();
 
     return std::make_shared<TRdmaTarget>(
         std::move(config),
+        std::move(oldRequestCounters),
         std::move(logging),
         std::move(server),
         std::move(deviceClient),
         std::move(devices),
-        std::move(threadPool),
-        std::move(rdmaTargetConfig));
+        std::move(threadPool));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
