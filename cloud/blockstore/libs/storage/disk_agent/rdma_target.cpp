@@ -962,7 +962,7 @@ class TRdmaTarget final
     : public IRdmaTarget
 {
 private:
-    const TRdmaTargetConfig Config;
+    const TRdmaTargetConfigPtr Config;
 
     std::shared_ptr<TRequestHandler> Handler;
     ILoggingServicePtr Logging;
@@ -973,7 +973,7 @@ private:
 
 public:
     TRdmaTarget(
-            TRdmaTargetConfig config,
+            TRdmaTargetConfigPtr config,
             TOldRequestCounters oldRequestCounters,
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
@@ -990,7 +990,7 @@ public:
             std::move(taskQueue),
             std::move(deviceClient),
             std::move(oldRequestCounters),
-            Config.RejectLateRequests);
+            Config->RejectLateRequests);
     }
 
     void Start() override
@@ -998,8 +998,8 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
         auto endpoint = Server->StartEndpoint(
-            Config.Host,
-            Config.Port,
+            Config->Host,
+            Config->Port,
             Handler);
 
         if (endpoint == nullptr) {
@@ -1032,14 +1032,14 @@ public:
 }   // namespace
 
 IRdmaTargetPtr CreateRdmaTarget(
-    TRdmaTargetConfig config,
+    TRdmaTargetConfigPtr config,
     TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
-    auto threadPool = CreateThreadPool("RDMA", config.Threads);
+    auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
     threadPool->Start();
 
     return std::make_shared<TRdmaTarget>(

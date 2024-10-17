@@ -247,7 +247,7 @@ TDiskAgentState::TDiskAgentState(
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
-        TRdmaTargetConfig rdmaTargetConfig,
+        TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
@@ -423,13 +423,13 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 
 void TDiskAgentState::InitRdmaTarget()
 {
-    if (RdmaServer) {
+    if (RdmaServer && RdmaTargetConfig) {
         THashMap<TString, TStorageAdapterPtr> devices;
 
         for (auto& [uuid, state]: Devices) {
             auto* endpoint = state.Config.MutableRdmaEndpoint();
-            endpoint->SetHost(RdmaTargetConfig.Host);
-            endpoint->SetPort(RdmaTargetConfig.Port);
+            endpoint->SetHost(RdmaTargetConfig->Host);
+            endpoint->SetPort(RdmaTargetConfig->Port);
             devices.emplace(uuid, state.StorageAdapter);
         }
 

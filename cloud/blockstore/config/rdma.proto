@@ -20,12 +20,12 @@ message TRdmaServer
     uint32 Backlog = 1;
     uint32 QueueSize = 2;
     uint32 MaxBufferSize = 3;
-    uint64 KeepAliveTimeout = 4;           // in milliseconds
+    uint64 KeepAliveTimeout = 4;            // in milliseconds
     EWaitMode WaitMode = 5;
     uint32 PollerThreads = 6;
-    uint32 MaxInflightBytes = 7;           // per client
-    uint64 AdaptiveWaitSleepDelay = 8;     // in microseconds
-    uint64 AdaptiveWaitSleepDuration = 9;  // in microseconds
+    uint32 MaxInflightBytes = 7;            // per client
+    uint64 AdaptiveWaitSleepDelay = 8;      // in microseconds
+    uint64 AdaptiveWaitSleepDuration = 9;   // in microseconds
     bool AlignedDataEnabled = 10;
 }
 
@@ -35,27 +35,26 @@ message TRdmaClient
     uint32 MaxBufferSize = 2;
     uint32 PollerThreads = 3;
     EWaitMode WaitMode = 4;
-    uint64 AdaptiveWaitSleepDelay = 5;     // in microseconds
-    uint64 AdaptiveWaitSleepDuration = 6;  // in microseconds
+    uint64 AdaptiveWaitSleepDelay = 5;      // in microseconds
+    uint64 AdaptiveWaitSleepDuration = 6;   // in microseconds
     bool AlignedDataEnabled = 7;
 }
 
 message TRdmaTarget
 {
-    TRdmaEndpoint Endpoint = 1;            // deprecated
-    TRdmaServer Server = 2;                // deprecated
-    string Host = 3;
-    uint32 Port = 4;
-    uint32 Threads = 5;
+    TRdmaEndpoint Endpoint = 1;
+    TRdmaServer Server = 2;                 // deprecated
+    uint32 WorkerThreads = 3;
 }
 
 message TRdmaConfig
 {
     bool ClientEnabled = 1;
-
     TRdmaClient Client = 2;
 
     bool ServerEnabled = 3;
-
     TRdmaServer Server = 4;
+
+    bool DiskAgentTargetEnabled = 5;
+    TRdmaTarget DiskAgentTarget = 6;
 }

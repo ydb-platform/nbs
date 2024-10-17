@@ -26,28 +26,30 @@ struct TOldRequestCounters
 struct TRdmaTargetConfig
 {
     bool RejectLateRequests = false;
-    TString Host = FQDNHostName();
+    TString Host = "::";
     ui32 Port = 10020;
-    ui32 Threads = 1;
-
-    TRdmaTargetConfig() = default;
+    ui32 WorkerThreads = 1;
 
     TRdmaTargetConfig(bool rejectLateRequests, NProto::TRdmaTarget target)
         : RejectLateRequests(rejectLateRequests)
     {
-        if (auto& host = target.GetHost()) {
+        auto& endpoint = target.GetEndpoint();
+
+        if (auto& host = endpoint.GetHost()) {
             Host = host;
         }
 
-        if (auto port = target.GetPort()) {
+        if (auto port = endpoint.GetPort()) {
             Port = port;
         }
 
-        if (auto threads = target.GetThreads()) {
-            Threads = threads;
+        if (auto threads = target.GetWorkerThreads()) {
+            WorkerThreads = threads;
         }
     }
 };
+
+using TRdmaTargetConfigPtr = std::shared_ptr<TRdmaTargetConfig>;
 
 struct IRdmaTarget: IStartable
 {
@@ -64,7 +66,7 @@ using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 
 IRdmaTargetPtr CreateRdmaTarget(
-    TRdmaTargetConfig rdmaTargetConfig,
+    TRdmaTargetConfigPtr rdmaTargetConfig,
     TOldRequestCounters OldRequestCounters,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,

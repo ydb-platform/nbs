@@ -63,7 +63,7 @@ private:
     ui32 InitErrorsCount = 0;
     bool PartiallySuspended = false;
 
-    TRdmaTargetConfig RdmaTargetConfig;
+    TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
 
 public:
@@ -78,7 +78,7 @@ public:
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
-        TRdmaTargetConfig rdmaTargetConfig,
+        TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters);
 
     struct TInitializeResult

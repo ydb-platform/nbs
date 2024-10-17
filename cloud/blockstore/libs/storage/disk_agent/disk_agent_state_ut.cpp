@@ -160,7 +160,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         CreateLoggingService("console"),
         nullptr,    // rdmaServer
         nullptr,    // nvmeManager
-        TRdmaTargetConfig(),
+        nullptr,    // rdmaTargetConfig
         TOldRequestCounters());
 }
 
@@ -351,7 +351,7 @@ struct TFiles
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager,
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
     }
 };
@@ -525,7 +525,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager,
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
 
         auto future = state.Initialize();
@@ -739,7 +739,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     CreateLoggingService("console"),
                     nullptr,    // rdmaServer
                     NvmeManager,
-                    TRdmaTargetConfig(),
+                    nullptr,    // rdmaTargetConfig
                     TOldRequestCounters());
 
                 auto future = state.Initialize();
@@ -807,7 +807,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             std::make_shared<TTestNvmeManager>(),
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
 
         auto future = state.Initialize();
@@ -1228,7 +1228,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager,
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
 
         auto future = state.Initialize();
@@ -1387,7 +1387,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager,
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
 
         auto future = state->Initialize();
@@ -1468,7 +1468,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             CreateLoggingService("console"),
             nullptr,    // rdmaServer
             NvmeManager,
-            TRdmaTargetConfig(),
+            nullptr,    // rdmaTargetConfig
             TOldRequestCounters());
 
         auto future = state->Initialize();
@@ -1549,7 +1549,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 CreateLoggingService("console"),
                 nullptr,    // rdmaServer
                 NvmeManager,
-                TRdmaTargetConfig(),
+                nullptr,    // rdmaTargetConfig
                 TOldRequestCounters());
         };
 

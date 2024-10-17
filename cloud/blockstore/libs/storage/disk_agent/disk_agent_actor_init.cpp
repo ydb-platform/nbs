@@ -26,9 +26,12 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
         OldRequestCounters.Already);
 
-    TRdmaTargetConfig rdmaTargetConfig(
-        Config->GetRejectLateRequestsAtDiskAgentEnabled(),
-        AgentConfig->GetRdmaTarget());
+    TRdmaTargetConfigPtr rdmaTargetConfig = nullptr;
+    if (RdmaConfig && RdmaConfig->GetDiskAgentTargetEnabled()) {
+        rdmaTargetConfig = std::make_shared<TRdmaTargetConfig>(
+            Config->GetRejectLateRequestsAtDiskAgentEnabled(),
+            RdmaConfig->GetDiskAgentTarget());
+    }
 
     State = std::make_unique<TDiskAgentState>(
         Config,

@@ -220,10 +220,16 @@ void TConfigInitializer::InitRdmaConfig()
         ParseProtoTextFromFileRobust(Options->RdmaConfig, rdmaConfig);
     } else {
         // no rdma config file is given fallback to legacy config
-        if (DiskAgentConfig->HasRdmaTarget()) {
+        if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
+            const auto& oldTarget = DiskAgentConfig->DeprecatedGetRdmaTarget();
+            auto* newTarget = rdmaConfig.MutableDiskAgentTarget();
+
             rdmaConfig.SetServerEnabled(true);
-            const auto& rdmaTarget = DiskAgentConfig->GetRdmaTarget();
-            rdmaConfig.MutableServer()->CopyFrom(rdmaTarget.GetServer());
+            rdmaConfig.MutableServer()->CopyFrom(oldTarget.GetServer());
+
+            rdmaConfig.SetDiskAgentTargetEnabled(true);
+            newTarget->MutableEndpoint()->CopyFrom(oldTarget.GetEndpoint());
+            newTarget->SetWorkerThreads(oldTarget.GetWorkerThreads());
         }
     }
 

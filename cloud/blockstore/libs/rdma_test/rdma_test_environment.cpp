@@ -40,15 +40,15 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         0);
 
     NProto::TRdmaTarget target;
-    target.SetHost(Host);
-    target.SetPort(Port);
-    target.SetThreads(poolSize);
+    target.MutableEndpoint()->SetHost(Host);
+    target.MutableEndpoint()->SetPort(Port);
+    target.SetWorkerThreads(poolSize);
 
     constexpr bool rejectLateRequests = true;
 
-    TRdmaTargetConfig rdmaTargetConfig{
+    auto rdmaTargetConfig = std::make_shared<TRdmaTargetConfig>(
         rejectLateRequests,
-        target};
+        target);
 
     TOldRequestCounters oldRequestCounters{
         Counters->GetCounter("Delayed"),
