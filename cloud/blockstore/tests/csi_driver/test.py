@@ -256,12 +256,6 @@ class NbsCsiDriverRunner:
         )
 
 
-def cleanup_after_test(env: CsiLoadTest):
-    if env is None:
-        return
-    env.tear_down()
-
-
 def log_called_process_error(exc):
     logging.error(
         "Failed %s, stdout: %s, stderr: %s",
@@ -270,6 +264,25 @@ def log_called_process_error(exc):
         exc.stdout,
         exc_info=exc,
     )
+
+
+def cleanup_after_test(env: CsiLoadTest, volume_name: str = "", pods: list[str] = []):
+    if env is None:
+        return
+
+    # sleep 1 second to distingish dmesg logs before and after test failure
+    time.sleep(1)
+
+    for pod_id in pods:
+        with called_process_error_logged():
+            env.csi.unpublish_volume(pod_id, volume_name)
+
+    with called_process_error_logged():
+        env.csi.unstage_volume(volume_name)
+    with called_process_error_logged():
+        env.csi.delete_volume(volume_name)
+
+    env.tear_down()
 
 
 @contextlib.contextmanager
@@ -302,17 +315,11 @@ def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
         if result.returncode != 1:
             raise AssertionError("Destroyvolume must return exit code 1")
         assert "E_REJECTED" in result.stdout
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id])
 
 
 def test_nbs_csi_driver_volume_stat():
@@ -366,18 +373,11 @@ def test_nbs_csi_driver_volume_stat():
         nodesUsage2 = usage_array2[1]
         assert 2 == nodesUsage1["available"] - nodesUsage2["available"]
         assert 2 == nodesUsage2["used"] - nodesUsage1["used"]
-
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
     finally:
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id])
 
 
 @pytest.mark.parametrize('mount_path,volume_access_type,vm_mode',
@@ -456,13 +456,7 @@ def test_node_volume_expand(fs_type):
         log_called_process_error(e)
         raise
     finally:
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id])
 
 
 @pytest.mark.parametrize('vm_mode', [True, False])
@@ -483,15 +477,7 @@ def test_publish_volume_twice_on_the_same_node(vm_mode):
         log_called_process_error(e)
         raise
     finally:
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id1, volume_name)
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id2, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id1, pod_id2])
 
 
 def test_restart_kubelet_with_old_format_endpoint():
@@ -511,13 +497,7 @@ def test_restart_kubelet_with_old_format_endpoint():
         log_called_process_error(e)
         raise
     finally:
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id1, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id1])
 
 
 def test_restart_kubelet_with_new_format_endpoint():
@@ -537,10 +517,4 @@ def test_restart_kubelet_with_new_format_endpoint():
         log_called_process_error(e)
         raise
     finally:
-        with called_process_error_logged():
-            env.csi.unpublish_volume(pod_id1, volume_name)
-        with called_process_error_logged():
-            env.csi.unstage_volume(volume_name)
-        with called_process_error_logged():
-            env.csi.delete_volume(volume_name)
-        cleanup_after_test(env)
+        cleanup_after_test(env, volume_name, [pod_id1])
