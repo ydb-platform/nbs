@@ -20,4 +20,7 @@ using TFileSystemConfigPtr = std::shared_ptr<TFileSystemConfig>;
 struct ICompletionQueue;
 using ICompletionQueuePtr = std::shared_ptr<ICompletionQueue>;
 
+class THandleOpsQueue;
+using THandleOpsQueuePtr = std::unique_ptr<THandleOpsQueue>;
+
 }   // namespace NCloud::NFileStore::NFuse

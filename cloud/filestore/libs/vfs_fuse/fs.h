@@ -473,6 +473,7 @@ IFileSystemPtr CreateFileSystem(
     TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
-    ICompletionQueuePtr queue);
+    ICompletionQueuePtr queue,
+    THandleOpsQueuePtr handleOpsQueue);
 
 }   // namespace NCloud::NFileStore::NFuse

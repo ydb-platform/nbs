@@ -52,7 +52,6 @@ class TFileRingBuffer::TImpl
 {
 private:
     TFileMap Map;
-    const ui32 MaxEntrySize;
 
     char* Data = nullptr;
     ui32 Count = 0;
@@ -125,11 +124,10 @@ private:
     }
 
 public:
-    TImpl(const TString& filePath, ui32 capacity, ui32 maxEntrySize)
+    TImpl(const TString& filePath, ui32 capacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
-        , MaxEntrySize(maxEntrySize)
     {
-        Y_ABORT_UNLESS(MaxEntrySize + sizeof(TEntryHeader) <= capacity);
+        Y_ABORT_UNLESS(sizeof(TEntryHeader) <= capacity);
 
         const ui32 realSize = sizeof(THeader) + capacity;
         if (Map.Length() < realSize) {
@@ -160,11 +158,14 @@ public:
 public:
     bool Push(TStringBuf data)
     {
-        if (data.empty() || data.size() > MaxEntrySize) {
+        if (data.empty()) {
             return false;
         }
 
         const auto sz = data.size() + sizeof(TEntryHeader);
+        if (sz > Header()->Capacity) {
+            return false;
+        }
         auto* ptr = Data + Header()->WritePos;
 
         if (!Empty()) {
@@ -273,9 +274,8 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
         const TString& filePath,
-        ui32 capacity,
-        ui32 maxEntrySize)
-    : Impl(new TImpl(filePath, capacity, maxEntrySize))
+        ui32 capacity)
+    : Impl(new TImpl(filePath, capacity))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;

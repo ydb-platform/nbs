@@ -21,7 +21,7 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TFileRingBuffer(const TString& filePath, ui32 capacity, ui32 maxEntrySize);
+    TFileRingBuffer(const TString& filePath, ui32 capacity);
     ~TFileRingBuffer();
 
 public:

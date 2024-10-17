@@ -38,6 +38,14 @@ message TVhostServiceConfig
 
     // Causes LocalService to be used if service != null and service != kikimr.
     optional TLocalServiceConfig LocalServiceConfig = 9;
+
+    // Path to the directory where HandleOpsQueue is stored for all sessions.
+    // Will create a directory with the filesystemId
+    // and a subdirectory with the sessionId if not present.
+    optional string HandleOpsQueuePath = 10;
+
+    // Max HandleOpsQueue size in bytes.
+    optional uint32 HandleOpsQueueSize = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

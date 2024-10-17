@@ -65,6 +65,7 @@ private:
     const ISchedulerPtr Scheduler;
     const IFileStoreEndpointsPtr FileStoreEndpoints;
     const IFileSystemLoopFactoryPtr LoopFactory;
+    const THandleOpsQueueConfig HandleOpsQueueConfig;
 
     TLog Log;
 
@@ -74,12 +75,14 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             IFileStoreEndpointsPtr filestoreEndpoints,
-            IFileSystemLoopFactoryPtr loopFactory)
+            IFileSystemLoopFactoryPtr loopFactory,
+            THandleOpsQueueConfig handleOpsQueueConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , FileStoreEndpoints(std::move(filestoreEndpoints))
         , LoopFactory(std::move(loopFactory))
+        , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -117,6 +120,8 @@ public:
         if (Log.FiltrationLevel() >= TLOG_DEBUG) {
             protoConfig.SetDebug(true);
         }
+        protoConfig.SetHandleOpsQueuePath(HandleOpsQueueConfig.PathPrefix);
+        protoConfig.SetHandleOpsQueueSize(HandleOpsQueueConfig.MaxQueueSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
@@ -136,14 +141,16 @@ IEndpointListenerPtr CreateEndpointListener(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     IFileStoreEndpointsPtr filestoreEndpoints,
-    IFileSystemLoopFactoryPtr loopFactory)
+    IFileSystemLoopFactoryPtr loopFactory,
+    THandleOpsQueueConfig handleOpsQueueConfig)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
         std::move(timer),
         std::move(scheduler),
         std::move(filestoreEndpoints),
-        std::move(loopFactory));
+        std::move(loopFactory),
+        std::move(handleOpsQueueConfig));
 }
 
 }   // namespace NCloud::NFileStore::NVhost
