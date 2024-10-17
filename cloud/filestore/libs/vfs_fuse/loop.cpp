@@ -608,8 +608,6 @@ public:
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId());
 
-                    s.SetValue();
-
                     // We need to cleanup HandleOpsQueue file and directories
                     if (p->HandleOpsQueueInitialized) {
                         auto fsPath =
@@ -625,6 +623,8 @@ public:
                                 << ", reason: " << err.AsStrBuf());
                         }
                     }
+
+                    s.SetValue();
                 });
         };
 
