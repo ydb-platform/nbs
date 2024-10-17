@@ -209,7 +209,7 @@ func (f *factory) initClients(
 					tracing.SpanFromContext(ctx).AddEvent(
 						"Retriable error in blockstore SDK",
 						tracing.WithAttributes(
-							tracing.AttributeString("error", err.Error()),
+							tracing.AttributeError(&err),
 						),
 					)
 					f.metrics.OnError(err)
