@@ -27,12 +27,14 @@ class TDescribeFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
+    const TActorId StorageSSProxy;
     const TString FileSystemId;
 
 public:
     TDescribeFileStoreActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
+        TActorId storageSSProxy,
         TString fileSystemId);
 
     void Bootstrap(const TActorContext& ctx);
@@ -61,9 +63,11 @@ private:
 TDescribeFileStoreActor::TDescribeFileStoreActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
+        TActorId storageSSProxy,
         TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
+    , StorageSSProxy(std::move(storageSSProxy))
     , FileSystemId(std::move(fileSystemId))
 {}
 
@@ -82,7 +86,7 @@ void TDescribeFileStoreActor::DescribeScheme(const TActorContext& ctx)
         FileSystemId);
 
     auto request = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
-    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
+    NCloud::Send(ctx, StorageSSProxy, std::move(request));
 }
 
 void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
@@ -192,6 +196,7 @@ void TSSProxyActor::HandleDescribeFileStore(
     auto actor = std::make_unique<TDescribeFileStoreActor>(
         std::move(requestInfo),
         Config,
+        StorageSSProxy,
         msg->FileSystemId);
 
     NCloud::Register(ctx, std::move(actor));
