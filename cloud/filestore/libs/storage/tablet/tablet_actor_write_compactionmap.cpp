@@ -58,7 +58,8 @@ void TIndexTabletActor::ExecuteTx_WriteCompactionMap(
         db.ForceWriteCompactionMap(
             range.GetRangeId(),
             range.GetBlobCount(),
-            range.GetDeletionCount());
+            range.GetDeletionCount(),
+            range.GetGarbageBlockCount());
     }
 }
 

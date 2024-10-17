@@ -348,13 +348,13 @@ private:
             db.WriteCompactionMap(
                 x.first,
                 x.second.BlobsCount,
-                x.second.DeletionsCount
-            );
+                x.second.DeletionsCount,
+                x.second.GarbageBlocksCount);
             Tablet.UpdateCompactionMap(
                 x.first,
                 x.second.BlobsCount,
-                x.second.DeletionsCount
-            );
+                x.second.DeletionsCount,
+                x.second.GarbageBlocksCount);
 
             AddCompactionRange(
                 args.CommitId,

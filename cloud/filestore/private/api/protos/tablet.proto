@@ -94,6 +94,7 @@ message TCompactionRangeStats
     uint32 RangeId = 1;
     uint32 BlobCount = 2;
     uint32 DeletionCount = 3;
+    uint32 GarbageBlockCount = 4;
 }
 
 message TStorageStats

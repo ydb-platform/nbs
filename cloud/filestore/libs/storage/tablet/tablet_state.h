@@ -1117,7 +1117,11 @@ private:
     //
 
 public:
-    void UpdateCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void UpdateCompactionMap(
+        ui32 rangeId,
+        ui32 blobsCount,
+        ui32 deletionsCount,
+        ui32 garbageBlocksCount);
 
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
@@ -1129,8 +1133,12 @@ public:
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByGarbageScore(
+        ui32 topSize) const;
 
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 
