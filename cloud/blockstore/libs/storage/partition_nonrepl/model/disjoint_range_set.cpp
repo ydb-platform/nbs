@@ -1,0 +1,89 @@
+#include "disjoint_range_set.h"
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDisjointRangeSet::TDisjointRangeSet() = default;
+TDisjointRangeSet::~TDisjointRangeSet() = default;
+
+[[nodiscard]] bool TDisjointRangeSet::TryInsert(TBlockRange64 range)
+{
+    if (!BlockSize.has_value()) {
+        BlockSize = range.Size();
+    }
+
+    if (range.Size() != *BlockSize) {
+        return false;
+    }
+
+    auto it = EndToStart.lower_bound(range.Start);
+    if (it != EndToStart.end()) {
+        auto found = TBlockRange64::MakeClosedInterval(it->second, it->first);
+        if (found.Overlaps(range)) {
+            return false;
+        }
+    }
+
+    EndToStart[range.End] = range.Start;
+    return true;
+}
+
+[[nodiscard]] bool TDisjointRangeSet::Remove(TBlockRange64 range)
+{
+    auto it = EndToStart.find(range.End);
+    if (it == EndToStart.end()) {
+        return false;
+    }
+
+    EndToStart.erase(it);
+    return true;
+}
+
+[[nodiscard]] bool TDisjointRangeSet::Contains(TBlockRange64 range) const
+{
+    return EndToStart.contains(range.End);
+}
+
+[[nodiscard]] bool TDisjointRangeSet::Empty() const
+{
+    return EndToStart.empty();
+}
+
+[[nodiscard]] size_t TDisjointRangeSet::Size() const
+{
+    return EndToStart.size();
+}
+
+[[nodiscard]] TBlockRange64 TDisjointRangeSet::LeftmostRange() const
+{
+    auto it = EndToStart.lower_bound(0);
+    if (it == EndToStart.end()) {
+        Y_DEBUG_ABORT_UNLESS(false);
+        return {};
+    }
+    return TBlockRange64::MakeClosedInterval(it->second, it->first);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDisjointRangeSetIterator::TDisjointRangeSetIterator(
+    const TDisjointRangeSet& rangeSet)
+    : RangeSet(rangeSet)
+    , Pos(RangeSet.EndToStart.cbegin())
+{}
+
+[[nodiscard]] bool TDisjointRangeSetIterator::HasNext() const
+{
+    return RangeSet.EndToStart.end() != Pos;
+}
+
+TBlockRange64 TDisjointRangeSetIterator::Next()
+{
+    Y_DEBUG_ABORT_UNLESS(HasNext());
+    auto result = TBlockRange64::MakeClosedInterval(Pos->second, Pos->first);
+    ++Pos;
+    return result;
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

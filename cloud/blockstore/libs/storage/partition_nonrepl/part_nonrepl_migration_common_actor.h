@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -100,15 +101,8 @@ private:
     bool RangeMigrationScheduled = false;
     TInstant LastRangeMigrationStartTs;
 
-    // Custom comparator that orders ranges by their start positions.
-    struct TBlockRangeComparator
-    {
-        bool operator()(
-            const TBlockRange64& lhs,
-            const TBlockRange64& rhs) const;
-    };
-    TSet<TBlockRange64, TBlockRangeComparator> MigrationsInProgress;
-    TSet<TBlockRange64, TBlockRangeComparator> DeferredMigrations;
+    TDisjointRangeSet MigrationsInProgress;
+    TDisjointRangeSet DeferredMigrations;
 
     TChangedRangesMap ChangedRangesMap;
 
