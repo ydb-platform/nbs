@@ -218,6 +218,11 @@ void TConfigInitializer::InitRdmaConfig()
 
     if (Options->RdmaConfig) {
         ParseProtoTextFromFileRobust(Options->RdmaConfig, rdmaConfig);
+
+        // inherit the target from DiskAgentConfig to smooth out the transition
+        if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
+            rdmaConfig.SetDiskAgentTargetEnabled(true);
+        }
     } else {
         // no rdma config file is given fallback to legacy config
         if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
