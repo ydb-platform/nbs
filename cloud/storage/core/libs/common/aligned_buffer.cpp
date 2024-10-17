@@ -34,6 +34,7 @@ TAlignedBuffer::TAlignedBuffer(TAlignedBuffer&& other)
     : Buffer(std::move(other.Buffer))
     , AlignedData(std::move(other.AlignedData))
 {
+    other.Buffer.clear();
     other.AlignedData = other.Buffer.begin();
 }
 
@@ -41,6 +42,7 @@ TAlignedBuffer& TAlignedBuffer::operator=(TAlignedBuffer&& other)
 {
     Buffer = std::move(other.Buffer);
     AlignedData = std::move(other.AlignedData);
+    other.Buffer.clear();
     other.AlignedData = other.Buffer.begin();
     return *this;
 }
