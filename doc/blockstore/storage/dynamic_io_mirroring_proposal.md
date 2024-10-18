@@ -9,7 +9,7 @@ If one of the agents becomes unavailable due to e.g. host or network malfunction
 
 The reads issue can be solved easily by removing the unavailable agent from the round-robin. Writes, on the other hand, are a little bit trickier. Our suggestion — is to continue to write on two good replicas and store a dirty blocks map while the agent is unavailable. If it becomes online after just a small delay, we will migrate dirty blocks from the good replicas.
 
-Since we deal with nonreplicated disks, we can't afford to store the map in the persistent DB. We will store the fact (and indexes of the lagging agents) that a disk is not mirroring its IO to all replicas. If this flag is set at the start of the service, the resync process will be started. The `VolumeActor` will store the data and decide whether it's possible to ignore a bad replica.
+Since we deal with nonreplicated disks, we can't afford to store the map in the persistent DB. We will store the fact (and indexes of the lagging agents) that a disk is not mirroring its IO to all replicas. If this flag is set at the start of the service, the replication (migration in terms of our code base) process will be started. The `VolumeActor` will store the data and decide whether it's possible to ignore a bad replica.
 
 `NonreplicatedPartition` is already tracking the response times of devices. An agent will be declared as unavailable once one of its devices has not responded for some time. The plan right now is to start from 5 seconds and slowly bring it down to values that are unnoticeable to users.
 
@@ -33,7 +33,7 @@ In this state, no matter the block index, a write operation will be performed on
 
 ## Detailed Design
 
-There wiil be 3 new entities:
+There will be 3 new entities:
 1) `IncompleteMirrorRWModeController`
 2) `AgentAvailabilityMonitor`
 3) `SmartMigrationActor`
@@ -61,7 +61,7 @@ flowchart TD
 
 ### IncompleteMirrorRWModeController
 
-This actor proxies all IO messages between MirrorPartition and `NonreplicatedPartition`. Its purpose to manage lagging agents in one of the replicas.
+This actor proxies all IO messages between MirrorPartition and `NonreplicatedPartition`. Its purpose is to manage lagging agents in one of the replicas.
 A lagging agent can be either unresponsive or replicating.
 
 - In the unresponsive state:
@@ -79,8 +79,8 @@ A lagging agent can be either unresponsive or replicating.
 
 There can be 0-1 instances of `IncompleteMirrorRWModeController` per `NonreplicatedPartition`. The presence of the `IncompleteMirrorRWModeController` indicates that the replica has agents that lag behind. `IncompleteMirrorRWModeController` manages the lifetimes of `AgentAvailabilityMonitor` and `SmartMigrationActor` entities.
 
-Since the dirty block map will not be stored persistently, we must handle lagging replica on restart of a partition, volume, or a whole service. In this case, the basic resync is started, but with a small difference that only devices of lagging agents will be processed.
-There is one caveat, though: mirror-3 disks can now store different data in the same block across all three replicas. The lagging replica - the oldest data and the other two can differ because a write blocks request was sent to only one replica before the restart. That is not a problem because write confirmation was not sent to a client, but it is something that the current resync algorithm is not ready for. It will pick a random replica, read blocks from it, and write them to the others. We should give it a hint that it should not pick the lagging replica since it definitely contains old data.
+Since the dirty block map will not be stored persistently, we must handle lagging replica on restart of a partition, volume, or a whole service. In this case, the replication is started. Devices that are lagging behind will be marked as "fresh" and the migration process will start automatically. However, there will be one improvement. `TCopyRangeActor` will check the checksums of block ranges before actual replication, as a lot of data remains the same.
+The "freshness" of the devices should be propagated to the DiskRegistry. This will eliminate the possibility of discarding two replicas with the actual data.
 
 ### AgentAvailabilityMonitor
 
