@@ -151,6 +151,8 @@ message TGetStorageStatsRequest
     uint32 CompactionRangeCountByCompactionScore = 3;
     // The same but for cleanup score.
     uint32 CompactionRangeCountByCleanupScore = 4;
+    // The same but for garbage score.
+    uint32 CompactionRangeCountByGarbageScore = 5;
 }
 
 message TGetStorageStatsResponse

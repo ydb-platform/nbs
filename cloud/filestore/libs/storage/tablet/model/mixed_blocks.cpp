@@ -345,4 +345,28 @@ TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
     return {it->BlobId, std::move(blocks)};
 }
 
+ui32 TMixedBlocks::CalculateGarbageBlockCount(ui32 rangeId) const
+{
+    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    Y_DEBUG_ABORT_UNLESS(range);
+    if (!range) {
+        return 0;
+    }
+
+    ui32 result = 0;
+    for (const auto& blob: range->Blobs) {
+        auto blocks = blob.BlockList.DecodeBlocks();
+
+        range->DeletionMarkers.Apply(MakeArrayRef(blocks));
+        for (const auto& block: blocks) {
+            // TODO(#1923): take checkpoints into account
+            if (block.MaxCommitId != InvalidCommitId) {
+                ++result;
+            }
+        }
+    }
+
+    return result;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

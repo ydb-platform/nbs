@@ -147,6 +147,9 @@ private:
                 block.BlockIndex,
                 blob.BlocksCount);
             AccessCompactionStats(rangeId).BlobsCount += 1;
+            // conservative estimate
+            AccessCompactionStats(rangeId).GarbageBlocksCount +=
+                blob.BlocksCount;
         }
 
         for (const auto& part: args.UnalignedDataParts) {
@@ -221,6 +224,9 @@ private:
             if (written) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
                 AccessCompactionStats(rangeId).BlobsCount += 1;
+                // conservative estimate
+                AccessCompactionStats(rangeId).GarbageBlocksCount +=
+                    blob.Blocks.size();
             }
         }
 
@@ -257,6 +263,8 @@ private:
             auto& stats = AccessCompactionStats(rangeId);
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 stats.BlobsCount += 1;
+                // conservative estimate
+                stats.GarbageBlocksCount += blob.Blocks.size();
             }
         }
     }
@@ -273,6 +281,7 @@ private:
             auto& stats = AccessCompactionStats(rangeId);
             if (!Tablet.UpdateBlockLists(db, blob)) {
                 stats.BlobsCount = Max(stats.BlobsCount, 1U) - 1;
+                // no proper way to reliably decrement stats.GarbageBlocksCount
             }
         }
 
@@ -293,6 +302,8 @@ private:
             auto& stats = AccessCompactionStats(rangeId);
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 stats.BlobsCount += 1;
+                // conservative estimate
+                stats.GarbageBlocksCount += blob.Blocks.size();
             }
         }
     }
@@ -303,6 +314,8 @@ private:
     {
         TABLET_VERIFY(!args.MergedBlobs);
         TABLET_VERIFY(!args.UnalignedDataParts);
+
+        THashSet<ui32> rangeIds;
 
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
@@ -337,8 +350,15 @@ private:
             }
             stats.BlobsCount += increment;
         }
-    }
 
+        // recalculating GarbageBlocksCount for each of the affected ranges
+        for (const auto& blob: args.SrcBlobs) {
+            const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
+
+            AccessCompactionStats(rangeId).GarbageBlocksCount =
+                Tablet.CalculateMixedIndexRangeGarbageBlockCount(rangeId);
+        }
+    }
 
     void UpdateCompactionMap(
         TIndexTabletDatabase& db,
@@ -361,6 +381,7 @@ private:
                 x.first,
                 x.second.BlobsCount,
                 x.second.DeletionsCount,
+                x.second.GarbageBlocksCount,
                 args.ProfileLogRequest);
         }
     }
