@@ -6,15 +6,6 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)
-{
-    out << "{" << rhs.Start << "," << rhs.End << "}";
-    return out;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 Y_UNIT_TEST_SUITE(TBlockRangeTest)
 {
     Y_UNIT_TEST(Difference)

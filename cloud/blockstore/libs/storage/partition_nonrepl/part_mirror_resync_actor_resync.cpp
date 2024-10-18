@@ -232,16 +232,14 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto currentIndex = State.GetLastReportedResyncIndex();
     const auto step = Config->GetResyncIndexCachingInterval();
 
-    if (currentIndex + step < resyncRange.Start) {
+    if (currentIndex.value_or(0) + step < resyncRange.Start) {
         State.SetLastReportedResyncIndex(resyncRange.Start);
 
         NCloud::Send(
             ctx,
             PartConfig->GetParentActorId(),
             std::make_unique<TEvVolume::TEvUpdateResyncState>(
-                resyncRange.Start
-            )
-        );
+                resyncRange.Start));
     }
 
     State.MarkResynced(range);
