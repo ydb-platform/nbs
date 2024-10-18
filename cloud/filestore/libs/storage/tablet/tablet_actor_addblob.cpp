@@ -315,6 +315,8 @@ private:
         TABLET_VERIFY(!args.MergedBlobs);
         TABLET_VERIFY(!args.UnalignedDataParts);
 
+        THashSet<ui32> rangeIds;
+
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionStats(rangeId);
@@ -324,6 +326,8 @@ private:
             // needed.
             stats.BlobsCount = Max(1U, stats.BlobsCount) - 1;
             Tablet.DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
+
+            rangeIds.insert(rangeId);
         }
 
         THashMap<ui32, ui32> rangeId2AddedBlobsCount;
@@ -334,6 +338,8 @@ private:
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 ++rangeId2AddedBlobsCount[rangeId];
             }
+
+            rangeIds.insert(rangeId);
         }
 
         for (const auto& [rangeId, addedBlobsCount]: rangeId2AddedBlobsCount) {
@@ -350,9 +356,7 @@ private:
         }
 
         // recalculating GarbageBlocksCount for each of the affected ranges
-        for (const auto& blob: args.SrcBlobs) {
-            const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-
+        for (const auto rangeId: rangeIds) {
             AccessCompactionStats(rangeId).GarbageBlocksCount =
                 Tablet.CalculateMixedIndexRangeGarbageBlockCount(rangeId);
         }
