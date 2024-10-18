@@ -78,6 +78,8 @@ public:
     TVector<TMixedBlobMeta> GetBlobsForCompaction(ui32 rangeId) const;
 
     TMixedBlobMeta FindBlob(ui32 rangeId, TPartialBlobId blobId) const;
+
+    ui32 CalculateGarbageBlockCount(ui32 rangeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

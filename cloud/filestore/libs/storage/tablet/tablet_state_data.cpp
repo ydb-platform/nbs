@@ -954,8 +954,9 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
     stats.BlobsCount = (stats.BlobsCount > removedBlobs)
         ? (stats.BlobsCount - removedBlobs) : 0;
     stats.DeletionsCount = 0;
-    // TODO: calculate GarbageBlocksCount
-    stats.GarbageBlocksCount = 0;
+    if (stats.BlobsCount == 0) {
+        stats.GarbageBlocksCount = 0;
+    }
 
     db.WriteCompactionMap(
         rangeId,
@@ -973,6 +974,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         rangeId,
         stats.BlobsCount,
         stats.DeletionsCount,
+        stats.GarbageBlocksCount,
         profileLogRequest);
 
     return deletionMarkerCount;
@@ -1076,6 +1078,12 @@ const IBlockLocation2RangeIndex& TIndexTabletState::GetRangeIdHasher() const
     TABLET_VERIFY(Impl->RangeIdHasher);
 
     return *Impl->RangeIdHasher;
+}
+
+ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
+    ui32 rangeId) const
+{
+    return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -3566,28 +3566,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetAllocatedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(8, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1656356864 b=16 d=1024",
+                "r=1656356864 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1656356865 b=16 d=1024",
+                "r=1656356865 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(1)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=4283236352 b=16 d=1024",
+                "r=4283236352 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(2)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=4283236353 b=16 d=1024",
+                "r=4283236353 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(3)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=14 d=833",
+                "r=1177944064 b=14 d=833 g=832",
                 CompactionRangeToString(stats.GetCompactionRangeStats(4)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944065 b=13 d=832",
+                "r=1177944065 b=13 d=832 g=832",
                 CompactionRangeToString(stats.GetCompactionRangeStats(5)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=737148928 b=3 d=192",
+                "r=737148928 b=3 d=192 g=192",
                 CompactionRangeToString(stats.GetCompactionRangeStats(6)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=737148929 b=3 d=192",
+                "r=737148929 b=3 d=192 g=192",
                 CompactionRangeToString(stats.GetCompactionRangeStats(7)));
         };
 
