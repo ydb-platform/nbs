@@ -926,12 +926,9 @@ template <>
 void TVolumeActor::HandleCheckpointRequest<TCreateCheckpointMethod>(
     const TActorContext& ctx,
     const TCreateCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
-    Y_UNUSED(volumeRequestId);
-
     const auto& msg = *ev->Get();
 
     auto requestInfo = CreateRequestInfo<TCreateCheckpointMethod>(
@@ -962,12 +959,9 @@ template <>
 void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
-    Y_UNUSED(volumeRequestId);
-
     const auto& msg = *ev->Get();
 
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointMethod>(
@@ -991,12 +985,9 @@ template <>
 void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointDataMethod>(
     const TActorContext& ctx,
     const TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
-    Y_UNUSED(volumeRequestId);
-
     const auto& msg = *ev->Get();
 
     auto requestInfo = CreateRequestInfo<TDeleteCheckpointDataMethod>(
@@ -1020,11 +1011,9 @@ template <>
 void TVolumeActor::HandleCheckpointRequest<TGetCheckpointStatusMethod>(
     const TActorContext& ctx,
     const TGetCheckpointStatusMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs)
 {
-    Y_UNUSED(volumeRequestId);
     Y_UNUSED(isTraced);
     Y_UNUSED(traceTs);
 
