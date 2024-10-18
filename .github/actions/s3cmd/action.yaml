@@ -46,13 +46,15 @@ runs:
         sudo chown $user: $S3CMD_CONFIG
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
         export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}
+        export S3_ENDPOINT="${{ inputs.s3_endpoint }}"
+        export S3_ENDPOINT_NO_PROTOCOL=$(echo $S3_ENDPOINT | sed 's/https\?:\/\///')
         cat <<EOF | sudo -E -H -u $user tee $S3CMD_CONFIG
         [default]
         access_key = ${s3_key_id}
         secret_key = ${s3_secret_access_key}
         bucket_location = eu-north1
-        host_base = storage.ai.nebius.cloud
-        host_bucket = %(bucket)s.storage.ai.nebius.cloud
+        host_base = ${S3_ENDPOINT_NO_PROTOCOL}
+        host_bucket = %(bucket)s.${S3_ENDPOINT_NO_PROTOCOL}
         EOF
 
         sudo -E -H -u $user mkdir -p /home/$user/.aws/
@@ -64,7 +66,7 @@ runs:
         cat <<EOF | sudo -E -H -u $user tee /home/$user/.aws/config
         [default]
         region = eu-north1
-        endpoint_url=https://storage.ai.nebius.cloud/
+        endpoint_url=${{ inputs.s3_endpoint }}
         s3 =
           max_concurrent_requests = 32
           multipart_chunksize = 32MB
@@ -80,7 +82,7 @@ runs:
         cat <<EOF | sudo tee /root/.aws/config
         [default]
         region = eu-north1
-        endpoint_url=https://storage.ai.nebius.cloud/
+        endpoint_url=${{ inputs.s3_endpoint }}
         s3 =
           max_concurrent_requests = 32
           multipart_chunksize = 32MB
@@ -116,6 +118,7 @@ runs:
         echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_WEBSITE_SUFFIX=${{ inputs.s3_website_suffix }}" >> $GITHUB_ENV
       env:
         s3_key_id: ${{ inputs.s3_key_id }}
         s3_secret_access_key: ${{ inputs.s3_key_secret }}

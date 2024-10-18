@@ -13,9 +13,9 @@ inputs:
   token:
     required: true
     description: "GITHUB_TOKEN"
-  parent_id:
+  vm_parent_id:
     required: true
-    description: "parent id"
+    description: "vm parent id"
   vm_id:
     required: true
     description: "vm id"
@@ -34,15 +34,17 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install yandexcloud==0.258.0 PyGithub==2.2.0
+        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.0/nebiusai-0.1.0-py3-none-any.whl
+        pip install PyGithub==2.2.0
     - name: remove vm
       id: remove-vm
       shell: bash
       run: |
-        python .github/scripts/manage-vm.py remove \
+        python .github/scripts/nebius-manage-vm.py remove \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
+          --parent-id "${PARENT_ID}" \
           --id "${VM_ID}" \
           --apply
       env:
@@ -50,3 +52,4 @@ runs:
         REPO_OWNER: ${{ inputs.repo_owner }}
         REPO: ${{ inputs.repo }}
         VM_ID: ${{ inputs.vm_id }}
+        PARENT_ID: ${{ inputs.vm_parent_id }}
