@@ -82,14 +82,15 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
     TVector<TPartitionRequest<TMethod>> partitionRequests;
     TBlockRange64 blockRange;
 
-    if (!ToPartitionRequests<TMethod>(
-            State->GetPartitions(),
-            State->GetBlockSize(),
-            blocksPerStripe,
-            ev,
-            &partitionRequests,
-            &blockRange))
-    {
+    bool ok = ToPartitionRequests<TMethod>(
+        State->GetPartitions(),
+        State->GetBlockSize(),
+        blocksPerStripe,
+        ev,
+        &partitionRequests,
+        &blockRange);
+
+    if (!ok) {
         return false;
     }
 
@@ -233,7 +234,7 @@ void TVolumeActor::SendRequestToPartition(
         partActorId,
         volumeRequestId,
         traceTime,
-        false,
+        true,
         false);
 
     if (SendRequestToPartitionWithUsedBlockTracking<TMethod>(
@@ -714,7 +715,7 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if constexpr (IsWriteMethod<TMethod>) {
+    if constexpr (RequiresReadWriteAccess<TMethod>) {
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());

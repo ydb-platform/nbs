@@ -34,6 +34,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     if constexpr (IsWriteMethod<TMethod>) {
         if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())
         {
+            auto requestInfo =
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
             // TODO(drbasic)
             // For encrypted disk-registry based disks, we will continue to
             // write a map of encrypted blocks for a while.
@@ -53,7 +55,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
-                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
                 needReliableUsedBlockTracking,
