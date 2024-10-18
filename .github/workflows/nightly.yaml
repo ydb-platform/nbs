@@ -107,4 +107,4 @@ jobs:
       use_network_cache: "yes"
       upload_ya_dir: "yes"
       clean_ya_dir: "yes"
-      run_on_nebius: "no"
+      run_on_nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}

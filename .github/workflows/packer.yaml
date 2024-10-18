@@ -50,6 +50,11 @@ on:
         required: false
         default: false
         type: boolean
+      nebius:
+        description: "Run on new nebius runners"
+        required: false
+        default: "no"
+        type: string
   workflow_dispatch:
     inputs:
       build:
