@@ -315,8 +315,6 @@ private:
         TABLET_VERIFY(!args.MergedBlobs);
         TABLET_VERIFY(!args.UnalignedDataParts);
 
-        THashSet<ui32> rangeIds;
-
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionStats(rangeId);
