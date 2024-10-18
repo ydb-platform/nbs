@@ -44,7 +44,6 @@ private:
 private:
     const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
-    const NRdma::TRdmaConfigPtr RdmaConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -64,11 +63,13 @@ private:
     ui32 InitErrorsCount = 0;
     bool PartiallySuspended = false;
 
+    TRdmaTargetConfigPtr RdmaTargetConfig;
+    TOldRequestCounters OldRequestCounters;
+
 public:
     TDiskAgentState(
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
-        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -76,7 +77,9 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager);
+        NNvme::INvmeManagerPtr nvmeManager,
+        TRdmaTargetConfigPtr rdmaTargetConfig,
+        TOldRequestCounters oldRequestCounters);
 
     struct TInitializeResult
     {
@@ -86,8 +89,7 @@ public:
         TDeviceGuard Guard;
     };
 
-    NThreading::TFuture<TInitializeResult> Initialize(
-        TRdmaTargetConfig rdmaTargetConfig);
+    NThreading::TFuture<TInitializeResult> Initialize();
 
     NThreading::TFuture<NProto::TAgentStats> CollectStats();
 
@@ -178,7 +180,7 @@ private:
     NThreading::TFuture<TInitializeResult> InitSpdkStorage();
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
-    void InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig);
+    void InitRdmaTarget();
 
     void RestoreSessions(TDeviceClient& client) const;
 };
