@@ -128,17 +128,17 @@ func (c *executionContext) IsHanging() bool {
 	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
 		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
 	} else {
-		return defaultDeadline.After(now)
+		return now.After(defaultDeadline)
 	}
 
 	deadline := c.taskState.CreatedAt.Add(
 		estimatedDuration * time.Duration(c.missedEstimatesUntilTaskIsHanging),
 	)
 	if deadline.Before(defaultDeadline) {
-		return defaultDeadline.After(now)
+		return now.After(defaultDeadline)
 	}
 
-	return deadline.After(now)
+	return now.After(deadline)
 }
 
 func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
