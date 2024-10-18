@@ -63,8 +63,6 @@ struct IRdmaTarget: IStartable
 using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
-
-
 IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr rdmaTargetConfig,
     TOldRequestCounters OldRequestCounters,
