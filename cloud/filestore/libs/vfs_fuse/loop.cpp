@@ -3,9 +3,11 @@
 #include "config.h"
 #include "fs.h"
 #include "fuse.h"
+#include "handle_ops_queue.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -24,8 +26,10 @@
 #include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
+#include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
+#include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
 #include <util/system/thread.h>
@@ -43,6 +47,10 @@ using namespace NCloud::NFileStore::NClient;
 using namespace NCloud::NFileStore::NVFS;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -493,12 +501,15 @@ private:
     TLog Log;
 
     TString SessionState;
+    TString SessionId;
     std::unique_ptr<TSessionThread> SessionThread;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
+
+    bool HandleOpsQueueInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -596,6 +607,22 @@ public:
                     p->StatsRegistry->Unregister(
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId());
+
+                    // We need to cleanup HandleOpsQueue file and directories
+                    if (p->HandleOpsQueueInitialized) {
+                        auto fsPath =
+                            TFsPath(p->Config->GetHandleOpsQueuePath()) /
+                            p->Config->GetFileSystemId();
+                        TString sessionDir = fsPath / p->SessionId;
+                        try {
+                            NFs::RemoveRecursive(sessionDir);
+                        } catch (const TSystemError& err) {
+                            ReportHandleOpsQueueCreatingOrDeletingError(
+                                TStringBuilder()
+                                << "Failed to remove session's HandleOpsQueue"
+                                << ", reason: " << err.AsStrBuf());
+                        }
+                    }
 
                     s.SetValue();
                 });
@@ -759,6 +786,31 @@ private:
                 Log,
                 StorageMediaKind);
             auto filestoreConfig = MakeFileSystemConfig(filestore);
+            std::unique_ptr<THandleOpsQueue> handleOpsQueue;
+
+            if (filestoreConfig->GetAsyncDestroyHandleEnabled()) {
+                TString path =
+                    TFsPath(Config->GetHandleOpsQueuePath()) /
+                    filestoreConfig->GetFileSystemId() /
+                    response.GetSession().GetSessionId();
+                if (!NFs::MakeDirectoryRecursive(path)) {
+                    TString msg = TStringBuilder()
+                                  << "Failed to create directories for "
+                                     "HandleOpsQueue, path: "
+                                  << path;
+                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
+                    return MakeError(
+                        E_FAIL,
+                        msg);
+                }
+                auto file = TFsPath(path) / HandleOpsQueueFileName;
+                file.Touch();
+                handleOpsQueue = CreateHandleOpsQueue(
+                    file.GetPath(),
+                    Config->GetHandleOpsQueueSize());
+                SessionId = response.GetSession().GetSessionId();
+                HandleOpsQueueInitialized = true;
+            }
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -767,7 +819,8 @@ private:
                 filestoreConfig,
                 Session,
                 RequestStats,
-                CompletionQueue);
+                CompletionQueue,
+                std::move(handleOpsQueue));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 

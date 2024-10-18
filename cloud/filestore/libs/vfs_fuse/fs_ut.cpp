@@ -35,6 +35,7 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
@@ -86,10 +87,13 @@ struct TBootstrap
 
     TPromise<void> StopTriggered = NewPromise<void>();
 
+    const TTempDir TempDir;
+
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler(),
-            const NProto::TFileStoreFeatures& featuresConfig = {})
+            const NProto::TFileStoreFeatures& featuresConfig = {},
+            ui32 handleOpsQueueSize = 1000)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -150,6 +154,10 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
+        if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
+            proto.SetHandleOpsQueuePath(TempDir.Path());
+            proto.SetHandleOpsQueueSize(handleOpsQueueSize);
+        }
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         Loop = NFuse::CreateFuseLoop(
@@ -1558,6 +1566,55 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+    }
+
+    Y_UNIT_TEST(ShouldFailDestroyHandleRequestIfHandleOpsQueueOverflows)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+
+        const ui64 handle1 = 2;
+        const ui64 nodeId1 = 10;
+        const ui64 handle2 = 5;
+        const ui64 nodeId2 = 11;
+        std::atomic_uint handlerCalled = 0;
+        auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, responsePromise](auto callContext, auto request) mutable
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+
+                if (++handlerCalled == 1) {
+                    return responsePromise;
+                }
+
+                UNIT_ASSERT_C(false, "Handler should not be called 2nd time");
+                return NewPromise<NProto::TDestroyHandleResponse>();
+            });
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        responsePromise.SetValue(NProto::TDestroyHandleResponse{});
+
+        scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT_EQUAL(1, handlerCalled);
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "DestroyHandle");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
     }
 }
 
