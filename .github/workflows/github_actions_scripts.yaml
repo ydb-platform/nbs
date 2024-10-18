@@ -11,7 +11,7 @@ jobs:
     - name: README
       run: |
         echo "This is a test of the GA scripts"
-        echo <<EOF
+        cat <<EOF > README.md
         To update the test data, run the following commands:
         export TMP_DIR=$(mktemp -d)
         export GITHUB_WORKSPACE=$(pwd)
@@ -50,6 +50,7 @@ jobs:
         Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
         Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
         EOF
+        cat README.md
       env:
         ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
 
