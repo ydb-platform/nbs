@@ -908,6 +908,8 @@ public:
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
 
+    ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
+
 private:
     bool WriteMixedBlocks(
         TIndexTabletDatabase& db,
