@@ -133,7 +133,7 @@ def test_node_volume_expand(fs_type):
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
-@pytest.mark.parametrize('access_type,vm_mode', [("mount", True), ("mount", False), ("block", True)])
+@pytest.mark.parametrize('access_type,vm_mode', [("mount", True), ("mount", False), ("block", False)])
 def test_publish_volume_twice_on_the_same_node(access_type, vm_mode):
     env, run = csi.init(vm_mode=vm_mode)
     try:
