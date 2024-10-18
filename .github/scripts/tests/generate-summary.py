@@ -314,7 +314,7 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
         report_url = f"{summary_url_prefix}{html_fn}"
 
         render_testlist_html(
-            summary_line.tests,
+            sorted(summary_line.tests, key=lambda x: x.full_name),
             os.path.join(summary_out_folder, html_fn),
             summary_url=summary_url_prefix,
         )

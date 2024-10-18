@@ -40,7 +40,7 @@
 </head>
 
 <body>
-    <p>Summary dir: {{ summary_url }}index.html</p>
+    <p><a href="{{ summary_url }}index.html">Summary dir file listing</a></p>
     {% for status in status_order %}
     <h1 id="{{ status.name }}">{{ status.name }} ({{ tests[status] | length }})</h1>
     <table style="width:100%;" border="1">

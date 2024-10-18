@@ -45,7 +45,7 @@ jobs:
         cp $TMP_DIR/{fail-checker,summary_env,ya-test.html} ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
         cd ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
         export NEW_VERSION=$(($ACTIONS_TEST_DATA_VERSION + 1))
-        tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html
+        tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html muted_ya.txt
 
         Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
         Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
