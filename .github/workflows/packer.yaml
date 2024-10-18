@@ -101,7 +101,10 @@ on:
         description: "Run on new nebius runners"
         required: false
         default: "no"
-        type: string
+        type: choice
+        options:
+          - "yes"
+          - "no"
 
 env:
   build: ${{ github.event_name == 'schedule' && 'true' || inputs.build }}
