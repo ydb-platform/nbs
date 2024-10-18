@@ -348,7 +348,10 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                     }
                     TABLED() {
                         if (volume.GetLocalMountClientInfo() &&
-                            volume.StorageMediaKind != NProto::STORAGE_MEDIA_SSD_LOCAL)
+                            volume.StorageMediaKind !=
+                                NProto::STORAGE_MEDIA_SSD_LOCAL &&
+                            volume.StorageMediaKind !=
+                                NProto::STORAGE_MEDIA_HDD_LOCAL)
                         {
                             BuildVolumePreemptionButton(out, volume);
                         }

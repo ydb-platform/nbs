@@ -243,6 +243,7 @@ TDuration GetDowntimeThreshold(
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
             return config.GetMirror2SSDDowntimeThreshold();
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
             return config.GetLocalSSDDowntimeThreshold();
         }
