@@ -438,8 +438,17 @@ ModifyScheme {
     def write_configs(self):
         for file_name, proto in self.__proto_configs.items():
             config_file_path = os.path.join(self.config_path(), file_name)
-            with open(config_file_path, "w") as config_file:
-                config_file.write(MessageToString(proto))
+            config_dir = self.config_path()
+            # os.makedirs(self.config_path(), exist_ok=True)
+            logger.error(f"MYAGKOV: write configs: dir: path: {config_dir} parent exists: {os.path.exists(config_dir)}")
+            logger.error(f"MYAGKOV: write configs: file:  path: {config_file_path} parent exists: {os.path.exists(config_file_path)}")
+            try:
+                with open(config_file_path, "w") as config_file:
+                    config_file.write(MessageToString(proto))
+            except:
+                logger.error(f"MYAGKOV: exception: dir: path: {config_dir} parent exists: {os.path.exists(config_dir)}")
+                logger.error(f"MYAGKOV: exception: file:  path: {config_file_path} parent exists: {os.path.exists(config_file_path)}")
+                raise
 
     def setup_cms(self, kikimr):
         name_table = {
