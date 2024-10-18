@@ -233,7 +233,7 @@ def render_pm(value, url, diff=None):
     return text
 
 
-def render_testlist_html(rows, fn):
+def render_testlist_html(rows, fn, summary_url):
     TEMPLATES_PATH = os.path.join(os.path.dirname(__file__), "templates")
 
     env = Environment(
@@ -311,7 +311,9 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
         report_url = f"{summary_url_prefix}{html_fn}"
 
         render_testlist_html(
-            summary_line.tests, os.path.join(summary_out_folder, html_fn)
+            summary_line.tests,
+            os.path.join(summary_out_folder, html_fn),
+            summary_url=summary_url_prefix,
         )
         summary_line.add_report(html_fn, report_url)
         summary.add_line(summary_line)
@@ -349,6 +351,7 @@ def update_pr_comment(
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
+    is_dry_run: bool,
 ):
     header = f"<!-- status pr={pr.number}, run={{}} -->"
     header_re = re.compile(header.format(r"(\d+)"))
@@ -363,10 +366,22 @@ def update_pr_comment(
     if body is None:
         body = [
             header.format(run_number),
-            "> [!NOTE]",
-            "> This is an automated comment that will be appended during run.",
-            "",
         ]
+        if is_dry_run:
+            body.extend(
+                [
+                    "> [!NOTE]",
+                    "> This is a simulation, not a real result. If you see this, everything is as it should be.",
+                    "",
+                ]
+            )
+        body.extend(
+            [
+                "> [!NOTE]",
+                "> This is an automated comment that will be appended during run.",
+                "",
+            ]
+        )
 
     body.extend(get_comment_text(pr, summary, build_preset, test_history_url))
 
@@ -388,6 +403,12 @@ def main():
     parser.add_argument("--test-history-url", required=False)
     parser.add_argument(
         "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
+    )
+    parser.add_argument(
+        "--is-dry-run",
+        default=False,
+        action="store_true",
+        help="Add mark in comments that this is simulation, not real result",
     )
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
@@ -411,7 +432,12 @@ def main():
         run_number = int(os.environ.get("GITHUB_RUN_NUMBER"))
         pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
         update_pr_comment(
-            run_number, pr, summary, args.build_preset, args.test_history_url
+            run_number,
+            pr,
+            summary,
+            args.build_preset,
+            args.test_history_url,
+            args.is_dry_run,
         )
 
 

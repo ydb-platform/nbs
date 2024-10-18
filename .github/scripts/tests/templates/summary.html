@@ -1,11 +1,13 @@
 <html>
+
 <head>
     <style>
         th {
             text-transform: uppercase;
         }
 
-        th, td {
+        th,
+        td {
             padding: 5px;
         }
 
@@ -28,51 +30,56 @@
         span.test_mute {
             color: blue;
         }
-        table > tbody > tr > td:nth-child(2),
-        table > tbody > tr > td:nth-child(3),
-        table > tbody > tr > td:nth-child(4) {
+
+        table>tbody>tr>td:nth-child(2),
+        table>tbody>tr>td:nth-child(3),
+        table>tbody>tr>td:nth-child(4) {
             text-align: center;
         }
     </style>
 </head>
-<body>
-{% for status in status_order %}
-<h1 id="{{ status.name}}">{{ status.name }} ({{ tests[status] | length }})</h1>
-<table style="width:100%;" border="1">
-    <thead>
-    <tr>
-        <th>test name</th>
-        <th>elapsed</th>
-        <th>status</th>
-    {% if status in has_any_log %}
-        <th>LOG</th>
-    {% endif %}
-    </tr>
-    </thead>
-    <tbody>
-    {% for t in tests[status] %}
-    <tr>
-        <td>{{ t.full_name }}</td>
-        <td><span title="{{ t.elapsed }}s">{{ t.elapsed_display }}</span></td>
-        <td>
-            <span class="test_status test_{{ t.status_display }}">{{ t.status_display }}{% if t.is_timed_out %}(TIMEOUT){% endif %}</span>
-        </td>
-        {% if status in has_any_log %}
-        <td>
-            {% if t.log_urls %}
-                {% for log_name, log_url in t.log_urls.items() %}
-                <a href="{{ log_url }}">{{ log_name.upper() }}</a>{% if not loop.last %} | {% endif %}
 
-                {% endfor %}
-            {% else %}
-                LOGS ARE EMPTY
-            {% endif %}
-        </td>
-        {% endif %}
-    </tr>
+<body>
+    <p>Summary dir: {{ summary_url }}index.html</p>
+    {% for status in status_order %}
+    <h1 id="{{ status.name }}">{{ status.name }} ({{ tests[status] | length }})</h1>
+    <table style="width:100%;" border="1">
+        <thead>
+            <tr>
+                <th>test name</th>
+                <th>elapsed</th>
+                <th>status</th>
+                {% if status in has_any_log %}
+                <th>LOG</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in tests[status] %}
+            <tr>
+                <td>{{ t.full_name }}</td>
+                <td><span title="{{ t.elapsed }}s">{{ t.elapsed_display }}</span></td>
+                <td>
+                    <span class="test_status test_{{ t.status_display }}">{{ t.status_display }}{% if t.is_timed_out
+                        %}(TIMEOUT){% endif %}</span>
+                </td>
+                {% if status in has_any_log %}
+                <td>
+                    {% if t.log_urls %}
+                    {% for log_name, log_url in t.log_urls.items() %}
+                    <a href="{{ log_url }}">{{ log_name.upper() }}</a>{% if not loop.last %} | {% endif %}
+
+                    {% endfor %}
+                    {% else %}
+                    LOGS ARE EMPTY
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
     {% endfor %}
-    </tbody>
-</table>
-{% endfor %}
 </body>
+
 </html>

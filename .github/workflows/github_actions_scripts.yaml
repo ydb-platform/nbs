@@ -19,7 +19,7 @@ jobs:
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        wget "https://storage.ai.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
 
         python3 $GITHUB_WORKSPACE/.github/scripts/tests/transform-ya-junit.py \
@@ -35,6 +35,7 @@ jobs:
           --summary-out-env-path "$TMP_DIR/summary_env" \
           --summary-url-prefix "SUMMARY_URL_PREFIX" \
           --build-preset "linux-x64-relwithdebinfo" \
+          --is-dry-run \
           "Tests" ya-test.html "$TMP_DIR/junit.xml"
 
         python3 $GITHUB_WORKSPACE/.github/scripts/tests/fail-checker.py "$TMP_DIR/junit.xml" --paths-only | sort | tee -a "$TMP_DIR/fail-checker"
@@ -50,7 +51,7 @@ jobs:
         Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
         EOF
       env:
-        ACTIONS_TEST_DATA_VERSION: ${{ vars.ACTIONS_TEST_DATA_VERSION }}
+        ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
 
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -88,7 +89,7 @@ jobs:
         set -x
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        wget "https://storage.ai.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
       env:
         ACTIONS_TEST_DATA_VERSION: ${{ vars.ACTIONS_TEST_DATA_VERSION }}
@@ -118,6 +119,7 @@ jobs:
           --summary-out-env-path "$TMP_DIR/summary_env" \
           --summary-url-prefix "SUMMARY_URL_PREFIX" \
           --build-preset "linux-x64-relwithdebinfo" \
+          --is-dry-run \
           "Tests" ya-test.html "$TMP_DIR/junit.xml"
         echo "::endgroup::"
       env:
