@@ -263,7 +263,9 @@ def render_testlist_html(rows, fn, summary_url):
     status_order = [s for s in status_order if s in status_test]
 
     content = env.get_template("summary.html").render(
-        status_order=status_order, tests=status_test, has_any_log=has_any_log,
+        status_order=status_order,
+        tests=status_test,
+        has_any_log=has_any_log,
         summary_url=summary_url
     )
 
