@@ -173,9 +173,8 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 RequestName(request.GetRequestType()).c_str(),
                 request.ShortDebugString().Quote().c_str());
 
-            if (const auto future = ProcessRequest(request);
-                future.Initialized())
-            {
+            const auto future = ProcessRequest(request);
+            if (future.Initialized()) {
                 return future;
             }
         }

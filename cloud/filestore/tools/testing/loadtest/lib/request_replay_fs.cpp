@@ -1,7 +1,7 @@
 /*
-TODO:
+TODO(#1733):
 create file/dir modes
-create handle modes (now rw)
+create handle modes (now only rw)
 compare log and actual result ( S_OK E_FS_NOENT ...)
 read/write with multiranges (now only first processed)
 */
@@ -51,7 +51,7 @@ private:
     // Map between log and actual local fs node id's
     THashMap<TNodeLog, TNodeLocal> NodesLogToLocal{{RootNodeId, RootNodeId}};
 
-    // Relative to local root path of node. Dirs ends with /
+    // Full path of node
     THashMap<TNodeLocal, TFsPath> NodePath;
 
     // Collected info for log node id's
@@ -68,6 +68,7 @@ private:
     THashMap<THandleLocal, TFile> OpenHandles;
 
     const TString LostName = "__lost__";
+    const TString UnknownNodeNamePrefix = "_nodeid_";
 
 public:
     TReplayRequestGeneratorFs(
@@ -187,16 +188,17 @@ private:
 
         {
             auto parentPath = PathByNode(NodeIdMapped(it->second.ParentLog));
-            if (parentPath.IsDefined() && parent) {
+            if (!parentPath.IsDefined() && parent != InvalidNodeId) {
                 parentPath = PathByNode(parent);
             }
-            if (parentPath.IsDefined()) {
-                parentPath = PathByNode(RootNodeId) / LostName / "_nodeid_" +
-                             ToString(it->second.ParentLog);
+            if (!parentPath.IsDefined()) {
+                parentPath =
+                    PathByNode(RootNodeId) / LostName / UnknownNodeNamePrefix +
+                    ToString(it->second.ParentLog);
             }
             const auto name =
                 parentPath / (it->second.Name.empty()
-                                  ? "_nodeid_" + ToString(nodeIdLog)
+                                  ? UnknownNodeNamePrefix + ToString(nodeIdLog)
                                   : it->second.Name);
             const auto nodeId = MakeDirectoryRecursive(name);
             NodePath[nodeId] = name;
@@ -261,14 +263,15 @@ private:
             }
 
             if (parentNode == InvalidNodeId) {
-                STORAGE_ERROR(
-                    "Create handle %lu fail: no parent=%lu",
-                    logRequest.GetNodeInfo().GetHandle(),
-                    logRequest.GetNodeInfo().GetParentNodeId());
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     Started,
-                    MakeError(E_FAIL, "cancelled")});
+                    MakeError(
+                        E_FAIL,
+                        Sprintf(
+                            "Create handle %lu fail: no parent=%lu",
+                            logRequest.GetNodeInfo().GetHandle(),
+                            logRequest.GetNodeInfo().GetParentNodeId()))});
             }
 
             auto nodeName = logRequest.GetNodeInfo().GetNodeName();
@@ -573,7 +576,7 @@ private:
                 break;
             }
             case NProto::E_LINK_NODE: {
-                // {"TimestampMcs":1727703903595285,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"pack-ebe666445578da0c6157f4172ad581cd731742ec.idx","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
+                // {"TimestampMcs":1000000000000000,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"name.ext","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
 
                 const auto targetNode =
                     NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
@@ -605,7 +608,6 @@ private:
             nodeid = TFileStat{fullName}.INode;
         }
 
-        // CreateIfMissing(PathByNode())
         if (nodeid) {
             NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = nodeid;
             NodePath[nodeid] = PathByNode(parentNode) /
