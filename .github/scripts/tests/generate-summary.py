@@ -266,7 +266,7 @@ def render_testlist_html(rows, fn, summary_url):
         status_order=status_order,
         tests=status_test,
         has_any_log=has_any_log,
-        summary_url=summary_url
+        summary_url=summary_url,
     )
 
     with open(fn, "w") as fp:
