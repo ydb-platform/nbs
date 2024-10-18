@@ -192,8 +192,9 @@ def _parse_args(argv):
 
 
 def _get_bindir():
-    return yatest.common.build_path(
-        "cloud/storage/core/tools/testing/qemu/bin")
+    return "/"
+    # return yatest.common.build_path(
+    #     "cloud/storage/core/tools/testing/qemu/bin")
 
 
 def _unpack_qemu_bin(bindir):
