@@ -35,6 +35,16 @@ public:
     {
         return Config.GetServer();
     }
+
+    bool GetDiskAgentTargetEnabled() const
+    {
+        return Config.GetDiskAgentTargetEnabled();
+    }
+
+    const auto& GetDiskAgentTarget() const
+    {
+        return Config.GetDiskAgentTarget();
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NRdma
