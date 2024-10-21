@@ -4,32 +4,65 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void THandleOpsQueue::AddDestroyRequest(ui64 nodeId, ui64 handle)
+THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
+    : RequestsToProcess(filePath, size)
+{
+}
+
+THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
+    ui64 nodeId,
+    ui64 handle)
 {
     NProto::TQueueEntry request;
     request.MutableDestroyHandleRequest()->SetHandle(handle);
     request.MutableDestroyHandleRequest()->SetNodeId(nodeId);
-    Requests.push(request);
+
+    TString result;
+    if (!request.SerializeToString(&result)) {
+        return THandleOpsQueue::EResult::SerializationError;
+    }
+
+    if (!RequestsToProcess.Push(result)) {
+        return THandleOpsQueue::EResult::QueueOveflow;
+    }
+
+    return THandleOpsQueue::EResult::Ok;
 }
 
-const NProto::TQueueEntry& THandleOpsQueue::Front()
+std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
 {
-    return Requests.front();
+    const auto req = RequestsToProcess.Front();
+
+    NProto::TQueueEntry entry;
+    if (!entry.ParseFromArray(req.data(), req.size())) {
+        return std::nullopt;
+    }
+
+    return entry;
 }
 
 bool THandleOpsQueue::Empty() const
 {
-    return Requests.empty();
+    return RequestsToProcess.Empty();
 }
 
 void THandleOpsQueue::Pop()
 {
-    Requests.pop();
+    RequestsToProcess.Pop();
 }
 
 ui64 THandleOpsQueue::Size() const
 {
-    return Requests.size();
+    return RequestsToProcess.Size();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<THandleOpsQueue> CreateHandleOpsQueue(
+    const TString& filePath,
+    ui32 size)
+{
+    return std::make_unique<THandleOpsQueue>(filePath, size);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

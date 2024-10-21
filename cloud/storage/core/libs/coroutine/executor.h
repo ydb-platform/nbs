@@ -46,7 +46,7 @@ public:
         struct TRequestCancelled: T
         {
             TRequestCancelled()
-                : T(TErrorResponse(E_REJECTED, "request cancelled"))
+                : T(static_cast<T>(TErrorResponse(E_REJECTED, "request cancelled")))
             {}
         };
 

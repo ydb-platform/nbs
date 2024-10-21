@@ -32,6 +32,9 @@ public:
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
     const NProto::TLocalServiceConfig* GetLocalServiceConfig() const;
 
+    TString GetHandleOpsQueuePath() const;
+    ui32 GetHandleOpsQueueSize() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

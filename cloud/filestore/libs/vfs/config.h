@@ -40,6 +40,9 @@ public:
     ui32 GetXAttrCacheSize() const;
     TDuration GetXAttrCacheTimeout() const;
 
+    TString GetHandleOpsQueuePath() const;
+    ui32 GetHandleOpsQueueSize() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

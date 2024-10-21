@@ -631,26 +631,32 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     auto& req = ev->Get()->Record;
 
+    TVector<TCompactionRangeInfo> topRanges;
+
     if (req.GetCompactionRangeCountByCompactionScore()) {
-        const auto topRanges = GetTopRangesByCompactionScore(
+        const auto r = GetTopRangesByCompactionScore(
             req.GetCompactionRangeCountByCompactionScore());
-        for (const auto& r: topRanges) {
-            auto* out = stats->AddCompactionRangeStats();
-            out->SetRangeId(r.RangeId);
-            out->SetBlobCount(r.Stats.BlobsCount);
-            out->SetDeletionCount(r.Stats.DeletionsCount);
-        }
+        topRanges.insert(topRanges.end(), r.begin(), r.end());
     }
 
     if (req.GetCompactionRangeCountByCleanupScore()) {
-        const auto topRanges = GetTopRangesByCleanupScore(
+        const auto r = GetTopRangesByCleanupScore(
             req.GetCompactionRangeCountByCleanupScore());
-        for (const auto& r: topRanges) {
-            auto* out = stats->AddCompactionRangeStats();
-            out->SetRangeId(r.RangeId);
-            out->SetBlobCount(r.Stats.BlobsCount);
-            out->SetDeletionCount(r.Stats.DeletionsCount);
-        }
+        topRanges.insert(topRanges.end(), r.begin(), r.end());
+    }
+
+    if (req.GetCompactionRangeCountByGarbageScore()) {
+        const auto r = GetTopRangesByGarbageScore(
+            req.GetCompactionRangeCountByGarbageScore());
+        topRanges.insert(topRanges.end(), r.begin(), r.end());
+    }
+
+    for (const auto& r: topRanges) {
+        auto* out = stats->AddCompactionRangeStats();
+        out->SetRangeId(r.RangeId);
+        out->SetBlobCount(r.Stats.BlobsCount);
+        out->SetDeletionCount(r.Stats.DeletionsCount);
+        out->SetGarbageBlockCount(r.Stats.GarbageBlocksCount);
     }
 
     stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
