@@ -38,16 +38,6 @@ bool IsUnixAddress(const TNetworkAddress& addr);
 
 TString PrintHostAndPort(const TNetworkAddress& addr);
 
-TSet<TString> FindMountedFiles(
-    const TString& device,
-    const TString& mountInfoFile = MOUNT_INFO_FILE);
-
-TVector<TString> FindLoopbackDevices(
-    const TSet<TString>& mountedFiles,
-    const TString& sysBlockDir = SYS_BLOCK_DIR);
-
-int RemoveLoopbackDevice(const TString& loopDevice);
-
 TString FindFreeNbdDevice(const TString& sysBlockDir = SYS_BLOCK_DIR);
 
 }   // namespace NCloud::NBlockStore::NBD
