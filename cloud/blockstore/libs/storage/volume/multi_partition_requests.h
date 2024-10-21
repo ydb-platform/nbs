@@ -54,8 +54,6 @@ class TMultiPartitionRequestActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const NActors::TActorId VolumeActorId;
-    const ui64 VolumeRequestId;
     const TBlockRange64 OriginalRange;
     const ui32 BlocksPerStripe;
     const ui32 BlockSize;
@@ -72,8 +70,6 @@ private:
 public:
     TMultiPartitionRequestActor(
         TRequestInfoPtr requestInfo,
-        NActors::TActorId volumeActorId,
-        ui64 volumeRequestId,
         TBlockRange64 originalRange,
         ui32 blocksPerStripe,
         ui32 blockSize,
@@ -276,8 +272,6 @@ private:
         MergeCommonFields(src, dst);
     }
 
-    void NotifyCompleted(const NActors::TActorContext& ctx);
-
     void ForkTraces(TCallContextPtr callContext)
     {
         auto& cc = RequestInfo->CallContext;
@@ -305,8 +299,6 @@ private:
 template <typename TMethod>
 TMultiPartitionRequestActor<TMethod>::TMultiPartitionRequestActor(
         TRequestInfoPtr requestInfo,
-        NActors::TActorId volumeActorId,
-        ui64 volumeRequestId,
         TBlockRange64 originalRange,
         ui32 blocksPerStripe,
         ui32 blockSize,
@@ -314,8 +306,6 @@ TMultiPartitionRequestActor<TMethod>::TMultiPartitionRequestActor(
         TVector<TPartitionRequest<TMethod>> partitionRequests,
         TRequestTraceInfo traceInfo)
     : RequestInfo(std::move(requestInfo))
-    , VolumeActorId(volumeActorId)
-    , VolumeRequestId(volumeRequestId)
     , OriginalRange(originalRange)
     , BlocksPerStripe(blocksPerStripe)
     , BlockSize(blockSize)
@@ -369,26 +359,6 @@ void TMultiPartitionRequestActor<TMethod>::Prepare(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TMultiPartitionRequestActor<TMethod>::NotifyCompleted(
-    const NActors::TActorContext& ctx)
-{
-    if constexpr (RequiresReadWriteAccess<TMethod>) {
-        using TEvent = TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted;
-        auto ev = std::make_unique<TEvent>(
-            VolumeRequestId,
-            Record.GetError().GetCode());
-
-        NCloud::Send(
-            ctx,
-            VolumeActorId,
-            std::move(ev)
-        );
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
 void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -426,8 +396,6 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
-        NotifyCompleted(ctx);
-
         TBase::Die(ctx);
     }
 }
@@ -455,8 +423,6 @@ void TMultiPartitionRequestActor<TMethod>::HandleUndelivery(
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    NotifyCompleted(ctx);
 
     TBase::Die(ctx);
 }
