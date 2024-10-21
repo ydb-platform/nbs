@@ -530,6 +530,15 @@ public:
         ui32 maxBytes,
         TString* next = nullptr);
 
+    bool ReadNodeRefs(
+        IIndexTabletDatabase& db,
+        ui64 startNodeId,
+        const TString& startCookie,
+        ui64 maxCount,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        ui64& nextNodeId,
+        TString& nextCookie);
+
     bool PrechargeNodeRefs(
         IIndexTabletDatabase& db,
         ui64 nodeId,
@@ -899,6 +908,8 @@ public:
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
 
+    ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
+
 private:
     bool WriteMixedBlocks(
         TIndexTabletDatabase& db,
@@ -1108,7 +1119,11 @@ private:
     //
 
 public:
-    void UpdateCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void UpdateCompactionMap(
+        ui32 rangeId,
+        ui32 blobsCount,
+        ui32 deletionsCount,
+        ui32 garbageBlocksCount);
 
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
@@ -1120,8 +1135,12 @@ public:
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByGarbageScore(
+        ui32 topSize) const;
 
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 
@@ -1287,6 +1306,7 @@ public:
     IIndexTabletDatabase& AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
+    void MarkNodeRefsLoadComplete();
 };
 
 }   // namespace NCloud::NFileStore::NStorage

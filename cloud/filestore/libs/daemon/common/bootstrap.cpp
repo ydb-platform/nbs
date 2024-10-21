@@ -376,12 +376,12 @@ void TBootstrapCommon::InitLWTrace(
         traceReaders.push_back(CreateTraceLogger(TraceLoggerId, traceLog, "NFS_TRACE"));
     }
 
-    if (auto samplingRate = Configs->DiagnosticsConfig->GetSlowRequestSamplingRate() &&
-        !probesToTrace.empty())
-    {
+    auto slowRequestSamplingRate =
+        Configs->DiagnosticsConfig->GetSlowRequestSamplingRate();
+    if (slowRequestSamplingRate && !probesToTrace.empty()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             probesToTrace,
-            samplingRate,
+            slowRequestSamplingRate,
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
 
         lwManager.New(SlowRequestsFilterId, query);

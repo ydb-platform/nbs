@@ -60,7 +60,8 @@ void TIndexTabletActor::ExecuteTx_DeleteZeroCompactionRanges(
         db.WriteCompactionMap(
             range,
             GetCompactionStats(range).BlobsCount,
-            GetCompactionStats(range).DeletionsCount);
+            GetCompactionStats(range).DeletionsCount,
+            GetCompactionStats(range).GarbageBlocksCount);
     }
 
 }

@@ -10,7 +10,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
-def default_storage_config(tablet_version, cache_folder):
+def default_storage_config(tablet_version, backups_folder):
     storage = storage_config_with_default_limits()
 
     storage.InactiveClientsTimeout = 10000
@@ -24,9 +24,9 @@ def default_storage_config(tablet_version, cache_folder):
         storage.DumpBlobUpdatesIntoProfileLog = True
 
     storage.TabletBootInfoBackupFilePath = \
-        cache_folder + "/tablet_boot_info_backup.txt"
+        backups_folder + "/tablet_boot_info_backup.txt"
     storage.PathDescriptionBackupFilePath = \
-        cache_folder + "/path_description_backup.txt"
+        backups_folder + "/path_description_backup.txt"
 
     return storage
 
@@ -134,21 +134,21 @@ def __run_test(test_case):
     server.ServerConfig.StrictContractValidation = True
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    cache_folder = get_unique_path_for_current_test(
+    backups_folder = get_unique_path_for_current_test(
         output_path=common.output_path(),
-        sub_folder="cache",
+        sub_folder="backups",
     )
-    ensure_path_exists(cache_folder)
+    ensure_path_exists(backups_folder)
 
     env = LocalLoadTest(
         "",
         server_app_config=server,
         tracking_enabled=test_case.tracking_enabled,
         storage_config_patches=[
-            default_storage_config(test_case.tablet_version, cache_folder)
+            default_storage_config(test_case.tablet_version, backups_folder)
         ],
         use_in_memory_pdisks=True,
-        bs_cache_file_path=cache_folder + "/bs_cache.txt",
+        bs_cache_file_path=backups_folder + "/bs_cache.txt",
     )
 
     try:

@@ -40,6 +40,16 @@ func (c *Mock) MakeFilesystem(device string, fsType string) ([]byte, error) {
 	return args.Get(0).([]byte), args.Error(1)
 }
 
+func (c *Mock) NeedResize(devicePath string, deviceMountPath string) (bool, error) {
+	args := c.Called(devicePath, deviceMountPath)
+	return args.Get(0).(bool), args.Error(1)
+}
+
+func (c *Mock) Resize(devicePath string, deviceMountPath string) (bool, error) {
+	args := c.Called(devicePath, deviceMountPath)
+	return args.Get(0).(bool), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewMock() *Mock {

@@ -10,6 +10,8 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/system/hostname.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,10 +25,31 @@ struct TOldRequestCounters
 
 struct TRdmaTargetConfig
 {
-    bool RejectLateRequestsAtDiskAgentEnabled = false;
-    TOldRequestCounters OldRequestCounters = {};
-    ui32 PoolSize = 1;
+    bool RejectLateRequests = false;
+    TString Host = "::";
+    ui32 Port = 10020;
+    ui32 WorkerThreads = 1;
+
+    TRdmaTargetConfig(bool rejectLateRequests, NProto::TRdmaTarget target)
+        : RejectLateRequests(rejectLateRequests)
+    {
+        auto& endpoint = target.GetEndpoint();
+
+        if (auto& host = endpoint.GetHost()) {
+            Host = host;
+        }
+
+        if (auto port = endpoint.GetPort()) {
+            Port = port;
+        }
+
+        if (auto threads = target.GetWorkerThreads()) {
+            WorkerThreads = threads;
+        }
+    }
 };
+
+using TRdmaTargetConfigPtr = std::shared_ptr<TRdmaTargetConfig>;
 
 struct IRdmaTarget: IStartable
 {
@@ -41,8 +64,8 @@ using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 IRdmaTargetPtr CreateRdmaTarget(
-    NProto::TRdmaEndpoint config,
-    TRdmaTargetConfig rdmaTargetConfig,
+    TRdmaTargetConfigPtr rdmaTargetConfig,
+    TOldRequestCounters OldRequestCounters,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,

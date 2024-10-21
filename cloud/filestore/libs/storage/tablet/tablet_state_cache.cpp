@@ -21,6 +21,26 @@ void TInMemoryIndexState::Reset(
     NodeRefsCapacity = nodeRefsCapacity;
 }
 
+void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
+{
+    for (const auto& nodeRef: nodeRefs) {
+        WriteNodeRef(
+            nodeRef.NodeId,
+            nodeRef.MinCommitId,
+            nodeRef.Name,
+            nodeRef.ChildNodeId,
+            nodeRef.ShardId,
+            nodeRef.ShardName);
+    }
+}
+
+void TInMemoryIndexState::MarkNodeRefsLoadComplete()
+{
+    // If during the startup there were no evictions, then the cache should be
+    // complete upon the load completion.
+    IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
+}
+
 //
 // Nodes
 //
@@ -211,9 +231,60 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next)
 {
-    // TInMemoryIndexState is a preemptive cache, thus it is impossible to
-    // determine, whether the set of stored references is complete.
-    Y_UNUSED(nodeId, commitId, cookie, refs, maxBytes, next);
+    if (!IsNodeRefsExhaustive) {
+        // TInMemoryIndexState is a preemptive cache, thus it is impossible to
+        // determine, whether the set of stored references is complete.
+        return false;
+    }
+
+    auto it = NodeRefs.lower_bound(TNodeRefsKey(nodeId, cookie));
+
+    ui32 bytes = 0;
+    while (it != NodeRefs.end() && it->first.NodeId == nodeId) {
+        ui64 minCommitId = it->second.CommitId;
+        ui64 maxCommitId = InvalidCommitId;
+
+        if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
+            refs.emplace_back(TNodeRef{
+                nodeId,
+                it->first.Name,
+                it->second.ChildId,
+                it->second.ShardId,
+                it->second.ShardName,
+                minCommitId,
+                maxCommitId});
+
+            // FIXME: bytes should represent the size of entire entry, not just
+            // the name
+            bytes += refs.back().Name.size();
+        }
+
+        ++it;
+
+        if (maxBytes && bytes >= maxBytes) {
+            break;
+        }
+    }
+
+    if (next && it != NodeRefs.end() && it->first.NodeId == nodeId) {
+        *next = it->first.Name;
+    }
+
+    return true;
+}
+
+bool TInMemoryIndexState::ReadNodeRefs(
+    ui64 startNodeId,
+    const TString& startCookie,
+    ui64 maxCount,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    ui64& nextNodeId,
+    TString& nextCookie)
+{
+    Y_UNUSED(startNodeId, startCookie, maxCount, refs, nextNodeId, nextCookie);
+    // This method is supposed to be called only upon tablet load in order to
+    // populate the cache with data from localDb. Thus implementing in via
+    // in-memory cache is unnecessary.
     return false;
 }
 
@@ -237,6 +308,9 @@ void TInMemoryIndexState::WriteNodeRef(
     const auto key = TNodeRefsKey(nodeId, name);
     if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
         NodeRefs.clear();
+
+        IsNodeRefsEvictionObserved = true;
+        IsNodeRefsExhaustive = false;
     }
     NodeRefs[key] = TNodeRefsRow{
         .CommitId = commitId,

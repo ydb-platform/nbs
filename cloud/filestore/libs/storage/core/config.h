@@ -233,6 +233,8 @@ public:
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
     ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    bool GetInMemoryIndexCacheLoadOnTabletStart() const;
+    ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
@@ -251,6 +253,7 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    ui32 GetBlobCompressionChunkSize() const;
 
     ui32 GetNonNetworkMetricsBalancingFactor() const;
 

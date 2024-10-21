@@ -23,7 +23,15 @@ from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
 
 class NbsConfigurator:
 
-    def __init__(self, ydb, node_type=None, pm=None, ssl_registration=False, ic_port=None):
+    def __init__(
+            self,
+            ydb,
+            node_type=None,
+            pm=None,
+            ssl_registration=False,
+            ic_port=None,
+            use_location=True,
+            location=None):
         assert ydb.config
 
         self.__pm = PortManager() if pm is None else pm
@@ -41,6 +49,8 @@ class NbsConfigurator:
         self.cms = dict()
 
         self.ssl_registration = ssl_registration
+        self.location = location
+        self.use_location = use_location
 
         self.__params = []
 
@@ -83,7 +93,10 @@ class NbsConfigurator:
         self.files["diag"] = generate_diag_txt()
         self.files["dr-proxy"] = generate_dr_proxy_txt()
         self.files["domains"] = self.__ydb.config.domains_txt
-        self.files["location"] = generate_location_txt()
+        if self.use_location:
+            self.files["location"] = self.location
+            if self.location is None:
+                self.files["location"] = generate_location_txt()
 
     def install(self, config_folder):
 

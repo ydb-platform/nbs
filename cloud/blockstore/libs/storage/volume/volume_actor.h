@@ -139,12 +139,13 @@ class TVolumeActor final
             TCallContext& callContext,
             NProto::TError error);
 
-        NActors::TActorId Caller;
-        ui64 CallerCookie;
-        TCallContextPtr CallContext;
-        TCallContextPtr ForkedContext;
-        ui64 ReceiveTime;
-        TCancelRoutine* CancelRoutine;
+        const NActors::TActorId Caller;
+        const ui64 CallerCookie;
+        const TCallContextPtr CallContext;
+        const TCallContextPtr ForkedContext;
+        const ui64 ReceiveTime;
+        TCancelRoutine* const CancelRoutine;
+        const bool IsMultipartitionWriteOrZero;
 
         TVolumeRequest(
                 const NActors::TActorId& caller,
@@ -152,13 +153,15 @@ class TVolumeActor final
                 TCallContextPtr callContext,
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
-                TCancelRoutine cancelRoutine)
+                TCancelRoutine cancelRoutine,
+                bool isMultipartitionWriteOrZero)
             : Caller(caller)
             , CallerCookie(callerCookie)
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
             , CancelRoutine(cancelRoutine)
+            , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
         {}
 
         void CancelRequest(
@@ -644,13 +647,17 @@ private:
         const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleMultipartitionWriteOrZeroCompleted(
-        const TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleWriteOrZeroCompleted(
         const TEvVolumePrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    template <typename TMethod>
+    bool ReplyToOriginalRequest(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NActors::IEventHandle::TEventFlags flags,
+        ui64 volumeRequestId,
+        std::unique_ptr<typename TMethod::TResponse> response);
 
     void ReplyToDuplicateRequests(
         const NActors::TActorContext& ctx,
@@ -818,6 +825,15 @@ private:
         ui64 startTime);
 
     template <typename TMethod>
+    typename TMethod::TRequest::TPtr WrapRequest(
+        const typename TMethod::TRequest::TPtr& ev,
+        NActors::TActorId newRecipient,
+        ui64 volumeRequestId,
+        ui64 traceTime,
+        bool forkTraces,
+        bool isMultipartition);
+
+    template <typename TMethod>
     void SendRequestToPartition(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
@@ -848,7 +864,6 @@ private:
     void HandleCheckpointRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        ui64 volumeRequestId,
         bool isTraced,
         ui64 traceTs);
 
@@ -864,7 +879,7 @@ private:
         bool throttlingDisabled);
 
     template <typename TMethod>
-    void HandleResponse(
+    void ForwardResponse(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
 

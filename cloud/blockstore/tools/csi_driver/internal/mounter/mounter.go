@@ -8,17 +8,20 @@ import (
 	"strings"
 
 	"k8s.io/mount-utils"
+	executils "k8s.io/utils/exec"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type mounter struct {
-	mnt mount.Interface
+	mnt  mount.Interface
+	exec executils.Interface
 }
 
 func NewMounter() Interface {
 	return &mounter{
-		mnt: mount.New(""),
+		mnt:  mount.New(""),
+		exec: executils.New(),
 	}
 }
 
@@ -58,7 +61,8 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 	}
 
 	if deviceSize == 0 {
-		return false, fmt.Errorf("size of device %q is empty", device)
+		return false, fmt.Errorf(
+			"size of device %q is empty. blockdev output: %q", device, out)
 	}
 
 	out, err = exec.Command("blkid", device).CombinedOutput()
@@ -76,4 +80,12 @@ func (m *mounter) MakeFilesystem(device string, fsType string) ([]byte, error) {
 
 	options = append(options, device)
 	return exec.Command("mkfs", options...).CombinedOutput()
+}
+
+func (m *mounter) NeedResize(devicePath string, deviceMountPath string) (bool, error) {
+	return mount.NewResizeFs(m.exec).NeedResize(devicePath, deviceMountPath)
+}
+
+func (m *mounter) Resize(devicePath string, deviceMountPath string) (bool, error) {
+	return mount.NewResizeFs(m.exec).Resize(devicePath, deviceMountPath)
 }

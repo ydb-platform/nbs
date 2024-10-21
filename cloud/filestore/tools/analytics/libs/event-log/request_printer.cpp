@@ -260,7 +260,14 @@ TString PrintCompactionRanges(
             currentRange << PrintValue("blobsCount", range.GetBlobsCount()) << ", ";
         }
         if (range.HasDeletionsCount()) {
-            currentRange << PrintValue("deletionsCount", range.GetDeletionsCount()) << ", ";
+            currentRange << PrintValue(
+                "deletionsCount",
+                range.GetDeletionsCount()) << ", ";
+        }
+        if (range.HasGarbageBlocksCount()) {
+            currentRange << PrintValue(
+                "garbageBlocksCount",
+                range.GetGarbageBlocksCount()) << ", ";
         }
 
         if (currentRange.empty()) {

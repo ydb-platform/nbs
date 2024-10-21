@@ -714,7 +714,7 @@ func TestTasksRunningLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	tasksIds := []string{}
-	scheduledLongTaskCount := 3 * inflightLongTaskPerNodeLimit
+	scheduledLongTaskCount := 6 * inflightLongTaskPerNodeLimit
 	for i := 0; i < scheduledLongTaskCount; i++ {
 		reqCtx := getRequestContext(t, ctx)
 		id, err := scheduleLongTask(reqCtx, s.scheduler)
@@ -752,7 +752,12 @@ func TestTasksRunningLimit(t *testing.T) {
 					runningLongTaskCount++
 				}
 			}
-			require.LessOrEqual(t, runningLongTaskCount, inflightLongTaskPerNodeLimit)
+
+			// We have separate inflight per node limit for each lister.
+			// So long tasks can be taken by listerReadyToRun or
+			// listerStallingWhileRunning lister.
+			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
+			require.LessOrEqual(t, runningLongTaskCount, 2*inflightLongTaskPerNodeLimit)
 		case err := <-errs:
 			require.NoError(t, err)
 			endedLongTaskCount++
@@ -1252,11 +1257,25 @@ func TestHangingTasksMetrics(t *testing.T) {
 	gaugeSetWg := sync.WaitGroup{}
 	gaugeUnsetWg := sync.WaitGroup{}
 
-	registry.GetGauge("totalHangingTaskCount", map[string]string{}).On(
+	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
 		"Set",
-		mock.Anything,
+		float64(1),
 	).Return(mock.Anything)
-	gaugeSetCall := registry.GetGauge(
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		totalHangingTaskCountGaugeSetCall,
+	).Return(mock.Anything)
+
+	hangingTasksGaugeSetCall := registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
@@ -1273,7 +1292,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 		"Set",
 		float64(0),
 	).NotBefore(
-		gaugeSetCall,
+		hangingTasksGaugeSetCall,
 	).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
 			gaugeUnsetWg.Done()

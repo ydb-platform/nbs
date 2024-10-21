@@ -45,6 +45,10 @@ func StartSpanWithSampling(
 	return StartSpan(ctx, spanName, opts...)
 }
 
+func SpanFromContext(ctx context.Context) trace.Span {
+	return trace.SpanFromContext(ctx)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func SetError(span trace.Span, err *error) {

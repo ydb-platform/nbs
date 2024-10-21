@@ -15,11 +15,11 @@ class Case(object):
 TESTS = [
     Case(
         "index",
-        "cloud/filestore/tests/loadtest/local-auth/index.txt",
+        "cloud/filestore/tests/loadtest/service-kikimr-auth-test/index.txt",
     ),
     Case(
         "read-write",
-        "cloud/filestore/tests/loadtest/local-auth/read-write.txt",
+        "cloud/filestore/tests/loadtest/service-kikimr-auth-test/read-write.txt",
     ),
 ]
 
