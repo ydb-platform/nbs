@@ -132,8 +132,8 @@ jobs:
       build_target: "cloud/tasks"
       test_target: "cloud/tasks"
       build_preset: "relwithdebinfo"
-      run_build: "true"
-      run_tests: "true"
+      run_build: true
+      run_tests: true
       test_size: "small"
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       link_threads: "24"
