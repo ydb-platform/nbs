@@ -53,7 +53,7 @@ public:
         return RWClientId;
     }
 
-    ui64 GetLastReportedResyncIndex() const
+    std::optional<ui64> GetLastReportedResyncIndex() const
     {
         return ProcessingBlocks.GetLastReportedProcessingIndex();
     }
