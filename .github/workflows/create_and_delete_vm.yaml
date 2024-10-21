@@ -55,6 +55,7 @@ jobs:
       instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
       runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
       runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
+      nebius: ${{ !env.nebius && 'no' || 'yes' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -111,18 +112,46 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_preset: "2vcpu-8gb"
+          vm_preset: "16vcpu-64gb"
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
           vm_image: ${{ inputs.vm_image || vars.NEBIUS_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+  build-and-test:
+    name: Build and test NBS (relwithdebinfo) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    uses: ./.github/workflows/build_and_test_ya.yaml
+    needs:
+      - provide-runner
+    with:
+      runner_kind: self-hosted
+      runner_label: ${{ needs.provide-runner.outputs.label }}
+      runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
+      runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
+      build_target: "cloud/tasks"
+      test_target: "cloud/tasks"
+      build_preset: "relwithdebinfo"
+      run_build: true
+      run_tests: true
+      test_size: "small"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      link_threads: "24"
+      test_threads: "4"
+      sleep_after_tests: "1"
+      cache_update_build: false
+      cache_update_tests: false
+      upload_ya_dir: "no"
+      clean_ya_dir: "no"
+      use_network_cache: "yes"
+      nebius: ${{ needs.provide-runner.outputs.nebius }}
+    secrets: inherit
 
   release-runner:
     name: Release self-hosted runner [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }} vm_image=${{ inputs.vm_image || vars.IMAGE_ID_2204 }}]
     needs:
       - provide-runner  # required to get output from the start-runner job
+      - build-and-test
     runs-on: ubuntu-latest
     if: always()
     steps:
