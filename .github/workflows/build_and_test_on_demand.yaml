@@ -187,8 +187,8 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
-          org: ydb-platform
-          team: nbs
+          # org: ydb-platform
+          # team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
