@@ -1,5 +1,7 @@
 #include "fs.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <optional>
 
 namespace NCloud::NFileStore {
@@ -87,7 +89,14 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
             // TODO: better? race between statting one child and creating another one
             // but maybe too costly...
             stat = child->Stat();
-            session->TryInsertNode(std::move(child));
+            if (!session->TryInsertNode(
+                    std::move(child),
+                    node->GetNodeId(),
+                    name))
+            {
+                ReportLocalFsMaxSessionNodesInUse();
+                return TErrorResponse(ErrorNoSpaceLeft());
+            }
         }
     } else {
         stat = node->Stat();
