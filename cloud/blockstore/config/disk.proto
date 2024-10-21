@@ -201,7 +201,7 @@ message TDiskAgentConfig
     optional TSpdkEnvConfig SpdkEnvConfig = 19;
 
     // RDMA target config.
-    optional TRdmaTarget RdmaTarget = 20;
+    optional TRdmaTarget RdmaTarget = 20;   // deprecated
 
     // Use flock to lock devices on agent initialization.
     optional bool DeviceLockingEnabled = 21;
