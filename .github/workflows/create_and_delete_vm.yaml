@@ -141,9 +141,9 @@ jobs:
       sleep_after_tests: "1"
       cache_update_build: false
       cache_update_tests: false
-      upload_ya_dir: false
-      clean_ya_dir: false
-      use_network_cache: true
+      upload_ya_dir: "no"
+      clean_ya_dir: "no"
+      use_network_cache: "yes"
       nebius: ${{ needs.provide-runner.outputs.nebius }}
     secrets: inherit
 
