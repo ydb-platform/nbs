@@ -249,10 +249,12 @@ expect 0 unlink ${n0}
 expect 0 mkdir ${n0} 0755
 expect 0 chown ${n0} 65534 65533
 ctime1=`${fstest} stat ${n0} ctime`
+stat ${n0} >&2
 sleep 1
 expect 0 -u 65534 -g 65532 chown ${n0} 65534 65532
 expect 65534,65532 lstat ${n0} uid,gid
 ctime2=`${fstest} stat ${n0} ctime`
+stat ${n0} >&2
 test_check $ctime1 -lt $ctime2
 expect 0 rmdir ${n0}
 # 141
