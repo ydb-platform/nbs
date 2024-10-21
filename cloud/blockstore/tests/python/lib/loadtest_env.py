@@ -176,6 +176,7 @@ class LocalLoadTest:
             except Exception as dmesg_error:
                 logging.info(f"Failed to save dmesg output: {dmesg_error}")
                 pass
+            subprocess.check_call(["sync"])
 
     @property
     def endpoint(self):
