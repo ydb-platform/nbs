@@ -189,8 +189,39 @@ func newDeleteVolumeCommand(endpoint *string) *cobra.Command {
 	return &cmd
 }
 
+func createVolumeCapability(
+	accessMode csi.VolumeCapability_AccessMode_Mode,
+	accessType string) *csi.VolumeCapability {
+	volumeCapability := &csi.VolumeCapability{
+		AccessMode: &csi.VolumeCapability_AccessMode{Mode: accessMode},
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+	}
+	if accessType == "block" {
+		volumeCapability.AccessType = &csi.VolumeCapability_Block{
+			Block: &csi.VolumeCapability_BlockVolume{},
+		}
+	}
+
+	return volumeCapability
+}
+
+func getTargetPath(podId string, volumeId string, accessType string) string {
+	targetPathPattern := "/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount"
+	if accessType == "block" {
+		targetPathPattern = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/%s/%s"
+	}
+	targetPath := fmt.Sprintf(
+		targetPathPattern,
+		podId,
+		volumeId,
+	)
+	return targetPath
+}
+
 func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, stagingTargetPath string
+	var volumeId, stagingTargetPath, accessType string
 	cmd := cobra.Command{
 		Use:   "stagevolume",
 		Short: "Send stage volume request to the CSI node",
@@ -214,15 +245,8 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 				&csi.NodeStageVolumeRequest{
 					VolumeId:          volumeId,
 					StagingTargetPath: stagingTargetPath,
-					VolumeCapability: &csi.VolumeCapability{
-						AccessType: &csi.VolumeCapability_Mount{
-							Mount: nil,
-						},
-						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: accessMode,
-						},
-					},
-					VolumeContext: volumeContext,
+					VolumeCapability:  createVolumeCapability(accessMode, accessType),
+					VolumeContext:     volumeContext,
 				},
 			)
 			if err != nil {
@@ -245,6 +269,12 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			"a/globalmount",
 		"staging target path",
 	)
+	cmd.Flags().StringVar(
+		&accessType,
+		"access-type",
+		"mount",
+		"mount or block access type",
+	)
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)
@@ -254,6 +284,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 
 func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId, stagingTargetPath, podName, fsType string
+	var accessType string
 	var readOnly bool
 	cmd := cobra.Command{
 		Use:   "publishvolume",
@@ -269,12 +300,6 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				log.Fatal(err)
 			}
 
-			targetPath := fmt.Sprintf(
-				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
-					"%s/mount",
-				podId,
-				volumeId,
-			)
 			volumeContext := map[string]string{
 				"csi.storage.k8s.io/pod.uid":                   podId,
 				"csi.storage.k8s.io/serviceAccount.name":       "default",
@@ -293,18 +318,11 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					VolumeId:          volumeId,
 					PublishContext:    nil,
 					StagingTargetPath: stagingTargetPath,
-					TargetPath:        targetPath,
-					VolumeCapability: &csi.VolumeCapability{
-						AccessType: &csi.VolumeCapability_Mount{
-							Mount: nil,
-						},
-						AccessMode: &csi.VolumeCapability_AccessMode{
-							Mode: accessMode,
-						},
-					},
-					Readonly:      false,
-					Secrets:       nil,
-					VolumeContext: volumeContext,
+					TargetPath:        getTargetPath(podId, volumeId, accessType),
+					VolumeCapability:  createVolumeCapability(accessMode, accessType),
+					Readonly:          false,
+					Secrets:           nil,
+					VolumeContext:     volumeContext,
 				},
 			)
 			if err != nil {
@@ -345,6 +363,12 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"fs-type",
 		"",
 		"filesystem type: ext4, xfs",
+	)
+	cmd.Flags().StringVar(
+		&accessType,
+		"access-type",
+		"mount",
+		"mount or block access type",
 	)
 
 	err := cmd.MarkFlagRequired("volume-id")
@@ -411,7 +435,7 @@ func newNodeUnstageVolumeCommand(endpoint *string) *cobra.Command {
 }
 
 func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId string
+	var volumeId, podId, accessType string
 	cmd := cobra.Command{
 		Use:   "unpublishvolume",
 		Short: "Send unpublish volume request to the CSI node",
@@ -423,17 +447,11 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
 
-			targetPath := fmt.Sprintf(
-				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
-					"%s/mount",
-				podId,
-				volumeId,
-			)
 			response, err := client.NodeUnpublishVolume(
 				ctx,
 				&csi.NodeUnpublishVolumeRequest{
 					VolumeId:   volumeId,
-					TargetPath: targetPath,
+					TargetPath: getTargetPath(podId, volumeId, accessType),
 				},
 			)
 			if err != nil {
@@ -450,6 +468,12 @@ func newUnpublishVolumeCommand(endpoint *string) *cobra.Command {
 		"volume id",
 	)
 	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
+	cmd.Flags().StringVar(
+		&accessType,
+		"access-type",
+		"mount",
+		"mount or block access type",
+	)
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)
@@ -520,7 +544,7 @@ func newNodeGetVolumeStatsCommand(endpoint *string) *cobra.Command {
 ////////////////////////////////////////////////////////////////////////////////
 
 func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId string
+	var volumeId, podId, accessType string
 	var size int64
 	cmd := cobra.Command{
 		Use:   "expandvolume",
@@ -532,21 +556,16 @@ func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
 			)
 			defer cancelFunc()
 			client, err := newNodeClient(ctx, *endpoint)
-
-			volumePath := fmt.Sprintf(
-				"/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/"+
-					"%s/mount",
-				podId,
-				volumeId,
-			)
+			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 			_, err = client.NodeExpandVolume(
 				ctx,
 				&csi.NodeExpandVolumeRequest{
 					VolumeId:   volumeId,
-					VolumePath: volumePath,
+					VolumePath: getTargetPath(podId, volumeId, accessType),
 					CapacityRange: &csi.CapacityRange{
 						RequiredBytes: size,
 					},
+					VolumeCapability: createVolumeCapability(accessMode, accessType),
 				},
 			)
 			if err != nil {
@@ -566,6 +585,12 @@ func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
 		"size",
 		0,
 		"The new size of the disk in bytes")
+	cmd.Flags().StringVar(
+		&accessType,
+		"access-type",
+		"mount",
+		"mount or block access type",
+	)
 
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
