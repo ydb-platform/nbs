@@ -45,13 +45,13 @@ on:
         type: string
         default: "network-ssd-nonreplicated"
         description: "Disk type for VM"
-      run_on_nebius:
+      nebius:
         type: string
         default: "no"
         description: "Run on new nebius runners"
 
 env:
-  nebius: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'nebius') || inputs.run_on_nebius == 'yes' }}
+  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
 
 jobs:
   provide-runner:
@@ -64,6 +64,7 @@ jobs:
       instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
       runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
       runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
+      nebius: ${{ !env.nebius && 'no' || 'yes' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -142,7 +143,7 @@ jobs:
       run_build: ${{ inputs.run_build }}
       run_tests: ${{ inputs.run_tests }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
-      nebius: ${{ contains(github.event.pull_request.labels.*.name, 'nebius') && 'yes' || (inputs.run_on_nebius == 'yes' && 'yes' || 'no') }}
+      nebius: ${{ needs.provide-runner.outputs.nebius }}
     secrets: inherit
 
   sleep-if-needed:
