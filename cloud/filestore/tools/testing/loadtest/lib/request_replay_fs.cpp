@@ -245,7 +245,7 @@ private:
             }
         }
 
-        if (relativePathName.IsDefined()) {
+        if (!relativePathName.IsDefined()) {
             auto parentNode =
                 NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
             if (parentNode == InvalidNodeId) {
