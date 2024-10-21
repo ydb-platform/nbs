@@ -332,6 +332,9 @@ message TStorageConfig
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
+    // Blob is divided into chunks of a certain size (in bytes) and each chunk
+    // is compressed separately.
+    optional uint32 BlobCompressionChunkSize = 400;
 
     // Enables ThreeStageWrite for unaligned requests.
     optional bool UnalignedThreeStageWriteEnabled = 366;

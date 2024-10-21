@@ -465,7 +465,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 Sprintf(
-                    "r=1177944064 b=%u d=%u",
+                    "r=1177944064 b=%u d=%u g=0",
                     (compactionThreshold - 1),
                     deletionMarkers),
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));

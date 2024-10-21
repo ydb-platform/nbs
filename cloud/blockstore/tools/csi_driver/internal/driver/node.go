@@ -212,6 +212,12 @@ func (s *nodeService) NodeStageVolume(
 			}
 		}
 	case *csi.VolumeCapability_Block:
+		if nfsBackend {
+			return nil, s.statusError(codes.InvalidArgument,
+				"'Block' volume mode is not supported with nfs backend")
+		} else {
+			err = s.nodeStageDiskAsBlockDevice(ctx, req)
+		}
 	default:
 		return nil, s.statusError(codes.InvalidArgument, "Unknown access type")
 	}
@@ -771,7 +777,35 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) nodePublishDiskAsBlockDevice(
+func (s *nodeService) nodeStageDiskAsBlockDevice(
+	ctx context.Context,
+	req *csi.NodeStageVolumeRequest) error {
+
+	resp, err := s.startNbsEndpointForNBD(ctx, "", req.VolumeId, req.VolumeContext)
+	if err != nil {
+		if s.IsMountConflictError(err) {
+			localEndpoint, err := s.hasLocalEndpoint(ctx, req.VolumeId)
+			if err != nil {
+				return err
+			}
+			if localEndpoint {
+				return nil
+			}
+		}
+		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+	}
+
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+
+	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, devicePath)
+}
+
+func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
@@ -786,6 +820,20 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath)
+}
+
+func (s *nodeService) nodePublishDiskAsBlockDevice(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
+	mounted, _ := s.mounter.IsMountPoint(devicePath)
+	if !mounted {
+		// Fallback to previous implementation for already staged volumes
+		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
+	}
+
+	return s.mountBlockDevice(req.VolumeId, devicePath, req.TargetPath)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
@@ -905,7 +953,16 @@ func (s *nodeService) nodeUnstageVolume(
 	ctx context.Context,
 	req *csi.NodeUnstageVolumeRequest) error {
 
-	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
+	// Check mount points for StagingTargetPath and StagingTargetPath/VolumeId
+	// as it's not possible to distingiush mount and blok mode from request
+	// parameters
+	mountPoint := req.StagingTargetPath
+	mounted, _ := s.mounter.IsMountPoint(mountPoint)
+	if !mounted {
+		mountPoint = filepath.Join(req.StagingTargetPath, req.VolumeId)
+		mounted, _ = s.mounter.IsMountPoint(mountPoint)
+	}
+
 	if !mounted {
 		// Fallback to previous implementation for already mounted volumes to
 		// stop endpoint in nodeUnpublishVolume
@@ -913,7 +970,7 @@ func (s *nodeService) nodeUnstageVolume(
 		return nil
 	}
 
-	if err := s.mounter.CleanupMountPoint(req.StagingTargetPath); err != nil {
+	if err := s.mounter.CleanupMountPoint(mountPoint); err != nil {
 		return err
 	}
 

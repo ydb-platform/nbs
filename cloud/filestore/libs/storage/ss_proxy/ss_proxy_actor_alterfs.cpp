@@ -25,12 +25,14 @@ class TAlterFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
+    const TActorId StorageSSProxy;
     const NKikimrFileStore::TConfig FileStoreConfig;
 
 public:
     TAlterFileStoreActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
+        TActorId storageSSProxy,
         NKikimrFileStore::TConfig fileStoreConfig);
 
     void Bootstrap(const TActorContext& ctx);
@@ -53,9 +55,11 @@ private:
 TAlterFileStoreActor::TAlterFileStoreActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
+        TActorId storageSSProxy,
         NKikimrFileStore::TConfig fileStoreConfig)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
+    , StorageSSProxy(std::move(storageSSProxy))
     , FileStoreConfig(std::move(fileStoreConfig))
 {}
 
@@ -97,7 +101,7 @@ void TAlterFileStoreActor::ModifyScheme(const TActorContext& ctx)
     auto request = std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
         std::move(modifyScheme));
 
-    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
+    NCloud::Send(ctx, StorageSSProxy, std::move(request));
 }
 
 void TAlterFileStoreActor::HandleModifySchemeResponse(
@@ -159,6 +163,7 @@ void TSSProxyActor::HandleAlterFileStore(
     auto actor = std::make_unique<TAlterFileStoreActor>(
         std::move(requestInfo),
         Config,
+        StorageSSProxy,
         msg->Config);
 
     NCloud::Register(ctx, std::move(actor));

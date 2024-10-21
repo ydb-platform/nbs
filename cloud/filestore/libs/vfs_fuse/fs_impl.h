@@ -72,7 +72,7 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrLock;
 
-    THandleOpsQueue HandleOpsQueue;
+    THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
 
 public:
@@ -84,7 +84,8 @@ public:
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        ICompletionQueuePtr queue);
+        ICompletionQueuePtr queue,
+        THandleOpsQueuePtr handleOpsQueue);
 
     ~TFileSystem();
 

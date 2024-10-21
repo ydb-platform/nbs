@@ -313,6 +313,26 @@ func TestExecutionContextAddAnotherTaskDependency(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+
+	execCtx := newExecutionContext(
+		task,
+		taskStorage,
+		storage.TaskState{
+			ID:        "taskId",
+			CreatedAt: time.Now(),
+		},
+		time.Hour, // hangingTaskTimeout
+		2,
+	)
+
+	require.Equal(t, false, execCtx.IsHanging())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestRunnerForRun(t *testing.T) {
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
