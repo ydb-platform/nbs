@@ -493,8 +493,8 @@ func appendStackTrace(errorMessage string, stackTrace []byte) string {
 }
 
 func getFirstNonRetriableError(err error) *NonRetriableError {
-	var nonRetriableErr *NonRetriableError
-	if As(err, nonRetriableErr) {
+	nonRetriableErr := NewEmptyNonRetriableError()
+	if errors.As(err, &nonRetriableErr) {
 		return nonRetriableErr
 	}
 	return nil
