@@ -342,6 +342,9 @@ NProto::TVolumePerfSettings& GetConfigSettings(
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
             return *diagnosticsConfig.MutableLocalSSDPerfSettings();
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return *diagnosticsConfig.MutableLocalHDDPerfSettings();
+        }
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
             return *diagnosticsConfig.MutableSsdPerfSettings();
         }
@@ -367,6 +370,8 @@ bool ParseMediaKind(const TStringBuf s, NProto::EStorageMediaKind& mediaKind)
         mediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3;
     } else if (s == "local" || s == "ssd_local") {
         mediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
+    } else if (s == "hdd_local") {
+        mediaKind = NProto::STORAGE_MEDIA_HDD_LOCAL;
     } else {
         return false;
     }
