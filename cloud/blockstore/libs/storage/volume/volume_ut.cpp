@@ -8943,7 +8943,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1u, updateUsedBlocksRequestCount);
     }
 
-    void DoShouldRejectRequestsWhenVolumesIsKilled(
+    void DoShouldRejectRequestsWhenVolumeIsKilled(
         bool multipartition,
         bool trackUsed)
     {
@@ -9021,22 +9021,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenSinglePartitionVolumesIsKilled)
     {
-        DoShouldRejectRequestsWhenVolumesIsKilled(false, false);
+        DoShouldRejectRequestsWhenVolumeIsKilled(false, false);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenMultiPartitionVolumesIsKilled)
     {
-        DoShouldRejectRequestsWhenVolumesIsKilled(true, false);
+        DoShouldRejectRequestsWhenVolumeIsKilled(true, false);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenTrackUsedAndSinglePartitionVolumesIsKilled)
     {
-        DoShouldRejectRequestsWhenVolumesIsKilled(false, true);
+        DoShouldRejectRequestsWhenVolumeIsKilled(false, true);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenTrackUsedAndMultiPartitionVolumesIsKilled)
     {
-        DoShouldRejectRequestsWhenVolumesIsKilled(true, true);
+        DoShouldRejectRequestsWhenVolumeIsKilled(true, true);
     }
 }
 

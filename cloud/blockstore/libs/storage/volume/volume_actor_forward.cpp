@@ -169,8 +169,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         }
     }
 
-    // We wrap the original message so that the response goes through this
-    // actor.
+    // We wrap the original message so that the response goes through
+    // TVolumeActor
     auto selfId = SelfId();
     auto newEvent = typename TMethod::TRequest::TPtr(
         static_cast<typename TMethod::TRequest::THandle*>(new IEventHandle(
@@ -373,9 +373,10 @@ bool TVolumeActor::ReplyToOriginalRequest(
     std::unique_ptr<typename TMethod::TResponse> response)
 {
     if constexpr (IsWriteMethod<TMethod>) {
-        auto responseCode = response->Record.GetError().GetCode();
-        WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
-        ReplyToDuplicateRequests(ctx, volumeRequestId, responseCode);
+        ReplyToDuplicateRequests(
+            ctx,
+            volumeRequestId,
+            response->Record.GetError().GetCode());
     }
 
     auto it = VolumeRequests.find(volumeRequestId);
@@ -417,10 +418,12 @@ bool TVolumeActor::ReplyToOriginalRequest(
 
 void TVolumeActor::ReplyToDuplicateRequests(
     const TActorContext& ctx,
-    ui64 key,
+    ui64 volumeRequestId,
     ui32 resultCode)
 {
-    auto it = DuplicateWriteAndZeroRequests.find(key);
+    WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
+
+    auto it = DuplicateWriteAndZeroRequests.find(volumeRequestId);
     if (it == DuplicateWriteAndZeroRequests.end()) {
         return;
     }
@@ -715,7 +718,7 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if constexpr (RequiresReadWriteAccess<TMethod>) {
+    if constexpr (IsWriteMethod<TMethod>) {
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());
@@ -741,12 +744,8 @@ void TVolumeActor::ForwardRequest(
                 msg->CallContext->RequestId,
                 addResult.DuplicateRequestId);
 
-            auto& q =
-                DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId];
-
-            auto callContext = ev->Get()->CallContext;
-            q.push_back({
-                std::move(callContext),
+            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId].push_back({
+                ev->Get()->CallContext,
                 static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
                 NActors::IEventHandlePtr(ev.Release()),
                 now
