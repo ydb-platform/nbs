@@ -208,3 +208,60 @@ func TestReraisePanicError(t *testing.T) {
 
 	err.Reraise()
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestErrorMessageWhenBothRetriableAndNonRetriableErrors(t *testing.T) {
+	innerNonRetriableErr := NewNonRetriableErrorf("innerRetriableErr")
+	outerRetriableErr := NewRetriableError(innerNonRetriableErr)
+	require.Equal(t, innerNonRetriableErr.Error(), outerRetriableErr.Error())
+
+	innerRetriableErr := NewRetriableErrorf("innerRetriableErr")
+	outerNonRetriableErr := NewNonRetriableError(innerRetriableErr)
+	require.Contains(t, outerNonRetriableErr.Error(), innerRetriableErr.Error())
+	require.NotEqual(t, innerRetriableErr.Error(), outerNonRetriableErr.Error())
+}
+
+func TestErrorMessageWithAndWithoutStacktrace(t *testing.T) {
+	checkError := func(err diskManagerError, hasStacktrace bool) {
+		require.Equal(t, ErrorMessage(err, true), err.CustomError(true))
+		require.Equal(t, ErrorMessage(err, false), err.CustomError(false))
+		require.Equal(t, err.Error(), err.CustomError(true))
+
+		if hasStacktrace {
+			require.Contains(t, err.CustomError(true), err.CustomError(false))
+			require.Contains(t, err.CustomError(true), "runtime/debug.Stack()")
+			require.NotContains(t, err.CustomError(false), "runtime/debug.Stack()")
+		} else {
+			require.Equal(t, err.CustomError(true), err.CustomError(false))
+		}
+	}
+
+	checkError(NewRetriableErrorf("retriableErr"), false)
+	checkError(NewWrongGenerationError(), false)
+	checkError(NewInterruptExecutionError(), false)
+	checkError(NewNonRetriableErrorf("nonRetriableErr"), true)
+	checkError(NewNonCancellableErrorf("nonCancellableErrorf"), true)
+	checkError(NewPanicError("panicErr"), true)
+
+	checkError(
+		NewRetriableError(NewNonRetriableErrorf("retriableWrapsNonRetriableErr")),
+		true,
+	)
+	checkError(
+		NewNonRetriableError(NewRetriableErrorf("nonRetriableWrapsRetriableErr")),
+		true,
+	)
+	checkError(
+		NewRetriableError(NewRetriableErrorf("retriableWrapsRetriableErr")),
+		false,
+	)
+	checkError(
+		NewNonRetriableError(NewNonRetriableErrorf("nonRetriableWrapsNonRetriableErr")),
+		true,
+	)
+
+	externalErr := fmt.Errorf("externalErr")
+	require.Equal(t, ErrorMessage(externalErr, true), externalErr.Error())
+	require.Equal(t, ErrorMessage(externalErr, false), externalErr.Error())
+}
