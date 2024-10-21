@@ -71,6 +71,7 @@ def setup_cms_configs(ydb_client):
     update_cms_config(ydb_client, 'StorageServiceConfig', storage, '')
 
 
+<<<<<<< HEAD
 def prepare(
         ydb,
         kikimr_ssl,
@@ -79,6 +80,9 @@ def prepare(
         ic_port=None,
         use_location=True,
         location=None):
+=======
+def prepare(ydb, kikimr_ssl, blockstore_ssl, node_type, ic_port=None, use_location=True, location=None):
+>>>>>>> registration tests should use proper nbs-location.txt
     nbs_configurator = NbsConfigurator(
         ydb,
         ssl_registration=blockstore_ssl,
@@ -215,11 +219,11 @@ def test_da_registration(kikimr_ssl, blockstore_ssl, result):
 
 
 def test_server_registration_migration():
-    setup_and_run_registration_migration_server(True)
+    setup_and_run_registration_migration_server(False)
 
 
 def test_hw_server_registration_migration():
-    setup_and_run_registration_migration_server(False)
+    setup_and_run_registration_migration_server(True)
 
 
 def test_da_registration_migration():
