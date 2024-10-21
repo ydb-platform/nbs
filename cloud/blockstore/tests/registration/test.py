@@ -71,7 +71,14 @@ def setup_cms_configs(ydb_client):
     update_cms_config(ydb_client, 'StorageServiceConfig', storage, '')
 
 
-def prepare(ydb, kikimr_ssl, blockstore_ssl, node_type, ic_port=None, use_location=True, location=None):
+def prepare(
+        ydb,
+        kikimr_ssl,
+        blockstore_ssl,
+        node_type,
+        ic_port=None,
+        use_location=True,
+        location=None):
     nbs_configurator = NbsConfigurator(
         ydb,
         ssl_registration=blockstore_ssl,
@@ -123,12 +130,12 @@ def setup_and_run_test_for_da(kikimr_ssl, blockstore_ssl):
     return True
 
 
-def setup_and_run_registration_migration_server(ishw=False):
+def setup_and_run_registration_migration_server(use_location=False):
     ydb = start_ydb(grpc_ssl_enable=True)
     setup_cms_configs(ydb.client)
 
     location = None
-    if ishw is True:
+    if use_location is True:
         location = TLocation()
         location.DataCenter = "somewhere"
         location.Rack = "rack"
@@ -136,7 +143,14 @@ def setup_and_run_registration_migration_server(ishw=False):
 
     ic_port = None
     for setting in (False, True, False):
-        configurator = prepare(ydb, setting, setting, 'nbs', ic_port, use_location=ishw, location=location)
+        configurator = prepare(
+            ydb,
+            True,
+            setting,
+            'nbs',
+            ic_port,
+            use_location=use_location,
+            location=location)
         nbs = start_nbs(configurator)
         if ic_port is not None:
             assert configurator.ic_port == ic_port
@@ -159,7 +173,13 @@ def setup_and_run_registration_migration_da():
 
     ic_port = None
     for setting in (False, True, False):
-        configurator = prepare(ydb, setting, setting, 'disk-agent', ic_port, location=location)
+        configurator = prepare(
+            ydb,
+            True,
+            setting,
+            'disk-agent',
+            ic_port,
+            location=location)
         configurator.files["disk-agent"] = generate_disk_agent_txt(agent_id='')
         da = start_disk_agent(configurator)
         if ic_port is not None:
@@ -195,11 +215,11 @@ def test_da_registration(kikimr_ssl, blockstore_ssl, result):
 
 
 def test_server_registration_migration():
-    setup_and_run_registration_migration_server(False)
+    setup_and_run_registration_migration_server(True)
 
 
 def test_hw_server_registration_migration():
-    setup_and_run_registration_migration_server(True)
+    setup_and_run_registration_migration_server(False)
 
 
 def test_da_registration_migration():
