@@ -23,7 +23,15 @@ from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
 
 class NbsConfigurator:
 
-    def __init__(self, ydb, node_type=None, pm=None, ssl_registration=False, ic_port=None, use_location=True, location=None):
+    def __init__(
+            self,
+            ydb,
+            node_type=None,
+            pm=None,
+            ssl_registration=False,
+            ic_port=None,
+            use_location=True,
+            location=None):
         assert ydb.config
 
         self.__pm = PortManager() if pm is None else pm
