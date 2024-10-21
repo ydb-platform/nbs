@@ -33,6 +33,7 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--bs-cache-file-path", action="store", default=None)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -46,6 +47,7 @@ def start(argv):
         has_cluster_uuid=False,
         static_pdisk_size=PDISK_SIZE,
         use_log_files=args.use_log_files,
+        bs_cache_file_path=args.bs_cache_file_path,
     )
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)

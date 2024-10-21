@@ -1,5 +1,6 @@
 RECURSE_FOR_TESTS(
-    local-auth
+    service-kikimr-auth-test
+    service-kikimr-emergency-test
     service-kikimr-nemesis-test
     service-kikimr-test
     service-kikimr-newfeatures-test

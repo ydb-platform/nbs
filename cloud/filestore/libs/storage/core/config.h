@@ -252,6 +252,7 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    ui32 GetBlobCompressionChunkSize() const;
 
     ui32 GetNonNetworkMetricsBalancingFactor() const;
 
