@@ -532,6 +532,14 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kReplayFsSpec:
+                RequestGenerator = CreateReplayRequestGeneratorFs(
+                    Config.GetReplayFsSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -574,15 +582,30 @@ private:
             return false;
         }
 
-        ++CurrentIoDepth;
         auto self = weak_from_this();
-        RequestGenerator->ExecuteNextRequest().Apply(
-            [=] (const TFuture<TCompletedRequest>& future) {
+        const auto future = RequestGenerator->ExecuteNextRequest();
+        if (!future.Initialized()) {
+            TestStats.Success = false;
+            return false;
+        }
+        ++CurrentIoDepth;
+        future.Apply(
+            [=](const TFuture<TCompletedRequest>& future)
+            {
                 if (auto ptr = self.lock()) {
-                    ptr->SignalCompletion(future.GetValue());
+                    if (future.HasException()) {
+                        ptr->SignalCompletion(TCompletedRequest{});
+                    } else {
+                        ptr->SignalCompletion(future.GetValue());
+                    }
                 }
             });
 
+        if (RequestGenerator->ShouldImmediatelyProcessQueue()) {
+            if (future.HasValue() || future.HasException()) {
+                ProcessCompletedRequests();
+            }
+        }
         return true;
     }
 
@@ -604,11 +627,15 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR("%s failing test due to: %s",
+                STORAGE_ERROR(
+                    "%s failing test %s due to: %s",
                     MakeTestTag().c_str(),
+                    NProto::EAction_Name(request->Action).c_str(),
                     FormatError(request->Error).c_str());
 
-                TestStats.Success = false;
+                if (RequestGenerator->ShouldFailOnError()) {
+                    TestStats.Success = false;
+                }
             }
 
             auto& stats = TestStats.ActionStats[request->Action];
