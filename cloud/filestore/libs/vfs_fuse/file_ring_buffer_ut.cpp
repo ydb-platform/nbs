@@ -269,11 +269,38 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
-        data[10] = 'A';
+        data[20] = 'A';
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "data=invalid_entry_marker ecsum=0 csum=11034342",
+            "data=vasya ecsum=3387363649 csum=3387363646",
             Dump(rb.Validate()));
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreSlackSpaceSmallerThanEntryHeader)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        const ui32 entryHeaderSize = 8;
+        const ui32 entryLen = 29;
+        const ui32 entryDataLen = entryLen - entryHeaderSize;
+        const TString data(entryDataLen + 1, 'a');
+        const TString data2(entryDataLen, 'b');
+        const TString data3(entryDataLen, 'c');
+
+        UNIT_ASSERT(rb.Push(data));
+        UNIT_ASSERT(rb.Push(data2));
+        UNIT_ASSERT(!rb.Push(data3));
+        rb.Pop();
+        UNIT_ASSERT(rb.Push(data3));
+
+        /*
+         * Buffer data:
+         *  hhhhhhhhccccccccccccccccccccc0hhhhhhhhbbbbbbbbbbbbbbbbbbbbb00000
+         */
+
+        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestore)

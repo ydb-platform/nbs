@@ -89,8 +89,8 @@ private:
     {
         const auto* b = Data + pos;
         if (b + sizeof(TEntryHeader) > End) {
-            visitor(0, INVALID_MARKER);
-            return INVALID_POS;
+            // slack space smaller than TEntryHeader
+            return 0;
         }
 
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
