@@ -31,7 +31,6 @@ PEERDIR(
 
     library/cpp/getopt
     library/cpp/getopt/small
-    library/cpp/testing/gtest
 
     contrib/libs/libaio
 )
