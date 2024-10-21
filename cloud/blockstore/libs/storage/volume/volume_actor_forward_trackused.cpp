@@ -36,7 +36,6 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
             // TODO(drbasic)
             // For encrypted disk-registry based disks, we will continue to
             // write a map of encrypted blocks for a while.
