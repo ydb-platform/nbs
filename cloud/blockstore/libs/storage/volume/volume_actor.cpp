@@ -1017,9 +1017,6 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
         HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
         HFunc(
-            TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted,
-            HandleMultipartitionWriteOrZeroCompleted);
-        HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
             HandleWriteOrZeroCompleted);
         HFunc(
