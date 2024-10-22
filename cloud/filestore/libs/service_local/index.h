@@ -245,19 +245,19 @@ private:
             TStack<ui64> unresolvedPath;
             unresolvedPath.push(unresolvedRecords.begin()->second);
 
-            // For entry /a we can resolve immideatly and create TIndexNode
+            // For entry /a we can resolve immediately and create TIndexNode
             // but for entry d in /a/b/c/d path we must resolve the whole path
             // recursively
             while (!unresolvedPath.empty()) {
                 auto pathElemIndex = unresolvedPath.top();
-                auto pathElemRecord = NodeTable->RecordData(pathElemIndex);
+                auto* pathElemRecord = NodeTable->RecordData(pathElemIndex);
 
                 STORAGE_TRACE(
                     "Resolve node start, NodeId=" << pathElemRecord->NodeId);
 
                 auto parentNodeIt = Nodes.find(pathElemRecord->ParentNodeId);
                 if (parentNodeIt == Nodes.end()) {
-                    // parent is not resloved
+                    // parent is not resolved
 
                     STORAGE_TRACE(
                         "Need to resolve parent NodeId="
@@ -266,7 +266,7 @@ private:
                         unresolvedRecords.find(pathElemRecord->ParentNodeId);
                     if (parentRecordIt == unresolvedRecords.end()) {
                         // parent was not saved in persistent table so we can't
-                        // resolve it in cased of d in path /a/b/c/d if we
+                        // resolve it in case of d in path /a/b/c/d if we
                         // discover that b can't be resolved we need to discard
                         // b, c, d inodes
                         STORAGE_ERROR(
