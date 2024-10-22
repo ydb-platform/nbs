@@ -422,23 +422,23 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	req *csi.NodePublishVolumeRequest) error {
 
 	podId := s.getPodId(req)
-	volumeId := req.VolumeId
+	diskId := req.VolumeId
 	volumeContext := req.VolumeContext
 
-	endpointDir := s.getEndpointDir(podId, volumeId)
+	endpointDir := s.getEndpointDir(podId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
 
 	deviceName, found := volumeContext[deviceNameVolumeContextKey]
 	if !found {
-		deviceName = volumeId
+		deviceName = diskId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
-		DiskId:           volumeId,
+		DiskId:           diskId,
 		InstanceId:       podId,
 		ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
 		DeviceName:       deviceName,
