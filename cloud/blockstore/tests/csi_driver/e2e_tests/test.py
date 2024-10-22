@@ -195,3 +195,26 @@ def test_restart_kubelet_with_new_format_endpoint(access_type):
         raise
     finally:
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id1])
+
+
+def test_readonly_volume():
+    env, run = csi.init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name = "example-pod"
+        pod_id = "deadbeef"
+        access_type = "mount"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
+
+        mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
+        with pytest.raises(Exception):
+            (mount_path / "test1.file").touch()
+
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
