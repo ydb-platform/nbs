@@ -129,8 +129,8 @@ public:
 
 private:
     TFuture<TCompletedRequest> DoAccessNode(
-        const NCloud::NFileStore::NProto::
-            TProfileLogRequestInfo& /*logRequest*/) override
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
     {
         // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
 
@@ -141,10 +141,59 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
+        auto request = CreateRequest<NProto::TAccessNodeRequest>();
+
+        const auto node = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+        if (node == InvalidNodeId) {
+            return MakeFuture(TCompletedRequest{});
+        }
+        request->SetNodeId(node);
+        // TODO(proller): where is mask in logRequest?
+        // request->SetMask(logRequest.GetNodeInfo().);
+        auto self = weak_from_this();
+        const auto future =
+            Session->AccessNode(CreateCallContext(), std::move(request))
+                .Apply(
+                    [=, started = Started](
+                        const TFuture<NProto::TAccessNodeResponse>& future)
+                    {
+                        if (auto ptr = self.lock()) {
+                            return ptr->HandleAccessNode(
+                                future,
+                                started,
+                                logRequest);
+                        }
+
+                        return TCompletedRequest{
+                            NProto::ACTION_ACCESS_NODE,
+                            started,
+                            MakeError(E_FAIL, "cancelled")};
+                    });
+        const auto& response = future.GetValueSync();
         return MakeFuture(TCompletedRequest{
             NProto::ACTION_ACCESS_NODE,
             Started,
-            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+            response.Error});
+    }
+
+    TCompletedRequest HandleAccessNode(
+        const TFuture<NProto::TAccessNodeResponse>& future,
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+    {
+        try {
+            const auto& response = future.GetValue();
+            CheckResponse(response);
+            return {NProto::ACTION_ACCESS_NODE, started, response.GetError()};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "Access node %lu has failed: %s",
+                logRequest.GetNodeInfo().GetNodeId(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_ACCESS_NODE, started, error};
+        }
     }
 
     TFuture<TCompletedRequest> DoCreateHandle(
