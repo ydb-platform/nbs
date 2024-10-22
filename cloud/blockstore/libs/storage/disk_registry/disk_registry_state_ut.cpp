@@ -3998,7 +3998,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         // uuid-5 : online -> warning
@@ -4014,7 +4014,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         // uuid-7 : online -> warning
@@ -4030,7 +4030,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -4044,7 +4044,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         // uuid-2 : online -> warning
@@ -4084,7 +4084,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         // uuid-4 : warning -> error
@@ -4207,7 +4207,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -4260,7 +4260,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -5433,7 +5433,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         // uuid-1.1 : error
@@ -6210,7 +6210,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
-            UNIT_ASSERT(affectedDisk.Empty());
+            UNIT_ASSERT(affectedDisk.empty());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {

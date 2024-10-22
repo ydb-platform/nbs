@@ -49,7 +49,7 @@ bool Compare(
     }
 
     if (expected.LastWriteRequestId != actual.LastWriteRequestId) {
-        if (sb.Size()) {
+        if (sb.size()) {
             sb << ", ";
         }
 
@@ -60,7 +60,7 @@ bool Compare(
 
     *message = sb;
 
-    return sb.Empty();
+    return sb.empty();
 }
 
 struct TSegments: TVector<TSegment>, TAtomicRefCount<TSegments>

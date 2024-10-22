@@ -76,7 +76,7 @@ ui64 TRdmaTestEnvironment::CalcChecksum(ui32 size, char fill)
 {
     TString data(size, fill);
     TBlockChecksum checksum;
-    checksum.Extend(data.Data(), data.Size());
+    checksum.Extend(data.data(), data.size());
     return checksum.GetValue();
 }
 

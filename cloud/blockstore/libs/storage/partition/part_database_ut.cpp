@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             ui64 commitId = executor.CommitId();
             auto one = GetBlockContent(1);
-            db.WriteFreshBlock(1, commitId, {one.Data(), one.Size()});
+            db.WriteFreshBlock(1, commitId, {one.data(), one.size()});
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {

@@ -21,11 +21,11 @@ TMaybe<T> Parse(
     TStringBuf label,
     const NLastGetopt::TOptsParseResultException& parseResult)
 {
-    if (!parseResult.Has(label.Data())) {
+    if (!parseResult.Has(label.data())) {
         return {};
     }
 
-    return parseResult.Get<T>(label.Data());
+    return parseResult.Get<T>(label.data());
 }
 
 template <>
@@ -33,11 +33,11 @@ TMaybe<TInstant> Parse(
     TStringBuf label,
     const NLastGetopt::TOptsParseResultException& parseResult)
 {
-    if (!parseResult.Has(label.Data())) {
+    if (!parseResult.Has(label.data())) {
         return {};
     }
 
-    const auto res = parseResult.Get<TString>(label.Data());
+    const auto res = parseResult.Get<TString>(label.data());
     TInstant ts;
     if (!TInstant::TryParseIso8601(res, ts)) {
         Cerr << "Failed to parse time format: " << res << Endl;
@@ -55,28 +55,28 @@ TMaybe<TInstant> Parse(
 TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
 {
     opts.AddLongOption(
-            FileSystemIdLabel.Data(),
+            FileSystemIdLabel.data(),
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
-            NodeIdLabel.Data(),
+            NodeIdLabel.data(),
             "NodeId, used for filtering")
         .RequiredArgument("NUM");
 
     opts.AddLongOption(
-            HandleLabel.Data(),
+            HandleLabel.data(),
             "Handle, used for filtering")
         .RequiredArgument("NUM");
 
     opts.AddLongOption(
-            SinceLabel.Data(),
+            SinceLabel.data(),
             "Since timestamp, used for filtering. "
             "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
-            UntilLabel.Data(),
+            UntilLabel.data(),
             "Until timestamp, used for filtering. "
             "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
         .RequiredArgument("STR");

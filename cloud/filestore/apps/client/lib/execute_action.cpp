@@ -44,12 +44,12 @@ public:
     {
         auto callContext = PrepareCallContext();
 
-        if (!InputFilePath.Empty()) {
+        if (!InputFilePath.empty()) {
             Input = ReadFile(InputFilePath);
         }
         TStringInput inputBytes(Input);
 
-        auto& input = Input.Empty() ? Cin : inputBytes;
+        auto& input = Input.empty() ? Cin : inputBytes;
         auto inputJsonStr = input.ReadAll();
 
         STORAGE_DEBUG("Reading ExecuteAction request");

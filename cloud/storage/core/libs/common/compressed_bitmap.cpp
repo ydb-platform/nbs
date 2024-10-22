@@ -813,7 +813,7 @@ public:
                 plain.Data = new TPlainChunkData;
                 memcpy(
                     plain.Data->Data,
-                    data.Data() + 1,
+                    data.data() + 1,
                     sizeof(TPlainChunkData)
                 );
                 chunk->Count() = plain.Data->Count();

@@ -333,7 +333,7 @@ void AddOrModifyChannel(
     }
 
     auto* profile = config.MutableExplicitChannelProfiles(channelId);
-    if (profile->GetPoolKind().Empty()) {
+    if (profile->GetPoolKind().empty()) {
         profile->SetPoolKind(poolKind);
     }
 

@@ -64,7 +64,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
 {
     const auto backupDirPath = Config->GetDiskRegistryBackupDirPath();
 
-    if (backupDirPath.Empty()) {
+    if (backupDirPath.empty()) {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "Path for backups was not specified");
         return;
