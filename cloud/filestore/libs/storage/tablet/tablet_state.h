@@ -1128,6 +1128,7 @@ public:
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
+    TCompactionCounter GetRangeToCompactByGarbage() const;
     TMaybe<TPriorityRange> NextPriorityRangeForCleanup() const;
     ui32 GetPriorityRangeCount() const;
 
