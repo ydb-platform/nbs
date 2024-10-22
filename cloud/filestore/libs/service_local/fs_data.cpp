@@ -2,6 +2,7 @@
 
 #include "lowlevel.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <util/string/builder.h>
@@ -28,29 +29,46 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    const int flags = HandleFlagsToSystem(request.GetFlags());
+    int flags = HandleFlagsToSystem(request.GetFlags());
     const int mode = request.GetMode()
         ? request.GetMode() : Config->GetDefaultPermissions();
 
     TFileHandle handle;
     TFileStat stat;
+    ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
 
         auto newnode = TIndexNode::Create(*node, pathname);
         stat = newnode->Stat();
+        nodeId = newnode->GetNodeId();
 
-        session->TryInsertNode(std::move(newnode));
+        if (!session->TryInsertNode(
+                std::move(newnode),
+                node->GetNodeId(),
+                pathname))
+        {
+            ReportLocalFsMaxSessionNodesInUse();
+            return TErrorResponse(ErrorNoSpaceLeft());
+        }
     } else {
         handle = node->OpenHandle(flags);
         stat = node->Stat();
+        nodeId = node->GetNodeId();
     }
 
-    const FHANDLE fd = handle;
-    session->InsertHandle(std::move(handle));
+    // Don't persist flags that only make sense on initial open
+    flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
+
+    auto [handleId, error] =
+        session->InsertHandle(std::move(handle), nodeId, flags);
+    if (HasError(error)) {
+        ReportLocalFsMaxSessionFileHandlesInUse();
+        return TErrorResponse(error);
+    }
 
     NProto::TCreateHandleResponse response;
-    response.SetHandle(fd);
+    response.SetHandle(handleId);
     ConvertStats(stat, *response.MutableNodeAttr());
 
     return response;
