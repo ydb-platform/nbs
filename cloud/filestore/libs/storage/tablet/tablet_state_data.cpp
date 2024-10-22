@@ -1240,6 +1240,11 @@ TCompactionCounter TIndexTabletState::GetRangeToCleanup() const
     return Impl->CompactionMap.GetTopCleanupScore();
 }
 
+TCompactionCounter TIndexTabletState::GetRangeToCompactByGarbage() const
+{
+    return Impl->CompactionMap.GetTopGarbageScore();
+}
+
 TMaybe<TIndexTabletState::TPriorityRange>
 TIndexTabletState::NextPriorityRangeForCleanup() const
 {

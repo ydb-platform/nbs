@@ -557,7 +557,7 @@ void TDiskRegistryState::ProcessCheckpoints()
     for (const auto& [diskId, diskState]: Disks) {
         const auto& checkpointReplica = diskState.CheckpointReplica;
 
-        if (!checkpointReplica.GetCheckpointId().Empty()) {
+        if (!checkpointReplica.GetCheckpointId().empty()) {
             auto* sourceDisk = Disks.FindPtr(checkpointReplica.GetSourceDiskId());
             if (!sourceDisk) {
                 ReportDiskRegistrySourceDiskNotFound(
@@ -2593,7 +2593,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
         params.DiskId);
 
     const bool isShadowDiskAllocation =
-        !checkpointParams.GetCheckpointId().Empty();
+        !checkpointParams.GetCheckpointId().empty();
 
     auto onError = [&] {
         const bool isNewDisk = disk.Devices.empty();

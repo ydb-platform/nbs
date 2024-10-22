@@ -164,11 +164,11 @@ struct TOptions
         TStringBuf sit(EvlogDumperParamsStr);
         TStringBuf arg;
         while (sit.NextTok(' ', arg)) {
-            if (sit.Size()) {
-                const auto idx = EvlogDumperParamsStr.Size() - sit.Size() - 1;
+            if (sit.size()) {
+                const auto idx = EvlogDumperParamsStr.size() - sit.size() - 1;
                 EvlogDumperParamsStr[idx] = 0;
             }
-            EvlogDumperArgv.push_back(arg.Data());
+            EvlogDumperArgv.push_back(arg.data());
         }
     }
 };
@@ -273,7 +273,7 @@ void PrintStat(const TString& label, const TString& sublabel, const TStat& stat)
 
     Cout << CONSOLE_YELLOW << label << CONSOLE_ENDC
         << CONSOLE_GREEN << sublabel << CONSOLE_ENDC
-        << " " << Indented(stat.Count, 30 - label.Size() - sublabel.Size())
+        << " " << Indented(stat.Count, 30 - label.size() - sublabel.size())
         << " " << Indented(Bytes2String(stat.Bytes), 20)
         << " " << Indented(Bytes2String(bpr), 20)
         << WIPE << Endl;

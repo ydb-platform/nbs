@@ -23,13 +23,13 @@ IWriteBlocksHandlerPtr CreateTestWriteBlocksHandler(
     TBlockRange64 range,
     const TString& content)
 {
-    TSgList sglist(range.Size(), {content.Data(), content.Size()});
+    TSgList sglist(range.Size(), {content.data(), content.size()});
 
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.Sglist = TGuardedSgList(std::move(sglist));
     request->Record.SetStartIndex(range.Start);
     request->Record.BlocksCount = range.Size();
-    request->Record.BlockSize = content.Size() / range.Size();
+    request->Record.BlockSize = content.size() / range.Size();
 
     return CreateWriteBlocksHandler(range, std::move(request));
 }
@@ -129,7 +129,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             auto blockContent = GetBlockContent(blockIndex);
             handler->SetBlock(
                 blockIndex,
-                TBlockDataRef(blockContent.Data(), blockContent.Size()),
+                TBlockDataRef(blockContent.data(), blockContent.size()),
                 false);
         }
 
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
             1,
-            TBlockDataRef(blockContent1.Data(), blockContent1.Size()),
+            TBlockDataRef(blockContent1.data(), blockContent1.size()),
             false);
 
         auto guardedSgList1 = handler->GetGuardedSgList({4, 5}, false);
@@ -198,7 +198,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString blockContent2(DefaultBlockSize, 'c');
         handler->SetBlock(
             2,
-            TBlockDataRef(blockContent2.Data(), blockContent2.Size()),
+            TBlockDataRef(blockContent2.data(), blockContent2.size()),
             false);
 
         auto guardedSgList2 = handler->GetGuardedSgList({6, 7}, false);
@@ -238,7 +238,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
             1,
-            TBlockDataRef(blockContent1.Data(), blockContent1.Size()),
+            TBlockDataRef(blockContent1.data(), blockContent1.size()),
             false);
 
         auto guardedSgList1 = handler->GetGuardedSgList({4, 5}, false);
@@ -255,7 +255,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TString blockContent2(DefaultBlockSize, 'c');
         handler->SetBlock(
             2,
-            TBlockDataRef(blockContent2.Data(), blockContent2.Size()),
+            TBlockDataRef(blockContent2.data(), blockContent2.size()),
             false);
 
         auto guardedSgList2 = handler->GetGuardedSgList({6, 7}, false);
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInReadBlocksHandler)
     {
         auto blockContent = GetBlockContent();
-        TBlockDataRef blockContentRef(blockContent.Data(), blockContent.Size());
+        TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
 
         ui64 startIndex = 10;
         auto handler = CreateReadBlocksHandler(
@@ -407,7 +407,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInLocalReadBlocksHandler)
     {
         auto blockContent = GetBlockContent();
-        TBlockDataRef blockContentRef(blockContent.Data(), blockContent.Size());
+        TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
 
         ui64 startIndex = 10;
         TVector<TString> blocks;
