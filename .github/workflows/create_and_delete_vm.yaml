@@ -138,7 +138,7 @@ jobs:
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       link_threads: "24"
       test_threads: "4"
-      sleep_after_tests: "1"
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
       cache_update_build: false
       cache_update_tests: false
       upload_ya_dir: "no"
