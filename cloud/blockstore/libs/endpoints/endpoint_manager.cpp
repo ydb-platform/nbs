@@ -11,7 +11,6 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
-#include <cloud/blockstore/libs/nbd/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -29,7 +28,6 @@
 #include <util/generic/overloaded.h>
 #include <util/generic/set.h>
 #include <util/string/builder.h>
-#include <util/string/join.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -496,10 +494,6 @@ public:
     void Stop() override
     {
         RestoringClient->Stop();
-
-        for (auto& [socket, endpoint]: Endpoints) {
-            endpoint.Device->Stop(false).GetValueSync();
-        }
     }
 
     size_t CollectRequests(
@@ -617,8 +611,6 @@ private:
         const NProto::TVolume& volume);
 
     void ReleaseNbdDevice(const TString& device, bool restoring);
-
-    void DetachFileDevice(const TString& device);
 
     template <typename T>
     void RemoveSession(TCallContextPtr ctx, const T& request)
@@ -1443,9 +1435,6 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
 
     NBD::IDevicePtr device;
     try {
-        // Release file descriptor lock by removing loopback device
-        DetachFileDevice(request->GetNbdDeviceFile());
-
         TNetworkAddress address(TUnixSocketPath(request->GetUnixSocketPath()));
         device = NbdDeviceFactory->Create(
             address,
@@ -1586,25 +1575,6 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
     NbdDeviceManager.ReleaseDevice(device);
 }
 
-void TEndpointManager::DetachFileDevice(const TString& device)
-{
-    STORAGE_DEBUG("Detach file device " << device);
-
-    auto mountedFiles = NBD::FindMountedFiles(device);
-    STORAGE_DEBUG("find mounted files: " << JoinSeq(",", mountedFiles));
-
-    auto loopbackDevices = NBD::FindLoopbackDevices(mountedFiles);
-    for (const auto& loopbackDevice: loopbackDevices) {
-        STORAGE_INFO("Remove loopback device " << loopbackDevice.Quote()
-            << " to unlock block device " << device.Quote());
-
-        int result = NBD::RemoveLoopbackDevice(loopbackDevice);
-        if (result != 0) {
-            throw TServiceError(E_FAIL) << "failed to remove loopback device "
-                << loopbackDevice.Quote() << " with error: " << result;
-        }
-    }
-}
 
 NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
     TCallContextPtr ctx,

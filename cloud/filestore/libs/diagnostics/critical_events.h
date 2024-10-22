@@ -20,10 +20,15 @@ namespace NCloud::NFileStore{
     xxx(NodeNotFoundInShard)                                                   \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
+    xxx(HandleOpsQueueProcessError)                                            \
+    xxx(HandleOpsQueueCreatingOrDeletingError)                                 \
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \
     xxx(ReceivedNodeOpErrorFromShard)                                          \
+    xxx(LocalFsMaxSessionNodesInUse)                                           \
+    xxx(LocalFsMaxSessionFileHandlesInUse)                                     \
+    xxx(LocalFsMissingHandleNode)                                              \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
@@ -39,6 +44,7 @@ namespace NCloud::NFileStore{
     xxx(NewChildNodeIsNull)                                                    \
     xxx(IndexOutOfBounds)                                                      \
     xxx(CheckFreshBytesFailed)                                                 \
+    xxx(LocalFsDuplicateFileHandle)                                            \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

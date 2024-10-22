@@ -1,0 +1,2 @@
+TabletBootInfoBackupFilePath: "tablet_boot_info_backup.txt"
+PathDescriptionBackupFilePath: "path_description_backup.txt"

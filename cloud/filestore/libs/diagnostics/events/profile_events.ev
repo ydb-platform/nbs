@@ -69,6 +69,7 @@ message TProfileLogCompactionRangeInfo {
     optional uint64 RangeId = 2;
     optional uint64 BlobsCount = 3;
     optional uint64 DeletionsCount = 4;
+    optional uint64 GarbageBlocksCount = 5;
 };
 
 message TProfileLogRequestInfo {

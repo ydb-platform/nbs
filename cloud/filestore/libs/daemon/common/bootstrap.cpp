@@ -65,7 +65,7 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
     IMonitoringServicePtr monitoring,
     const TString& metricsComponent)
 {
-    if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
+    if (cpuWaitServiceName.empty() && cpuWaitFilename.empty()) {
         const auto& Log = log;
         STORAGE_INFO(
             "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
@@ -79,7 +79,7 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
             .CounterName = "CpuWaitFailure",
         };
     TString statsFile =
-        cpuWaitFilename.Empty()
+        cpuWaitFilename.empty()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName)
             : cpuWaitFilename;
 
@@ -376,12 +376,12 @@ void TBootstrapCommon::InitLWTrace(
         traceReaders.push_back(CreateTraceLogger(TraceLoggerId, traceLog, "NFS_TRACE"));
     }
 
-    if (auto samplingRate = Configs->DiagnosticsConfig->GetSlowRequestSamplingRate() &&
-        !probesToTrace.empty())
-    {
+    auto slowRequestSamplingRate =
+        Configs->DiagnosticsConfig->GetSlowRequestSamplingRate();
+    if (slowRequestSamplingRate && !probesToTrace.empty()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             probesToTrace,
-            samplingRate,
+            slowRequestSamplingRate,
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
 
         lwManager.New(SlowRequestsFilterId, query);

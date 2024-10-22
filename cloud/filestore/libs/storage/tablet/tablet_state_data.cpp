@@ -847,13 +847,13 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
     db.WriteCompactionMap(
         rangeId,
         stats.BlobsCount,
-        stats.DeletionsCount + blocksCount
-    );
+        stats.DeletionsCount + blocksCount,
+        stats.GarbageBlocksCount);
     UpdateCompactionMap(
         rangeId,
         stats.BlobsCount,
-        stats.DeletionsCount + blocksCount
-    );
+        stats.DeletionsCount + blocksCount,
+        stats.GarbageBlocksCount);
 
     InvalidateReadAheadCache(nodeId);
 }
@@ -951,25 +951,30 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
 
     auto stats = GetCompactionStats(rangeId);
     // FIXME: return SafeDecrement after NBS-4475
-    stats.BlobsCount = (stats.BlobsCount > removedBlobs) ? (stats.BlobsCount - removedBlobs) : 0;
+    stats.BlobsCount = (stats.BlobsCount > removedBlobs)
+        ? (stats.BlobsCount - removedBlobs) : 0;
     stats.DeletionsCount = 0;
+    if (stats.BlobsCount == 0) {
+        stats.GarbageBlocksCount = 0;
+    }
 
     db.WriteCompactionMap(
         rangeId,
         stats.BlobsCount,
-        stats.DeletionsCount
-    );
+        stats.DeletionsCount,
+        stats.GarbageBlocksCount);
     UpdateCompactionMap(
         rangeId,
         stats.BlobsCount,
-        stats.DeletionsCount
-    );
+        stats.DeletionsCount,
+        stats.GarbageBlocksCount);
 
     AddCompactionRange(
         GetCurrentCommitId(),
         rangeId,
         stats.BlobsCount,
         stats.DeletionsCount,
+        stats.GarbageBlocksCount,
         profileLogRequest);
 
     return deletionMarkerCount;
@@ -1073,6 +1078,12 @@ const IBlockLocation2RangeIndex& TIndexTabletState::GetRangeIdHasher() const
     TABLET_VERIFY(Impl->RangeIdHasher);
 
     return *Impl->RangeIdHasher;
+}
+
+ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
+    ui32 rangeId) const
+{
+    return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1204,9 +1215,14 @@ void TIndexTabletState::DeleteGarbage(
 void TIndexTabletState::UpdateCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
-    ui32 deletionsCount)
+    ui32 deletionsCount,
+    ui32 garbageBlocksCount)
 {
-    Impl->CompactionMap.Update(rangeId, blobsCount, deletionsCount);
+    Impl->CompactionMap.Update(
+        rangeId,
+        blobsCount,
+        deletionsCount,
+        garbageBlocksCount);
 }
 
 TCompactionStats TIndexTabletState::GetCompactionStats(ui32 rangeId) const
@@ -1222,6 +1238,11 @@ TCompactionCounter TIndexTabletState::GetRangeToCompact() const
 TCompactionCounter TIndexTabletState::GetRangeToCleanup() const
 {
     return Impl->CompactionMap.GetTopCleanupScore();
+}
+
+TCompactionCounter TIndexTabletState::GetRangeToCompactByGarbage() const
+{
+    return Impl->CompactionMap.GetTopGarbageScore();
 }
 
 TMaybe<TIndexTabletState::TPriorityRange>
@@ -1274,20 +1295,28 @@ TVector<ui32> TIndexTabletState::GetAllCompactionRanges() const
     return Impl->CompactionMap.GetAllCompactionRanges();
 }
 
-TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCompactionScore(ui32 topSize) const
+TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCompactionScore(
+    ui32 topSize) const
 {
     return Impl->CompactionMap.GetTopRangesByCompactionScore(topSize);
 }
 
-TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCleanupScore(ui32 topSize) const
+TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCleanupScore(
+    ui32 topSize) const
 {
     return Impl->CompactionMap.GetTopRangesByCleanupScore(topSize);
 }
 
-void TIndexTabletState::LoadCompactionMap(
-    const TVector<TCompactionRangeInfo>& ranges)
+TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByGarbageScore(
+    ui32 topSize) const
 {
-    Impl->CompactionMap.Update(ranges);
+    return Impl->CompactionMap.GetTopRangesByGarbageScore(topSize);
+}
+
+void TIndexTabletState::LoadCompactionMap(
+    const TVector<TCompactionRangeInfo>& compactionMap)
+{
+    Impl->CompactionMap.Update(compactionMap);
 }
 
 void TIndexTabletState::EnqueueForcedRangeOperation(

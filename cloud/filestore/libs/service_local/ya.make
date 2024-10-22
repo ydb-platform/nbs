@@ -23,6 +23,7 @@ ENDIF()
 
 PEERDIR(
     cloud/filestore/config
+    cloud/filestore/libs/diagnostics
     cloud/filestore/libs/service
 
     cloud/storage/core/libs/common

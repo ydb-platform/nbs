@@ -166,7 +166,7 @@ void AddOrModifyChannel(
     const auto found = data.find(channelId);
     if (found != data.end()) {
         profile->SetPoolKind(found->second);
-    } else if (profile->GetPoolKind().Empty()) {
+    } else if (profile->GetPoolKind().empty()) {
         profile->SetPoolKind(poolKind);
     }
 
@@ -190,7 +190,7 @@ void SetupVolumeChannel(
     }
     auto* profile = volumeConfig.MutableVolumeExplicitChannelProfiles(channelId);
 
-    if (profile->GetPoolKind().Empty()) {
+    if (profile->GetPoolKind().empty()) {
         profile->SetPoolKind(poolKind);
     }
     profile->SetDataKind(static_cast<ui32>(dataKind));
@@ -234,25 +234,25 @@ TPoolKinds GetPoolKinds(
             auto systemChannelPoolKind =
                 config.GetSSDSystemChannelPoolKindFeatureValue(
                     cloudId, folderId, diskId);
-            if (systemChannelPoolKind.Empty()) {
+            if (systemChannelPoolKind.empty()) {
                 systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
             }
             auto logChannelPoolKind =
                 config.GetSSDLogChannelPoolKindFeatureValue(
                     cloudId, folderId, diskId);
-            if (logChannelPoolKind.Empty()) {
+            if (logChannelPoolKind.empty()) {
                 logChannelPoolKind = config.GetSSDLogChannelPoolKind();
             }
             auto indexChannelPoolKind =
                 config.GetSSDIndexChannelPoolKindFeatureValue(
                     cloudId, folderId, diskId);
-            if (indexChannelPoolKind.Empty()) {
+            if (indexChannelPoolKind.empty()) {
                 indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
             }
             auto freshChannelPoolKind =
                 config.GetSSDFreshChannelPoolKindFeatureValue(
                     cloudId, folderId, diskId);
-            if (freshChannelPoolKind.Empty()) {
+            if (freshChannelPoolKind.empty()) {
                 freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
             }
             return {

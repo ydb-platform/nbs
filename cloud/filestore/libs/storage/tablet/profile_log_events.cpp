@@ -177,6 +177,7 @@ void AddCompactionRange(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
+    ui32 garbageBlocksCount,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     auto* range = profileLogRequest.AddCompactionRanges();
@@ -184,6 +185,7 @@ void AddCompactionRange(
     range->SetRangeId(rangeId);
     range->SetBlobsCount(blobsCount);
     range->SetDeletionsCount(deletionsCount);
+    range->SetGarbageBlocksCount(garbageBlocksCount);
 }
 
 template <typename T>

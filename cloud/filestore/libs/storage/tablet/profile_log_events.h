@@ -87,6 +87,7 @@ void AddCompactionRange(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
+    ui32 garbageBlocksCount,
     NProto::TProfileLogRequestInfo& profileLogRequest);
 
 template <typename T>

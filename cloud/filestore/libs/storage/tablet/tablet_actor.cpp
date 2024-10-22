@@ -476,9 +476,33 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         : 0;
     // TODO: use GarbageCompactionThreshold
 
-    const bool shouldCompact =
-        avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
-        || avgCompactionScore >= compactionThresholdAverage;
+    bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgGarbagePercentage
+            >= Config->GetGarbageCompactionThresholdAverage();
+
+    const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
+        || Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgCompactionScore >= compactionThresholdAverage;
+
+    // blobs-based compaction has priority
+    if (!shouldCompactByBlobs && shouldCompactByGarbage) {
+        // if we don't need to do compaction by blobs we need to select another
+        // range - the one with the most garbage in it
+        auto score = GetRangeToCompactByGarbage();
+        if (score.Score) {
+            compactRangeId = score.RangeId;
+            compactionScore = score.Score;
+        } else {
+            // garbage score for the top range is 0 - most probably the counter
+            // has not yet been initialized after the support for
+            // GarbageBlocksCount tracking got deployed
+            shouldCompactByGarbage = false;
+        }
+    }
+
+    const bool shouldCompact = shouldCompactByBlobs || shouldCompactByGarbage;
 
     return {
         compactionThreshold,
@@ -490,9 +514,7 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         avgGarbagePercentage,
         avgCompactionScore,
         Config->GetNewCompactionEnabled(),
-        compactionScore >= compactionThreshold
-            || Config->GetNewCompactionEnabled()
-            && compactionScore > 1 && shouldCompact,
+        shouldCompact,
     };
 }
 
@@ -875,6 +897,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse,
+            HandleLoadCompactionMapChunkResponse);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);

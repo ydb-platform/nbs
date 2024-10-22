@@ -165,12 +165,12 @@ void CopyFileData(
     if (origin.Offset > aligned.Offset) {
         const auto block = buffer.GetBlock(i);
         const auto shift = origin.Offset - aligned.Offset;
-        const auto sz = Min(block.Size() - shift, out->Size());
+        const auto sz = Min(block.size() - shift, out->size());
         STORAGE_VERIFY(
             outPtr + sz <= out->end(),
             TWellKnownEntityTypes::FILESYSTEM,
             logTag);
-        memcpy(outPtr, block.Data() + shift, sz);
+        memcpy(outPtr, block.data() + shift, sz);
         outPtr += sz;
 
         ++i;
@@ -179,12 +179,12 @@ void CopyFileData(
     while (i < aligned.BlockCount()) {
         const auto block = buffer.GetBlock(i);
         // Min needed to properly process unaligned tail
-        const auto len = Min<ui64>(out->end() - outPtr, block.Size());
+        const auto len = Min<ui64>(out->end() - outPtr, block.size());
         if (!len) {
             // origin.End() is greater than fileSize
             break;
         }
-        memcpy(outPtr, block.Data(), len);
+        memcpy(outPtr, block.data(), len);
         outPtr += len;
 
         ++i;

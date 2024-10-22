@@ -13,11 +13,16 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const totalHangingTaskCountGaugeName = "totalHangingTaskCount"
+
+////////////////////////////////////////////////////////////////////////////////
+
 type collectListerMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
 	metricsCollectionInterval time.Duration
 
+	taskTypes                 []string
 	hangingTaskGaugesByID     map[string]metrics.Gauge
 	maxHangingTaskIDsToReport int64
 }
@@ -134,6 +139,9 @@ func (c *collectListerMetricsTask) collectTasksMetrics(
 ) error {
 
 	tasksByType := make(map[string]uint64)
+	for _, taskType := range c.taskTypes {
+		tasksByType[taskType] = 0
+	}
 
 	taskInfos, err := getTaskInfos(ctx)
 	if err != nil {
@@ -158,14 +166,22 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	ctx context.Context,
 ) error {
 
-	totalHangingTasksGauge := c.registry.Gauge("totalHangingTaskCount")
-
 	taskInfos, err := c.storage.ListHangingTasks(ctx, ^uint64(0))
 	if err != nil {
 		return err
 	}
 
-	totalHangingTasksGauge.Set(float64(len(taskInfos)))
+	err = c.collectTasksMetrics(
+		ctx,
+		func(context.Context) ([]storage.TaskInfo, error) {
+			return taskInfos, nil
+		},
+		totalHangingTaskCountGaugeName,
+	)
+	if err != nil {
+		return err
+	}
+
 	taskInfoByID := make(map[string]storage.TaskInfo)
 	for _, taskInfo := range taskInfos {
 		taskInfoByID[taskInfo.ID] = taskInfo

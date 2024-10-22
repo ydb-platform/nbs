@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -27,7 +26,6 @@ func GetTracingContext(ctx context.Context) context.Context {
 
 	traceparent, ok := tracingContext[traceparentHeaderKey]
 	if !ok || len(traceparent) == 0 {
-		logging.Debug(ctx, "No traceparent in incoming tracing context")
 		return ctx
 	}
 
@@ -47,7 +45,6 @@ func SetTracingContext(ctx context.Context) context.Context {
 
 	traceparent, ok := mapCarrier[traceparentHeaderKey]
 	if !ok {
-		logging.Debug(ctx, "No traceparent in current tracing context")
 		return ctx
 	}
 	tracingContextHeaders[traceparentHeaderKey] = traceparent

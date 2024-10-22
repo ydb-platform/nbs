@@ -159,7 +159,8 @@ class NfsDaemonConfigGenerator:
         ]
 
         nfs_services = [
-            # "NFS_SS_PROXY",
+            "NFS_HIVE_PROXY",
+            "NFS_SS_PROXY",
             # "NFS_TABLET_PROXY",
             "NFS_FUSE",
             "NFS_SERVER",

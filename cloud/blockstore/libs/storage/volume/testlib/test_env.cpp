@@ -336,7 +336,7 @@ TVolumeClient::CreateWriteBlocksLocalRequest(
     const TString& blockContent)
 {
     TSgList sglist;
-    sglist.resize(writeRange.Size(), {blockContent.Data(), blockContent.Size()});
+    sglist.resize(writeRange.Size(), {blockContent.data(), blockContent.size()});
 
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(writeRange.Start);

@@ -715,7 +715,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const auto handle = CreateHandle(tablet, nodeId);
 
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, 100_KB, 'a');
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
@@ -725,14 +725,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"sensor", "UncompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                4_KB // expected
+                100_KB // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                34 // expected
+                457 // expected
             },
         });
     }

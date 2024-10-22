@@ -1601,14 +1601,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(256, stats.GetAllocatedCompactionRanges());
         }
 
-        // 512_KB more
-        tablet.WriteData(handle, 0, 256_KB, 'b');
+        // 516_KB more
+        tablet.WriteData(handle, 0, 132_KB, 'b');
+        tablet.WriteData(handle, 128_KB, 128_KB, 'b');
         tablet.WriteData(handle, 256_KB, 256_KB, 'b');
 
         // garbage fraction became 1280_KB / 1024_KB > 1.2 => Compaction
-        // should've been triggered for one of the ranges and should've
-        // decreased its blob count from 2 to 1 => we should have 5 blobs
-        // byte count in that range should've been decreased from 512_KB to
+        // should've been triggered for the range [0, 256_KB) and should've
+        // decreased its blob count from 3 to 1 => we should have 5 blobs
+        // byte count in that range should've been decreased from 516_KB to
         // 256_KB
         {
             auto response = tablet.GetStorageStats();
@@ -1620,14 +1621,83 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetMixedBlocksCount());
             // 0 garbage blocks
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
-            // 1280_KB new (written by user)
+            // 1284_KB new (written by user)
+            // 256_KB new (rewritten by Compaction)
+            // 516_KB garbage (marked after Compaction)
+            UNIT_ASSERT_VALUES_EQUAL(2_MB + 8_KB, stats.GetGarbageQueueSize());
+        }
+
+        // manually compacting the range [256_KB, 512_KB)
+        ui32 rangeId = GetMixedRangeIndex(id, 64);
+        tablet.Compaction(rangeId);
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
+            // now we have 768_KB of data
+            UNIT_ASSERT_VALUES_EQUAL(
+                768_KB / block,
+                stats.GetMixedBlocksCount());
+            // 0 garbage blocks
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            // 1284_KB new (written by user)
+            // 256_KB new (rewritten by Compaction)
+            // 516_KB garbage (marked after Compaction)
+            // plus
             // 256_KB new (rewritten by Compaction)
             // 512_KB garbage (marked after Compaction)
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, stats.GetGarbageQueueSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2_MB + 8_KB + 768_KB,
+                stats.GetGarbageQueueSize());
+        }
+
+        // writing more data to trigger garbage-based compaction once again
+        // [0, 256_KB) will contain more garbage
+        tablet.WriteData(handle, 0, 256_KB, 'c');
+        // [256_KB, 512_KB) will contain more blobs
+        const ui64 bytesInSecondRange = 208_KB;
+        for (ui64 off = 0; off < bytesInSecondRange; off += 4_KB) {
+            tablet.WriteData(handle, 256_KB + off, 4_KB, 'c');
+        }
+
+        // garbage fraction became 1232_KB / 1024_KB > 1.2 => Compaction
+        // should've been triggered for the range [0, 256_KB) and should've
+        // decreased its blob count to 1
+        // byte count in that range should've been decreased to 256_KB
+        {
+            auto response = tablet.GetStorageStats(3);
+            const auto& stats = response->Record.GetStats();
+            // a lot of blobs are stored in the range [256_KB, 512_KB)
+            UNIT_ASSERT_VALUES_EQUAL(55, stats.GetMixedBlobsCount());
+            // now we have 768_KB + bytesInSecondRange of data
+            UNIT_ASSERT_VALUES_EQUAL(
+                (768_KB + bytesInSecondRange) / block,
+                stats.GetMixedBlocksCount());
+            // 0 garbage blocks
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            // calculating GarbageQueueSize and comparing it to some expected
+            // value once again isn't really needed for this test
+
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(
+                256,
+                stats.GetAllocatedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944065 b=53 d=180 g=52",
+                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=1 d=193 g=0",
+                CompactionRangeToString(stats.GetCompactionRangeStats(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944066 b=1 d=64 g=0",
+                CompactionRangeToString(stats.GetCompactionRangeStats(2)));
         }
 
         TString expected(1_MB, 0);
         memset(expected.begin(), 'b', 512_KB);
+        memset(expected.begin(), 'c', 256_KB);
+        memset(expected.begin() + 256_KB, 'c', bytesInSecondRange);
         memset(expected.begin() + 512_KB, 'a', 256_KB);
 
         {
@@ -3374,11 +3444,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     ++requests;
                     break;
                 }
-                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkCompleted: {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkResponse: {
                     lastCompactionMapRangeId = Max(
                         event->Get<
                             TEvIndexTabletPrivate
-                            ::TEvLoadCompactionMapChunkCompleted>()->LastRangeId,
+                            ::TEvLoadCompactionMapChunkResponse>()->LastRangeId,
                         lastCompactionMapRangeId);
                     break;
                 }
@@ -3566,28 +3636,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetAllocatedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(8, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1656356864 b=16 d=1024",
+                "r=1656356864 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1656356865 b=16 d=1024",
+                "r=1656356865 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(1)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=4283236352 b=16 d=1024",
+                "r=4283236352 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(2)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=4283236353 b=16 d=1024",
+                "r=4283236353 b=16 d=1024 g=1024",
                 CompactionRangeToString(stats.GetCompactionRangeStats(3)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=14 d=833",
+                "r=1177944064 b=14 d=833 g=832",
                 CompactionRangeToString(stats.GetCompactionRangeStats(4)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944065 b=13 d=832",
+                "r=1177944065 b=13 d=832 g=832",
                 CompactionRangeToString(stats.GetCompactionRangeStats(5)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=737148928 b=3 d=192",
+                "r=737148928 b=3 d=192 g=192",
                 CompactionRangeToString(stats.GetCompactionRangeStats(6)));
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=737148929 b=3 d=192",
+                "r=737148929 b=3 d=192 g=192",
                 CompactionRangeToString(stats.GetCompactionRangeStats(7)));
         };
 

@@ -77,6 +77,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
+                                                                               \
+    xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -2097,6 +2099,44 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
+        }
+    };
+
+    //
+    // LoadNodeRefs
+    //
+
+    // The whole point of this transaction is to observe some data in the
+    // NodeRefs table and populate the contents of TIndexStateNodeUpdates with it
+
+    struct TLoadNodeRefs: TIndexStateNodeUpdates
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+
+        const ui64 NodeId;
+        const TString Cookie;
+        const ui64 MaxNodeRefs;
+
+        ui64 NextNodeId = 0;
+        TString NextCookie;
+
+        TLoadNodeRefs(
+                ui64 nodeId,
+                TString cookie,
+                ui64 maxNodeRefs)
+            : NodeId(nodeId)
+            , Cookie(std::move(cookie))
+            , MaxNodeRefs(maxNodeRefs)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+
+            NextNodeId = 0;
+            NextCookie.clear();
         }
     };
 };
