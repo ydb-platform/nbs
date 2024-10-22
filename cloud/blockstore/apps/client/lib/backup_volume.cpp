@@ -224,7 +224,7 @@ protected:
             return TRange{0, 0};
         }
 
-        return NextRange(changedBlocks.GetMask().Data(), i, n);
+        return NextRange(changedBlocks.GetMask().data(), i, n);
     }
 
     void ReadBlocks(ui32 bucket)

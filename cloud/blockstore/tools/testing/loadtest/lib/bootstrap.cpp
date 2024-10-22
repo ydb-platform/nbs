@@ -100,8 +100,8 @@ struct TDigestCalculatorImpl final
         }
 
         ui64 result;
-        Y_ABORT_UNLESS(block.Size() >= sizeof(result));
-        memcpy(&result, block.Data(), sizeof(result));
+        Y_ABORT_UNLESS(block.size() >= sizeof(result));
+        memcpy(&result, block.data(), sizeof(result));
         return result;
     }
 };

@@ -18,7 +18,7 @@ constexpr TStringBuf ProfileLogLabel = "profile-log";
 TCommand::TCommand()
 {
     Opts.AddLongOption(
-            ProfileLogLabel.Data(),
+            ProfileLogLabel.data(),
             "Path to profile log")
         .Required()
         .RequiredArgument("STR")
