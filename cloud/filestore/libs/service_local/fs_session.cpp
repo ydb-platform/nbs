@@ -1,6 +1,5 @@
 #include "fs.h"
 
-#include <util/generic/guid.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore {
@@ -13,7 +12,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     STORAGE_INFO("CreateSession " << DumpMessage(request));
 
     const auto& clientId = GetClientId(request);
-    auto sessionId = GetSessionId(request);
+    const auto& sessionId = GetSessionId(request);
     const auto sessionSeqNo = request.GetMountSeqNumber();
     const auto readOnly = request.GetReadOnly();
 
@@ -46,22 +45,31 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         (*it->second)->GetInfo(*response.MutableSession(), sessionSeqNo);
         return response;
     }
-    sessionId = CreateGuidAsString();
+
+    auto clientSessionStatePath = StatePath / ("client_" + clientId);
+    clientSessionStatePath.MkDir();
 
     session = std::make_shared<TSession>(
-        Root.GetPath(),
+        Store.GetFileSystemId(),
+        Root,
+        clientSessionStatePath,
         clientId,
-        sessionId,
-        Index);
+        Index,
+        Logging);
 
+    session->Init(
+        request.GetRestoreClientSession(),
+        Config->GetMaxHandlePerSessionCount());
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
 
-    auto [_, inserted1] = SessionsByClient.emplace(clientId, SessionsList.begin());
+    auto [_, inserted1] =
+        SessionsByClient.emplace(clientId, SessionsList.begin());
     Y_ABORT_UNLESS(inserted1);
 
-    auto [dummyIt, inserted2] = SessionsById.emplace(sessionId, SessionsList.begin());
+    auto [dummyIt, inserted2] =
+        SessionsById.emplace(session->SessionId, SessionsList.begin());
     Y_ABORT_UNLESS(inserted2);
 
     NProto::TCreateSessionResponse response;
@@ -160,6 +168,8 @@ void TLocalFileSystem::RemoveSession(
         SessionsList.erase(it->second);
         SessionsById.erase(it);
     }
+
+    session->StatePath.ForceDelete();
 }
 
 void TLocalFileSystem::ScheduleCleanupSessions()
