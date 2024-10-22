@@ -139,8 +139,8 @@ jobs:
       link_threads: "24"
       test_threads: "4"
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update_build: true
+      cache_update_tests: true
       upload_ya_dir: "no"
       clean_ya_dir: "no"
       use_network_cache: "yes"
